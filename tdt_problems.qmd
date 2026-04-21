@@ -1,0 +1,519 @@
+---
+title: "Methodological and statistical problems with the thermal death time (TDT) literature"
+author: "Daniel Noble"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: cosmo
+    code-fold: true
+    fig-cap-location: bottom
+    embed-resources: true
+    self-contained-math: true
+bibliography: tdt_problems.bib
+csl: ecology-letters.csl
+link-citations: true
+editor_options:
+  chunk_output_type: console
+---
+
+## Overview
+
+The thermal death time (TDT) framework for ectotherm thermal tolerance is dominant in the thermal biology literature, but large parts of it rest on statistical and methodological choices that would not survive a careful biostatistical review. This document catalogues the issues, organised by broad category, with references to the peer-reviewed statistical and thermal-biology literature that establish the problem or the correct alternative.
+
+Each broad section is visible by default; drill-down sub-issues are in foldable panels. References at the end are all verified against their journal of record.
+
+## Two-step inference on derived quantities
+
+The workhorse TDT pipeline has two stages: (i) at each assay temperature, fit a dose–response curve and extract a point estimate of LT50 (the time producing 50 % mortality); (ii) regress `log10(LT50)` on assay temperature with ordinary least squares (OLS) to obtain a slope (−1/z) and an x-intercept (CTmax proxy). This two-stage architecture is the single largest statistical defect of the field and the source of most of the downstream problems.
+
+The correct alternative — long established in econometrics and in modern ecological statistics — is to estimate every parameter jointly from a single hierarchical likelihood that uses the raw count data, propagates all uncertainty, and accommodates censoring automatically.
+
+::: {.callout-note collapse="true"}
+### The generated-regressor / generated-regressand problem
+
+The second-stage OLS fit is fed `log10(LT50_hat)`, which is itself a fitted quantity from the first stage, not a measurement. Feeding an estimator into a subsequent regression and treating it as an observed variable gives biased standard errors — the "generated regressor" problem formalised by @pagan1984 and @murphytopel1985. The asymptotic covariance of the second-stage estimator is wrong unless the uncertainty of the generated quantities is explicitly folded back in, which nearly no TDT paper does. The consequence is that reported confidence intervals on *z*-values, and on between-species or between-stage comparisons of *z*, are anticonservative, often by factors of two to five. Full joint estimation avoids the problem entirely.
+:::
+
+::: {.callout-note collapse="true"}
+### Point-estimate LT50s discard heteroscedasticity
+
+LT50 is tightly estimated near CTmax (sigmoid is steep) and loosely estimated at cooler assay temperatures (sigmoid is shallow). OLS on point estimates treats all temperatures as equally precise. Weighted LS with `1/SE(LT50_hat)^2` weights is a partial fix, but it still ignores the skewness and long tails of the sampling distribution of `log10(LT50_hat)` in the regime the field most cares about (near the assay envelope). Joint hierarchical fits give properly calibrated uncertainty [@bolker2009; @gelman_priors_2006].
+:::
+
+::: {.callout-note collapse="true"}
+### Un-killed temperatures are silently dropped or capped
+
+If at 48 °C an 80-min exposure still leaves 75 % of cells alive, LT50 at 48 °C is right-censored: "> 80 min, value unknown". Common practice is to drop that temperature from the *log10*(LT50)–*T* regression, or to cap LT50 at the maximum assay time. Both are biased: dropping removes the temperatures that anchor the intercept, and capping treats a lower bound as an observation. The correct object is a right-censored likelihood where the contribution of that cell is `P(true LT50 > 80 min | parameters)`. A joint fit on the binomial counts handles this automatically because the likelihood is written in counts, not LT50s [@rubin1976 for the general missingness framework; survival-analysis textbooks for the likelihood machinery].
+:::
+
+## Statistical treatment of proportion data
+
+The outcome in most TDT assays is a proportion (surviving / total). A large fraction of the TDT literature handles this badly — fitting OLS on percentages, arcsine-square-root transformations, or imposing binomial structure without allowing for the overdispersion that biological count data almost always carries.
+
+::: {.callout-note collapse="true"}
+### The arcsine-square-root transformation is obsolete
+
+Fitting `asin(sqrt(p)) ~ X` with OLS used to be the textbook "fix" for proportion data. @warton_arcsine_2011 show conclusively that this is worse than a logit-link GLM on almost every axis: interpretability, power, bias near the 0/1 boundaries, and handling of the count denominator. For binomial outcomes, logistic regression (with overdispersion handling) is strictly preferred; for continuous proportions, beta regression is the correct tool [@douma_beta_2019]. The arcsine persists in TDT papers largely through methodological inertia.
+:::
+
+::: {.callout-note collapse="true"}
+### OLS on percentages ignores the mean–variance relationship
+
+`Var(p) = p(1-p)/n`, which is peaked at `p = 0.5` and collapses to zero at the extremes. OLS assumes constant variance. The mismatch is maximised exactly where LT50 extraction happens (near *p* = 0.5), so the "fit" is systematically over-confident where the inferential target lives. Binomial and beta-binomial likelihoods respect the mean–variance relationship by construction [@bolker2009; @douma_beta_2019].
+:::
+
+::: {.callout-note collapse="true"}
+### Overdispersion is rarely modelled
+
+Binomial counts from biological assays are almost always overdispersed: animals differ in baseline health, wells in dye concentration, batches in operator / day / plate. A plain binomial likelihood under-represents residual variance and delivers artificially tight posteriors / confidence intervals on every parameter, including z. Two clean fixes are (a) an observation-level random effect on the linear predictor [@harrison_olre_2014] or (b) a beta-binomial likelihood [@harrison_bb_2015]. Either is a one-line change in `brms` or `glmmTMB`. Most TDT analyses do neither.
+:::
+
+::: {.callout-note collapse="true"}
+### Boundary observations (0 % and 100 %) are handled by hackery
+
+With a logit link, observations at `p = 0` or `p = 1` send the linear predictor to ±∞. The standard workarounds are to winsorise (`p ← 0.01` if `p = 0`), to add a small pseudo-count, or to drop the observation. Every one of these biases the inflection-point estimate toward the middle of the observed range. The clean answer is to keep the observations in a binomial likelihood (which is well-defined at the boundaries because it uses counts, not proportions) and to free the asymptotes so that predicted probabilities never have to equal exactly 0 or 1 (see §4).
+:::
+
+## Pseudoreplication and hierarchical structure
+
+TDT datasets have an intrinsically nested structure — wells within tubes, tubes within animals, animals within batches and assay days. This nesting is rarely respected in the analysis. The consequence is inflated effective sample size, anticonservative standard errors, and inference that is dominated by pseudoreplication rather than biological replication.
+
+::: {.callout-note collapse="true"}
+### Pseudoreplication is still pervasive
+
+@hurlbert_1984 defined pseudoreplication in 1984 and it remains pervasive four decades later. Many TDT papers aggregate technical replicates into cell means (destroying the count-based weight: a well of 50,000 cells is weighted the same as a well of 500) or treat wells as independent biological replicates (inflating nominal n by the technical-replicate multiplier, often 2–10×). Either choice corrupts the inference — the first destroys precision information, the second destroys calibration. @schielzeth_nested_2013 give the mixed-model correction for properly nested ecological data, and @bolker2009 give the general GLMM framework for the proportional outcome.
+:::
+
+::: {.callout-note collapse="true"}
+### Animal- and batch-level random effects are usually absent
+
+A glance at typical TDT methods sections shows that `(1 | animal) + (1 | batch)` almost never appears. The "n" reported in the abstract is therefore the number of technical measurements, not the number of biologically independent units. Proper random-effects structure is non-optional for proportion data from nested designs [@bolker2009; @harrison_mixed_2018].
+:::
+
+::: {.callout-note collapse="true"}
+### Pseudo-R² and explained-variance metrics need to be GLMM-aware
+
+The `r.squaredGLMM()`-style quantities in common use in ecology are implementations of the @nakagawa_rsquared_2013 marginal/conditional R² for GLMMs. The TDT literature frequently reports R² from OLS fits of *log10*(LT50) against *T*, with no adjustment for the fact that *log10*(LT50) is itself a fitted quantity — these R²s are not comparable across studies and should not be used as model-quality evidence.
+:::
+
+## Functional-form assumptions of the survival curve
+
+When a survival curve is fit in the TDT framework, it is usually a 2-parameter logistic (`plogis((log t − m)/s)`) with asymptotes constrained to 1 and 0. These constraints are statistically indefensible for real assays, and the alternative — an identifiably-parameterised 4PL with free, bounded asymptotes — is decades old in pharmacology/toxicology.
+
+::: {.callout-note collapse="true"}
+### Forced-0 / forced-1 asymptotes bias the inflection
+
+Forcing the upper asymptote to exactly 1 denies baseline mortality, handling loss, and assay-gate noise. Forcing the lower asymptote to exactly 0 denies autofluorescence contamination (our blood-cell case), residual cellular viability, and gate leakage. Both constraints bias the inflection-point estimate — and therefore LT50 — toward the middle of the observed proportion range. A 4-parameter logistic with free but identifiable asymptotes is the standard pharmacological / toxicological choice [@ritz_drc_2015; @bolker_ecologicalmodels_2008]. The `drc` R package implements it in one line; `brms` implements a fully Bayesian version with priors that respect the [0, 1] support of the asymptotes.
+:::
+
+::: {.callout-note collapse="true"}
+### Common-slope-across-temperatures is assumed but rarely tested
+
+Most TDT fits impose a single *z*-value per species: the `log10(LT50) ~ T` line has one slope. This is a joint assumption that the sigmoid slope at each temperature is structurally linked to a single parameter, and that this parameter does not vary with temperature. Biologically, we should expect the kill curve to be steeper near CTmax (threshold-like protein denaturation) than at lower temperatures (stochastic damage accumulation). Random-slope formulations, or fitting `mid ~ f(T)` non-linearly, would detect this — the literature almost never does.
+:::
+
+::: {.callout-note collapse="true"}
+### Parameter identifiability of the 4PL is fragile without priors or constraints
+
+Without constraints, the 4PL has strong likelihood correlations between `low`, `up`, `mid`, and `k`. Maximum-likelihood fits wander, the Hessian is ill-conditioned, and Wald standard errors look reassuringly small because they summarise local curvature but miss the ridges. A lot of published fits converge only because the optimiser got lucky with the starting values. Re-fitting with different inits often changes *z* by 10–20 %. The Bayesian remedy is identifiability-constraining parameterisations — e.g. asymptotes constrained to [0, 0.49] and [0.51, 1], slope expressed as `exp(logk)` — plus weakly informative priors [@gelman_priors_2006; @burkner_brms_2017]. @bolker_ecologicalmodels_2008 is the standard reference on nonlinear-model identifiability in ecology.
+:::
+
+::: {.callout-note collapse="true"}
+### No model checking or posterior-predictive diagnostics
+
+I almost never see in TDT papers: Pearson / randomised-quantile residual plots for the survival fits (they would expose assay artefacts like the autofluorescence bounce at long exposures immediately); posterior-predictive checks for where simulated counts diverge from observed; leave-one-out influence diagnostics (single outlier animals often drive *z*); cross-validation of `log10(LT50) ~ T` linearity using held-out temperatures. The Bayesian workflow literature gives the playbook: PSIS-LOO and WAIC for model comparison [@vehtari_loo_2017] and graphical posterior-predictive checks as a matter of course [@gabry_viz_2019]. Most TDT papers run none of it.
+:::
+
+## The log-linear extrapolation to CTmax is misread as thermodynamic
+
+The `log10(LT50) = α − βT` line is often described in TDT papers with Arrhenius language: "activation energy of thermal death", "Boltzmann kinetics of damage", etc. This is a category error. Arrhenius kinetics says `ln(rate) = ln(A) − Ea/(RT)` — linear in *reciprocal* Kelvin, not in degrees Celsius. If thermal death were a single Arrhenius-governed reaction, `log(LT50)` would be linear in 1/T, not in T. The TDT linear form is an empirical fit to a narrow window of assay temperatures.
+
+::: {.callout-note collapse="true"}
+### CTmax as the x-intercept is an extrapolation outside the data
+
+Predicting CTmax as "the temperature at which LT50 = 1 min" by extrapolating the log-linear line 2–3 orders of magnitude outside the shortest assay time is not a thermodynamic derivation — it is a long extrapolation of an empirical fit. Without a mechanistic damage-accumulation model, extrapolated CTmax should carry enormous uncertainty; it is almost always reported as a sharp point estimate.
+:::
+
+::: {.callout-note collapse="true"}
+### Rate-based damage-accumulation models are the principled alternative
+
+If you actually want a mechanistic framework for heat failure, model the instantaneous rate of damage accumulation as a function of temperature, integrate over the exposure trajectory, and treat death as the first-passage time of accumulated damage across a threshold. This lets you handle fluctuating and dynamic exposures in the same framework as static ones, and is exactly the direction the best recent TDT-adjacent work has taken [@jorgensen_unifying_2021; @jorgensen_nature_2022; @kingsolver_woods_2016]. The static-LT50 → log-linear pipeline is a special case that most thermal biology does not satisfy in the wild.
+:::
+
+## Endpoint heterogeneity and methodological-context dependence
+
+"Thermal tolerance" is not one thing. Across the TDT literature you will find results pooled from: whole-organism mortality, loss of righting response, cardiac arrest, cell-level viability (what you are measuring), in vitro protein denaturation, enzyme inactivation, and behavioural incapacitation. These endpoints do not measure the same quantity, and the critical temperatures derived from them depend strongly on experimental protocol.
+
+::: {.callout-note collapse="true"}
+### Ramping rate and start temperature change CTmax
+
+@terblanche_ctmax_2007 showed a full-factorial effect of ramping rate and start temperature on CTmax in tsetse flies — a foundational result that should have reshaped the literature but is often cited and then ignored. Slower ramping rates produce lower CTmax (more time to accumulate damage); start-temperature effects indicate hysteresis / acclimation during the ramp itself. @kingsolver_umbanhowar_2018 provide a formal damage-rate model that reproduces these patterns. A single "CTmax" reported without protocol details is not comparable across labs.
+:::
+
+::: {.callout-note collapse="true"}
+### Different endpoints give different z-values
+
+Protein denaturation kinetics run at temperatures tens of degrees above organismal CTmax. Cardiac arrest and loss of righting can differ by several degrees in the same animal. Cell-level viability in a flow-cytometry assay (the approach we are using) is not the same endpoint as whole-organism mortality. Pooling *z*-values across endpoints in meta-analyses without stratification conflates distinct biological processes. See @sinclair_predict_2016 for a review of thermal-performance-curve assumptions and how they fail across endpoints and timescales.
+:::
+
+::: {.callout-note collapse="true"}
+### Assay-specific artefacts are rarely reported
+
+Flow-cytometry thermal assays in particular are vulnerable to autofluorescence drift and FSC/SSC shifts at long exposures to extreme temperatures — dead cells can drift back into the "live" gate and produce a non-monotone *proportion-live vs time* signature that a strictly monotone survival model cannot represent. The literature rarely reports this diagnostic. Any paper using a flow-based viability endpoint for TDT without visualising the per-individual time course at the hottest assay temperatures is inviting this bias.
+:::
+
+## The static-landscape fiction
+
+A single *z*-value per species, or a fixed "tolerance landscape" isocline [@rezende_landscapes_2014], is often treated as if it were a species-level trait. The biological reality is that TDT parameters are strongly dependent on life stage, acclimation state, sex, thermal history, body size, and season. Published species-level z-values conflate all of these into an uncontrolled average.
+
+::: {.callout-note collapse="true"}
+### Developmental stage effects swamp interspecific differences
+
+In zebrafish, thermal tolerance differs across life stages (young embryos / old embryos / larvae) by more magnitude than differences between many ectotherm species [see e.g. the 4PL zebrafish template used in this project]. A single species-level *z* that does not condition on stage is an uncontrolled average over this variation.
+:::
+
+::: {.callout-note collapse="true"}
+### Acclimation, thermal history, and plasticity are ignored
+
+A week of pre-assay thermal history can shift CTmax by 1 °C or more. Studies reporting "the *z*-value of species X" rarely control rearing temperature, acclimation time, or phenological state. @sinclair_predict_2016 enumerate the plasticity assumptions that break standard thermal-performance-curve extrapolation; most TDT studies treat plasticity as absent by default.
+:::
+
+::: {.callout-note collapse="true"}
+### Static TDT under-predicts failure in dynamic thermal regimes
+
+The TDT pipeline assumes constant-temperature exposure. Real thermal regimes are fluctuating, and fluctuating exposures can include cooling phases during which thermal damage is partially repaired [@kingsolver_woods_2016]. Purely cumulative-damage TDT models (no repair) systematically overestimate field mortality from heat waves, and models that assume repeated heat exposures add linearly ignore hormesis effects. @jorgensen_unifying_2021 develop a unifying framework that handles static, dynamic, and fluctuating exposures coherently.
+:::
+
+::: {.callout-note collapse="true"}
+### Ecological / extinction-risk extrapolations are the biggest overreach
+
+Where TDT parameters are fed into climate-change extinction-risk models, the limitations compound: static laboratory LT50 is used to predict field mortality under variable thermal regimes; behavioural thermoregulation is ignored; evolutionary and plastic responses on decadal timescales are denied. The primary way ectotherms avoid lethal microclimates is by moving (shade, burrows, water); models that integrate TDT landscapes over environmental temperature distributions without conditioning on microhabitat use ignore this. These concerns are spelled out in @sinclair_predict_2016 and in the thermal-performance-curve critique literature generally.
+:::
+
+## Researcher degrees of freedom and selective reporting
+
+The two-step TDT pipeline has at least four analyst-degree-of-freedom forking paths: (a) the functional form of the dose-response curve (2PL / 3PL / 4PL / probit / Gompertz), (b) the link function (logit / probit / cloglog), (c) the weighting scheme in the second-stage *log10*(LT50)–*T* regression (unweighted / inverse-variance / robust), and (d) which temperatures are included (drop temperatures where LT50 was not reached within the assay window, or keep them with ad-hoc imputation). None of these are typically pre-registered, and the chosen combination is not typically sensitivity-analysed.
+
+::: {.callout-note collapse="true"}
+### The garden of forking paths inflates false-positive rates
+
+Flexible analysis choices, even chosen in good faith post hoc, dramatically inflate false-positive rates for between-group comparisons [@simmons_falsepositive_2011; @gelman_loken_2014]. The reported *z*-value, and any comparison between species / stages / populations, is one point on an unreported garden of forking paths. Pre-specifying the model and reporting at least one alternative specification is the minimum defence.
+:::
+
+::: {.callout-note collapse="true"}
+### Model selection should not be silent
+
+Where the literature does compare nested models (e.g. "does a *z* × species interaction help?"), it is usually done with a single likelihood-ratio test on the point-estimate fit, without posterior inference or cross-validated out-of-sample evaluation. PSIS-LOO and WAIC [@vehtari_loo_2017] give defensible model comparisons for Bayesian survival fits; `loo_compare()` in R outputs the standard error of the ELPD difference, which is the quantity a reviewer should want to see.
+:::
+
+::: {.callout-note collapse="true"}
+### Reporting derived quantities with delta-method SEs is under-defended
+
+Comparing *z*-values or LT50s across species with "estimate ± SE, non-overlapping 95 % CIs ⇒ significant" is standard. Both halves are wrong: delta-method standard errors on a non-linear function of fitted parameters fail in exactly the regime where the sigmoid is steepest, and "non-overlapping 95 % CIs" is not a hypothesis test on the difference (roughly α ≈ 0.005 when SEs are equal). A properly propagated posterior of the contrast gives the correct inference directly.
+:::
+
+## Solutions — what the 4PL delivers that the two-step claims as its advantage
+
+A pragmatic defender of the two-step pipeline typically raises three points: (i) it is easy to understand, (ii) the parameters have clear biological meaning (intercept = CTmax, slope = −1/*z*), and (iii) it supports heat-injury (HI) prediction from environmental temperature time series. All three are real strengths of the classical workflow. The argument of this document is not that we abandon those strengths, but that the 4PL *also* delivers every one of them — as derived posterior quantities of a single joint fit — with better uncertainty calibration and without the statistical liabilities catalogued above. This section makes the equivalence explicit.
+
+::: {.callout-note collapse="true"}
+### The classical TDT quantities fall out of the 4PL as one-line posterior summaries
+
+The 4PL survival model is
+
+$$p(t; T) = \text{low} + \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k \cdot (\log_{10} t - \text{mid}(T))\bigr)}$$
+
+and in our parameterisation `mid(T)` is linear in temperature for each species:
+
+$$\text{mid}_s(T) = \beta_0^{(s)} + \beta_1^{(s)}\,(T - \bar{T}).$$
+
+Solving `p(t; T) = 0.5` gives a closed form for LT50(T):
+
+$$\log_{10} \text{LT50}_s(T) \;=\; \underbrace{\Bigl[\beta_0^{(s)} + \tfrac{1}{k_s}\log\!\tfrac{\text{up}_s - 0.5}{0.5 - \text{low}_s} - \beta_1^{(s)}\bar{T}\Bigr]}_{\alpha_s} \;+\; \beta_1^{(s)}\,T.$$
+
+This is the classical TDT linear relation, now a derived posterior rather than a two-step plug-in. The same biological quantities drop out:
+
+- **TDT slope**: `β1_s` is the coefficient of `temp_c` in the `mid` formula.
+- **TDT intercept (α_s)**: combined from 4PL parameters per posterior draw.
+- **z-value**: `z_s = −log10(2) / β1_s` if z is defined as the temperature step that halves LT50, or `z_s = −1 / β1_s` per decade.
+- **CTmax (at reference time `t_ref`)**: `T_CTmax = (log10(t_ref) − α_s) / β1_s`.
+- **LT50 at any T**: posterior of the whole expression above.
+
+Using the helper function `extract_tdt_params()` defined below, you get the classical TDT table as a posterior summary in two calls:
+
+```r
+tdt_post <- extract_tdt_params(
+  fit            = fit_bayesian_4pl,
+  species_levels = species_levels,
+  temp_mean      = temp_mean_4pl,
+  t_ref_min      = 1
+)
+
+tdt_post |>
+  dplyr::group_by(species) |>
+  dplyr::summarise(dplyr::across(
+    c(z_decade, CTmax_ref),
+    list(median = median,
+         lo     = \(x) quantile(x, 0.025),
+         hi     = \(x) quantile(x, 0.975))
+  ))
+```
+
+The table you hand a reviewer is **identical in structure** to a two-step TDT output table — same columns, same names, same biological interpretation. The difference is that every number now carries a correctly-calibrated 95 % credible interval from the joint likelihood [@vehtari_loo_2017; @gabry_viz_2019].
+:::
+
+::: {.callout-note collapse="true"}
+### Heat injury (HI) prediction from an environmental temperature trace
+
+The classical heat-injury framework [@rezende_landscapes_2014; @jorgensen_unifying_2021] assumes damage accumulates at a rate inversely proportional to LT50 at the current temperature, with death reached when cumulative damage equals 1:
+
+$$\text{HI}(t) \;=\; \int_0^t \frac{ds}{\text{LT50}\bigl(T(s)\bigr)}, \qquad\text{death when } \text{HI} = 1.$$
+
+The integrand needs only one thing: `LT50(T)`. We just derived it from the 4PL as a posterior function. So HI inherits the same posterior structure — for each posterior draw of `(β0, β1, low, up, k)` per species, push the temperature trace `T(t)` through the integral and accumulate:
+
+$$\text{HI}\bigl(t \mid \text{draw}\bigr) \;=\; \sum_i \frac{\Delta t_i}{\text{LT50}\bigl(T(t_i) \mid \text{draw}\bigr)}.$$
+
+Using the helper function `heat_injury()` defined below, the HI trajectory for an environmental temperature trace is one call:
+
+```r
+HI <- heat_injury(
+  fit            = fit_bayesian_4pl,
+  species_levels = species_levels,
+  temp_mean      = temp_mean_4pl,
+  T_trace        = T_trace,      # numeric vector of °C at each time point
+  dt             = 1,            # minute-resolution trace
+  species        = "deli",
+  n_draws        = 1000
+)
+
+# posterior of time-to-death (first time HI reaches 1) per draw
+tt_death <- attr(HI, "time_to_death_posterior")
+quantile(tt_death, c(0.025, 0.5, 0.975), na.rm = TRUE)
+```
+
+This is the same HI integral the two-step pipeline would compute — but with two advantages the two-step cannot provide:
+
+1. **HI is a posterior distribution**, not a single trajectory. Reviewers who ask "what is the uncertainty on predicted mortality under heatwave X?" get a proper answer with credible bands, and the uncertainty reflects the full joint posterior of every 4PL parameter.
+2. **The asymptotes and slope affect HI implicitly through LT50(T)**. A species with a lower upper asymptote (higher baseline mortality) has a shorter LT50 at every temperature — HI(t) starts higher. The two-step zeroes this information out by construction; the 4PL carries it through.
+:::
+
+::: {.callout-note collapse="true"}
+### Reusable helper functions: `extract_tdt_params`, `LT50_T_curve`, `heat_injury`
+
+Three self-contained R functions that depend only on `posterior::as_draws_df()`, base R, and the species / centering constant used in the fit. Copy them into any analysis script that uses the same 4PL parameterisation.
+
+```r
+#' Extract classical TDT quantities from a Bayesian 4PL brms fit
+#'
+#' Returns per-draw, per-species posteriors of the TDT slope, intercept,
+#' z-value (°C per decade of LT50), and CTmax at a chosen reference
+#' exposure time t_ref_min.
+#'
+#' @param fit            brms fit of the hierarchical 4PL TDT model.
+#' @param species_levels Character vector of species levels in factor order;
+#'                       the first entry is the reference level.
+#' @param temp_mean      Numeric. Centering constant for temperature
+#'                       (temp_c = temp - temp_mean in the fit).
+#' @param t_ref_min      Numeric. Reference exposure time (min) defining
+#'                       CTmax (T at which LT50 = t_ref_min).
+#' @return A data.frame with columns: draw, species, slope_T, intercept,
+#'         z_decade, CTmax_ref.
+extract_tdt_params <- function(fit, species_levels, temp_mean,
+                               t_ref_min = 1) {
+  dr <- posterior::as_draws_df(fit)
+  g  <- function(nm) if (nm %in% names(dr)) dr[[nm]] else rep(0, nrow(dr))
+
+  do.call(rbind, lapply(species_levels, function(sp) {
+    is_ref <- sp == species_levels[1]
+    b0  <- g("b_mid_Intercept") +
+             (if (!is_ref) g(paste0("b_mid_species", sp)) else 0)
+    b1  <- g("b_mid_temp_c") +
+             (if (!is_ref) g(paste0("b_mid_temp_c:species", sp)) else 0)
+    low <- plogis(g(paste0("b_lraw_species", sp))) * 0.49
+    up  <- 0.51 + plogis(g(paste0("b_uraw_species", sp))) * 0.49
+    k   <- exp(g(paste0("b_logk_species", sp)))
+
+    alpha <- b0 + log((up - 0.5) / (0.5 - low)) / k - b1 * temp_mean
+    data.frame(
+      draw      = seq_along(b1),
+      species   = sp,
+      slope_T   = b1,                             # d(log10 LT50) / dT
+      intercept = alpha,
+      z_decade  = -1 / b1,                        # °C per decade of LT50
+      CTmax_ref = (log10(t_ref_min) - alpha) / b1 # T at which LT50 = t_ref_min
+    )
+  }))
+}
+
+#' Posterior log10(LT50) curve with credible bands across a T grid
+#'
+#' @param fit            brms fit of the hierarchical 4PL TDT model.
+#' @param species_levels Character vector of species levels (first = reference).
+#' @param temp_mean      Centering constant for temperature.
+#' @param T_grid         Numeric vector of assay temperatures (°C).
+#' @param probs          Three quantile probabilities for credible bands
+#'                       (lower, median, upper). Default c(0.025, 0.5, 0.975).
+#' @return A data.frame with columns: species, T, log10_lt50_lo / _md / _hi,
+#'         lt50_lo / _md / _hi (minutes).
+LT50_T_curve <- function(fit, species_levels, temp_mean, T_grid,
+                         probs = c(0.025, 0.5, 0.975)) {
+  stopifnot(length(probs) == 3)
+  dr <- posterior::as_draws_df(fit)
+  g  <- function(nm) if (nm %in% names(dr)) dr[[nm]] else rep(0, nrow(dr))
+
+  do.call(rbind, lapply(species_levels, function(sp) {
+    is_ref <- sp == species_levels[1]
+    b0   <- g("b_mid_Intercept") +
+              (if (!is_ref) g(paste0("b_mid_species", sp)) else 0)
+    b1   <- g("b_mid_temp_c") +
+              (if (!is_ref) g(paste0("b_mid_temp_c:species", sp)) else 0)
+    low  <- plogis(g(paste0("b_lraw_species", sp))) * 0.49
+    up   <- 0.51 + plogis(g(paste0("b_uraw_species", sp))) * 0.49
+    k    <- exp(g(paste0("b_logk_species", sp)))
+    corr <- log((up - 0.5) / (0.5 - low)) / k
+
+    do.call(rbind, lapply(T_grid, function(T_val) {
+      log10_lt50 <- b0 + b1 * (T_val - temp_mean) + corr
+      q <- quantile(log10_lt50, probs, na.rm = TRUE)
+      data.frame(
+        species        = sp,
+        T              = T_val,
+        log10_lt50_lo  = q[1],
+        log10_lt50_md  = q[2],
+        log10_lt50_hi  = q[3],
+        lt50_lo        = 10^q[1],
+        lt50_md        = 10^q[2],
+        lt50_hi        = 10^q[3]
+      )
+    }))
+  }))
+}
+
+#' Posterior cumulative heat-injury trajectory under a temperature trace
+#'
+#' Computes HI(t) = cumulative integral of 1 / LT50(T(s)) over s in [0, t]
+#' for a given species, given an environmental temperature time series.
+#' Returns both credible bands on HI(t) and the posterior of time-to-death
+#' (first t at which HI reaches 1).
+#'
+#' @param fit            brms fit of the hierarchical 4PL TDT model.
+#' @param species_levels Character vector of species levels (first = reference).
+#' @param temp_mean      Centering constant for temperature.
+#' @param T_trace        Numeric vector of temperatures (°C) at consecutive
+#'                       time points separated by `dt`.
+#' @param dt             Numeric. Time step, same units as LT50 (minutes).
+#' @param species        Character. Species to predict for (must be in
+#'                       species_levels).
+#' @param n_draws        Integer. Number of posterior draws used.
+#' @param probs          Three quantile probabilities for credible bands.
+#' @return A data.frame with time, T, HI_lo, HI_md, HI_hi; the posterior of
+#'         time-to-death is in attr(result, "time_to_death_posterior").
+heat_injury <- function(fit, species_levels, temp_mean,
+                        T_trace, dt, species,
+                        n_draws = 1000,
+                        probs = c(0.025, 0.5, 0.975)) {
+  stopifnot(length(probs) == 3, species %in% species_levels)
+  dr      <- posterior::as_draws_df(fit)
+  g       <- function(nm, i) if (nm %in% names(dr)) dr[[nm]][i] else 0
+  is_ref  <- species == species_levels[1]
+  n_total <- nrow(dr)
+  draws   <- sample.int(n_total, min(n_draws, n_total))
+
+  HI_mat <- sapply(draws, function(i) {
+    b0  <- g("b_mid_Intercept", i) +
+             (if (!is_ref) g(paste0("b_mid_species", species), i) else 0)
+    b1  <- g("b_mid_temp_c", i) +
+             (if (!is_ref) g(paste0("b_mid_temp_c:species", species), i) else 0)
+    low <- plogis(g(paste0("b_lraw_species", species), i)) * 0.49
+    up  <- 0.51 + plogis(g(paste0("b_uraw_species", species), i)) * 0.49
+    k   <- exp(g(paste0("b_logk_species", species), i))
+
+    log10_lt50 <- b0 + b1 * (T_trace - temp_mean) +
+                    log((up - 0.5) / (0.5 - low)) / k
+    cumsum(dt / 10^log10_lt50)
+  })
+
+  q   <- apply(HI_mat, 1, quantile, probs = probs, na.rm = TRUE)
+  out <- data.frame(
+    time  = seq_len(length(T_trace)) * dt,
+    T     = T_trace,
+    HI_lo = q[1, ],
+    HI_md = q[2, ],
+    HI_hi = q[3, ]
+  )
+
+  # posterior of time-to-death = first t with HI >= 1 (NA if never reached)
+  time_to_death <- apply(HI_mat, 2, function(x) {
+    idx <- which(x >= 1)[1]
+    if (is.na(idx)) NA_real_ else idx * dt
+  })
+  attr(out, "time_to_death_posterior") <- time_to_death
+  out
+}
+```
+
+Typical combined workflow after the 4PL has been fit:
+
+```r
+# 1. classical TDT table (z, CTmax) per species with 95 % CrIs
+tdt_post  <- extract_tdt_params(fit_bayesian_4pl, species_levels,
+                                temp_mean_4pl, t_ref_min = 1)
+
+# 2. posterior LT50(T) curve with credible bands
+T_grid    <- seq(30, 56, by = 0.1)
+lt50_curve <- LT50_T_curve(fit_bayesian_4pl, species_levels,
+                           temp_mean_4pl, T_grid)
+
+# 3. heat injury under a measured environmental temperature trace
+HI <- heat_injury(fit_bayesian_4pl, species_levels, temp_mean_4pl,
+                  T_trace = env_temperature_series, dt = 1,
+                  species = "deli", n_draws = 1000)
+```
+
+Every output is a posterior, not a point estimate. Every CI reflects the full joint uncertainty of the 4PL fit, including the random-effects structure.
+:::
+
+::: {.callout-note collapse="true"}
+### What the 4PL does that the two-step cannot
+
+Beyond recovering everything the two-step delivers, the 4PL opens up outputs that are not accessible from the classical pipeline:
+
+1. **Full survival surface `p(t | T)`, not just LT50.** Want the probability of cell survival at 55 °C × 30 min, a combination not in the assay design? One posterior evaluation. The two-step would require fitting a new sigmoid at 55 °C, which you cannot do without the 55 °C data.
+
+2. **Any percentile, not just LT50.** LT10 (conservative heat-risk estimate for population-level mortality), LT90 (near-total-kill time), or custom thresholds follow from the same closed form with a different *p* target — no refit.
+
+3. **Mortality integration that respects curve steepness.** HI is a first-order approximation to cumulative mortality that only uses LT50. The full 4PL lets you compute $1 - \mathbb{E}[p(t;T(\cdot))]$ using the actual sigmoid, which is tighter when the kill transition is steep (large `k`) and when the assumption "instantaneous damage rate = 1/LT50" fails (e.g. near plateau regions of the survival curve).
+
+4. **Repair / hormesis dynamics during cool phases.** Extend the damage-rate ODE to $\dot D = 1/\text{LT50}(T) - r(T)\,D$ and integrate per posterior draw [@kingsolver_woods_2016; @jorgensen_unifying_2021]. The 4PL supplies `LT50(T)` as a posterior; the repair kernel `r(T)` is the added mechanism. The two-step cannot carry LT50 uncertainty into the ODE because it feeds point estimates.
+
+5. **Covariate-conditioned HI.** Life stage, sex, acclimation temperature, body size — if they are in the 4PL formula as fixed or random effects, HI for a "young, thermally-naïve, small individual" under an environmental trace comes out as a conditional posterior. The two-step collapses these at the LT50-extraction step and cannot condition on them later.
+
+6. **Variance decomposition of *z* differences.** "Why does species A have a higher *z* than species B?" — because of `β1`, `up`, `low`, `k`, or some combination. The 4PL posterior answers this directly; the two-step cannot separate the drivers because it has already collapsed the whole curve into a single point LT50.
+:::
+
+::: {.callout-note collapse="true"}
+### One-line steelman
+
+> **The two-step approach is a 4PL with the asymptotes forced to 0 and 1, the sigmoid slope assumed equal across temperatures, the random-effects structure deleted, the error bars propagated wrong, and the uncertainty on every derived quantity understated. Every interpretable output of the two-step exists as a posterior summary of the 4PL, and several outputs the field actively wants — HI with credible bands, stage-conditioned LT50, the full mortality surface, decomposable between-species contrasts — only exist if you fit the full 4PL.**
+:::
+
+## Summary: what a principled TDT analysis looks like
+
+- Fit a single hierarchical Bayesian 4-parameter logistic on the raw binomial counts, with free but identifiably-parameterised asymptotes [@ritz_drc_2015; @bolker_ecologicalmodels_2008].
+- Propagate random effects for every real level of nesting (animal, tube, batch) [@bolker2009; @schielzeth_nested_2013].
+- Include an observation-level overdispersion term or a beta-binomial likelihood [@harrison_olre_2014; @harrison_bb_2015].
+- Handle right-censored temperatures via the likelihood directly, not by dropping or capping.
+- Let the inflection point vary with temperature, species, stage, and their interactions inside the joint fit — do not compute LT50 as a two-step derived quantity.
+- Report posterior-predictive checks, PSIS-LOO model comparisons, and randomised-quantile residual diagnostics [@vehtari_loo_2017; @gabry_viz_2019].
+- If the question is about dynamic or fluctuating exposures, move from static LT50 to a rate-based damage-accumulation model [@jorgensen_unifying_2021; @kingsolver_woods_2016].
+- Disclose the analytic forking paths (functional form, link, inclusion rules) and run at least one sensitivity re-fit [@simmons_falsepositive_2011].
+
+This is more-or-less what the Bayesian 4PL fit in `Results_blood_TDT.qmd` (section `bayesmodel`) is already doing for this project's blood cytometry data.
+
+## References {.unnumbered}
+
+::: {#refs}
+:::
