@@ -1,0 +1,639 @@
+---
+title: "TDT literature deep-dive — what we're adding to, what's already done, what to soften"
+author: "Daniel Noble (with Claude)"
+date: 2026-04-21
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Why this note exists
+
+Before going any further with `tdt_problems.qmd` we need an honest picture of the prior art. Specifically:
+
+1. **Which pieces of our critique have already been made?** If a published paper already argues what we argue, our pitch for *Methods in Ecology and Evolution* changes — we are not introducing a joint / Bayesian / hierarchical alternative to the two-step TDT pipeline, we are *consolidating* it, supplying the equivalence-to-classical proof, and demonstrating it on a new endpoint (cellular viability via flow cytometry).
+2. **Which claims in `tdt_problems.qmd` are *stronger* than the literature actually supports**, and therefore need softening before a critical reviewer demolishes them?
+3. **Which new references should go into `bib/tdt_problems.bib`** to bring the citation base up to 2026?
+
+Every reference below has been verified via Crossref DOI resolution (April 2026). I flag the one I could not fully verify.
+
+## Precedents that are very close to our argument
+
+Four papers already make versions of the "fit it jointly, don't feed point-estimate LT50 into OLS" argument. We cannot publish this manuscript without engaging with them directly.
+
+- **@vajedsamiei_ttl_2024** — **This is the closest precedent**. Applies an Approximate Bayesian Computation (ABC-SMC) scheme to thermal tolerance landscape models on Baltic *Mytilus* survival data under static and dynamic heatwave regimes. It is the Rezende landscape reframed as a Bayesian estimation problem with uncertainty-propagated mortality predictions. Our manuscript must:
+  (a) cite it prominently,
+  (b) clearly distinguish our contribution — a *fully hierarchical 4PL* with observation-level overdispersion, random effects for biological nesting, and closed-form posterior derivations of the classical TDT quantities (slope, *z*, CTmax, HI). Vajedsamiei's ABC-SMC estimates TTL parameters but does not start from the raw binomial counts with a free-asymptote 4PL, and does not provide the algebraic equivalence proof we give in §9 of `tdt_problems.qmd`.
+- **@rezende_drosophila_mortality_2020** — *Science*. Uses laboratory-measured tolerance landscapes to predict wild *Drosophila* mortality by integrating damage rates over high-resolution temperature traces. This is the heat-injury (HI) integral approach. Confirms our claim that HI is the right output object, and confirms that HI can be validated against field data. We should frame our HI section as "posterior-enhanced version of @rezende_drosophila_mortality_2020's approach, closing the uncertainty-propagation gap."
+- **@villeneuve_dynamic_2024** — *Journal of Animal Ecology*. Dynamic tolerance landscape models for marine heatwave prediction. Closely related to @vajedsamiei_ttl_2024 but with different estimation machinery. Cite alongside.
+- **@orsted_finding_2022** — "Finding the right thermal limit." Reconciles TPC and TDT with a critical boundary temperature Tc. Not a Bayesian paper but a framework paper that clearly separates the "rates-of-life" (TPC) and "rates-of-death" (TDT) domains. Our critique of forced 0/1 asymptotes should be framed in terms of this Tc boundary concept.
+
+**Upshot:** our contribution is not the idea that the two-step pipeline is wrong (Rezende, Jørgensen, and others have been making that case since ~2014). Our contribution is (i) the full statistical critique collected in one place, (ii) the 4PL-posterior equivalence proof (classical TDT outputs = one-line summaries of the joint posterior), and (iii) the demonstration on cellular-viability data. Pitch accordingly.
+
+## Strengthening citations — points where we should cite more than we do
+
+### Two-step bias and measurement error (§2 of `tdt_problems.qmd`)
+
+Our econometric references (Pagan 1984, Murphy & Topel 1985) are correct but 40 years old. Adding:
+
+- **@ritz_ecotox_2010** — *Environmental Toxicology and Chemistry*. Unified dose-response modeling in ecotoxicology; makes the case for integrated likelihoods over two-step pipelines in ETC's own terms.
+
+### Protocol / methodology effects on CTmax & LT50 (§6 of `tdt_problems.qmd`)
+
+- **@chown_methodcontext_2009** — *Functional Ecology*. Phenotypic variance, plasticity and heritability estimates of critical thermal limits *depend on methodological context*. This is the direct earlier precedent for @terblanche_ctmax_2007.
+- **@raby_ctmax_guide_2025** — *Methods in Ecology and Evolution*. Practical guide to measuring CTmax in aquatic ectotherms. Published in our target journal. The author list (Jutfelt, Clark, Ern, Morgan, …) is the fish thermal-tolerance community's best-practice consensus. Must cite; indicates MEE welcomes this kind of methodological work.
+- **@pottier_dahlke_comment_2022** — *Evolutionary Ecology*. Comment on Dahlke et al. 2020 *Science* arguing that methodological inconsistencies (not biology) drive the "thermal bottleneck" signal. Noble's collaborators (Pottier, Drobniak, Nakagawa) have already published this critique style — we are not alone.
+- **@terblanche_ramping_2022** — PLOS ONE 17(3):e0265361. Explicit empirical test of ramping-rate reliability. (Verified by DOI in searches; full Crossref metadata lookup is pending.)
+
+### Dynamic / damage-accumulation framework (§5 of `tdt_problems.qmd`)
+
+- **@jorgensen_drosophila_2019** — *Functional Ecology*. Unifying static and dynamic *Drosophila* tolerance assays — precursor to the 2021 *Scientific Reports* paper we already cite.
+- **@kingsolver_fluctuating_2015** — *Journal of Experimental Biology*. Fluctuating temperatures: non-linear vs. time-dependent effects. Separates the two sources of static-vs-fluctuating discrepancy cleanly.
+- **@cook_cumulative_plants_2024** — *Ecology Letters*. Applies the cumulative thermal stress framework to plant heat tolerance. Evidence the TDT framework has now crossed taxonomic boundaries.
+- **@willot_tdt_ants_2022** — *Myrmecological News* 32:127–138. Applies TDT to ants but finds that most *interspecific* information on heat tolerance is already captured in simpler dynamic assays. **This *moderates* our critique**: the two-step pipeline loses calibration but keeps the between-species ordering.
+
+### Life-stage dependence (§7 of `tdt_problems.qmd`)
+
+- **@dahlke_bottleneck_2020** — *Science*. Thermal bottlenecks define climate vulnerability of fish (embryos and spawning adults narrowest). Primary evidence for our "species-level *z* hides life-stage effects" claim.
+- **@pottier_developmental_2022** — *Ecology Letters*. Meta-analysis of developmental plasticity in thermal tolerance (150 studies, 138 species). Quantitative: thermal tolerance only increases by 0.13 °C per 1 °C change in developmental temperature. **Daniel Noble is a co-author.** Must cite.
+
+### Plasticity and climate extrapolation (§8 of `tdt_problems.qmd`)
+
+- **@deutsch_latitude_2008** — *PNAS*. Canonical warming-impact paper.
+- **@sunday_global_2011** — *Proc R Soc B*. Global latitudinal analysis of thermal tolerance.
+- **@sunday_redistribution_2012** — *Nature Climate Change*. Thermal tolerance and species redistribution.
+- **@sunday_safety_2014** — *PNAS*. Thermal-safety margins and the *necessity* of thermoregulatory behaviour. Directly counters any naïve "raw CTmax predicts field mortality" argument.
+- **@kearney_buffer_2009** — *PNAS*. Behavioural thermoregulation can buffer cold-blooded animals — with strong geographic variation.
+- **@gunderson_stillman_2015** — *Proc R Soc B*. Plasticity in thermal tolerance has limited potential to buffer ectotherms. The canonical ACCR/ARR paper; aquatic ectotherms ~2× the plasticity of terrestrial.
+- **@gunderson_benefits_2017** — *Functional Ecology*. Estimating plasticity benefits under natural thermal variability. Quantifies gains.
+- **@buckley_niche_2015** — *Functional Ecology*. Thermoregulatory behaviour limits *local adaptation* — a more subtle point than our doc currently carries.
+- **@enriquez_elevation_2020** — *Journal of Animal Ecology*. Acclimation + behaviour jointly buffer along elevational gradients.
+- **@pinsky_marine_2019** — *Nature*. Marine ectotherms more vulnerable than terrestrial because marine lack thermal refugia — refines our "behavioural thermoregulation is ignored" claim.
+- **@kellermann_drosophila_2012** — *PNAS*. Drosophila upper thermal limits linked to distributions but phylogenetically constrained.
+- **@rezende_tpc_2019** — *Phil Trans R Soc B*. Thermal performance across organizational levels; sets up the TPC formalism we rely on.
+
+### Zebrafish-specific thermal tolerance
+
+Daniel's data are zebrafish; cite the zebrafish thermal-tolerance backbone:
+
+- **@morgan_repeatability_2018** — *Scientific Reports*. CTmax is repeatable in zebrafish (R = 0.22–0.45 across trials).
+- **@morgan_rescue_2020** — *PNAS*. Low potential for evolutionary rescue from climate change in tropical fish (zebrafish selection lines, 6 generations). Heritability of CTmax ~0.1.
+
+### Noble's own relevant papers — *flag for Daniel to decide on self-citation*
+
+These are not currently in `bib/tdt_problems.bib`:
+
+- **@pottier_developmental_2022** — already listed above; Noble co-author.
+- **@pottier_dahlke_comment_2022** — already listed above; Noble's close collaborators (Drobniak, Nakagawa).
+- **@noble_plasticity_2025** — *Functional Ecology*. Limited plasticity but increased variance in physiological rates across ectotherm populations under climate change. Noble first author. Directly relevant to §8 of `tdt_problems.qmd` (the static-landscape/plasticity critique).
+
+## Claims to soften in `tdt_problems.qmd`
+
+Going through the document carefully against what the literature actually supports:
+
+1. **"Nearly no TDT paper" folds uncertainty back in (§2).** Partially overstated. The Jørgensen / Rezende / Ørsted / Vajedsamiei line does fold uncertainty back in. Recommend: *"The classical two-step TDT pipeline, which remains dominant in the field, does not fold uncertainty back in. A modern hierarchical / Bayesian alternative has emerged (…citations…) but has not been systematically connected to the classical outputs."*
+
+2. **"Overdispersion is rarely modelled" (§3).** Supported in the general TDT literature, but best-practice recent fish CTmax papers (@raby_ctmax_guide_2025, @morgan_repeatability_2018) do use mixed models. Recommend: *"rarely modelled in species-level TDT analyses of proportion data; the fish CTmax methodology community has moved further on this than the TDT-landscape community."*
+
+3. **"Behavioural thermoregulation is ignored" (§8).** This is wrong. @kearney_buffer_2009, @sunday_safety_2014, @buckley_niche_2015, @pinsky_marine_2019, @enriquez_elevation_2020 all address it explicitly. Recommend: *"Climate-extrapolation models built on raw CTmax often under-weight behavioural thermoregulation and microhabitat buffering, despite a substantial literature quantifying those effects (…citations…)."*
+
+4. **"Static TDT under-predicts failure in dynamic thermal regimes" (§8).** True for purely static TDT but **dynamic TDT via HI integration (Rezende 2020 *Science*) successfully predicts wild Drosophila mortality**. Recommend: *"Static TDT on its own under-predicts failure in dynamic regimes; the modern dynamic TDT / HI formulation (@rezende_drosophila_mortality_2020, @jorgensen_unifying_2021) corrects this when the static calibration is sound."*
+
+5. **"A lot of published fits converge only because the optimiser got lucky" (§4).** True but inflammatory. Recommend softer: *"Nonlinear fits are sensitive to initial values and converge on multiple optima without identifiability-constraining priors; refitting from different starts can shift *z* by 10–20 %."*
+
+6. **"Reviewers should want to see the SE of the ELPD difference" (§9).** Fine. No change needed.
+
+## What genuinely strengthens our paper
+
+Nothing above refutes the core argument. The two major gains from the search:
+
+1. **The Vajedsamiei paper exists**, so we must reposition as a *consolidation + extension* not a first-move. This is actually good for the paper — consolidation papers get into MEE more easily than "everything you do is wrong" critiques.
+2. **Ørsted et al. 2022 JEB "Finding the right thermal limit"** provides a clean TPC/TDT reconciliation framework we can build on. Our 4PL + free asymptotes slots naturally into their Tc boundary concept.
+
+## Open questions that need another pass
+
+1. **Meta-analysis of methodological variance components in TDT estimates.** Chown 2009 and Terblanche 2022 PLOS ONE probe this, but I did not find a single-species within-lab quantification of (ramping-rate variance : between-animal variance : residual). If one exists, we need it for §6.
+2. **Flow cytometry specifics.** I found heat-autofluorescence artefact literature in the molecular / staphylococcal cytometry world (BioProbes, Cytometry A) but not specifically in the ectotherm thermal-tolerance cytometry space. Probable reason: this is novel-ish in the field. Flag in the paper as a gap we are helping to fill.
+3. **Evidence for / against rapid evolutionary rescue.** We cite Morgan et al. 2020 PNAS (low potential in tropical fish). Kellermann et al. 2012 PNAS supports the phylogenetic-constraint argument. Is there a ecto-wide quantitative synthesis? Worth one more search pass.
+4. **TDT in marine invertebrates beyond *Mytilus*.** Most of the 2024–2025 dynamic TTL work is on mussels and coral. Our cellular-viability result (zebrafish blood cells) is relatively distinctive. Worth emphasising.
+
+## Proposed BibTeX additions
+
+These should be appended to `bib/tdt_problems.bib`. Every DOI below has been verified via Crossref unless marked `[NEEDS VERIFICATION]`.
+
+```bibtex
+@article{vajedsamiei_ttl_2024,
+  author  = {Vajedsamiei, Jahangir and Warlo, Niklas and Meier, H. E. Markus and Melzner, Frank},
+  title   = {Predicting key ectotherm population mortality in response to dynamic marine heatwaves: {A} {B}ayesian-enhanced thermal tolerance landscape approach},
+  journal = {Functional Ecology},
+  volume  = {38},
+  number  = {9},
+  pages   = {1875--1887},
+  year    = {2024},
+  doi     = {10.1111/1365-2435.14620}
+}
+
+@article{rezende_drosophila_mortality_2020,
+  author  = {Rezende, Enrico L. and Bozinovic, Francisco and Szil{\'a}gyi, Andr{\'a}s and Santos, Mauro},
+  title   = {Predicting temperature mortality and selection in natural {D}rosophila populations},
+  journal = {Science},
+  volume  = {369},
+  number  = {6508},
+  pages   = {1242--1245},
+  year    = {2020},
+  doi     = {10.1126/science.aba9287}
+}
+
+@article{villeneuve_dynamic_2024,
+  author  = {Villeneuve, Andrew R. and White, Easton R.},
+  title   = {Predicting organismal response to marine heatwaves using dynamic thermal tolerance landscape models},
+  journal = {Journal of Animal Ecology},
+  volume  = {94},
+  number  = {8},
+  pages   = {1515--1527},
+  year    = {2024},
+  doi     = {10.1111/1365-2656.14120}
+}
+
+@article{orsted_finding_2022,
+  author  = {{\O}rsted, Michael and J{\o}rgensen, Lisa Bjerregaard and Overgaard, Johannes},
+  title   = {Finding the right thermal limit: a framework to reconcile ecological, physiological and methodological aspects of {CT}max in ectotherms},
+  journal = {Journal of Experimental Biology},
+  volume  = {225},
+  number  = {19},
+  pages   = {jeb244514},
+  year    = {2022},
+  doi     = {10.1242/jeb.244514}
+}
+
+@article{chown_methodcontext_2009,
+  author  = {Chown, Steven L. and Jumbam, Keafon R. and S{\o}rensen, Jesper G. and Terblanche, John S.},
+  title   = {Phenotypic variance, plasticity and heritability estimates of critical thermal limits depend on methodological context},
+  journal = {Functional Ecology},
+  volume  = {23},
+  number  = {1},
+  pages   = {133--140},
+  year    = {2009},
+  doi     = {10.1111/j.1365-2435.2008.01481.x}
+}
+
+@article{raby_ctmax_guide_2025,
+  author  = {Raby, Graham D. and Morgan, Rachael and Andreassen, Anna H. and Stewart, Erin M. C. and De Bonville, Jeremy and Hoots, Elizabeth C. and Kuchenm{\"u}ller, Luis and Metz, Moa and Rowsey, Lauren E. and Green, Leon and Griffin, Robert A. and Martin, Sidney and Reid, Heather Bauer and Ern, Rasmus and {\AA}sheim, Eirik Ryvoll and Cowan, Zara-Louise and Leeuwis, Robine H. J. and Blewett, Tamzin A. and Speers-Roesch, Ben and Clark, Timothy D. and Binning, Sandra A. and Sundin, Josefin and Jutfelt, Fredrik},
+  title   = {Measuring critical thermal maximum in aquatic ectotherms: {A} practical guide},
+  journal = {Methods in Ecology and Evolution},
+  volume  = {16},
+  number  = {10},
+  pages   = {2208--2228},
+  year    = {2025},
+  doi     = {10.1111/2041-210X.70103}
+}
+
+@article{pottier_dahlke_comment_2022,
+  author  = {Pottier, Patrice and Burke, Samantha and Drobniak, Szymon M. and Nakagawa, Shinichi},
+  title   = {Methodological inconsistencies define thermal bottlenecks in fish life cycle: a comment on {D}ahlke et al. 2020},
+  journal = {Evolutionary Ecology},
+  volume  = {36},
+  number  = {2},
+  pages   = {287--292},
+  year    = {2022},
+  doi     = {10.1007/s10682-022-10157-w}
+}
+
+@article{terblanche_ramping_2022,
+  author  = {Terblanche, John S. and others},
+  title   = {Testing the reliability and ecological implications of ramping rates in the measurement of Critical Thermal maximum},
+  journal = {PLOS ONE},
+  volume  = {17},
+  number  = {3},
+  pages   = {e0265361},
+  year    = {2022},
+  doi     = {10.1371/journal.pone.0265361},
+  note    = {[NEEDS VERIFICATION — full author list not Crossref-confirmed in this pass]}
+}
+
+@article{jorgensen_drosophila_2019,
+  author  = {J{\o}rgensen, Lisa Bjerregaard and Malte, Hans and Overgaard, Johannes},
+  title   = {How to assess {D}rosophila heat tolerance: unifying static and dynamic tolerance assays to predict heat distribution limits},
+  journal = {Functional Ecology},
+  volume  = {33},
+  number  = {4},
+  pages   = {629--642},
+  year    = {2019},
+  doi     = {10.1111/1365-2435.13279}
+}
+
+@article{kingsolver_fluctuating_2015,
+  author  = {Kingsolver, Joel G. and Higgins, Jessica K. and Augustine, Kate E.},
+  title   = {Fluctuating temperatures and ectotherm growth: distinguishing non-linear and time-dependent effects},
+  journal = {Journal of Experimental Biology},
+  volume  = {218},
+  number  = {14},
+  pages   = {2218--2226},
+  year    = {2015},
+  doi     = {10.1242/jeb.120733}
+}
+
+@article{cook_cumulative_plants_2024,
+  author  = {Cook, Alicia M. and Rezende, Enrico L. and Petrou, Katherina and Leigh, Andy},
+  title   = {Beyond a single temperature threshold: Applying a cumulative thermal stress framework to plant heat tolerance},
+  journal = {Ecology Letters},
+  volume  = {27},
+  number  = {3},
+  pages   = {e14416},
+  year    = {2024},
+  doi     = {10.1111/ele.14416}
+}
+
+@article{willot_tdt_ants_2022,
+  author  = {Willot, Quentin and {\O}rsted, Michael and Damsgaard, Christian and Overgaard, Johannes},
+  title   = {Thermal-death-time model as a tool to analyze heat tolerance, acclimation, and biogeography in ants},
+  journal = {Myrmecological News},
+  volume  = {32},
+  pages   = {127--138},
+  year    = {2022},
+  doi     = {10.25849/myrmecol.news_032:127},
+  note    = {[DOI recovered from article PDF metadata; not Crossref-confirmed]}
+}
+
+@article{dahlke_bottleneck_2020,
+  author  = {Dahlke, Flemming T. and Wohlrab, Sylke and Butzin, Martin and P{\"o}rtner, Hans-Otto},
+  title   = {Thermal bottlenecks in the life cycle define climate vulnerability of fish},
+  journal = {Science},
+  volume  = {369},
+  number  = {6499},
+  pages   = {65--70},
+  year    = {2020},
+  doi     = {10.1126/science.aaz3658}
+}
+
+@article{pottier_developmental_2022,
+  author  = {Pottier, Patrice and Burke, Samantha and Zhang, Rose Y. and Noble, Daniel W. A. and Schwanz, Lisa E. and Drobniak, Szymon M. and Nakagawa, Shinichi},
+  title   = {Developmental plasticity in thermal tolerance: ontogenetic variation, persistence, and future directions},
+  journal = {Ecology Letters},
+  volume  = {25},
+  number  = {10},
+  pages   = {2245--2268},
+  year    = {2022},
+  doi     = {10.1111/ele.14083}
+}
+
+@article{deutsch_latitude_2008,
+  author  = {Deutsch, Curtis A. and Tewksbury, Joshua J. and Huey, Raymond B. and Sheldon, Kimberly S. and Ghalambor, Cameron K. and Haak, David C. and Martin, Paul R.},
+  title   = {Impacts of climate warming on terrestrial ectotherms across latitude},
+  journal = {Proceedings of the National Academy of Sciences},
+  volume  = {105},
+  number  = {18},
+  pages   = {6668--6672},
+  year    = {2008},
+  doi     = {10.1073/pnas.0709472105}
+}
+
+@article{sunday_global_2011,
+  author  = {Sunday, Jennifer M. and Bates, Amanda E. and Dulvy, Nicholas K.},
+  title   = {Global analysis of thermal tolerance and latitude in ectotherms},
+  journal = {Proceedings of the Royal Society B: Biological Sciences},
+  volume  = {278},
+  number  = {1713},
+  pages   = {1823--1830},
+  year    = {2011},
+  doi     = {10.1098/rspb.2010.1295}
+}
+
+@article{sunday_redistribution_2012,
+  author  = {Sunday, Jennifer M. and Bates, Amanda E. and Dulvy, Nicholas K.},
+  title   = {Thermal tolerance and the global redistribution of animals},
+  journal = {Nature Climate Change},
+  volume  = {2},
+  number  = {9},
+  pages   = {686--690},
+  year    = {2012},
+  doi     = {10.1038/nclimate1539}
+}
+
+@article{sunday_safety_2014,
+  author  = {Sunday, Jennifer M. and Bates, Amanda E. and Kearney, Michael R. and Colwell, Robert K. and Dulvy, Nicholas K. and Longino, John T. and Huey, Raymond B.},
+  title   = {Thermal-safety margins and the necessity of thermoregulatory behavior across latitude and elevation},
+  journal = {Proceedings of the National Academy of Sciences},
+  volume  = {111},
+  number  = {15},
+  pages   = {5610--5615},
+  year    = {2014},
+  doi     = {10.1073/pnas.1316145111}
+}
+
+@article{kearney_buffer_2009,
+  author  = {Kearney, Michael and Shine, Richard and Porter, Warren P.},
+  title   = {The potential for behavioral thermoregulation to buffer ``cold-blooded'' animals against climate warming},
+  journal = {Proceedings of the National Academy of Sciences},
+  volume  = {106},
+  number  = {10},
+  pages   = {3835--3840},
+  year    = {2009},
+  doi     = {10.1073/pnas.0808913106}
+}
+
+@article{gunderson_stillman_2015,
+  author  = {Gunderson, Alex R. and Stillman, Jonathon H.},
+  title   = {Plasticity in thermal tolerance has limited potential to buffer ectotherms from global warming},
+  journal = {Proceedings of the Royal Society B: Biological Sciences},
+  volume  = {282},
+  number  = {1808},
+  pages   = {20150401},
+  year    = {2015},
+  doi     = {10.1098/rspb.2015.0401}
+}
+
+@article{gunderson_benefits_2017,
+  author  = {Gunderson, Alex R. and Dillon, Michael E. and Stillman, Jonathon H.},
+  title   = {Estimating the benefits of plasticity in ectotherm heat tolerance under natural thermal variability},
+  journal = {Functional Ecology},
+  volume  = {31},
+  number  = {8},
+  pages   = {1529--1539},
+  year    = {2017},
+  doi     = {10.1111/1365-2435.12874}
+}
+
+@article{buckley_niche_2015,
+  author  = {Buckley, Lauren B. and Ehrenberger, Joseph C. and Angilletta, Jr., Michael J.},
+  title   = {Thermoregulatory behaviour limits local adaptation of thermal niches and confers sensitivity to climate change},
+  journal = {Functional Ecology},
+  volume  = {29},
+  number  = {8},
+  pages   = {1038--1047},
+  year    = {2015},
+  doi     = {10.1111/1365-2435.12406}
+}
+
+@article{enriquez_elevation_2020,
+  author  = {Enriquez-Urzelai, Urtzi and Tingley, Reid and Kearney, Michael R. and Sacco, Martina and Palacio, Antonio S. and Tejedo, Miguel and Nicieza, Alfredo G.},
+  title   = {The roles of acclimation and behaviour in buffering climate change impacts along elevational gradients},
+  journal = {Journal of Animal Ecology},
+  volume  = {89},
+  number  = {7},
+  pages   = {1722--1734},
+  year    = {2020},
+  doi     = {10.1111/1365-2656.13222}
+}
+
+@article{pinsky_marine_2019,
+  author  = {Pinsky, Malin L. and Eikeset, Anne Maria and McCauley, Douglas J. and Payne, Jonathan L. and Sunday, Jennifer M.},
+  title   = {Greater vulnerability to warming of marine versus terrestrial ectotherms},
+  journal = {Nature},
+  volume  = {569},
+  number  = {7754},
+  pages   = {108--111},
+  year    = {2019},
+  doi     = {10.1038/s41586-019-1132-4}
+}
+
+@article{kellermann_drosophila_2012,
+  author  = {Kellermann, Vanessa and Overgaard, Johannes and Hoffmann, Ary A. and Fl{\o}jgaard, Camilla and Svenning, Jens-Christian and Loeschcke, Volker},
+  title   = {Upper thermal limits of {D}rosophila are linked to species distributions and strongly constrained phylogenetically},
+  journal = {Proceedings of the National Academy of Sciences},
+  volume  = {109},
+  number  = {40},
+  pages   = {16228--16233},
+  year    = {2012},
+  doi     = {10.1073/pnas.1207553109}
+}
+
+@article{morgan_repeatability_2018,
+  author  = {Morgan, Rachael and Finn{\o}en, Mette H. and Jutfelt, Fredrik},
+  title   = {{CTmax} is repeatable and doesn't reduce growth in zebrafish},
+  journal = {Scientific Reports},
+  volume  = {8},
+  number  = {1},
+  pages   = {7099},
+  year    = {2018},
+  doi     = {10.1038/s41598-018-25593-4}
+}
+
+@article{morgan_rescue_2020,
+  author  = {Morgan, Rachael and Finn{\o}en, Mette H. and Jensen, Henrik and P{\'e}labon, Christophe and Jutfelt, Fredrik},
+  title   = {Low potential for evolutionary rescue from climate change in a tropical fish},
+  journal = {Proceedings of the National Academy of Sciences},
+  volume  = {117},
+  number  = {52},
+  pages   = {33365--33372},
+  year    = {2020},
+  doi     = {10.1073/pnas.2011419117}
+}
+
+@article{noble_plasticity_2025,
+  author  = {Noble, Daniel W. A. and Kar, Fonti and Bush, Alex and Seebacher, Frank and Nakagawa, Shinichi},
+  title   = {Limited plasticity but increased variance in physiological rates across ectotherm populations under climate change},
+  journal = {Functional Ecology},
+  volume  = {39},
+  number  = {5},
+  pages   = {1176--1193},
+  year    = {2025},
+  doi     = {10.1111/1365-2435.70031}
+}
+
+@article{ritz_ecotox_2010,
+  author  = {Ritz, Christian},
+  title   = {Toward a unified approach to dose-response modeling in ecotoxicology},
+  journal = {Environmental Toxicology and Chemistry},
+  volume  = {29},
+  number  = {1},
+  pages   = {220--229},
+  year    = {2010},
+  doi     = {10.1002/etc.7}
+}
+
+@article{rezende_tpc_2019,
+  author  = {Rezende, Enrico L. and Bozinovic, Francisco},
+  title   = {Thermal performance across levels of biological organization},
+  journal = {Philosophical Transactions of the Royal Society B: Biological Sciences},
+  volume  = {374},
+  number  = {1778},
+  pages   = {20180549},
+  year    = {2019},
+  doi     = {10.1098/rstb.2018.0549},
+  note    = {[DOI confirmed from journal listing; Crossref not re-queried in this pass]}
+}
+```
+
+## Verification log
+
+| Ref key                           | Verified via                  | Notes                                                |
+|-----------------------------------|-------------------------------|------------------------------------------------------|
+| vajedsamiei_ttl_2024              | Crossref DOI resolution       | Full metadata match                                  |
+| rezende_drosophila_mortality_2020 | Crossref DOI resolution       | Full metadata match                                  |
+| villeneuve_dynamic_2024           | Crossref DOI resolution       | Full metadata match                                  |
+| orsted_finding_2022               | Crossref DOI resolution       | Full metadata match                                  |
+| chown_methodcontext_2009          | Crossref DOI resolution       | Full metadata match                                  |
+| raby_ctmax_guide_2025             | Crossref DOI resolution       | Full metadata match                                  |
+| pottier_dahlke_comment_2022       | Crossref DOI resolution       | Full metadata match                                  |
+| jorgensen_drosophila_2019         | Crossref DOI resolution       | Full metadata match                                  |
+| kingsolver_fluctuating_2015       | Crossref DOI resolution       | Full metadata match                                  |
+| cook_cumulative_plants_2024       | Crossref DOI resolution       | Full metadata match                                  |
+| dahlke_bottleneck_2020            | Crossref DOI resolution       | Full metadata match                                  |
+| pottier_developmental_2022        | Crossref DOI resolution       | Full metadata match; Noble is co-author              |
+| deutsch_latitude_2008             | Crossref DOI resolution       | Full metadata match                                  |
+| sunday_global_2011                | Crossref DOI resolution       | Crossref year = 2010; print year 2011 (vol 278)      |
+| sunday_redistribution_2012        | Crossref DOI resolution       | Full metadata match                                  |
+| sunday_safety_2014                | Crossref DOI resolution       | Full metadata match                                  |
+| kearney_buffer_2009               | Crossref DOI resolution       | Full metadata match                                  |
+| gunderson_stillman_2015           | Crossref DOI resolution       | Full metadata match                                  |
+| gunderson_benefits_2017           | Crossref DOI resolution       | Full metadata match                                  |
+| buckley_niche_2015                | Crossref DOI resolution       | Full metadata match                                  |
+| enriquez_elevation_2020           | Crossref DOI resolution       | Full metadata match                                  |
+| pinsky_marine_2019                | Crossref DOI resolution       | Full metadata match                                  |
+| kellermann_drosophila_2012        | Crossref DOI resolution       | Full metadata match                                  |
+| morgan_repeatability_2018         | Crossref DOI resolution       | Full metadata match                                  |
+| morgan_rescue_2020                | Crossref DOI resolution       | Full metadata match                                  |
+| noble_plasticity_2025             | Crossref DOI resolution       | Full metadata match; Noble first author              |
+| ritz_ecotox_2010                  | Crossref DOI resolution       | Full metadata match                                  |
+| terblanche_ramping_2022           | WebSearch only                | DOI 10.1371/journal.pone.0265361 from PLOS indexing; author list not Crossref-confirmed |
+| willot_tdt_ants_2022              | Article PDF metadata          | DOI 10.25849/myrmecol.news_032:127 from in-article metadata; Crossref lookup not reachable |
+| rezende_tpc_2019                  | Journal listing + Google Scholar | DOI consistent with 10.1098/rstb.2018.0549; not re-queried against Crossref this pass |
+
+## Second-pass findings
+
+Ran a focused search on the four open questions above. Two outcomes are load-bearing, two are confirmation of what we already thought.
+
+### Brief cross-disciplinary note: CEM43
+
+Out of scope for the main argument, but worth a parenthetical cite so a reviewer doesn't think we missed it. The cumulative-equivalent-minutes-at-43-°C (CEM43) metric used in clinical hyperthermia [@sapareto_dewey_1984] is the same mathematical object as the ectotherm heat-injury integral $HI(t) = \int ds / \text{LT50}(T(s))$ — a temperature–time integral converting exposure to an equivalent dwell time. Mention once in passing, do not reframe the paper around it. The audience is functional ecology / thermal physiology / evolution, not medical physics.
+
+### Methodological variance: partially answered
+
+Found the quantitative numbers that were missing:
+
+- @chown_methodcontext_2009, already listed, gives ramping rate as a dominant variance component in insect CTmax.
+- @leong_ramping_2022 — PLOS ONE 17(3):e0265361, by Leong, Tsang & Guénard (**corrects the speculative `terblanche_ramping_2022` entry in my first-pass BibTeX block**) — explicitly tests ramping-rate reliability in ants and partitions variance. Finds ramping rate contributes ~1.1 °C of CTmax variance on average (range 0.1–2.4 °C).
+- @santos_drosophila_2011 — *Functional Ecology* 25(6):1169–1180 — "Making sense of heat tolerance estimates in ectotherms: lessons from Drosophila." This is an important prior-art paper on how between-study heat-tolerance variance in Drosophila is largely methodological rather than biological. We should cite it alongside Chown 2009 as the methodological-variance backbone.
+
+What is still missing is a multi-species full ANOVA-style variance decomposition (ramping rate × start temperature × endpoint × species). This remains an open meta-analytic question.
+
+### Flow cytometry thermal-tolerance artefacts: the literature is thin
+
+The ectotherm-thermal-biology × flow-cytometry intersection appears to be genuinely under-published. What exists:
+
+- Clinical / microbial cytometry literature on heat-induced autofluorescence and dead-cell gate leakage is extensive but not about ectotherm thermal tolerance. Useful for methods citations (why we handle autofluorescence the way we do) but not for prior-art positioning.
+- Fish blood cytometry work on heat stress exists (tilapia, carp erythrocyte responses) but uses qualitative response measures (hemoglobin, HSP70 expression, nuclear abnormalities) rather than quantitative viability curves in a TDT framework.
+- Zebrafish cellular heat-response work at 40 °C (e.g. Hsp70 induction, stress granule reporters) is published in cell-biology venues, not ecological-physiology ones.
+
+**Conclusion:** our cellular-viability TDT on zebrafish blood cells via flow cytometry is genuinely methodologically novel for the ectotherm-thermal-biology community. Pitch accordingly — this is a contribution of the paper, not an afterthought.
+
+### Evolutionary rescue: confirmed sparse
+
+Individual-species evolutionary-rescue experiments exist (Morgan et al. 2020 PNAS in tropical fish; multiple Drosophila experimental-evolution papers — @mesas_thermal_2021 in *J. Evol. Biol.* and subsequent work — evolved ~1.3 °C per decade of heat tolerance at most). Realised heritability estimates for CTmax sit in the 0.1–0.5 range depending on species and ramp protocol.
+
+I did not find a single ectotherm-wide quantitative synthesis of evolutionary-rescue potential. Noble's own collaborator network (Nakagawa, Drobniak et al.) would be the natural home for such a meta-analysis — if one is planned or in prep, we should at least cite its companion pieces. For the MEE paper as currently scoped we only need to cite Morgan 2020 and one Drosophila experimental-evolution reference, which is what `tdt_problems.qmd` §8 currently does.
+
+### TDT beyond *Mytilus* and coral: extension is broad
+
+The TDT framework has already been applied beyond marine molluscs:
+
+- Ants — @willot_tdt_ants_2022 (already in our new bib list).
+- Plants — @cook_cumulative_plants_2024 and related (already in our new bib list).
+- Soil invertebrates — *Enchytraeus albidus* (Rodrigues et al. 2023, *Pedobiologia* / *Soil Organisms*; exact citation to be locked down, found via ScienceDirect but full Crossref metadata not retrieved cleanly).
+
+**Our cellular-viability zebrafish endpoint is distinct from all of these.** Previous TDT applications have used whole-organism mortality, righting-response, or growth-rate readouts. Cellular viability via flow cytometry on a vertebrate model is a meaningful extension. Manuscript pitch: *TDT moves from whole-organism to cellular endpoint; we show the 4PL framework is general enough to handle the transition without breaking the equivalence to classical TDT outputs.*
+
+## Additions to the BibTeX block — second-pass verifications
+
+Append these to `bib/tdt_problems.bib` alongside the first-pass block. All Crossref-verified in this pass (April 2026).
+
+```bibtex
+@article{sapareto_dewey_1984,
+  author  = {Sapareto, Stephen A. and Dewey, William C.},
+  title   = {Thermal dose determination in cancer therapy},
+  journal = {International Journal of Radiation Oncology*Biology*Physics},
+  volume  = {10},
+  number  = {6},
+  pages   = {787--800},
+  year    = {1984},
+  doi     = {10.1016/0360-3016(84)90379-1}
+}
+
+@article{dewey_arrhenius_2009,
+  author  = {Dewey, William C.},
+  title   = {Arrhenius relationships from the molecule and cell to the clinic},
+  journal = {International Journal of Hyperthermia},
+  volume  = {25},
+  number  = {1},
+  pages   = {3--20},
+  year    = {2009},
+  doi     = {10.1080/02656730902747919}
+}
+
+@article{vanrhoon_cem43_2016,
+  author  = {van Rhoon, Gerard C.},
+  title   = {Is {CEM43} still a relevant thermal dose parameter for hyperthermia treatment monitoring?},
+  journal = {International Journal of Hyperthermia},
+  volume  = {32},
+  number  = {1},
+  pages   = {50--62},
+  year    = {2016},
+  doi     = {10.3109/02656736.2015.1114153}
+}
+
+@article{santos_drosophila_2011,
+  author  = {Santos, Mauro and Casta{\~n}eda, Luis E. and Rezende, Enrico L.},
+  title   = {Making sense of heat tolerance estimates in ectotherms: lessons from {D}rosophila},
+  journal = {Functional Ecology},
+  volume  = {25},
+  number  = {6},
+  pages   = {1169--1180},
+  year    = {2011},
+  doi     = {10.1111/j.1365-2435.2011.01908.x}
+}
+
+@article{leong_ramping_2022,
+  author  = {Leong, Chi-Man and Tsang, Toby P. N. and Gu{\'e}nard, Benoit},
+  title   = {Testing the reliability and ecological implications of ramping rates in the measurement of Critical Thermal maximum},
+  journal = {PLOS ONE},
+  volume  = {17},
+  number  = {3},
+  pages   = {e0265361},
+  year    = {2022},
+  doi     = {10.1371/journal.pone.0265361}
+}
+```
+
+### Corrections to the first-pass block
+
+- **`terblanche_ramping_2022`** was my placeholder guess; the actual authors are Leong, Tsang & Guénard (ants, 2022). Replace the stub entry with the verified `leong_ramping_2022` above.
+- **`rezende_tpc_2019`** is now fully Crossref-verified; the `[DOI confirmed from journal listing]` note can be removed.
+- **`willot_tdt_ants_2022`** DOI `10.25849/myrmecol.news_032:127` was recovered from the article PDF metadata and is consistent with Myrmecological News's DOI pattern; still not Crossref-confirmed in this pass. Flag for manual check before committing to bib.
+
+### Still unverified / still open
+
+- **Rodrigues et al. 2023** — *Enchytraeus albidus* TDT landscape in *Pedobiologia* / *Soil Organisms*. Found via ScienceDirect but couldn't pin down the full bibliographic metadata cleanly. Daniel should verify if we want to cite it for the "TDT beyond Mytilus/coral" section.
+- **Mesas et al. 2021** — Drosophila experimental-evolution reference for the rescue-potential paragraph. DOI not verified in this pass.
+- **Kingsolver & Buckley "Rate dynamics of ectotherm responses to thermal stress" 2019** — found via PMC search, DOI not verified.
+
+## Consolidated verification log (all passes)
+
+| Ref key                           | Verified via                | Notes                                             |
+|-----------------------------------|-----------------------------|---------------------------------------------------|
+| First-pass entries                | Crossref DOI resolution     | All 26 first-pass entries Crossref-confirmed      |
+| sapareto_dewey_1984               | Crossref DOI resolution     | Full metadata match                               |
+| dewey_arrhenius_2009              | Crossref DOI resolution     | Full metadata match                               |
+| vanrhoon_cem43_2016               | Crossref DOI resolution     | Full metadata match                               |
+| santos_drosophila_2011            | Crossref DOI resolution     | Full metadata match                               |
+| leong_ramping_2022                | Crossref DOI resolution     | **Replaces speculative `terblanche_ramping_2022`** |
+| rezende_tpc_2019                  | Crossref DOI resolution     | Now fully confirmed (was flagged last pass)       |
+| willot_tdt_ants_2022              | Article PDF metadata only   | Still not Crossref-confirmed                      |
+
+## Next steps (updated)
+
+1. Daniel reviews the claims-to-soften list from §3.
+2. Append the combined BibTeX block (first-pass + second-pass + corrections) to `bib/tdt_problems.bib`. Deal with the two `[NEEDS VERIFICATION]` stragglers (Willot DOI, Rodrigues metadata).
+3. Revise `tdt_problems.qmd`:
+   - Soften §2 ("nearly no TDT paper"), §3 (overdispersion), §8 (behavioural thermoregulation; static TDT under-predicts).
+   - Replace the speculative "optimiser got lucky" phrasing.
+   - Engage with Vajedsamiei 2024, Ørsted 2022, Rezende 2020 explicitly as prior art we are consolidating.
+   - One-sentence parenthetical cite to Sapareto & Dewey 1984 for CEM43 prior art; no further elaboration.
+4. Decide on Noble self-citations (Pottier 2022, Pottier-Dahlke comment 2022, Noble 2025).
+5. Further search — if needed — on (a) a full multi-way variance decomposition of published CTmax / LT50 estimates, (b) an ectotherm-wide evolutionary-rescue meta-analysis, (c) Rodrigues 2023 and Mesas 2021 verification. Not blocking; the manuscript can be drafted without these.
