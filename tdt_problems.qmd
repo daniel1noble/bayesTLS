@@ -301,7 +301,49 @@ This is the same HI integral the two-step pipeline would compute — but with tw
 :::
 
 ::: {.callout-note collapse="true"}
-### Reusable helper functions: `extract_tdt_params`, `LT50_T_curve`, `heat_injury`
+### Beyond the 50 % threshold: HI as a dimensionless dose, not a death switch
+
+The classical convention of declaring "death when HI = 1" is an arbitrary 50th-percentile statement, not a biological fact. `HI = 1` means cumulative damage equal to **one LT50-worth**; at constant *T* this coincides with 50 % population mortality, but not with "the organism is dead". If you instead care about 10 %, 90 % or 99 % mortality, the threshold has to move — and the 4PL lets you move it in a principled, posterior-valid way rather than picking a number.
+
+**Short derivation.** Under the damage-accumulation assumption — damage accrues linearly with rate `1/LT50(T(s))`, no repair, path-independent — dimensionless cumulative damage is `D(t) = HI(t)`. Under constant *T* the 4PL survival curve gives
+
+$$p(t;T) = \text{low} + \frac{\text{up}-\text{low}}{1+\exp\!\bigl(k\,(\log_{10}t - \text{mid}(T))\bigr)}.$$
+
+Substituting `t = D·LT50(T)`, expanding `log10`, and using the LT50 closed-form identity $k\,\bigl(\log_{10}\text{LT50}(T) - \text{mid}(T)\bigr) = \log\!\tfrac{\text{up}-0.5}{0.5-\text{low}}$ — the temperature-dependent pieces cancel exactly, leaving
+
+$$\boxed{\; p(D) \;=\; \text{low} + \dfrac{\text{up} - \text{low}}{1 + D^{\,k}\cdot C}, \qquad C = \dfrac{\text{up}-0.5}{0.5-\text{low}}. \;}$$
+
+Three properties of this closed form:
+
+- **Temperature-free.** `mid(T)` has dropped out. The mapping HI → expected survival is a species-level property governed only by the three shape parameters `(low, up, k)`.
+- **Correct limits.** `D = 0 ⇒ p = up` (no damage); `D = 1 ⇒ p = 0.5` (one LT50-worth of dose, classical definition); `D → ∞ ⇒ p = low` (assay floor — we can never reach true 0 survival because the flow gate always returns a residual fraction).
+- **Path-independent.** The result holds for any temperature trajectory, not just constant *T*, because the right-hand side depends only on the accumulated dose `D = HI(t)` and the shape parameters.
+
+**Numerical illustration.** For typical 4PL shape parameters (`low = 0.05`, `up = 0.95`, `k = 2`, so `C = 18`), the relationship between `HI` and expected mortality is:
+
+| HI   | Expected survival | Expected mortality |
+|-----:|------------------:|-------------------:|
+| 0.25 |             0.897 |              10 %  |
+| 0.50 |             0.772 |              23 %  |
+| 1.00 |             0.500 |              50 % ← classical "death" |
+| 2.00 |             0.217 |              78 %  |
+| 4.12 |             0.100 |              90 %  |
+| 9.00 |             0.061 |              94 %  |
+| ∞    |             0.050 |              95 % (lower asymptote) |
+
+Under these parameters you need ~**4× the classical HI** to reach 90 % mortality and you *cannot* reach 100 % — the maximum detectable mortality is `1 − low`, which is a genuine property of the assay, not a modelling deficiency. Steeper sigmoids (larger `k`) shrink the 50→90 gap; shallower ones widen it. Any paper that reports HI = 1 as "death" is hiding this shape dependence.
+
+**Inversion — time to *q* % mortality.** Solving `p(D) = 1 − q` for the dose at which population mortality reaches `q`:
+
+$$D_q = \left[\,\frac{(\text{up} - (1-q))(0.5 - \text{low})}{((1-q) - \text{low})(\text{up} - 0.5)}\,\right]^{1/k}.$$
+
+Every ingredient on the right-hand side is a posterior draw of a 4PL parameter. For each draw and each temperature trace, the time-to-*q* %-mortality is the first `t` at which cumulative `HI(t) = D_q`. You get a full posterior of the crossing time for any `q ∈ (1 − \text{up},\ 1 − \text{low})` — the validity interval encodes the fact that the assay cannot resolve mortality outside the asymptote range.
+
+The helper function `time_to_mortality()` in the next callout implements this directly. It returns `NA` for posterior draws where `q` falls outside the identifiable range, and `NA` (read: "not reached") for draws where the temperature trace simply never accumulates enough damage — both are statistically correct reporting behaviours.
+:::
+
+::: {.callout-note collapse="true"}
+### Reusable helper functions: `extract_tdt_params`, `LT50_T_curve`, `heat_injury`, `time_to_mortality`
 
 Three self-contained R functions that depend only on `posterior::as_draws_df()`, base R, and the species / centering constant used in the fit. Copy them into any analysis script that uses the same 4PL parameterisation.
 
@@ -453,6 +495,57 @@ heat_injury <- function(fit, species_levels, temp_mean,
   attr(out, "time_to_death_posterior") <- time_to_death
   out
 }
+
+#' Posterior time to any chosen mortality fraction under a temperature trace
+#'
+#' Generalises the classical "time to 50 % mortality" to arbitrary
+#' mortality fractions q. Uses the closed-form HI → survival mapping
+#' p(D) = low + (up-low) / (1 + D^k * (up-0.5)/(0.5-low)) and returns
+#' the first time at which cumulative HI crosses D_q, where D_q is the
+#' dose for which p(D_q) = 1 - q.
+#'
+#' @inheritParams heat_injury
+#' @param q        Numeric in (0, 1). Desired mortality fraction
+#'                 (e.g. 0.9 for time to 90 % mortality). Must fall within
+#'                 (1 - up, 1 - low) for each posterior draw individually;
+#'                 out-of-range draws return NA.
+#' @return Numeric vector of length n_draws: posterior of the first time
+#'         at which population mortality reaches q. NA entries mean (a)
+#'         q outside the posterior's identifiable range for that draw, or
+#'         (b) the trace never accumulated enough damage under that draw.
+time_to_mortality <- function(fit, species_levels, temp_mean,
+                              T_trace, dt, species, q,
+                              n_draws = 1000) {
+  stopifnot(q > 0, q < 1, species %in% species_levels)
+  dr      <- posterior::as_draws_df(fit)
+  g       <- function(nm, i) if (nm %in% names(dr)) dr[[nm]][i] else 0
+  is_ref  <- species == species_levels[1]
+  n_total <- nrow(dr)
+  draws   <- sample.int(n_total, min(n_draws, n_total))
+
+  sapply(draws, function(i) {
+    b0  <- g("b_mid_Intercept", i) +
+             (if (!is_ref) g(paste0("b_mid_species", species), i) else 0)
+    b1  <- g("b_mid_temp_c", i) +
+             (if (!is_ref) g(paste0("b_mid_temp_c:species", species), i) else 0)
+    low <- plogis(g(paste0("b_lraw_species", species), i)) * 0.49
+    up  <- 0.51 + plogis(g(paste0("b_uraw_species", species), i)) * 0.49
+    k   <- exp(g(paste0("b_logk_species", species), i))
+
+    # q must lie strictly within (1 - up, 1 - low) for D_q to be defined
+    if (q <= 1 - up || q >= 1 - low) return(NA_real_)
+
+    D_q <- ( (up - (1 - q)) * (0.5 - low) /
+             (((1 - q) - low) * (up - 0.5)) )^(1 / k)
+
+    log10_lt50 <- b0 + b1 * (T_trace - temp_mean) +
+                    log((up - 0.5) / (0.5 - low)) / k
+    HI_t <- cumsum(dt / 10^log10_lt50)
+
+    idx <- which(HI_t >= D_q)[1]
+    if (is.na(idx)) NA_real_ else idx * dt
+  })
+}
 ```
 
 Typical combined workflow after the 4PL has been fit:
@@ -463,7 +556,7 @@ tdt_post  <- extract_tdt_params(fit_bayesian_4pl, species_levels,
                                 temp_mean_4pl, t_ref_min = 1)
 
 # 2. posterior LT50(T) curve with credible bands
-T_grid    <- seq(30, 56, by = 0.1)
+T_grid     <- seq(30, 56, by = 0.1)
 lt50_curve <- LT50_T_curve(fit_bayesian_4pl, species_levels,
                            temp_mean_4pl, T_grid)
 
@@ -471,9 +564,24 @@ lt50_curve <- LT50_T_curve(fit_bayesian_4pl, species_levels,
 HI <- heat_injury(fit_bayesian_4pl, species_levels, temp_mean_4pl,
                   T_trace = env_temperature_series, dt = 1,
                   species = "deli", n_draws = 1000)
+
+# 4. posterior of time to 10 %, 50 %, and 90 % mortality under the same trace
+tt_10 <- time_to_mortality(fit_bayesian_4pl, species_levels, temp_mean_4pl,
+                           T_trace = env_temperature_series, dt = 1,
+                           species = "deli", q = 0.10, n_draws = 1000)
+tt_50 <- time_to_mortality(fit_bayesian_4pl, species_levels, temp_mean_4pl,
+                           T_trace = env_temperature_series, dt = 1,
+                           species = "deli", q = 0.50, n_draws = 1000)
+tt_90 <- time_to_mortality(fit_bayesian_4pl, species_levels, temp_mean_4pl,
+                           T_trace = env_temperature_series, dt = 1,
+                           species = "deli", q = 0.90, n_draws = 1000)
+
+# Posterior summaries (NA = threshold not reached or q out of range)
+sapply(list(`10%` = tt_10, `50%` = tt_50, `90%` = tt_90),
+       \(x) quantile(x, c(0.025, 0.5, 0.975), na.rm = TRUE))
 ```
 
-Every output is a posterior, not a point estimate. Every CI reflects the full joint uncertainty of the 4PL fit, including the random-effects structure.
+Every output is a posterior, not a point estimate. Every credible interval reflects the full joint uncertainty of the 4PL fit, including the random-effects structure. The 50 % cutoff is no longer baked into the language of the analysis.
 :::
 
 ::: {.callout-note collapse="true"}

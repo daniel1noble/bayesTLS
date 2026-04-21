@@ -2958,11 +2958,89 @@ Heat injury (HI) prediction from an environmental temperature trace
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-Reusable helper functions: <code>extract_tdt_params</code>, <code>LT50_T_curve</code>, <code>heat_injury</code>
+Beyond the 50 % threshold: HI as a dimensionless dose, not a death switch
 </div>
 <div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
 </div>
 <div id="callout-29" class="callout-29-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>The classical convention of declaring “death when HI = 1” is an arbitrary 50th-percentile statement, not a biological fact. <code>HI = 1</code> means cumulative damage equal to <strong>one LT50-worth</strong>; at constant <em>T</em> this coincides with 50 % population mortality, but not with “the organism is dead”. If you instead care about 10 %, 90 % or 99 % mortality, the threshold has to move — and the 4PL lets you move it in a principled, posterior-valid way rather than picking a number.</p>
+<p><strong>Short derivation.</strong> Under the damage-accumulation assumption — damage accrues linearly with rate <code>1/LT50(T(s))</code>, no repair, path-independent — dimensionless cumulative damage is <code>D(t) = HI(t)</code>. Under constant <em>T</em> the 4PL survival curve gives</p>
+<p><span class="math display">\[p(t;T) = \text{low} + \frac{\text{up}-\text{low}}{1+\exp\!\bigl(k\,(\log_{10}t - \text{mid}(T))\bigr)}.\]</span></p>
+<p>Substituting <code>t = D·LT50(T)</code>, expanding <code>log10</code>, and using the LT50 closed-form identity <span class="math inline">\(k\,\bigl(\log_{10}\text{LT50}(T) - \text{mid}(T)\bigr) = \log\!\tfrac{\text{up}-0.5}{0.5-\text{low}}\)</span> — the temperature-dependent pieces cancel exactly, leaving</p>
+<p><span class="math display">\[\boxed{\; p(D) \;=\; \text{low} + \dfrac{\text{up} - \text{low}}{1 + D^{\,k}\cdot C}, \qquad C = \dfrac{\text{up}-0.5}{0.5-\text{low}}. \;}\]</span></p>
+<p>Three properties of this closed form:</p>
+<ul>
+<li><strong>Temperature-free.</strong> <code>mid(T)</code> has dropped out. The mapping HI → expected survival is a species-level property governed only by the three shape parameters <code>(low, up, k)</code>.</li>
+<li><strong>Correct limits.</strong> <code>D = 0 ⇒ p = up</code> (no damage); <code>D = 1 ⇒ p = 0.5</code> (one LT50-worth of dose, classical definition); <code>D → ∞ ⇒ p = low</code> (assay floor — we can never reach true 0 survival because the flow gate always returns a residual fraction).</li>
+<li><strong>Path-independent.</strong> The result holds for any temperature trajectory, not just constant <em>T</em>, because the right-hand side depends only on the accumulated dose <code>D = HI(t)</code> and the shape parameters.</li>
+</ul>
+<p><strong>Numerical illustration.</strong> For typical 4PL shape parameters (<code>low = 0.05</code>, <code>up = 0.95</code>, <code>k = 2</code>, so <code>C = 18</code>), the relationship between <code>HI</code> and expected mortality is:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">HI</th>
+<th style="text-align: right;">Expected survival</th>
+<th style="text-align: right;">Expected mortality</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">0.25</td>
+<td style="text-align: right;">0.897</td>
+<td style="text-align: right;">10 %</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0.50</td>
+<td style="text-align: right;">0.772</td>
+<td style="text-align: right;">23 %</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">1.00</td>
+<td style="text-align: right;">0.500</td>
+<td style="text-align: right;">50 % ← classical “death”</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">2.00</td>
+<td style="text-align: right;">0.217</td>
+<td style="text-align: right;">78 %</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">4.12</td>
+<td style="text-align: right;">0.100</td>
+<td style="text-align: right;">90 %</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">9.00</td>
+<td style="text-align: right;">0.061</td>
+<td style="text-align: right;">94 %</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">∞</td>
+<td style="text-align: right;">0.050</td>
+<td style="text-align: right;">95 % (lower asymptote)</td>
+</tr>
+</tbody>
+</table>
+<p>Under these parameters you need ~<strong>4× the classical HI</strong> to reach 90 % mortality and you <em>cannot</em> reach 100 % — the maximum detectable mortality is <code>1 − low</code>, which is a genuine property of the assay, not a modelling deficiency. Steeper sigmoids (larger <code>k</code>) shrink the 50→90 gap; shallower ones widen it. Any paper that reports HI = 1 as “death” is hiding this shape dependence.</p>
+<p><strong>Inversion — time to <em>q</em> % mortality.</strong> Solving <code>p(D) = 1 − q</code> for the dose at which population mortality reaches <code>q</code>:</p>
+<p><span class="math display">\[D_q = \left[\,\frac{(\text{up} - (1-q))(0.5 - \text{low})}{((1-q) - \text{low})(\text{up} - 0.5)}\,\right]^{1/k}.\]</span></p>
+<p>Every ingredient on the right-hand side is a posterior draw of a 4PL parameter. For each draw and each temperature trace, the time-to-<em>q</em> %-mortality is the first <code>t</code> at which cumulative <code>HI(t) = D_q</code>. You get a full posterior of the crossing time for any <code>q ∈ (1 − \text{up},\ 1 − \text{low})</code> — the validity interval encodes the fact that the assay cannot resolve mortality outside the asymptote range.</p>
+<p>The helper function <code>time_to_mortality()</code> in the next callout implements this directly. It returns <code>NA</code> for posterior draws where <code>q</code> falls outside the identifiable range, and <code>NA</code> (read: “not reached”) for draws where the temperature trace simply never accumulates enough damage — both are statistically correct reporting behaviours.</p>
+</div>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-30-contents" aria-controls="callout-30" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Reusable helper functions: <code>extract_tdt_params</code>, <code>LT50_T_curve</code>, <code>heat_injury</code>, <code>time_to_mortality</code>
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-30" class="callout-30-contents callout-collapse collapse">
 <div class="callout-body-container callout-body">
 <p>Three self-contained R functions that depend only on <code>posterior::as_draws_df()</code>, base R, and the species / centering constant used in the fit. Copy them into any analysis script that uses the same 4PL parameterisation.</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Extract classical TDT quantities from a Bayesian 4PL brms fit</span></span>
@@ -3111,27 +3189,93 @@ Reusable helper functions: <code>extract_tdt_params</code>, <code>LT50_T_curve</
 <span id="cb3-144"><a href="#cb3-144" aria-hidden="true" tabindex="-1"></a>  })</span>
 <span id="cb3-145"><a href="#cb3-145" aria-hidden="true" tabindex="-1"></a>  <span class="fu">attr</span>(out, <span class="st">&quot;time_to_death_posterior&quot;</span>) <span class="ot">&lt;-</span> time_to_death</span>
 <span id="cb3-146"><a href="#cb3-146" aria-hidden="true" tabindex="-1"></a>  out</span>
-<span id="cb3-147"><a href="#cb3-147" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb3-147"><a href="#cb3-147" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb3-148"><a href="#cb3-148" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-149"><a href="#cb3-149" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Posterior time to any chosen mortality fraction under a temperature trace</span></span>
+<span id="cb3-150"><a href="#cb3-150" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
+<span id="cb3-151"><a href="#cb3-151" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Generalises the classical &quot;time to 50 % mortality&quot; to arbitrary</span></span>
+<span id="cb3-152"><a href="#cb3-152" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; mortality fractions q. Uses the closed-form HI → survival mapping</span></span>
+<span id="cb3-153"><a href="#cb3-153" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; p(D) = low + (up-low) / (1 + D^k * (up-0.5)/(0.5-low)) and returns</span></span>
+<span id="cb3-154"><a href="#cb3-154" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; the first time at which cumulative HI crosses D_q, where D_q is the</span></span>
+<span id="cb3-155"><a href="#cb3-155" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; dose for which p(D_q) = 1 - q.</span></span>
+<span id="cb3-156"><a href="#cb3-156" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
+<span id="cb3-157"><a href="#cb3-157" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @inheritParams heat_injury</span></span>
+<span id="cb3-158"><a href="#cb3-158" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param q        Numeric in (0, 1). Desired mortality fraction</span></span>
+<span id="cb3-159"><a href="#cb3-159" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;                 (e.g. 0.9 for time to 90 % mortality). Must fall within</span></span>
+<span id="cb3-160"><a href="#cb3-160" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;                 (1 - up, 1 - low) for each posterior draw individually;</span></span>
+<span id="cb3-161"><a href="#cb3-161" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;                 out-of-range draws return NA.</span></span>
+<span id="cb3-162"><a href="#cb3-162" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @return Numeric vector of length n_draws: posterior of the first time</span></span>
+<span id="cb3-163"><a href="#cb3-163" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;         at which population mortality reaches q. NA entries mean (a)</span></span>
+<span id="cb3-164"><a href="#cb3-164" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;         q outside the posterior&#39;s identifiable range for that draw, or</span></span>
+<span id="cb3-165"><a href="#cb3-165" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;         (b) the trace never accumulated enough damage under that draw.</span></span>
+<span id="cb3-166"><a href="#cb3-166" aria-hidden="true" tabindex="-1"></a>time_to_mortality <span class="ot">&lt;-</span> <span class="cf">function</span>(fit, species_levels, temp_mean,</span>
+<span id="cb3-167"><a href="#cb3-167" aria-hidden="true" tabindex="-1"></a>                              T_trace, dt, species, q,</span>
+<span id="cb3-168"><a href="#cb3-168" aria-hidden="true" tabindex="-1"></a>                              <span class="at">n_draws =</span> <span class="dv">1000</span>) {</span>
+<span id="cb3-169"><a href="#cb3-169" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stopifnot</span>(q <span class="sc">&gt;</span> <span class="dv">0</span>, q <span class="sc">&lt;</span> <span class="dv">1</span>, species <span class="sc">%in%</span> species_levels)</span>
+<span id="cb3-170"><a href="#cb3-170" aria-hidden="true" tabindex="-1"></a>  dr      <span class="ot">&lt;-</span> posterior<span class="sc">::</span><span class="fu">as_draws_df</span>(fit)</span>
+<span id="cb3-171"><a href="#cb3-171" aria-hidden="true" tabindex="-1"></a>  g       <span class="ot">&lt;-</span> <span class="cf">function</span>(nm, i) <span class="cf">if</span> (nm <span class="sc">%in%</span> <span class="fu">names</span>(dr)) dr[[nm]][i] <span class="cf">else</span> <span class="dv">0</span></span>
+<span id="cb3-172"><a href="#cb3-172" aria-hidden="true" tabindex="-1"></a>  is_ref  <span class="ot">&lt;-</span> species <span class="sc">==</span> species_levels[<span class="dv">1</span>]</span>
+<span id="cb3-173"><a href="#cb3-173" aria-hidden="true" tabindex="-1"></a>  n_total <span class="ot">&lt;-</span> <span class="fu">nrow</span>(dr)</span>
+<span id="cb3-174"><a href="#cb3-174" aria-hidden="true" tabindex="-1"></a>  draws   <span class="ot">&lt;-</span> <span class="fu">sample.int</span>(n_total, <span class="fu">min</span>(n_draws, n_total))</span>
+<span id="cb3-175"><a href="#cb3-175" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-176"><a href="#cb3-176" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sapply</span>(draws, <span class="cf">function</span>(i) {</span>
+<span id="cb3-177"><a href="#cb3-177" aria-hidden="true" tabindex="-1"></a>    b0  <span class="ot">&lt;-</span> <span class="fu">g</span>(<span class="st">&quot;b_mid_Intercept&quot;</span>, i) <span class="sc">+</span></span>
+<span id="cb3-178"><a href="#cb3-178" aria-hidden="true" tabindex="-1"></a>             (<span class="cf">if</span> (<span class="sc">!</span>is_ref) <span class="fu">g</span>(<span class="fu">paste0</span>(<span class="st">&quot;b_mid_species&quot;</span>, species), i) <span class="cf">else</span> <span class="dv">0</span>)</span>
+<span id="cb3-179"><a href="#cb3-179" aria-hidden="true" tabindex="-1"></a>    b1  <span class="ot">&lt;-</span> <span class="fu">g</span>(<span class="st">&quot;b_mid_temp_c&quot;</span>, i) <span class="sc">+</span></span>
+<span id="cb3-180"><a href="#cb3-180" aria-hidden="true" tabindex="-1"></a>             (<span class="cf">if</span> (<span class="sc">!</span>is_ref) <span class="fu">g</span>(<span class="fu">paste0</span>(<span class="st">&quot;b_mid_temp_c:species&quot;</span>, species), i) <span class="cf">else</span> <span class="dv">0</span>)</span>
+<span id="cb3-181"><a href="#cb3-181" aria-hidden="true" tabindex="-1"></a>    low <span class="ot">&lt;-</span> <span class="fu">plogis</span>(<span class="fu">g</span>(<span class="fu">paste0</span>(<span class="st">&quot;b_lraw_species&quot;</span>, species), i)) <span class="sc">*</span> <span class="fl">0.49</span></span>
+<span id="cb3-182"><a href="#cb3-182" aria-hidden="true" tabindex="-1"></a>    up  <span class="ot">&lt;-</span> <span class="fl">0.51</span> <span class="sc">+</span> <span class="fu">plogis</span>(<span class="fu">g</span>(<span class="fu">paste0</span>(<span class="st">&quot;b_uraw_species&quot;</span>, species), i)) <span class="sc">*</span> <span class="fl">0.49</span></span>
+<span id="cb3-183"><a href="#cb3-183" aria-hidden="true" tabindex="-1"></a>    k   <span class="ot">&lt;-</span> <span class="fu">exp</span>(<span class="fu">g</span>(<span class="fu">paste0</span>(<span class="st">&quot;b_logk_species&quot;</span>, species), i))</span>
+<span id="cb3-184"><a href="#cb3-184" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-185"><a href="#cb3-185" aria-hidden="true" tabindex="-1"></a>    <span class="co"># q must lie strictly within (1 - up, 1 - low) for D_q to be defined</span></span>
+<span id="cb3-186"><a href="#cb3-186" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (q <span class="sc">&lt;=</span> <span class="dv">1</span> <span class="sc">-</span> up <span class="sc">||</span> q <span class="sc">&gt;=</span> <span class="dv">1</span> <span class="sc">-</span> low) <span class="fu">return</span>(<span class="cn">NA_real_</span>)</span>
+<span id="cb3-187"><a href="#cb3-187" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-188"><a href="#cb3-188" aria-hidden="true" tabindex="-1"></a>    D_q <span class="ot">&lt;-</span> ( (up <span class="sc">-</span> (<span class="dv">1</span> <span class="sc">-</span> q)) <span class="sc">*</span> (<span class="fl">0.5</span> <span class="sc">-</span> low) <span class="sc">/</span></span>
+<span id="cb3-189"><a href="#cb3-189" aria-hidden="true" tabindex="-1"></a>             (((<span class="dv">1</span> <span class="sc">-</span> q) <span class="sc">-</span> low) <span class="sc">*</span> (up <span class="sc">-</span> <span class="fl">0.5</span>)) )<span class="sc">^</span>(<span class="dv">1</span> <span class="sc">/</span> k)</span>
+<span id="cb3-190"><a href="#cb3-190" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-191"><a href="#cb3-191" aria-hidden="true" tabindex="-1"></a>    log10_lt50 <span class="ot">&lt;-</span> b0 <span class="sc">+</span> b1 <span class="sc">*</span> (T_trace <span class="sc">-</span> temp_mean) <span class="sc">+</span></span>
+<span id="cb3-192"><a href="#cb3-192" aria-hidden="true" tabindex="-1"></a>                    <span class="fu">log</span>((up <span class="sc">-</span> <span class="fl">0.5</span>) <span class="sc">/</span> (<span class="fl">0.5</span> <span class="sc">-</span> low)) <span class="sc">/</span> k</span>
+<span id="cb3-193"><a href="#cb3-193" aria-hidden="true" tabindex="-1"></a>    HI_t <span class="ot">&lt;-</span> <span class="fu">cumsum</span>(dt <span class="sc">/</span> <span class="dv">10</span><span class="sc">^</span>log10_lt50)</span>
+<span id="cb3-194"><a href="#cb3-194" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-195"><a href="#cb3-195" aria-hidden="true" tabindex="-1"></a>    idx <span class="ot">&lt;-</span> <span class="fu">which</span>(HI_t <span class="sc">&gt;=</span> D_q)[<span class="dv">1</span>]</span>
+<span id="cb3-196"><a href="#cb3-196" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (<span class="fu">is.na</span>(idx)) <span class="cn">NA_real_</span> <span class="cf">else</span> idx <span class="sc">*</span> dt</span>
+<span id="cb3-197"><a href="#cb3-197" aria-hidden="true" tabindex="-1"></a>  })</span>
+<span id="cb3-198"><a href="#cb3-198" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Typical combined workflow after the 4PL has been fit:</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. classical TDT table (z, CTmax) per species with 95 % CrIs</span></span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>tdt_post  <span class="ot">&lt;-</span> <span class="fu">extract_tdt_params</span>(fit_bayesian_4pl, species_levels,</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                                temp_mean_4pl, <span class="at">t_ref_min =</span> <span class="dv">1</span>)</span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. posterior LT50(T) curve with credible bands</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>T_grid    <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">30</span>, <span class="dv">56</span>, <span class="at">by =</span> <span class="fl">0.1</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>T_grid     <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">30</span>, <span class="dv">56</span>, <span class="at">by =</span> <span class="fl">0.1</span>)</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>lt50_curve <span class="ot">&lt;-</span> <span class="fu">LT50_T_curve</span>(fit_bayesian_4pl, species_levels,</span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>                           temp_mean_4pl, T_grid)</span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. heat injury under a measured environmental temperature trace</span></span>
 <span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>HI <span class="ot">&lt;-</span> <span class="fu">heat_injury</span>(fit_bayesian_4pl, species_levels, temp_mean_4pl,</span>
 <span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>                  <span class="at">T_trace =</span> env_temperature_series, <span class="at">dt =</span> <span class="dv">1</span>,</span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>                  <span class="at">species =</span> <span class="st">&quot;deli&quot;</span>, <span class="at">n_draws =</span> <span class="dv">1000</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Every output is a posterior, not a point estimate. Every CI reflects the full joint uncertainty of the 4PL fit, including the random-effects structure.</p>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>                  <span class="at">species =</span> <span class="st">&quot;deli&quot;</span>, <span class="at">n_draws =</span> <span class="dv">1000</span>)</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. posterior of time to 10 %, 50 %, and 90 % mortality under the same trace</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>tt_10 <span class="ot">&lt;-</span> <span class="fu">time_to_mortality</span>(fit_bayesian_4pl, species_levels, temp_mean_4pl,</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>                           <span class="at">T_trace =</span> env_temperature_series, <span class="at">dt =</span> <span class="dv">1</span>,</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>                           <span class="at">species =</span> <span class="st">&quot;deli&quot;</span>, <span class="at">q =</span> <span class="fl">0.10</span>, <span class="at">n_draws =</span> <span class="dv">1000</span>)</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>tt_50 <span class="ot">&lt;-</span> <span class="fu">time_to_mortality</span>(fit_bayesian_4pl, species_levels, temp_mean_4pl,</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>                           <span class="at">T_trace =</span> env_temperature_series, <span class="at">dt =</span> <span class="dv">1</span>,</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>                           <span class="at">species =</span> <span class="st">&quot;deli&quot;</span>, <span class="at">q =</span> <span class="fl">0.50</span>, <span class="at">n_draws =</span> <span class="dv">1000</span>)</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>tt_90 <span class="ot">&lt;-</span> <span class="fu">time_to_mortality</span>(fit_bayesian_4pl, species_levels, temp_mean_4pl,</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>                           <span class="at">T_trace =</span> env_temperature_series, <span class="at">dt =</span> <span class="dv">1</span>,</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>                           <span class="at">species =</span> <span class="st">&quot;deli&quot;</span>, <span class="at">q =</span> <span class="fl">0.90</span>, <span class="at">n_draws =</span> <span class="dv">1000</span>)</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a><span class="co"># Posterior summaries (NA = threshold not reached or q out of range)</span></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a><span class="fu">sapply</span>(<span class="fu">list</span>(<span class="st">`</span><span class="at">10%</span><span class="st">`</span> <span class="ot">=</span> tt_10, <span class="st">`</span><span class="at">50%</span><span class="st">`</span> <span class="ot">=</span> tt_50, <span class="st">`</span><span class="at">90%</span><span class="st">`</span> <span class="ot">=</span> tt_90),</span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>       \(x) <span class="fu">quantile</span>(x, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span>), <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Every output is a posterior, not a point estimate. Every credible interval reflects the full joint uncertainty of the 4PL fit, including the random-effects structure. The 50 % cutoff is no longer baked into the language of the analysis.</p>
 </div>
 </div>
 </div>
 <div class="callout callout-style-default callout-note callout-titled">
-<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-30-contents" aria-controls="callout-30" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-31-contents" aria-controls="callout-31" aria-expanded="false" aria-label="Toggle callout">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
@@ -3140,7 +3284,7 @@ What the 4PL does that the two-step cannot
 </div>
 <div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
 </div>
-<div id="callout-30" class="callout-30-contents callout-collapse collapse">
+<div id="callout-31" class="callout-31-contents callout-collapse collapse">
 <div class="callout-body-container callout-body">
 <p>Beyond recovering everything the two-step delivers, the 4PL opens up outputs that are not accessible from the classical pipeline:</p>
 <ol type="1">
@@ -3155,7 +3299,7 @@ What the 4PL does that the two-step cannot
 </div>
 </div>
 <div class="callout callout-style-default callout-note callout-titled">
-<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-31-contents" aria-controls="callout-31" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-32-contents" aria-controls="callout-32" aria-expanded="false" aria-label="Toggle callout">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
@@ -3164,7 +3308,7 @@ One-line steelman
 </div>
 <div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
 </div>
-<div id="callout-31" class="callout-31-contents callout-collapse collapse">
+<div id="callout-32" class="callout-32-contents callout-collapse collapse">
 <div class="callout-body-container callout-body">
 <blockquote class="blockquote">
 <p><strong>The two-step approach is a 4PL with the asymptotes forced to 0 and 1, the sigmoid slope assumed equal across temperatures, the random-effects structure deleted, the error bars propagated wrong, and the uncertainty on every derived quantity understated. Every interpretable output of the two-step exists as a posterior summary of the 4PL, and several outputs the field actively wants — HI with credible bands, stage-conditioned LT50, the full mortality surface, decomposable between-species contrasts — only exist if you fit the full 4PL.</strong></p>
