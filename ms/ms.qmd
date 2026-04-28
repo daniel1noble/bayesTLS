@@ -1,0 +1,229 @@
+---
+title: "A hierarchical Bayesian 4PL recovers the classical thermal death time framework and resolves its statistical pathologies"
+shorttitle: "Bayesian 4PL for thermal tolerance"
+author:
+  - name: "Daniel Noble"
+    email: daniel.wa.noble@gmail.com
+    corresponding: true
+    affiliations:
+      - id: anu
+        name: Division of Ecology and Evolution, Research School of Biology, Australian National University
+        city: Canberra
+        country: Australia
+date: today
+abstract: |
+  1. *Background.* The thermal death time (TDT) framework is dominant in ectotherm thermal-tolerance research, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of $\log_{10}\text{LT50}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
+
+  2. *Approach.* We develop a single-stage hierarchical Bayesian four-parameter logistic (4PL) survival model fit directly to raw binomial count data, with identifiably-parameterised free asymptotes, observation-level overdispersion, and random effects for every real level of experimental nesting. We prove algebraically that every classical TDT output — slope, *z*-value, CTmax at any reference time, and the heat-injury (HI) integral — is a one-line posterior summary of this fit, with correctly-calibrated credible intervals.
+
+  3. *Demonstration.* We apply the framework to brown shrimp (*Crangon crangon*) thermal-tolerance data spanning three endpoints (lethal mortality, sublethal time-to-death, and dynamic CTmax at three ramping rates), reconcile the endpoints through the @jorgensen_unifying_2021 ramping equation under full posterior propagation, and project mortality risk under measured Baltic field temperatures and warming scenarios using a damage-accumulation model with a Sharpe–Schoolfield repair kernel.
+
+  4. *Implications.* The classical and Bayesian frameworks are equivalent in the limit, but the hierarchical 4PL delivers properly propagated uncertainty, accommodates censoring and overdispersion by construction, and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.
+keywords:
+  - thermal death time
+  - tolerance landscape
+  - hierarchical Bayesian model
+  - 4-parameter logistic
+  - heat injury
+  - CTmax
+  - ectotherm
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    embed-resources: true
+    fig-cap-location: bottom
+  docx:
+    reference-doc: ../bib/templates/template.docx
+    toc: false
+    number-sections: false
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+editor_options:
+  chunk_output_type: console
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: true
+---
+
+```{r setup}
+#| label: setup
+
+# Project-wide objects loaded for inline reporting throughout the manuscript.
+# Every number, table, and figure is produced from code — no magic numbers.
+
+library(here)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(brms)
+library(posterior)
+library(flextable)
+
+set.seed(123)
+
+# Shared figure theme: keep all manuscript figures visually consistent.
+# Define once here; load via source() into every figure chunk.
+# source(here::here("R", "theme_ms.R"))
+
+# Cached fits (produced by R/bayesian_TDT_shrimp.qmd or equivalent scripts).
+# Fits are saved as .rds in output/models/ — never re-fit at render time.
+# fit_4pl <- readRDS(here::here("output", "models", "fit_lethal_TDT_4pl.rds"))
+# fit_sub <- readRDS(here::here("output", "models", "fit_sublethal_TDT.rds"))
+# fit_ctmax <- readRDS(here::here("output", "models", "fit_ctmax.rds"))
+```
+
+# Introduction
+
+<!--
+The introduction should:
+- Establish that thermal-tolerance limits are central to forecasting climate-change impacts on ectotherms (cite @sunday_global_2011, @deutsch_latitude_2008, @sunday_redistribution_2012, @pinsky_marine_2019).
+- Introduce the TDT / tolerance landscape framework (cite @rezende_landscapes_2014, @jorgensen_unifying_2021).
+- State the statistical pathologies of the standard two-step pipeline at a level that is honest but not polemical — point readers to the supplement for the full catalogue.
+- Position our contribution against the closest precedents (cite @vajedsamiei_ttl_2024, @rezende_drosophila_mortality_2020, @villeneuve_dynamic_2024, @orsted_finding_2022) — see notes/2026-04-21-tdt-literature-deep-dive.qmd for the framing.
+- State the three contributions clearly:
+    (i) a single-stage hierarchical Bayesian 4PL with identifiable parameterisation;
+    (ii) an algebraic proof that classical TDT outputs are posterior summaries of the joint fit, with credible intervals;
+    (iii) a worked, multi-endpoint empirical demonstration that recovers, reconciles, and extends the classical outputs.
+-->
+
+## The thermal death time framework
+
+## Statistical liabilities of the two-step pipeline
+
+## Aims and contributions
+
+# The hierarchical Bayesian 4PL
+
+<!--
+This is the methodological core of the paper. It should be readable as a
+self-contained methods section; the supplement carries the full derivations
+and software listings.
+-->
+
+## Model specification
+
+<!--
+- 4PL on raw binomial counts: n_surv | trials(n_total) ~ Binomial(p)
+- p = low + (up - low) / (1 + exp(k*(log10 t - mid)))
+- Identifiable parameterisation:
+    low = inv_logit(lraw) * 0.49
+    up  = 0.51 + inv_logit(uraw) * 0.49
+    k   = exp(logk)
+- mid ~ temp_c + group covariates + nested random effects
+- Observation-level random effect for overdispersion (cite @harrison_olre_2014).
+-->
+
+## Priors
+
+## Random-effects structure
+
+## Censoring, boundary observations, and overdispersion
+
+# Equivalence with the classical pipeline
+
+<!--
+Algebraic statement: solving p(t; T) = 0.5 for t gives a closed-form
+log10 LT50(T) that is linear in T with slope = beta1, and the classical
+TDT slope, z, and CTmax fall out as one-line posterior summaries.
+
+Refer to §10 of tdt_problems.qmd for the full derivation; reproduce the
+key identities in the manuscript and put the rest in the supplement.
+
+Helpers extract_tdt_params(), LT50_T_curve(), heat_injury(),
+time_to_mortality() should be cited and listed in the supplement.
+-->
+
+## Closed-form mapping from 4PL parameters to z and CTmax
+
+## Heat-injury integral as a posterior quantity
+
+## What the 4PL delivers that the two-step cannot
+
+# Worked example: brown shrimp thermal tolerance
+
+<!--
+Multi-endpoint demonstration on Crangon crangon.
+Source pipeline: R/bayesian_TDT_shrimp.qmd.
+-->
+
+## Data and experimental design
+
+```{r data-summary}
+#| label: tbl-data-summary
+#| tbl-cap: "Sample sizes and experimental design across the three thermal-tolerance endpoints (lethal TDT, sublethal time-to-death, dynamic CTmax)."
+#| eval: false
+
+# Render a flextable summarising n trials, n individuals, temperature range,
+# and exposure range for each of the three endpoints.
+```
+
+## Lethal TDT — hierarchical 4PL on counts
+
+```{r fig-survival-curves}
+#| label: fig-survival-curves
+#| fig-cap: "Posterior survival curves at each lethal-TDT assay temperature, with 95% credible bands and observed survival proportions."
+#| eval: false
+```
+
+## Sublethal time-to-death
+
+## Dynamic CTmax across ramping rates
+
+## Reconciling the three endpoints via the Jørgensen ramping equation
+
+```{r fig-tdt-ctmax-reconciliation}
+#| label: fig-tdt-ctmax-reconciliation
+#| fig-cap: "Forward (TDT → dynamic CTmax) and inverse (CTmax → TDT) reconciliation under full posterior propagation."
+#| eval: false
+```
+
+## Field-temperature heat-injury projections under warming scenarios
+
+```{r fig-hi-warming}
+#| label: fig-hi-warming
+#| fig-cap: "Posterior cumulative heat-injury and survival under measured Baltic surface-temperature traces and +1, +2, +3 °C warming scenarios, with and without a Sharpe–Schoolfield repair kernel."
+#| eval: false
+```
+
+# Discussion
+
+## What changes for the field if the hierarchical 4PL becomes the default
+
+## Limits of the present analysis
+
+<!--
+Honest discussion of:
+- Repair kernel parameters fixed, not fit
+- dCTmax reconciliation uses nls() per draw rather than a joint Stan likelihood
+- Arrhenius (1/T-Kelvin) sensitivity check belongs in the supplement
+- Endpoint heterogeneity is not eliminated, only made visible
+-->
+
+## Recommendations for primary studies and meta-analyses
+
+# Conclusions
+
+# Acknowledgements
+
+# Author contributions {.unnumbered}
+
+DN conceived the project, performed the analyses, and wrote the manuscript.
+
+# Data and code availability {.unnumbered}
+
+All data, analysis scripts, and the rendered manuscript are available at <https://github.com/...>. The hierarchical 4PL is implemented in [`brms`](https://paulbuerkner.com/brms/) [@burkner_brms_2017] using [`cmdstanr`](https://mc-stan.org/cmdstanr/) as the Stan backend.
+
+# Conflict of interest {.unnumbered}
+
+The authors declare no competing interests.
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

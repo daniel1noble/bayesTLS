@@ -1,0 +1,112 @@
+---
+title: "Supplementary information for: A hierarchical Bayesian 4PL recovers the classical thermal death time framework and resolves its statistical pathologies"
+author:
+  - name: "Daniel Noble"
+    email: daniel.wa.noble@gmail.com
+    corresponding: true
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    embed-resources: true
+    fig-cap-location: bottom
+  docx:
+    reference-doc: ../bib/templates/template.docx
+    toc: false
+    number-sections: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+crossref:
+  fig-prefix: "Figure S"
+  tbl-prefix: "Table S"
+  eq-prefix: "Equation S"
+  sec-prefix: "Section S"
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: true
+---
+
+```{r setup}
+#| label: setup-supp
+
+library(here)
+library(dplyr)
+library(ggplot2)
+library(brms)
+library(posterior)
+library(flextable)
+
+set.seed(123)
+```
+
+# Statistical liabilities of the two-step TDT pipeline {#sec-pathologies}
+
+<!--
+Full version of the §2–§9 catalogue from tdt_problems.qmd, with citations:
+  - Generated-regressor problem (@pagan1984, @murphytopel1985)
+  - Heteroscedasticity discarded by point-estimate LT50
+  - Right-censoring at temperatures where mortality never reached 50 %
+  - Arcsine vs logit (@warton_arcsine_2011)
+  - Mean-variance mismatch in OLS on percentages
+  - Overdispersion (@harrison_olre_2014, @harrison_bb_2015)
+  - Boundary observations
+  - Pseudoreplication (@hurlbert_1984, @schielzeth_nested_2013, @bolker2009)
+  - 4PL identifiability (@bolker_ecologicalmodels_2008, @ritz_drc_2015)
+  - Common-slope-across-temperatures
+  - Forking paths (@simmons_falsepositive_2011, @gelman_loken_2014)
+  - Endpoint heterogeneity (@terblanche_ctmax_2007, @sinclair_predict_2016)
+This text exists in long form in tdt_problems.qmd — port it here and
+shorten the main-text version accordingly.
+-->
+
+# Algebraic equivalence between the 4PL and the classical TDT pipeline {#sec-equivalence}
+
+## Closed-form LT50 from the 4PL
+
+## Closed-form heat-injury integral
+
+## Closed-form dose → mortality mapping for arbitrary mortality fractions
+
+# Reusable R helpers {#sec-helpers}
+
+<!--
+Listings (from §10 of tdt_problems.qmd):
+- extract_tdt_params()
+- LT50_T_curve()
+- heat_injury()
+- time_to_mortality()
+-->
+
+# Posterior-predictive checks and residual diagnostics {#sec-ppc}
+
+```{r ppc-lethal}
+#| label: fig-ppc-lethal
+#| fig-cap: "Posterior-predictive checks for the lethal-TDT 4PL: observed vs. simulated counts grouped by assay temperature, and randomised-quantile residuals against fitted values."
+#| eval: false
+```
+
+# Sensitivity analyses {#sec-sensitivity}
+
+## Celsius-linear vs. Arrhenius (1/T-Kelvin) parameterisation of `mid(T)`
+
+## OLRE vs. beta-binomial overdispersion
+
+## Repair-kernel parameter sensitivity
+
+# Pareto-k diagnostics and `reloo()` results {#sec-loo}
+
+# Computing environment {#sec-session}
+
+```{r session-info}
+sessionInfo()
+```
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
