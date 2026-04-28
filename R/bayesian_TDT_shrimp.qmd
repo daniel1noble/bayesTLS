@@ -1,0 +1,5553 @@
+---
+title: "bayesian_TDT_shrimp"
+format: html
+editor: visual
+---
+
+```{r}
+pacman::p_load(
+  tidyverse,
+  ggdist,
+  broom,
+  MASS,
+  patchwork,
+  readxl,
+  lme4,
+  brms,
+  drc,
+  mgcv,
+  medrc, #remotes::install_github("DoseResponse/medrc")
+  plotly,
+  viridisLite,
+  posterior,
+  scales,
+  glmmTMB,
+  MuMIn,
+  survminer,
+  survival,
+  flextable,
+  performance,
+  future,
+  future.apply)
+```
+
+
+
+# **Lethal TDT**
+
+## **Bayesian 4PL model**
+```{r}
+base_theme <- theme_classic(base_size = 22) +
+  theme(
+    axis.title = element_text(size = 24, face = "bold"),
+    axis.text  = element_text(size = 20),
+    legend.title = element_text(size = 22),
+    legend.text  = element_text(size = 20),
+    plot.title = element_text(size = 26, face = "bold", hjust = 0.5),
+    axis.line = element_line(linewidth = 1),
+    axis.ticks = element_line(linewidth = 1),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 2)
+  )
+
+ybreaks_left  <- c(1, 60, 120, 240, 480, 960)
+ybreaks_right <- c(1, 10, 30, 60, 120, 240, 480)
+lab_number <- function(x) scales::number(x, big.mark = "", accuracy = 1)
+
+
+# =========================
+# 1) Load + process raw data
+# =========================
+d <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx",
+                sheet = "LETHAL_TDT")
+
+# Transform data to get counts of individuals that survived/died
+d <- d %>% mutate(survival = 1 - Mortality_after_trial,
+                   n_total = N_individuals_after_trial, 
+                   n_surv  = round(survival * n_total),
+                   n_dead  = n_total - n_surv,
+                   assay_temp = Temperature_assay,
+                   duration = Duration_exposure_hours,
+                   logd = log10(duration),
+                   date_experiment = as.factor(Date),
+                   tank_ID = as.factor(Tank),
+                   body_mass = Total_Sample_body_mass_g,
+                   start_min = as.numeric(format(Starting_time, "%H")) * 60 +
+                               as.numeric(format(Starting_time, "%M")) +
+                               as.numeric(format(Starting_time, "%S")) / 60)
+
+d$obs <- factor(seq_len(nrow(d)))
+
+temp_mean <- mean(d$assay_temp, na.rm = TRUE)
+start_min_mean <- mean(d$start_min, na.rm = TRUE)
+
+d <- d %>%
+  mutate(
+    temp_c = assay_temp - temp_mean,
+    start_min_c = start_min - start_min_mean,
+    body_mass_c = body_mass - mean(body_mass) # center
+  )
+
+# =========================
+# 2) Numeric constants for priors / init
+# =========================
+mid_start <- median(d$logd, na.rm = TRUE)
+lraw_mean <- qlogis(0.02 / 0.49)
+uraw_mean <- qlogis((0.98 - 0.51) / 0.49)
+logk_mean <- log(2)
+
+num_to_string <- function(x) {
+  formatC(x, digits = 16, format = "fg", flag = "#")
+}
+
+mid_start_s <- num_to_string(mid_start)
+lraw_mean_s <- num_to_string(lraw_mean)
+uraw_mean_s <- num_to_string(uraw_mean)
+logk_mean_s <- num_to_string(logk_mean)
+
+# =========================
+# 3) 4-parameter logistic model over duration
+# =========================
+# Probability-scale curve:
+#
+# p = low + (up - low) / (1 + exp(exp(logk) * (logd - mid)))
+#
+# low = inv_logit(lraw) * 0.49
+# up  = 0.51 + inv_logit(uraw) * 0.49
+#
+# mid varies with temperature and life stage:
+# mid ~ temp_c * life_stage + (1 | date_experiment)
+#
+# z is an obs-level random effect
+
+f_tdt_4pl <- bf(
+  n_surv | trials(n_total) ~ eta,
+  nlf(
+    eta ~ logit(
+      (inv_logit(lraw) * 0.49) +
+        (
+          (0.51 + inv_logit(uraw) * 0.49) -
+          (inv_logit(lraw) * 0.49)
+        ) / (1 + exp(exp(logk) * (logd - mid)))
+    ) + z
+  ),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1),
+  lf(logk ~ 1),
+  lf(mid ~ temp_c + (1 | date_experiment) + (1 | tank_ID)),
+  lf(z ~ 0 + (1 | obs)),
+  nl = TRUE
+)
+
+# =========================
+# 4) Priors
+# =========================
+priors_tdt_4pl <- c(
+  set_prior(
+    paste0("normal(", lraw_mean_s, ", 1)"),
+    class = "b", nlpar = "lraw"
+  ),
+  set_prior(
+    paste0("normal(", uraw_mean_s, ", 1)"),
+    class = "b", nlpar = "uraw"
+  ),
+  set_prior(
+    paste0("normal(", logk_mean_s, ", 1)"),
+    class = "b", nlpar = "logk"
+  ),
+  set_prior(
+    paste0("normal(", mid_start_s, ", 1.5)"),
+    class = "b", nlpar = "mid", coef = "Intercept"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "temp_c"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "date_experiment"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "tank_ID"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "z", group = "obs"
+  )
+)
+
+# =========================
+# 5) Initial values
+# =========================
+init_tdt_4pl <- function() {
+  list(
+    b_lraw_Intercept = lraw_mean,
+    b_uraw_Intercept = uraw_mean,
+    b_logk_Intercept = logk_mean,
+    b_mid_Intercept = mid_start,
+    b_mid_temp_c = 0
+  )
+}
+
+
+# =========================
+# 6) Fit model
+# =========================
+fit_4pl <- brm(
+  formula = f_tdt_4pl,
+  data = d,
+  family = binomial(link = "logit"),
+  prior = priors_tdt_4pl,
+  save_pars = save_pars(all = TRUE),
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = init_tdt_4pl,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+saveRDS(fit_4pl, file = "Rdata/model_lethal_TDT.RDS")
+
+
+print(fit_4pl)
+r2(fit_4pl)
+
+z_draws <- -1 / dr$b_mid_temp_c
+
+quantile(z_draws, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+mean(z_draws, na.rm = TRUE) # z = 2.55 
+
+# =========================
+# 8) Survival curves
+# =========================
+temps_plot <- seq(30, 33, by = 0.5)
+
+dur_min <- min(d$duration, na.rm = TRUE)
+dur_max <- max(d$duration, na.rm = TRUE)
+dur_grid <- exp(seq(log(dur_min), log(dur_max), length.out = 250))
+
+nd_surv <- expand.grid(
+  assay_temp = temps_plot,
+  duration = dur_grid,
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
+
+nd_surv <- nd_surv %>%
+  mutate(
+    logd = log10(duration),
+    temp_c = assay_temp - temp_mean,
+    n_total = as.integer(round(median(d$n_total, na.rm = TRUE))),
+    date_experiment = levels(d$date_experiment)[1],
+    obs = levels(d$obs)[1],
+    temp_f = factor(assay_temp, levels = sort(unique(assay_temp)))
+  )
+
+pr_surv <- posterior_linpred(
+  fit_4pl,
+  newdata = nd_surv,
+  re_formula = NA,
+  transform = TRUE
+)
+
+nd_surv$pred_mean <- apply(pr_surv, 2, median, na.rm = TRUE)
+nd_surv$pred_lo   <- apply(pr_surv, 2, quantile, probs = 0.025, na.rm = TRUE)
+nd_surv$pred_hi   <- apply(pr_surv, 2, quantile, probs = 0.975, na.rm = TRUE)
+
+
+d_plot <- d %>% 
+    mutate(
+    temp_f = factor(assay_temp, levels = sort(unique(nd_surv$assay_temp))))
+
+p_surv_curves <- ggplot(
+  nd_surv,
+  aes(x = duration, y = pred_mean, colour = temp_f, fill = temp_f, group = temp_f)
+) +
+  geom_ribbon(
+    aes(ymin = pred_lo, ymax = pred_hi),
+    alpha = 0.15,
+    colour = NA,
+    show.legend = FALSE
+  ) +
+  geom_line(linewidth = 1.1) +
+  geom_jitter(
+    data = d_plot,
+    aes(x = duration, y = survival, fill = temp_f),
+    width = 0.01, 
+    inherit.aes = FALSE,
+    size = 3,
+    alpha = 0.9,
+    shape = 21, 
+    stroke = 0.5,
+    colour = "white"
+  ) +
+  scale_colour_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+  scale_fill_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+labs(
+  x = "Exposure duration (hours)",
+  y = "Predicted survival",
+  colour = NULL
+) +
+base_theme +
+  coord_cartesian(ylim = c(0, 1.05)) +
+theme(
+  legend.position = c(0.95, 0.98),   
+  legend.justification = c(1, 1),
+  legend.direction = "horizontal",
+  legend.title = element_blank(),
+  legend.text = element_text(size = 12),
+  legend.background = element_blank()
+) +
+guides(
+  colour = guide_legend(nrow = 1),
+  fill = "none"
+)
+
+print(p_surv_curves)
+
+ggsave(file = "fig/survival_curves.png", dpi = 500, width = 9, height = 7)
+
+
+# =========================
+# 4) Posterior draws helper functions
+#    for 4PL TDT model
+# =========================
+dr <- posterior::as_draws_df(fit_4pl)
+
+get_par <- function(nm) {
+  if (nm %in% names(dr)) {
+    dr[[nm]]
+  } else {
+    rep(0, nrow(dr))
+  }
+}
+
+get_4pl_draws <- function(temp_c_value) {
+  data.frame(
+    .draw = dr$.draw,
+    temp_c = temp_c_value,
+    low = plogis(get_par("b_lraw_Intercept")) * 0.49,
+    up = 0.51 + plogis(get_par("b_uraw_Intercept")) * 0.49,
+    k = exp(get_par("b_logk_Intercept")),
+    mid = get_par("b_mid_Intercept") +
+      get_par("b_mid_temp_c") * temp_c_value
+  )
+}
+
+# =========================
+# 5) TDT curve
+# =========================
+temps_df <- data.frame(
+  assay_temp = seq(28, 36.1, by = 0.01)
+) %>%
+  mutate(
+    temp_c = assay_temp - temp_mean
+  )
+
+tdt_draws_avg <- bind_rows(
+  lapply(seq_len(nrow(temps_df)), function(i) {
+    out <- get_4pl_draws(
+      temp_c_value = temps_df$temp_c[i]
+    )
+    out$assay_temp <- temps_df$assay_temp[i]
+    out
+  })
+) %>%
+  mutate(
+    log10_t_h = mid + log((up - 0.5) / (0.5 - low)) / k,
+    t50_h = 10^log10_t_h,
+    t50_min = 60 * t50_h
+  ) %>%
+  filter(
+    is.finite(t50_min),
+    t50_min > 0
+  )
+
+pred_df_tdt_avg <- tdt_draws_avg %>%
+  group_by(assay_temp) %>%
+  summarise(
+    time_to_50 = median(t50_min, na.rm = TRUE),
+    lower = quantile(t50_min, 0.025, na.rm = TRUE),
+    upper = quantile(t50_min, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_tdt_avg_lin <- ggplot(pred_df_tdt_avg) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_continuous(breaks = ybreaks_left, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% survival (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+p_tdt_avg_log <- ggplot(pred_df_tdt_avg) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% mortality (min)",
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_tdt_avg_lin + p_tdt_avg_log + patchwork::plot_layout(ncol = 2))
+
+ggsave(
+  file = "fig/fig_tdt_lethal.png",
+  dpi = 500,
+  height = 6,
+  width = 13
+)
+
+# =========================
+# 6) Predicted survival for 1-hour exposure
+#    from the 4PL model
+# =========================
+temps_1h <- seq(29, 34, by = 0.05)
+dur_1h <- 1
+
+nd_1h <- expand.grid(
+  assay_temp = temps_1h,
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
+
+nd_1h <- nd_1h %>%
+  mutate(
+    duration = dur_1h,
+    logd = log10(duration),
+    temp_c = assay_temp - temp_mean,
+    n_total = as.integer(round(median(d$n_total, na.rm = TRUE))),
+    date_experiment = factor(levels(d$date_experiment)[1], levels = levels(d$date_experiment)),
+    obs = factor(levels(d$obs)[1], levels = levels(d$obs))
+  )
+
+pr_1h <- posterior_linpred(
+  fit_4pl,
+  newdata = nd_1h,
+  re_formula = NA,
+  transform = TRUE
+)
+
+nd_1h$pred_mean <- apply(pr_1h, 2, median, na.rm = TRUE)
+nd_1h$pred_lo   <- apply(pr_1h, 2, quantile, probs = 0.025, na.rm = TRUE)
+nd_1h$pred_hi   <- apply(pr_1h, 2, quantile, probs = 0.975, na.rm = TRUE)
+
+p_1h <- ggplot(
+  nd_1h,
+  aes(x = assay_temp, y = pred_mean)
+) +
+  geom_ribbon(
+    aes(ymin = pred_lo, ymax = pred_hi),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(linewidth = 1.2) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Predicted survival (1-hour exposure)"
+  ) +
+  base_theme
+
+print(p_1h)
+
+# =========================
+# 7) Temperature causing 50% mortality after 1 hour
+#    numerical extraction from posterior predictions
+# =========================
+get_temp50_draws <- function(pred_mat, temp_vec) {
+  pred_stage <- pred_mat
+  temp_stage <- temp_vec
+
+  ord <- order(temp_stage)
+  pred_stage <- pred_stage[, ord, drop = FALSE]
+  temp_stage <- temp_stage[ord]
+
+  res_list <- vector("list", nrow(pred_stage))
+
+  for (i in seq_len(nrow(pred_stage))) {
+    y <- as.numeric(pred_stage[i, ])
+    sgn <- y - 0.5
+
+    if (all(is.na(y)) || min(y, na.rm = TRUE) > 0.5 || max(y, na.rm = TRUE) < 0.5) {
+      res_list[[i]] <- data.frame(
+        .draw = i,
+        assay_temp_50_1h = NA_real_
+      )
+      next
+    }
+
+    idx <- which(diff(sign(sgn)) != 0)
+
+    if (length(idx) == 0) {
+      j <- which.min(abs(sgn))
+      temp_50 <- temp_stage[j]
+    } else {
+      j <- idx[1]
+      x1 <- temp_stage[j]
+      x2 <- temp_stage[j + 1]
+      y1 <- y[j]
+      y2 <- y[j + 1]
+
+      if (abs(y2 - y1) < 1e-12) {
+        temp_50 <- mean(c(x1, x2))
+      } else {
+        temp_50 <- x1 + (0.5 - y1) * (x2 - x1) / (y2 - y1)
+      }
+    }
+
+    res_list[[i]] <- data.frame(
+      .draw = i,
+      assay_temp_50_1h = temp_50
+    )
+  }
+
+  bind_rows(res_list)
+}
+
+temp_1h_draws <- get_temp50_draws(
+  pred_mat = pr_1h,
+  temp_vec = nd_1h$assay_temp
+) %>%
+  filter(is.finite(assay_temp_50_1h))
+
+temp_1h_summary <- temp_1h_draws %>%
+  summarise(
+    mean_temp = mean(assay_temp_50_1h, na.rm = TRUE),
+    median_temp = median(assay_temp_50_1h, na.rm = TRUE),
+    lower = quantile(assay_temp_50_1h, 0.025, na.rm = TRUE),
+    upper = quantile(assay_temp_50_1h, 0.975, na.rm = TRUE)
+  )
+
+temp_1h_summary
+
+
+# =========================
+# 9) 2D landscape plot
+# =========================
+temps_surface <- seq(
+  min(d$assay_temp, na.rm = TRUE),
+  max(d$assay_temp, na.rm = TRUE),
+  length.out = 120
+)
+
+dur_surface <- seq(
+  min(d$duration, na.rm = TRUE),
+  max(d$duration, na.rm = TRUE),
+  length.out = 120
+)
+
+make_heatmap_df <- function() {
+  nds <- expand.grid(
+    assay_temp = temps_surface,
+    duration = dur_surface,
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  nds <- nds %>%
+    mutate(
+      logd = log10(duration),
+      temp_c = assay_temp - temp_mean,
+      n_total = as.integer(round(median(d$n_total, na.rm = TRUE))),
+      date_experiment = factor(levels(d$date_experiment)[1], levels = levels(d$date_experiment)),
+      obs = factor(levels(d$obs)[1], levels = levels(d$obs))
+    )
+
+  pr_s <- posterior_linpred(
+    fit_4pl,
+    newdata = nds,
+    re_formula = NA,
+    transform = TRUE
+  )
+
+  nds$pred_mean <- apply(pr_s, 2, median, na.rm = TRUE)
+
+  nds
+}
+
+heat_df <- make_heatmap_df()
+
+d_points <- d %>%
+  group_by(assay_temp, duration) %>%
+  summarise(
+    survival_mean = mean(survival, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_landscape_2d <- ggplot(
+  heat_df,
+  aes(x = assay_temp, y = duration, fill = pred_mean)
+) +
+  geom_raster(interpolate = TRUE) +
+  geom_point(
+    data = d_points,
+    aes(x = assay_temp, y = duration, fill = survival_mean),
+    inherit.aes = FALSE,
+    size = 3.2,
+    alpha = 0.9,
+    shape = 21,
+    color = "white",
+    stroke = 0.1,
+  ) +
+  geom_contour(
+    aes(z = pred_mean),
+    breaks = c(0.25, 0.5, 0.75),
+    colour = "white",
+    alpha = 0.55,
+    linewidth = 0.5
+  ) +
+metR::geom_text_contour(
+    aes(
+      z = pred_mean,
+      label = after_stat(level)
+    ),
+    breaks = c(0.25, 0.5, 0.75),
+    colour = "white",
+    size = 3,
+    stroke = 0,
+    nudge_y = 0.05,
+    nudge_x = 0.1,
+    label.placer = metR::label_placer_n(2)
+  ) +
+  scale_fill_viridis_c(
+    limits = c(0, 1),
+    option = "inferno",
+    direction = 1
+  ) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Exposure duration (h)",
+    fill = "Predicted survival"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "right"
+  )
+
+print(p_landscape_2d)
+
+ggsave(
+  file = "fig/thermal_landscape.png",
+  dpi = 500,
+  height = 6,
+  width = 9
+)
+
+```
+
+## **Bayesian 4PL model with interaction**
+
+```{r}
+f_tdt_4pl_int <- bf(
+  n_surv | trials(n_total) ~ eta,
+  nlf(
+    eta ~ logit(
+      (inv_logit(lraw) * 0.49) +
+        (
+          (0.51 + inv_logit(uraw) * 0.49) -
+          (inv_logit(lraw) * 0.49)
+        ) / (1 + exp(exp(logk) * (logd - mid) + int * temp_c * logd))
+    ) + z
+  ),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1),
+  lf(logk ~ 1),
+  lf(mid ~ temp_c + (1 | date_experiment) + (1 | tank_ID)),
+  lf(int ~ 1),
+  lf(z ~ 0 + (1 | obs)),
+  nl = TRUE
+)
+
+priors_tdt_4pl_int <- c(
+  set_prior(
+    paste0("normal(", lraw_mean_s, ", 1)"),
+    class = "b", nlpar = "lraw"
+  ),
+  set_prior(
+    paste0("normal(", uraw_mean_s, ", 1)"),
+    class = "b", nlpar = "uraw"
+  ),
+  set_prior(
+    paste0("normal(", logk_mean_s, ", 1)"),
+    class = "b", nlpar = "logk"
+  ),
+  set_prior(
+    paste0("normal(", mid_start_s, ", 1.5)"),
+    class = "b", nlpar = "mid", coef = "Intercept"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "temp_c"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "int"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "date_experiment"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "tank_ID"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "z", group = "obs"
+  )
+)
+
+init_tdt_4pl_int <- function() {
+  list(
+    b_lraw_Intercept = lraw_mean,
+    b_uraw_Intercept = uraw_mean,
+    b_logk_Intercept = logk_mean,
+    b_mid_Intercept = mid_start,
+    b_mid_temp_c = 0,
+    b_int_Intercept = 0
+  )
+}
+
+fit_4pl_int <- brm(
+  formula = f_tdt_4pl_int,
+  data = d,
+  family = binomial(link = "logit"),
+  prior = priors_tdt_4pl_int,
+  save_pars = save_pars(all = TRUE),
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = init_tdt_4pl_int,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+saveRDS(fit_4pl_int, file = "Rdata/model_lethal_TDT_interaction.RDS")
+
+print(fit_4pl_int)
+r2(fit_4pl_int)
+
+################
+loo_4pl <- loo(fit_4pl)
+loo_4pl_int <- loo(fit_4pl_int)
+
+loo_compare(loo_4pl, loo_4pl_int)
+
+###################
+
+
+dr <- posterior::as_draws_df(fit_4pl_int)
+
+z_draws <- -1 / dr$b_mid_temp_c
+
+quantile(z_draws, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+mean(z_draws, na.rm = TRUE)
+
+# =========================
+# 8) Survival curves
+# =========================
+temps_plot <- seq(30, 33, by = 0.5)
+
+dur_min <- min(d$duration, na.rm = TRUE)
+dur_max <- max(d$duration, na.rm = TRUE)
+dur_grid <- exp(seq(log(dur_min), log(dur_max), length.out = 250))
+
+nd_surv_int <- expand.grid(
+  assay_temp = temps_plot,
+  duration = dur_grid,
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
+
+nd_surv_int <- nd_surv_int %>%
+  mutate(
+    logd = log10(duration),
+    temp_c = assay_temp - temp_mean,
+    n_total = as.integer(round(median(d$n_total, na.rm = TRUE))),
+    date_experiment = levels(d$date_experiment)[1],
+    obs = levels(d$obs)[1],
+    temp_f = factor(assay_temp, levels = sort(unique(assay_temp)))
+  )
+
+pr_surv_int <- posterior_linpred(
+  fit_4pl_int,
+  newdata = nd_surv_int,
+  re_formula = NA,
+  transform = TRUE
+)
+
+nd_surv_int$pred_mean <- apply(pr_surv_int, 2, median, na.rm = TRUE)
+nd_surv_int$pred_lo   <- apply(pr_surv_int, 2, quantile, probs = 0.025, na.rm = TRUE)
+nd_surv_int$pred_hi   <- apply(pr_surv_int, 2, quantile, probs = 0.975, na.rm = TRUE)
+
+d_plot_int <- d %>% 
+  mutate(
+    temp_f = factor(assay_temp, levels = sort(unique(nd_surv_int$assay_temp)))
+  )
+
+p_surv_curves_int <- ggplot(
+  nd_surv_int,
+  aes(x = duration, y = pred_mean, colour = temp_f, fill = temp_f, group = temp_f)
+) +
+  geom_ribbon(
+    aes(ymin = pred_lo, ymax = pred_hi),
+    alpha = 0.15,
+    colour = NA,
+    show.legend = FALSE
+  ) +
+  geom_line(linewidth = 1.1) +
+  geom_jitter(
+    data = d_plot_int,
+    aes(x = duration, y = survival, fill = temp_f),
+    width = 0.01, 
+    inherit.aes = FALSE,
+    size = 3,
+    alpha = 0.9,
+    shape = 21, 
+    stroke = 0.5,
+    colour = "white"
+  ) +
+  scale_colour_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+  scale_fill_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+  labs(
+    x = "Exposure duration (hours)",
+    y = "Predicted survival",
+    colour = NULL
+  ) +
+  base_theme +
+  coord_cartesian(ylim = c(0, 1.05)) +
+  theme(
+    legend.position = c(0.95, 0.98),   
+    legend.justification = c(1, 1),
+    legend.direction = "horizontal",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 12),
+    legend.background = element_blank()
+  ) +
+  guides(
+    colour = guide_legend(nrow = 1),
+    fill = "none"
+  )
+
+print(p_surv_curves_int)
+
+ggsave(file = "fig/survival_curves_int.png", dpi = 500, width = 9, height = 7)
+
+
+# =========================
+# 4) Posterior draws helper functions
+#    for 4PL TDT model
+# =========================
+get_par_int <- function(nm) {
+  if (nm %in% names(dr)) {
+    dr[[nm]]
+  } else {
+    rep(0, nrow(dr))
+  }
+}
+
+get_4pl_draws_int <- function(temp_c_value) {
+  data.frame(
+    .draw = dr$.draw,
+    temp_c = temp_c_value,
+    low = plogis(get_par_int("b_lraw_Intercept")) * 0.49,
+    up = 0.51 + plogis(get_par_int("b_uraw_Intercept")) * 0.49,
+    k = exp(get_par_int("b_logk_Intercept")),
+    mid = get_par_int("b_mid_Intercept") +
+      get_par_int("b_mid_temp_c") * temp_c_value,
+    int = get_par_int("b_int_Intercept")
+  )
+}
+
+# =========================
+# 5) TDT curve
+# =========================
+temps_df_int <- data.frame(
+  assay_temp = seq(28, 36.1, by = 0.01)
+) %>%
+  mutate(
+    temp_c = assay_temp - temp_mean
+  )
+
+tdt_draws_avg_int <- bind_rows(
+  lapply(seq_len(nrow(temps_df_int)), function(i) {
+    out <- get_4pl_draws_int(
+      temp_c_value = temps_df_int$temp_c[i]
+    )
+    out$assay_temp <- temps_df_int$assay_temp[i]
+    out
+  })
+) %>%
+  mutate(
+    rhs = log((up - 0.5) / (0.5 - low)),
+    log10_t_h = (k * mid + rhs) / (k + int * temp_c),
+    t50_h = 10^log10_t_h,
+    t50_min = 60 * t50_h
+  ) %>%
+  filter(
+    is.finite(t50_min),
+    t50_min > 0
+  )
+
+pred_df_tdt_avg_int <- tdt_draws_avg_int %>%
+  group_by(assay_temp) %>%
+  summarise(
+    time_to_50 = median(t50_min, na.rm = TRUE),
+    lower = quantile(t50_min, 0.025, na.rm = TRUE),
+    upper = quantile(t50_min, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_tdt_avg_lin_int <- ggplot(pred_df_tdt_avg_int) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_continuous(breaks = ybreaks_left, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% survival (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+p_tdt_avg_log_int <- ggplot(pred_df_tdt_avg_int) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% mortality (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_tdt_avg_lin_int + p_tdt_avg_log_int + patchwork::plot_layout(ncol = 2))
+
+ggsave(
+  file = "fig/fig_tdt_lethal_int.png",
+  dpi = 500,
+  height = 6,
+  width = 13
+)
+
+# =========================
+# 6) Predicted survival for 1-hour exposure
+#    from the 4PL model
+# =========================
+temps_1h <- seq(29, 34, by = 0.05)
+dur_1h <- 1
+
+nd_1h_int <- expand.grid(
+  assay_temp = temps_1h,
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
+
+nd_1h_int <- nd_1h_int %>%
+  mutate(
+    duration = dur_1h,
+    logd = log10(duration),
+    temp_c = assay_temp - temp_mean,
+    n_total = as.integer(round(median(d$n_total, na.rm = TRUE))),
+    date_experiment = factor(levels(d$date_experiment)[1], levels = levels(d$date_experiment)),
+    obs = factor(levels(d$obs)[1], levels = levels(d$obs))
+  )
+
+pr_1h_int <- posterior_linpred(
+  fit_4pl_int,
+  newdata = nd_1h_int,
+  re_formula = NA,
+  transform = TRUE
+)
+
+nd_1h_int$pred_mean <- apply(pr_1h_int, 2, median, na.rm = TRUE)
+nd_1h_int$pred_lo   <- apply(pr_1h_int, 2, quantile, probs = 0.025, na.rm = TRUE)
+nd_1h_int$pred_hi   <- apply(pr_1h_int, 2, quantile, probs = 0.975, na.rm = TRUE)
+
+p_1h_int <- ggplot(
+  nd_1h_int,
+  aes(x = assay_temp, y = pred_mean)
+) +
+  geom_ribbon(
+    aes(ymin = pred_lo, ymax = pred_hi),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(linewidth = 1.2) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Predicted survival (1-hour exposure)"
+  ) +
+  base_theme
+
+print(p_1h_int)
+
+# =========================
+# 7) Temperature causing 50% mortality after 1 hour
+#    numerical extraction from posterior predictions
+# =========================
+get_temp50_draws_int <- function(pred_mat, temp_vec) {
+  pred_stage <- pred_mat
+  temp_stage <- temp_vec
+
+  ord <- order(temp_stage)
+  pred_stage <- pred_stage[, ord, drop = FALSE]
+  temp_stage <- temp_stage[ord]
+
+  res_list <- vector("list", nrow(pred_stage))
+
+  for (i in seq_len(nrow(pred_stage))) {
+    y <- as.numeric(pred_stage[i, ])
+    sgn <- y - 0.5
+
+    if (all(is.na(y)) || min(y, na.rm = TRUE) > 0.5 || max(y, na.rm = TRUE) < 0.5) {
+      res_list[[i]] <- data.frame(
+        .draw = i,
+        assay_temp_50_1h = NA_real_
+      )
+      next
+    }
+
+    idx <- which(diff(sign(sgn)) != 0)
+
+    if (length(idx) == 0) {
+      j <- which.min(abs(sgn))
+      temp_50 <- temp_stage[j]
+    } else {
+      j <- idx[1]
+      x1 <- temp_stage[j]
+      x2 <- temp_stage[j + 1]
+      y1 <- y[j]
+      y2 <- y[j + 1]
+
+      if (abs(y2 - y1) < 1e-12) {
+        temp_50 <- mean(c(x1, x2))
+      } else {
+        temp_50 <- x1 + (0.5 - y1) * (x2 - x1) / (y2 - y1)
+      }
+    }
+
+    res_list[[i]] <- data.frame(
+      .draw = i,
+      assay_temp_50_1h = temp_50
+    )
+  }
+
+  bind_rows(res_list)
+}
+
+temp_1h_draws_int <- get_temp50_draws_int(
+  pred_mat = pr_1h_int,
+  temp_vec = nd_1h_int$assay_temp
+) %>%
+  filter(is.finite(assay_temp_50_1h))
+
+temp_1h_summary_int <- temp_1h_draws_int %>%
+  summarise(
+    mean_temp = mean(assay_temp_50_1h, na.rm = TRUE),
+    median_temp = median(assay_temp_50_1h, na.rm = TRUE),
+    lower = quantile(assay_temp_50_1h, 0.025, na.rm = TRUE),
+    upper = quantile(assay_temp_50_1h, 0.975, na.rm = TRUE)
+  )
+
+temp_1h_summary_int
+
+
+# =========================
+# 9) 2D landscape plot
+# =========================
+temps_surface <- seq(
+  min(d$assay_temp, na.rm = TRUE),
+  max(d$assay_temp, na.rm = TRUE),
+  length.out = 120
+)
+
+dur_surface <- seq(
+  min(d$duration, na.rm = TRUE),
+  max(d$duration, na.rm = TRUE),
+  length.out = 120
+)
+
+make_heatmap_df_int <- function() {
+  nds <- expand.grid(
+    assay_temp = temps_surface,
+    duration = dur_surface,
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  nds <- nds %>%
+    mutate(
+      logd = log10(duration),
+      temp_c = assay_temp - temp_mean,
+      n_total = as.integer(round(median(d$n_total, na.rm = TRUE))),
+      date_experiment = factor(levels(d$date_experiment)[1], levels = levels(d$date_experiment)),
+      obs = factor(levels(d$obs)[1], levels = levels(d$obs))
+    )
+
+  pr_s <- posterior_linpred(
+    fit_4pl_int,
+    newdata = nds,
+    re_formula = NA,
+    transform = TRUE
+  )
+
+  nds$pred_mean <- apply(pr_s, 2, median, na.rm = TRUE)
+
+  nds
+}
+
+heat_df_int <- make_heatmap_df_int()
+
+d_points_int <- d %>%
+  group_by(assay_temp, duration) %>%
+  summarise(
+    survival_mean = mean(survival, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_landscape_2d_int <- ggplot(
+  heat_df_int,
+  aes(x = assay_temp, y = duration, fill = pred_mean)
+) +
+  geom_raster(interpolate = TRUE) +
+  geom_point(
+    data = d_points_int,
+    aes(x = assay_temp, y = duration, fill = survival_mean),
+    inherit.aes = FALSE,
+    size = 3.2,
+    alpha = 0.9,
+    shape = 21,
+    color = "white",
+    stroke = 0.1
+  ) +
+  geom_contour(
+    aes(z = pred_mean),
+    breaks = c(0.25, 0.5, 0.75),
+    colour = "white",
+    alpha = 0.55,
+    linewidth = 0.5
+  ) +
+  metR::geom_text_contour(
+    aes(
+      z = pred_mean,
+      label = after_stat(level)
+    ),
+    breaks = c(0.25, 0.5, 0.75),
+    colour = "white",
+    size = 3,
+    stroke = 0,
+    nudge_y = 0.05,
+    nudge_x = 0.1,
+    label.placer = metR::label_placer_n(2)
+  ) +
+  scale_fill_viridis_c(
+    limits = c(0, 1),
+    option = "inferno",
+    direction = 1
+  ) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Exposure duration (h)",
+    fill = "Predicted survival"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "right"
+  )
+
+print(p_landscape_2d_int)
+
+ggsave(
+  file = "fig/thermal_landscape_int.png",
+  dpi = 500,
+  height = 6,
+  width = 9
+)
+```
+
+
+
+### **Model comparisons**
+
+```{r}
+# =========================
+# Check colinearity with starting time
+# =========================
+cor(d$temp_c, d$start_min_c) # r = 0.36
+
+# =========================
+# 4PL model with body mass on mid
+# =========================
+f_tdt_4pl_mass <- bf(
+  n_surv | trials(n_total) ~ eta,
+  nlf(
+    eta ~ logit(
+      (inv_logit(lraw) * 0.49) +
+        (
+          (0.51 + inv_logit(uraw) * 0.49) -
+          (inv_logit(lraw) * 0.49)
+        ) / (1 + exp(exp(logk) * (logd - mid)))
+    ) + z
+  ),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1),
+  lf(logk ~ 1),
+  lf(mid ~ temp_c + body_mass_c + (1 | date_experiment) + (1 | tank_ID)),
+  lf(z ~ 0 + (1 | obs)),
+  nl = TRUE
+)
+
+# =========================
+# Priors
+# =========================
+priors_tdt_4pl <- c(
+  set_prior(
+    paste0("normal(", lraw_mean_s, ", 1)"),
+    class = "b", nlpar = "lraw"
+  ),
+  set_prior(
+    paste0("normal(", uraw_mean_s, ", 1)"),
+    class = "b", nlpar = "uraw"
+  ),
+  set_prior(
+    paste0("normal(", logk_mean_s, ", 1)"),
+    class = "b", nlpar = "logk"
+  ),
+  set_prior(
+    paste0("normal(", mid_start_s, ", 1.5)"),
+    class = "b", nlpar = "mid", coef = "Intercept"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "temp_c"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "body_mass_c"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "date_experiment"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "tank_ID"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "z", group = "obs"
+  )
+)
+
+# =========================
+# Initial values
+# =========================
+init_tdt_4pl <- function() {
+  list(
+    b_lraw_Intercept = lraw_mean,
+    b_uraw_Intercept = uraw_mean,
+    b_logk_Intercept = logk_mean,
+    b_mid_Intercept = mid_start,
+    b_mid_temp_c = 0
+  )
+}
+
+init_tdt_4pl_mass <- function() {
+  list(
+    b_lraw_Intercept = lraw_mean,
+    b_uraw_Intercept = uraw_mean,
+    b_logk_Intercept = logk_mean,
+    b_mid_Intercept = mid_start,
+    b_mid_temp_c = 0,
+    b_mid_body_mass_c = 0
+  )
+}
+
+# =========================
+# Fit body-mass model
+# =========================
+fit_4pl_mass <- brm(
+  formula = f_tdt_4pl_mass,
+  data = d,
+  family = binomial(link = "logit"),
+  prior = priors_tdt_4pl,
+  save_pars = save_pars(all = TRUE),
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = init_tdt_4pl_mass,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+saveRDS(fit_4pl_mass, file = "Rdata/model_lethal_TDT_body_mass.RDS")
+
+
+# =========================
+# 4PL model with starting time on mid
+# =========================
+f_tdt_4pl_time <- bf(
+  n_surv | trials(n_total) ~ eta,
+  nlf(
+    eta ~ logit(
+      (inv_logit(lraw) * 0.49) +
+        (
+          (0.51 + inv_logit(uraw) * 0.49) -
+          (inv_logit(lraw) * 0.49)
+        ) / (1 + exp(exp(logk) * (logd - mid)))
+    ) + z
+  ),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1),
+  lf(logk ~ 1),
+  lf(mid ~ temp_c + start_min_c + (1 | date_experiment) + (1 | tank_ID)),
+  lf(z ~ 0 + (1 | obs)),
+  nl = TRUE
+)
+
+# =========================
+# Priors
+# =========================
+priors_tdt_4pl <- c(
+  set_prior(
+    paste0("normal(", lraw_mean_s, ", 1)"),
+    class = "b", nlpar = "lraw"
+  ),
+  set_prior(
+    paste0("normal(", uraw_mean_s, ", 1)"),
+    class = "b", nlpar = "uraw"
+  ),
+  set_prior(
+    paste0("normal(", logk_mean_s, ", 1)"),
+    class = "b", nlpar = "logk"
+  ),
+  set_prior(
+    paste0("normal(", mid_start_s, ", 1.5)"),
+    class = "b", nlpar = "mid", coef = "Intercept"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "temp_c"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "start_min_c"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "date_experiment"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "mid", group = "tank_ID"
+  ),
+  set_prior(
+    "exponential(2)",
+    class = "sd", nlpar = "z", group = "obs"
+  )
+)
+
+# =========================
+# Initial values
+# =========================
+init_tdt_4pl <- function() {
+  list(
+    b_lraw_Intercept = lraw_mean,
+    b_uraw_Intercept = uraw_mean,
+    b_logk_Intercept = logk_mean,
+    b_mid_Intercept = mid_start,
+    b_mid_temp_c = 0
+  )
+}
+
+init_tdt_4pl_time <- function() {
+  list(
+    b_lraw_Intercept = lraw_mean,
+    b_uraw_Intercept = uraw_mean,
+    b_logk_Intercept = logk_mean,
+    b_mid_Intercept = mid_start,
+    b_mid_temp_c = 0,
+    b_mid_start_time_c = 0
+  )
+}
+
+# =========================
+# Fit starting time model
+# =========================
+fit_4pl_time <- brm(
+  formula = f_tdt_4pl_time,
+  data = d,
+  family = binomial(link = "logit"),
+  prior = priors_tdt_4pl,
+  save_pars = save_pars(all = TRUE),
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = init_tdt_4pl_time,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+saveRDS(fit_4pl_time, file = "Rdata/model_lethal_TDT_start_time.RDS")
+
+# =========================
+# Summaries
+# =========================
+print(fit_4pl)
+print(fit_4pl_mass)
+print(fit_4pl_time)
+
+
+r2(fit_4pl)
+r2(fit_4pl_mass)
+r2(fit_4pl_time)
+
+# =========================
+# LOO + RELOO
+# =========================
+loo_4pl <- loo(fit_4pl)
+loo_4pl_mass <- loo(fit_4pl_mass)
+loo_4pl_time <- loo(fit_4pl_time)
+loo_4pl_int <- loo(fit_4pl_int)
+
+saveRDS(loo_4pl, file = "Rdata/loo/loo_lethal_TDT.RDS")
+saveRDS(loo_4pl_mass, file = "Rdata/loo/loo_lethal_TDT_mass.RDS")
+saveRDS(loo_4pl_time, file = "Rdata/loo/loo_lethal_TDT_time.RDS")
+saveRDS(loo_4pl_int, file = "Rdata/loo/loo_lethal_TDT_interaction.RDS")
+
+# RELOO since pareto k values are high
+reloo_4pl <- reloo(fit_4pl, loo = loo_4pl, cores = 4)
+reloo_4pl_mass <- reloo(fit_4pl_mass, loo = loo_4pl_mass, cores = 4)
+reloo_4pl_time <- reloo(fit_4pl_time, loo = loo_4pl_time, cores = 4)
+reloo_4pl_int <- reloo(fit_4pl_int, loo = loo_4pl_int, cores = 4)
+
+saveRDS(reloo_4pl, file = "Rdata/loo/reloo_lethal_TDT.RDS")
+saveRDS(reloo_4pl_mass, file = "Rdata/loo/reloo_lethal_TDT_mass.RDS")
+saveRDS(reloo_4pl_time, file = "Rdata/loo/reloo_lethal_TDT_time.RDS")
+saveRDS(reloo_4pl_int, file = "Rdata/loo/reloo_lethal_TDT_interaction.RDS")
+
+##############
+
+reloo_4pl <- readRDS("Rdata/loo/reloo_lethal_TDT.RDS")
+reloo_4pl_mass <- readRDS("Rdata/loo/reloo_lethal_TDT_mass.RDS")
+reloo_4pl_time <- readRDS("Rdata/loo/reloo_lethal_TDT_time.RDS")
+reloo_4pl_int <- readRDS("Rdata/loo/reloo_lethal_TDT_interaction.RDS")
+
+
+loo_compare(reloo_4pl, reloo_4pl_mass) # Adding body mass does not improve fit significantly
+loo_compare(reloo_4pl, reloo_4pl_time) # Adding starting time does not improve fit significantly
+loo_compare(reloo_4pl, reloo_4pl_int) # Adding an interaction term does not improve fit significantly
+
+```
+
+
+
+# Sublethal data (Bayesian approach)
+
+```{r}
+tdt_sub <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx", sheet = "SUBLETHAL_TDT")
+trial_data <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx", sheet = "SUBLETHAL_TDT_trial_data")
+
+
+tdt_sub <- tdt_sub %>%
+    filter(Exclude == "no") %>%
+    mutate(
+        time_to_death = as.duration(hms(tdt$Time_to_death) - hms(tdt$Starting_time)) / dminutes(1),
+        assay_temp = as.numeric(Assay_temperature),
+        date_experiment = factor(Date),
+        tank_ID = factor(Tank),
+        cup_ID = factor(paste0(Trial_ID, Sample)),
+        temp_c = assay_temp - temp_mean,
+        log10_time_to_death = log10(time_to_death),
+        start_min = as.numeric(format(Starting_time, "%H")) * 60 +
+      as.numeric(format(Starting_time, "%M")) +
+      as.numeric(format(Starting_time, "%S")) / 60 
+    ) %>%
+  dplyr::mutate(
+    start_min_c = as.numeric(scale(start_min, center = TRUE, scale = TRUE))
+  ) %>% 
+    left_join(
+        trial_data %>%
+            transmute(
+                Trial_ID,
+                Assay_temperature,
+                Sample,
+                ind_body_mass = Sample_body_mass_g / N_individuals_body_mass,
+                mortality_rate = Mortality_the_next_day,
+                n_ind = N_individuals_mortality
+            ),
+        by = c("Trial_ID", "Assay_temperature", "Sample") # Merge trial data to get body mass and mortality rate after the trial. 
+    )
+
+tdt_sub <- tdt_sub %>% 
+  mutate(n_dead = n_ind * mortality_rate,
+         n_surv = n_ind * (1 - mortality_rate))
+
+# =========================
+# Bayesian model
+# =========================
+f_sub <- bf(
+  log10_time_to_death ~ temp_c + (1 | date_experiment) + (1 | tank_ID) + (1 | cup_ID)
+)
+
+priors_sub <- c(
+  prior(normal(2, 1.5), class = "Intercept"),
+  prior(normal(-1, 1), class = "b"),
+  prior(exponential(2), class = "sd"),
+  prior(exponential(2), class = "sigma")
+)
+
+fit_sublethal_tdt <- brm(
+  formula = f_sub,
+  data = tdt_sub,
+  prior = priors_sub,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = 0,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+print(fit_sublethal_tdt) # z = 1.10
+r2(fit_sublethal_tdt)
+
+# =========================
+# Posterior-derived sublethal TDT line
+# population-level mean line + 95% credible interval
+# analytically parallel to the lethal Bayesian workflow
+# =========================
+temps_sub_df <- data.frame(
+  assay_temp = seq(30.5, 34, by = 0.01)
+) %>%
+  mutate(
+    temp_c = assay_temp - temp_mean,
+    date_experiment = factor(levels(tdt_sub$date_experiment)[1], levels = levels(tdt_sub$date_experiment)),
+    tank_ID = factor(levels(tdt_sub$tank_ID)[1], levels = levels(tdt_sub$tank_ID)),
+    cup_ID = factor(levels(tdt_sub$cup_ID)[1], levels = levels(tdt_sub$cup_ID))
+  )
+
+lp_sub <- posterior_linpred(
+  fit_sublethal_tdt,
+  newdata = temps_sub_df,
+  re_formula = NA
+)
+
+# lp_sub is on the log10(minutes) scale
+time_sub_draws <- 10^lp_sub
+
+pred_df_tdt_sub <- temps_sub_df %>%
+  mutate(
+    time_to_death = apply(time_sub_draws, 2, median, na.rm = TRUE),
+    lower = apply(time_sub_draws, 2, quantile, probs = 0.025, na.rm = TRUE),
+    upper = apply(time_sub_draws, 2, quantile, probs = 0.975, na.rm = TRUE)
+  ) %>%
+  select(assay_temp, time_to_death, lower, upper)
+
+# =========================
+# Sublethal-only plot
+# =========================
+p_sublethal_lin <- ggplot(pred_df_tdt_sub) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "black",
+    show.legend = FALSE
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_death),
+    linewidth = 1.6,
+    colour = "black"
+  ) +
+  geom_jitter(
+    data = tdt_sub,
+    aes(x = assay_temp, y = time_to_death),
+    width = 0.05,
+    height = 0,
+    size = 4,
+    alpha = 0.9,
+    shape = 21,
+    col = "white",
+    fill = "black"
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_continuous(breaks = ybreaks_left, labels = lab_number) +
+  coord_cartesian(
+    xlim = c(30.5, 34),
+    ylim = c(0.9, 480)
+  ) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to death (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+p_sublethal_log <- ggplot(pred_df_tdt_sub) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "black",
+    show.legend = FALSE
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_death),
+    linewidth = 1.6,
+    colour = "black"
+  ) +
+  geom_jitter(
+    data = tdt_sub,
+    aes(x = assay_temp, y = time_to_death),
+    width = 0.05,
+    height = 0,
+    size = 4,
+    alpha = 0.9,
+    shape = 21,
+    col = "white",
+    fill = "black",
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+  coord_cartesian(
+    xlim = c(30.5, 34),
+    ylim = c(0.2, 480)
+  ) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = expression(log[10] * "(Time to death, min)")
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_sublethal_lin + p_sublethal_log + patchwork::plot_layout(ncol = 2))
+
+ggsave(
+  file = "fig/fig_tdt_sublethal.png",
+  dpi = 500,
+  height = 6,
+  width = 13
+)
+```
+
+## **Visualisation with median time to death**
+```{r}
+# =========================
+# Summary data
+# =========================
+tdt_sub_sum <- tdt_sub %>%
+    dplyr::group_by(assay_temp) %>%
+    dplyr::summarise(
+        median_time_to_death = median(time_to_death, na.rm = TRUE),
+        lower = quantile(time_to_death, 0.25, na.rm = TRUE),
+        upper = quantile(time_to_death, 0.75, na.rm = TRUE), # IQR range
+        .groups = "drop"
+    )
+
+# =========================
+# Sublethal-only plot
+# =========================
+p_sublethal_lin <- ggplot(pred_df_tdt_sub) +
+    geom_jitter(
+        data = tdt_sub,
+        aes(x = assay_temp, y = time_to_death),
+        width = 0.05,
+        height = 0,
+        size = 3.5,
+        alpha = 0.28,
+        shape = 21,
+        colour = "white",
+        fill = "black"
+    ) +
+    geom_errorbar(
+        data = tdt_sub_sum,
+        aes(
+            x = assay_temp,
+            ymin = lower,
+            ymax = upper,
+        ),
+        width = 0.08,
+        linewidth = 0.8,
+        colour = "black"
+    ) +
+    geom_point(
+        data = tdt_sub_sum,
+        aes(x = assay_temp, y = median_time_to_death),
+        size = 3.2,
+        shape = 21,
+        stroke = 0.8,
+        colour = "white",
+        fill = "black"
+    ) +
+    geom_ribbon(
+        aes(x = assay_temp, ymin = lower, ymax = upper),
+        alpha = 0.20,
+        fill = "black",
+        show.legend = FALSE
+    ) +
+    geom_line(
+        aes(x = assay_temp, y = time_to_death),
+        linewidth = 1.6,
+        colour = "black"
+    ) +
+    geom_hline(yintercept = 1, linetype = "dashed") +
+    scale_y_continuous(breaks = ybreaks_left, labels = lab_number) +
+    coord_cartesian(
+        xlim = c(30.5, 34),
+        ylim = c(0.9, 480)
+    ) +
+    labs(
+        x = "Assay temperature (°C)",
+        y = "Time to death (min)"
+    ) +
+    base_theme +
+    theme(
+        legend.position = "none"
+    )
+
+p_sublethal_log <- ggplot(pred_df_tdt_sub) +
+    geom_jitter(
+        data = tdt_sub,
+        aes(x = assay_temp, y = time_to_death),
+        width = 0.05,
+        height = 0,
+        size = 3.5,
+        alpha = 0.28,
+        shape = 21,
+        colour = "white",
+        fill = "black"
+    ) +
+    geom_errorbar(
+        data = tdt_sub_sum,
+        aes(
+            x = assay_temp,
+            ymin = lower,
+            ymax = upper
+        ),
+        width = 0.08,
+        linewidth = 0.8,
+        colour = "black"
+    ) +
+    geom_point(
+        data = tdt_sub_sum,
+        aes(x = assay_temp, y = median_time_to_death),
+        size = 3.2,
+        shape = 21,
+        stroke = 0.8,
+        colour = "white",
+        fill = "black"
+    ) +
+    geom_ribbon(
+        aes(x = assay_temp, ymin = lower, ymax = upper),
+        alpha = 0.20,
+        fill = "black",
+        show.legend = FALSE
+    ) +
+    geom_line(
+        aes(x = assay_temp, y = time_to_death),
+        linewidth = 1.6,
+        colour = "black"
+    ) +
+    geom_hline(yintercept = 1, linetype = "dashed") +
+    scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+    coord_cartesian(
+        xlim = c(30.5, 34),
+        ylim = c(0.2, 480)
+    ) +
+    labs(
+        x = "Assay temperature (°C)",
+        y = expression(log[10] * "(Time to death, min)")
+    ) +
+    base_theme +
+    theme(
+        legend.position = "none"
+    )
+
+print(p_sublethal_lin + p_sublethal_log + patchwork::plot_layout(ncol = 2))
+```
+
+## **Without the 32 degrees temperature** 
+
+```{r}
+
+## =========================================================
+## Dataset WITHOUT 32°C
+## =========================================================
+tdt_sub_no32 <- tdt_sub %>%
+  dplyr::filter(assay_temp != 32)
+
+fit_sublethal_no32 <- brm(
+  formula = f_sub,
+  data = tdt_sub_no32,
+  prior = priors_sub,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = 0,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+
+print(fit_sublethal_no32) # z = 1.06
+r2(fit_sublethal_no32)
+
+
+# =========================
+# Prediction grid
+# =========================
+temps_sub_df <- data.frame(
+  assay_temp = seq(30.5, 34, by = 0.01)
+) %>%
+  mutate(
+    temp_c = assay_temp - temp_mean,
+    date_experiment = factor(levels(tdt_sub$date_experiment)[1], levels = levels(tdt_sub$date_experiment)),
+    tank_ID = factor(levels(tdt_sub$tank_ID)[1], levels = levels(tdt_sub$tank_ID)),
+    cup_ID = factor(levels(tdt_sub$cup_ID)[1], levels = levels(tdt_sub$cup_ID))
+  )
+
+# =========================
+# Predictions: full model
+# =========================
+lp_sub_full <- posterior_linpred(
+  fit_sublethal_tdt,
+  newdata = temps_sub_df,
+  re_formula = NA
+)
+
+time_sub_draws_full <- 10^lp_sub_full
+
+pred_df_tdt_sub_full <- temps_sub_df %>%
+  mutate(
+    time_to_death = apply(time_sub_draws_full, 2, median, na.rm = TRUE),
+    lower = apply(time_sub_draws_full, 2, quantile, probs = 0.025, na.rm = TRUE),
+    upper = apply(time_sub_draws_full, 2, quantile, probs = 0.975, na.rm = TRUE)
+  ) %>%
+  dplyr::select(assay_temp, time_to_death, lower, upper)
+
+# =========================
+# Predictions: no-32 model
+# =========================
+lp_sub_no32 <- posterior_linpred(
+  fit_sublethal_no32,
+  newdata = temps_sub_df,
+  re_formula = NA
+)
+
+time_sub_draws_no32 <- 10^lp_sub_no32
+
+pred_df_tdt_sub_no32 <- temps_sub_df %>%
+  mutate(
+    time_to_death = apply(time_sub_draws_no32, 2, median, na.rm = TRUE),
+    lower = apply(time_sub_draws_no32, 2, quantile, probs = 0.025, na.rm = TRUE),
+    upper = apply(time_sub_draws_no32, 2, quantile, probs = 0.975, na.rm = TRUE)
+  ) %>%
+  dplyr::select(assay_temp, time_to_death, lower, upper)
+
+# =========================
+# Plot: linear scale
+# =========================
+p_sublethal_lin_compare <- ggplot() +
+  geom_jitter(
+    data = tdt_sub,
+    aes(x = assay_temp, y = time_to_death),
+    width = 0.05,
+    height = 0,
+    size = 3.5,
+    alpha = 0.22,
+    shape = 21,
+    colour = "white",
+    fill = "black"
+  ) +
+  geom_errorbar(
+    data = tdt_sub_sum,
+    aes(
+      x = assay_temp,
+      ymin = lower,
+      ymax = upper,
+    ),
+    width = 0.08,
+    linewidth = 0.8,
+    colour = "black"
+  ) +
+  geom_point(
+    data = tdt_sub_sum,
+    aes(x = assay_temp, y = median_time_to_death),
+    size = 3.2,
+    shape = 21,
+    stroke = 0.8,
+    colour = "white",
+    fill = "black"
+  ) +
+  geom_ribbon(
+    data = pred_df_tdt_sub_full,
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "black",
+    show.legend = FALSE
+  ) +
+  geom_ribbon(
+    data = pred_df_tdt_sub_no32,
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "black",
+    show.legend = FALSE
+  ) +
+  geom_line(
+    data = pred_df_tdt_sub_full,
+    aes(x = assay_temp, y = time_to_death),
+    linewidth = 1.6,
+    colour = "black"
+  ) +
+  geom_line(
+    data = pred_df_tdt_sub_no32,
+    aes(x = assay_temp, y = time_to_death),
+    linewidth = 1.2,
+    colour = "black",
+    linetype = "dashed"
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_continuous(breaks = ybreaks_left, labels = lab_number) +
+  coord_cartesian(
+    xlim = c(30.5, 34),
+    ylim = c(0.9, 480)
+  ) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to death (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+# =========================
+# Plot: log scale
+# =========================
+p_sublethal_log_compare <- ggplot() +
+  geom_jitter(
+    data = tdt_sub,
+    aes(x = assay_temp, y = time_to_death),
+    width = 0.05,
+    height = 0,
+    size = 3.5,
+    alpha = 0.22,
+    shape = 21,
+    colour = "white",
+    fill = "black"
+  ) +
+  geom_errorbar(
+    data = tdt_sub_sum,
+    aes(
+      x = assay_temp,
+      ymin = lower,
+      ymax = upper
+    ),
+    width = 0.08,
+    linewidth = 0.8,
+    colour = "black"
+  ) +
+  geom_point(
+    data = tdt_sub_sum,
+    aes(x = assay_temp, y = median_time_to_death),
+    size = 3.2,
+    shape = 21,
+    stroke = 0.8,
+    colour = "white",
+    fill = "black"
+  ) +
+  geom_ribbon(
+    data = pred_df_tdt_sub_full,
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "black",
+    show.legend = FALSE
+  ) +
+  geom_ribbon(
+    data = pred_df_tdt_sub_no32,
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "black",
+    show.legend = FALSE
+  ) +
+  geom_line(
+    data = pred_df_tdt_sub_full,
+    aes(x = assay_temp, y = time_to_death),
+    linewidth = 1.6,
+    colour = "black"
+  ) +
+  geom_line(
+    data = pred_df_tdt_sub_no32,
+    aes(x = assay_temp, y = time_to_death),
+    linewidth = 1.2,
+    colour = "black",
+    linetype = "dashed"
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+  coord_cartesian(
+    xlim = c(30.5, 34),
+    ylim = c(0.2, 480)
+  ) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = expression(log[10] * "(Time to death, min)")
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_sublethal_lin_compare + p_sublethal_log_compare + patchwork::plot_layout(ncol = 2))
+```
+
+
+
+## **Model comparisons**
+```{r}
+tdt_sub <- tdt_sub %>% 
+  mutate(ind_body_mass_c = scale(ind_body_mass, scale = F, center = T))
+
+# Starting time and temperature are highly colinear! 
+cor(tdt_sub$temp_c, tdt_sub$start_min_c)
+# r = 0.71
+
+## =========================================================
+## Formulas
+## =========================================================
+f_sub_base <- bf(
+  log10_time_to_death ~ temp_c + (1 | date_experiment) + (1 | tank_ID) + (1 | cup_ID)
+)
+
+f_sub_mort <- bf(
+  log10_time_to_death ~ temp_c + mortality_rate + (1 | date_experiment) + (1 | tank_ID) + (1 | cup_ID)
+)
+
+f_sub_mass <- bf(
+  log10_time_to_death ~ temp_c + ind_body_mass_c + (1 | date_experiment) + (1 | tank_ID) + (1 | cup_ID)
+)
+
+## =========================================================
+## Priors
+## =========================================================
+priors_sub <- c(
+  prior(normal(2, 1.5), class = "Intercept"),
+  prior(normal(-1, 1), class = "b", coef = "temp_c"),
+  prior(normal(0, 1), class = "b"),
+  prior(exponential(2), class = "sd"),
+  prior(exponential(2), class = "sigma")
+)
+
+## =========================================================
+## Fit models
+## =========================================================
+fit_sub_base <- brm(
+  formula = f_sub_base,
+  data = tdt_sub,
+  prior = priors_sub,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = 0,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+saveRDS(fit_sub_base, file = "Rdata/model_sublethal_TDT.RDS")
+
+## Mortality rate
+fit_sub_mort <- brm(
+  formula = f_sub_mort,
+  data = tdt_sub,
+  prior = priors_sub,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = 0,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+saveRDS(fit_sub_mort, file = "Rdata/model_sublethal_TDT_mortality_rate.RDS")
+
+## Body mass
+fit_sub_mass <- brm(
+  formula = f_sub_mass,
+  data = tdt_sub,
+  prior = priors_sub,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = 0,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+saveRDS(fit_sub_mass, file = "Rdata/model_sublethal_TDT_body_mass.RDS")
+
+## =========================================================
+## LOO
+## =========================================================
+loo_sub_base <- loo(fit_sub_base)
+loo_sub_mort <- loo(fit_sub_mort)
+loo_sub_mass <- loo(fit_sub_mass)
+
+loo_compare(
+  loo_sub_base,
+  loo_sub_mort) # Does not improve fit
+
+loo_compare(
+  loo_sub_base,
+  loo_sub_mass) # Does not improve fit
+
+# The simple model is the best, and most parsimonious fit to the data. 
+
+```
+
+## **Temperature-driven mortality**
+```{r}
+tdt_trial <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx", sheet = "SUBLETHAL_TDT_trial_data")
+
+tdt_trial <- tdt_trial %>%
+    filter(Exclude == "no") %>%
+    mutate(
+        assay_temp = as.numeric(Assay_temperature),
+        trial_ID = factor(Trial_ID), # Same levels as date_experiment
+        tank_ID = factor(Tank),
+        cup_ID = factor(paste0(Trial_ID, Sample)),
+        temp_c = assay_temp - temp_mean,
+        mortality_rate = Mortality_the_next_day,
+        n_ind = N_individuals_mortality,
+        n_dead = as.integer(n_ind * mortality_rate),
+        n_surv = n_ind - n_dead,
+        survival_rate = n_surv / n_ind) 
+
+
+f_sub_survival <- bf(n_surv | trials(n_ind) ~ temp_c + (1 | trial_ID) + (1 | tank_ID) + (1 | cup_ID)
+)
+
+priors_sub_survival <- c(
+  prior(normal(0, 1.5), class = "Intercept"),
+  prior(normal(-1, 1), class = "b", coef = "temp_c"),
+  prior(exponential(2), class = "sd")
+)
+
+fit_sub_survival  <- brm(
+  formula = f_sub_survival ,
+  data = tdt_trial,
+  prior = priors_sub_survival,
+  family = binomial(link = "logit"),
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = 0,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+saveRDS(fit_sub_survival, file = "Rdata/model_survival_sublethal_TDT.RDS")
+
+
+print(fit_sub_survival) 
+r2(fit_sub_survival)
+
+
+## =========================================================
+## Prediction grid on temp_c scale, then back-transform
+## =========================================================
+nd_surv <- data.frame(
+    temp_c = seq(
+        from = min(tdt_trial$temp_c, na.rm = TRUE),
+        to = max(tdt_trial$temp_c, na.rm = TRUE),
+        by = 0.001
+    )
+) %>%
+    mutate(
+        assay_temp = temp_c + temp_mean,
+        n_ind = as.integer(round(median(tdt_trial$n_ind, na.rm = TRUE))),
+        trial_ID = factor(levels(tdt_trial$trial_ID)[1], levels = levels(tdt_trial$trial_ID)),
+        tank_ID = factor(levels(tdt_trial$tank_ID)[1], levels = levels(tdt_trial$tank_ID)),
+        cup_ID = factor(levels(tdt_trial$cup_ID)[1], levels = levels(tdt_trial$cup_ID))
+    )
+
+## =========================================================
+## Posterior survival probability
+## =========================================================
+pr_surv <- posterior_linpred(
+    fit_sub_survival,
+    newdata = nd_surv,
+    re_formula = NA,
+    transform = TRUE
+)
+
+nd_surv$pred_mean <- apply(pr_surv, 2, median, na.rm = TRUE)
+nd_surv$pred_lo   <- apply(pr_surv, 2, quantile, probs = 0.025, na.rm = TRUE)
+nd_surv$pred_hi   <- apply(pr_surv, 2, quantile, probs = 0.975, na.rm = TRUE)
+
+## Optional sanity checks
+print(range(nd_surv$pred_mean, na.rm = TRUE))
+print(range(nd_surv$pred_lo, na.rm = TRUE))
+print(range(nd_surv$pred_hi, na.rm = TRUE))
+
+## =========================================================
+## Plot
+## =========================================================
+p_sub_survival <- ggplot(
+    nd_surv,
+    aes(x = assay_temp, y = pred_mean)
+) +
+    geom_ribbon(
+        aes(ymin = pred_lo, ymax = pred_hi),
+        alpha = 0.15,
+        colour = NA
+    ) +
+    geom_line(linewidth = 1.2) +
+    geom_jitter(
+        data = tdt_trial,
+        aes(x = assay_temp, y = survival_rate),
+        inherit.aes = FALSE,
+        width = 0.025,
+        height = 0.02,
+        size = 2.5,
+        alpha = 0.8
+    ) +
+    labs(
+        x = "Assay temperature (°C)",
+        y = "Predicted survival"
+    ) +
+    coord_cartesian(
+        xlim = range(tdt_trial$assay_temp, na.rm = TRUE),
+        ylim = c(0, 1.02)
+    ) +
+    theme_classic(base_size = 16)
+
+p_sub_survival
+```
+
+
+
+# **CTmax**
+
+## **Ramping rate** 
+
+```{r}
+# ========================
+# Fast ramping trials
+# ========================
+ctmax_trial <- read_excel(
+  "data/Data_Shrimp_TDT_CTmax_experiment.xlsx",
+  sheet = "CTMAX_ramping_data"
+)
+
+ctmax_trial <- ctmax_trial %>%
+  dplyr::mutate(
+    Time_min = as.numeric(Time_min),
+    Temperature = as.numeric(Temperature)
+  ) %>%
+  dplyr::filter(!is.na(Time_min), !is.na(Temperature))
+
+# Keep the per-trial ramping-rate calculation
+ramping_summary <- ctmax_trial %>%
+  dplyr::group_by(Trial_ID) %>%
+  dplyr::group_modify(~{
+    mod <- lm(Temperature ~ Time_min, data = .x)
+    coefs <- summary(mod)$coefficients
+    data.frame(
+      ramping_rate = coefs["Time_min", "Estimate"],
+      ramping_rate_se = coefs["Time_min", "Std. Error"],
+      r2 = summary(mod)$r.squared
+    )
+  }) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(ramping_rate > 0)
+
+ctmax_trial$group <- ifelse(
+  ctmax_trial$Trial_ID %in% c("CTmax_001", "CTmax_002", "CTmax_007"),
+  "~0.3 °C/min",
+  "~0.5 °C/min"
+)
+
+ctmax_trial_plot <- ctmax_trial %>%
+  dplyr::select(Trial_ID, group, Time_min, Temperature)
+
+# ========================
+# Slow warming rate data
+# ========================
+prog1 <- read_excel("data/Shrimp_slow_CTM_1_2025-06-23_18_29_12_CEST.xlsx")
+prog2 <- read_excel("data/Shrimp_slow_CTM_3&4_2025-06-25_17_44_50_CEST.xlsx")
+
+prog1 <- prog1[, -1]
+prog2 <- prog2[, -1]
+
+names(prog1)[1:2] <- c("datetime", "temp")
+names(prog2)[1:2] <- c("datetime", "temp")
+
+prog1 <- prog1 %>%
+  dplyr::mutate(
+    datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    temp = as.numeric(temp)
+  )
+
+prog2 <- prog2 %>%
+  dplyr::mutate(
+    datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    temp = as.numeric(temp)
+  )
+
+start_cutoff_prog1 <- as.POSIXct("2025-06-22 23:12:02", tz = "UTC")
+end_cutoff_prog1   <- as.POSIXct("2025-06-23 18:15:02", tz = "UTC")
+
+start_cutoff_prog2 <- as.POSIXct("2025-06-24 22:31:18", tz = "UTC")
+end_cutoff_prog2   <- as.POSIXct("2025-06-25 15:26:18", tz = "UTC")
+
+prog1 <- prog1 %>%
+  dplyr::filter(datetime >= start_cutoff_prog1,
+                datetime <= end_cutoff_prog1) %>%
+  dplyr::select(datetime, temp)
+
+prog2 <- prog2 %>%
+  dplyr::filter(datetime >= start_cutoff_prog2,
+                datetime <= end_cutoff_prog2) %>%
+  dplyr::select(datetime, temp)
+
+prog1$hours <- as.numeric(difftime(prog1$datetime, min(prog1$datetime), units = "hours"))
+prog2$hours <- as.numeric(difftime(prog2$datetime, min(prog2$datetime), units = "hours"))
+
+# Keep the slow-ramping model fits too
+mod_slow1 <- lm(temp ~ hours, data = prog1)
+mod_slow2 <- lm(temp ~ hours, data = prog2)
+
+slow_summary <- data.frame(
+  Trial_ID = c("CTmax_005 + CTmax_006", "CTmax_009 + CTmax_010"),
+  ramping_rate = c(coef(mod_slow1)[["hours"]], coef(mod_slow2)[["hours"]]),
+  ramping_rate_se = c(summary(mod_slow1)$coefficients["hours", "Std. Error"],
+                      summary(mod_slow2)$coefficients["hours", "Std. Error"]),
+  r2 = c(summary(mod_slow1)$r.squared, summary(mod_slow2)$r.squared)
+)
+
+# Convert hours to minutes for plotting alongside fast trials
+prog1_plot <- prog1 %>%
+  dplyr::mutate(
+    Trial_ID = "CTmax_005 + CTmax_006",
+    group = "~0.02 °C/min",
+    Time_min = hours * 60,
+    Temperature = temp
+  ) %>%
+  dplyr::select(Trial_ID, group, Time_min, Temperature)
+
+prog2_plot <- prog2 %>%
+  dplyr::mutate(
+    Trial_ID = "CTmax_009 + CTmax_010",
+    group = "~0.02 °C/min",
+    Time_min = hours * 60,
+    Temperature = temp
+  ) %>%
+  dplyr::select(Trial_ID, group, Time_min, Temperature)
+
+all_plot <- dplyr::bind_rows(
+  prog1_plot,
+  prog2_plot,
+  ctmax_trial_plot
+)
+
+all_plot$group <- factor(
+  all_plot$group,
+  levels = c("~0.02 °C/min", "~0.3 °C/min", "~0.5 °C/min")
+)
+
+ggplot(all_plot, aes(x = Time_min, y = Temperature)) +
+  geom_line(aes(group = Trial_ID), linewidth = 1.2, colour = "black", alpha = 0.9) +
+  facet_wrap(~ group, scales = "free_x", nrow = 1) +
+  labs(
+    x = "Time (min)",
+    y = expression(Temperature~(degree*C))
+  ) +
+  theme_classic(base_size = 16)
+```
+
+## **Data processing** 
+```{r}
+ctmax <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx",
+                sheet = "CTMAX")
+
+ctmax$Ramping_rate[ctmax$Ramping_rate < 0.1] <- 0.02
+
+
+ctmax <- ctmax %>%
+  dplyr::mutate(
+    Date_experiment = as.factor(as.Date(Date)),
+    Trial_ID = as.factor(Trial_ID),
+    Ramping = as.factor(Ramping_rate),
+    start_min = as.numeric(format(Starting_time, "%H")) * 60 +
+      as.numeric(format(Starting_time, "%M")) +
+      as.numeric(format(Starting_time, "%S")) / 60
+  ) %>%
+  dplyr::mutate(
+    start_min_c = as.numeric(scale(start_min, center = TRUE, scale = FALSE),
+    start_temp_c = as.numeric(scale(Starting_temperature, center = TRUE, scale = FALSE)))
+  )
+
+str(ctmax)
+
+# Combine with ramping rate data
+# Fast ramping rates from CTMAX_ramping_data
+ramping_summary_fast <- ctmax_trial %>%
+  dplyr::group_by(Trial_ID) %>%
+  dplyr::group_modify(~{
+    mod <- lm(Temperature ~ Time_min, data = .x)
+    coefs <- summary(mod)$coefficients
+    data.frame(
+      ramping_rate = coefs["Time_min", "Estimate"],
+      ramping_rate_se = coefs["Time_min", "Std. Error"]
+    )
+  }) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(ramping_rate > 0)
+
+# Slow ramping rates from prog1 / prog2
+ramping_summary_slow <- data.frame(
+  Trial_ID = c("CTmax_005", "CTmax_006", "CTmax_009", "CTmax_010"),
+  ramping_rate = c(
+    coef(mod_slow1)[["hours"]] / 60,
+    coef(mod_slow1)[["hours"]] / 60,
+    coef(mod_slow2)[["hours"]] / 60,
+    coef(mod_slow2)[["hours"]] / 60
+  ),
+  ramping_rate_se = c(
+    summary(mod_slow1)$coefficients["hours", "Std. Error"] / 60,
+    summary(mod_slow1)$coefficients["hours", "Std. Error"] / 60,
+    summary(mod_slow2)$coefficients["hours", "Std. Error"] / 60,
+    summary(mod_slow2)$coefficients["hours", "Std. Error"] / 60
+  )
+)
+
+# Combine fast + slow
+ramping_summary_all <- dplyr::bind_rows(
+  ramping_summary_fast,
+  ramping_summary_slow
+)
+
+# Join to ctmax
+ctmax$Trial_ID <- as.character(ctmax$Trial_ID)
+ramping_summary_all$Trial_ID <- as.character(ramping_summary_all$Trial_ID)
+
+ctmax <- ctmax %>%
+  dplyr::left_join(ramping_summary_all, by = "Trial_ID")
+
+# Quick check
+ctmax %>%
+  dplyr::group_by(Ramping) %>%
+  dplyr::summarise(
+    mean_ctmax = mean(CTmax, na.rm = TRUE),
+    sd_ctmax = sd(CTmax, na.rm = TRUE),
+    n = dplyr::n(),
+    .groups = "drop"
+  )
+
+# Ramping rate variation among trials
+ctmax %>%
+  dplyr::group_by(Ramping, Trial_ID) %>%
+  dplyr::summarise(
+    ramping_rate = mean(ramping_rate, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::group_by(Ramping) %>%
+  dplyr::summarise(
+    mean_ramp = mean(ramping_rate, na.rm = TRUE),
+    sd_ramp = sd(ramping_rate, na.rm = TRUE),
+    n = dplyr::n(),
+    .groups = "drop"
+  )
+
+# Starting temperature variation among trials
+ctmax %>%
+  dplyr::group_by(Ramping, Trial_ID) %>%
+  dplyr::summarise(
+    start_temp = mean(Starting_temperature, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::group_by(Ramping) %>%
+  dplyr::summarise(
+    mean_ramp = mean(start_temp, na.rm = TRUE),
+    sd_ramp = sd(start_temp, na.rm = TRUE),
+    n = dplyr::n(),
+    .groups = "drop"
+  )
+
+# =========================
+# Combine body mass and mortality data 
+# =========================
+ctmax_trial  <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx",
+                sheet = "CTMAX_trial_data") %>% 
+  dplyr::select(-Ramping_rate)
+
+ctmax <- left_join(ctmax, ctmax_trial, by = "Trial_ID")
+
+
+# =========================
+# Process other columns
+# =========================
+ctmax <- ctmax %>%
+  dplyr::mutate(
+    body_mass = Average_body_mass_individuals,
+    body_mass_c = scale(body_mass, scale = F),
+    mortality_rate = Mortality_the_next_day, 
+  )
+
+# Calculate deviation from the average ramping rate among replicates
+trial_ramping_dev <- ctmax %>%
+  dplyr::distinct(Ramping, Trial_ID, ramping_rate) %>%
+  dplyr::group_by(Ramping) %>%
+  dplyr::mutate(
+    mean_ramp_group = mean(ramping_rate, na.rm = TRUE),
+    ramping_dev = ramping_rate - mean_ramp_group
+  ) %>%
+  dplyr::ungroup()
+
+ctmax <- ctmax %>%
+  dplyr::left_join(
+    trial_ramping_dev %>%
+      dplyr::select(Trial_ID, mean_ramp_group, ramping_dev),
+    by = "Trial_ID"
+  )
+
+# ========================
+# Body mass summary
+# =======================
+
+ctmax %>% 
+  group_by(Ramping) %>% 
+  summarise(mean_body_mass = mean(body_mass),
+            sd_body_mass = sd(body_mass),
+            n = n())
+```
+
+
+## **Bayesian linear model**
+
+### **Model comparisons**
+
+```{r}
+# =========================
+# 2) Priors
+# =========================
+priors_ctmax <- c(
+  prior(normal(33, 3), class = "Intercept"),
+  prior(normal(0, 1), class = "b"),
+  prior(exponential(1), class = "sd"),
+  prior(exponential(1), class = "sigma")
+)
+
+# =========================
+# 3) Models
+# =========================
+
+# Base model
+fit_ctmax <- brm(
+  formula = CTmax ~ Ramping + (1 | Trial_ID) + (1 | Date_experiment),
+  data = ctmax,
+  prior = priors_ctmax,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  seed = 123,
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 15)
+)
+
+saveRDS(fit_ctmax, file = "Rdata/model_ctmax.RDS")
+
+
+# Model with start time
+fit_ctmax_time <- brm(
+  formula = CTmax ~ Ramping + start_min_c + (1 | Trial_ID) + (1 | Date_experiment),
+  data = ctmax,
+  prior = priors_ctmax,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  seed = 123,
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 15)
+)
+
+saveRDS(fit_ctmax_time, file = "Rdata/model_ctmax_start_time.RDS")
+
+# Model with body mass
+fit_ctmax_mass <- brm(
+  formula = CTmax ~ Ramping + body_mass_c + (1 | Trial_ID) + (1 | Date_experiment),
+  data = ctmax,
+  prior = priors_ctmax,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  seed = 123,
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 15)
+)
+
+saveRDS(fit_ctmax_mass, file = "Rdata/model_ctmax_body_mass.RDS")
+
+# Model with variation in ramping rate
+fit_ctmax_ramp <- brm(
+  formula = CTmax ~ Ramping + ramping_dev + (1 | Trial_ID) + (1 | Date_experiment),
+  data = ctmax,
+  prior = priors_ctmax,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  seed = 123,
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 15)
+)
+
+saveRDS(fit_ctmax_ramp, file = "Rdata/model_ctmax_ramping.RDS")
+
+
+# Model with mortality rate
+fit_ctmax_mortality <- brm(
+  formula = CTmax ~ Ramping + mortality_rate + (1 | Trial_ID) + (1 | Date_experiment),
+  data = ctmax,
+  prior = priors_ctmax,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  seed = 123,
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 15)
+)
+
+saveRDS(fit_ctmax_mortality, file = "Rdata/model_ctmax_mortality.RDS")
+
+# Model with observer
+fit_ctmax_observer <- brm(
+  formula = CTmax ~ Ramping + Observer + (1 | Trial_ID) + (1 | Date_experiment),
+  data = ctmax,
+  prior = priors_ctmax,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  seed = 123,
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 15)
+)
+
+saveRDS(fit_ctmax_observer, file = "Rdata/model_ctmax_observer.RDS")
+
+
+# Model with starting temperature
+fit_ctmax_start_temp <- brm(
+  formula = CTmax ~ Ramping + start_temp_c + (1 | Trial_ID) + (1 | Date_experiment),
+  data = ctmax,
+  prior = priors_ctmax,
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  seed = 123,
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 15)
+)
+
+saveRDS(fit_ctmax_start_temp, file = "Rdata/model_ctmax_start_temp.RDS")
+
+# =========================
+# 4) LOO
+# =========================
+loo_ctmax <- loo(fit_ctmax)
+loo_ctmax_time <- loo(fit_ctmax_time)
+loo_ctmax_mass <- loo(fit_ctmax_mass)
+loo_ctmax_ramp <- loo(fit_ctmax_ramp)
+loo_ctmax_mortality <- loo(fit_ctmax_mortality)
+loo_ctmax_observer <- loo(fit_ctmax_observer)
+loo_ctmax_start_temp <- loo(fit_ctmax_start_temp)
+
+
+loo_compare(loo_ctmax, loo_ctmax_time) # Base model is better 
+loo_compare(loo_ctmax, loo_ctmax_mass) # Model with body mass is slightly better, but not a big improvement to model fit --> keep parsimonious model
+loo_compare(loo_ctmax, loo_ctmax_ramp) # Base model is  better
+loo_compare(loo_ctmax, loo_ctmax_mortality) # Base model is better
+loo_compare(loo_ctmax, loo_ctmax_observer) # Base model is better
+loo_compare(loo_ctmax, loo_ctmax_start_temp) # Base model is better
+```
+
+### **Final model** 
+
+```{r}
+# =========================
+# 5) Summaries
+# =========================
+summary(fit_ctmax)
+
+posterior_summary(fit_ctmax, pars = c("^b_", "^sd_", "^sigma"))
+
+
+# =========================
+# 6) Newdata for posterior estimates
+# =========================
+nd_ctmax <- data.frame(
+  Ramping = factor(c("0.02", "0.3", "0.5"),
+                   levels = levels(ctmax$Ramping))
+)
+
+# posterior expected mean CTmax for each ramping rate
+post_ctmax <- posterior_epred(
+  fit_ctmax,
+  newdata = nd_ctmax,
+  re_formula = NA
+)
+
+# =========================
+# 7) Summary table of posterior mean and 95% CI
+# =========================
+post_summary <- data.frame(
+  Ramping = c("0.02", "0.3", "0.5"),
+  mean = apply(post_ctmax, 2, mean),
+  lwr = apply(post_ctmax, 2, quantile, probs = 0.025),
+  upr = apply(post_ctmax, 2, quantile, probs = 0.975)
+)
+
+post_summary$Ramping_num <- as.numeric(post_summary$Ramping)
+
+post_summary_print <- post_summary
+post_summary_print$mean <- round(post_summary_print$mean, 2)
+post_summary_print$lwr  <- round(post_summary_print$lwr, 2)
+post_summary_print$upr  <- round(post_summary_print$upr, 2)
+
+
+ft_ctmax <- flextable::flextable(
+  post_summary_print[, c("Ramping", "mean", "lwr", "upr")]
+)
+
+ft_ctmax <- flextable::set_header_labels(
+  ft_ctmax,
+  Ramping = "Ramping rate (°C/min)",
+  mean = "Posterior mean",
+  lwr = "Lower 95% CI",
+  upr = "Upper 95% CI"
+)
+
+flextable::autofit(ft_ctmax)
+
+
+# =========================
+# 7) Long dataframe of posterior draws for ggdist
+# =========================
+post_long <- data.frame(
+  Ramping = rep(c("0.02", "0.3", "0.5"), each = nrow(post_ctmax)),
+  CTmax_post = c(
+    post_ctmax[, 1],
+    post_ctmax[, 2],
+    post_ctmax[, 3]
+  )
+)
+
+post_long$Ramping_num <- as.numeric(post_long$Ramping)
+
+# =========================
+# 8) Plot
+# =========================
+ggplot() +
+
+  ggdist::stat_halfeye(
+    data = post_long,
+    aes(
+      x = Ramping_num,
+      y = CTmax_post,
+      group = Ramping,
+      fill = Ramping,
+      colour = Ramping
+    ),
+    point_interval = ggdist::mean_qi,
+    .width = 0.95,
+    adjust = 0.9,
+    width = 0.04,
+    size = 5,
+    slab_alpha = 0.3,
+    point_size = 4,
+    slab_colour = NA,
+    justification = -0.01,
+    position = position_nudge(x = 0.023)
+  ) +
+
+  geom_point(
+    data = ctmax,
+    aes(
+      x = as.numeric(as.character(Ramping)),
+      y = CTmax,
+      colour = factor(Ramping)
+    ),
+    position = position_jitter(width = 0.0075, height = 0),
+    alpha = 0.5,
+    size = 4,
+    shape = 1,
+    stroke = 1.2,
+    fill="white"
+  ) +
+
+  coord_cartesian(ylim = c(28, 35)) +
+
+  scale_x_continuous(
+    breaks = c(0.02, 0.3, 0.5),
+    labels = c("0.02", "0.3", "0.5")
+  ) +
+
+  scale_fill_manual(
+    values = c("0.02" = "#7e03a8",
+               "0.3" = "#cc4778",
+               "0.5" = "#f89540"),
+    guide = "none"
+  ) +
+
+  scale_colour_manual(
+    values = c("0.02" = "#7e03a8",
+               "0.3" = "#cc4778",
+               "0.5" = "#f89540"),
+    guide = "none"
+  ) +
+
+  labs(
+    x = "Ramping rate (°C/min)",
+    y = "Critical thermal maximum (°C)"
+  ) +
+  base_theme +
+  theme(
+    axis.line = element_blank(),
+    panel.border = element_rect(fill = NA, colour = "black", linewidth = 2.5)
+  )
+
+ggsave(file = "fig/CTmax.png", width = 8, height = 6, dpi = 500)
+```
+
+
+## Test CTmax assumptions
+
+```{r}
+# =========================================================
+# CTmax-TDT conversion using posterior draws from:
+# 1) fit_sublethal_tdt -> z uncertainty
+# 2) fit_ctmax   -> CTmax uncertainty at each ramping rate
+
+# =========================================================
+
+# =========================================================
+# 1) Settings
+# =========================================================
+To <- 17.5 # Starting temperature
+Tc <- 26 # Assume damage starts accumulate above 26 degrees
+tLs <- 60 # 1 hour
+n_iter <- 1000
+set.seed(123)
+
+# =========================================================
+# 2) Helper function
+# =========================================================
+pred_dCTmax_fun <- function(ramprate, tLs, sCTmax, z, To, Tc)
+{
+  inside <- (log(10) * ramprate * tLs / z) *
+    exp((log(10) / z) * (sCTmax - To)) +
+    exp((log(10) / z) * (Tc - To))
+
+  out <- rep(NA_real_, length(ramprate))
+  ok <- is.finite(inside) & inside > 0
+
+  out[ok] <- To + (z / log(10)) * log(inside[ok])
+
+  out
+}
+
+# objective function for one posterior draw
+# uses posterior-estimated CTmax values at the 4 ramping rates
+obj_sCTmax_fun <- function(sCTmax, obs_ctmax, ramprates, tLs, z, To, Tc)
+{
+  pred <- pred_dCTmax_fun(
+    ramprate = ramprates,
+    tLs = tLs,
+    sCTmax = sCTmax,
+    z = z,
+    To = To,
+    Tc = Tc
+  )
+
+  if(any(!is.finite(pred)))
+  {
+    return(1e12)
+  }
+
+  sum((obs_ctmax - pred)^2)
+}
+
+# =========================================================
+# 3) Extract posterior draws of z from fit_sublethal_tdt
+# z = -1 / slope
+# =========================================================
+draws_sub <- as.data.frame(posterior::as_draws_df(fit_sublethal_tdt))
+
+z_draws_all <- draws_sub %>%
+  dplyr::transmute(
+    z = -1 / b_temp_c
+  ) %>%
+  dplyr::filter(
+    is.finite(z),
+    z > 0
+  )
+
+if(nrow(z_draws_all) == 0)
+{
+  stop("No valid posterior draws of z were found.")
+}
+
+# =========================================================
+# 4) Posterior draws of CTmax from fit_ctmax
+# population-level fitted values at the 3 ramping rates
+# =========================================================
+target_ramps_num <- c(0.02, 0.3, 0.5)
+target_ramps_chr <- c("0.02", "0.3", "0.5")
+
+nd_ctmax <- data.frame(
+  Ramping = factor(target_ramps_chr, levels = levels(ctmax$Ramping)),
+  start_min_c = median(ctmax$start_min_c, na.rm = TRUE),
+  Trial_ID = factor(
+    levels(ctmax$Trial_ID)[1],
+    levels = levels(ctmax$Trial_ID)
+  )
+)
+
+# posterior expected CTmax for each ramping rate
+# dimensions: draws x 4
+post_ctmax <- posterior_epred(
+  fit_ctmax,
+  newdata = nd_ctmax,
+  re_formula = NA
+)
+
+# =========================================================
+# 5) Build long posterior data for half-eye plot
+# =========================================================
+post_long <- data.frame(
+  Ramping = rep(target_ramps_chr, each = nrow(post_ctmax)),
+  CTmax_post = c(
+    post_ctmax[, 1],
+    post_ctmax[, 2],
+    post_ctmax[, 3]  
+    )
+)
+
+post_long$Ramping_num <- as.numeric(post_long$Ramping)
+
+# =========================================================
+# 6) Sample matched posterior iterations
+# one z draw + one CTmax posterior draw per iteration
+# =========================================================
+n_iter_use <- min(n_iter, nrow(z_draws_all), nrow(post_ctmax))
+
+z_idx <- sample(seq_len(nrow(z_draws_all)), size = n_iter_use, replace = FALSE)
+ctmax_idx <- sample(seq_len(nrow(post_ctmax)), size = n_iter_use, replace = FALSE)
+
+iter_df <- data.frame(
+  iter = seq_len(n_iter_use),
+  z = z_draws_all$z[z_idx],
+  ctmax_002 = post_ctmax[ctmax_idx, 1],
+  ctmax_03 = post_ctmax[ctmax_idx, 2],
+  ctmax_05 = post_ctmax[ctmax_idx, 3]
+)
+
+# =========================================================
+# 7) For each iteration, estimate sCTmax
+# from that iteration's posterior CTmax values
+# =========================================================
+ramprates_fit <- c(0.02, 0.3, 0.5)
+
+fit_list <- vector("list", nrow(iter_df))
+
+for(i in seq_len(nrow(iter_df)))
+{
+  if(i %% 100 == 0) cat("Processed", i, "of", nrow(iter_df), "iterations\n")
+
+  obs_ctmax_i <- c(
+    iter_df$ctmax_002[i],
+    iter_df$ctmax_03[i],
+    iter_df$ctmax_05[i]
+  )
+
+  fit_try <- try(
+    optimize(
+      f = obj_sCTmax_fun,
+      interval = c(30, 50),
+      obs_ctmax = obs_ctmax_i,
+      ramprates = ramprates_fit,
+      tLs = tLs,
+      z = iter_df$z[i],
+      To = To,
+      Tc = Tc
+    ),
+    silent = TRUE
+  )
+
+  if(inherits(fit_try, "try-error"))
+  {
+    fit_list[[i]] <- data.frame(
+      iter = i,
+      z = iter_df$z[i],
+      sCTmax = NA_real_,
+      converged = FALSE
+    )
+  } else {
+    fit_list[[i]] <- data.frame(
+      iter = i,
+      z = iter_df$z[i],
+      sCTmax = fit_try$minimum,
+      converged = TRUE
+    )
+  }
+}
+
+scenario_fits <- do.call(rbind, fit_list) %>%
+  dplyr::filter(converged, is.finite(sCTmax), is.finite(z))
+
+if(nrow(scenario_fits) == 0)
+{
+  stop("All sCTmax optimisation attempts failed.")
+}
+
+# =========================================================
+# 8) Summaries of propagated parameters
+# =========================================================
+fit_summary <- data.frame(
+  t_coma = tLs,
+  To = To,
+  Tc = Tc,
+  n_iter = nrow(scenario_fits),
+  z_median = median(scenario_fits$z, na.rm = TRUE),
+  z_lower = quantile(scenario_fits$z, 0.025, na.rm = TRUE),
+  z_upper = quantile(scenario_fits$z, 0.975, na.rm = TRUE),
+  sCTmax_median = median(scenario_fits$sCTmax, na.rm = TRUE),
+  sCTmax_lower = quantile(scenario_fits$sCTmax, 0.025, na.rm = TRUE),
+  sCTmax_upper = quantile(scenario_fits$sCTmax, 0.975, na.rm = TRUE)
+)
+
+print(fit_summary)
+
+# =========================================================
+# 9) Build posterior predictive CTmax curves
+# =========================================================
+ramp_grid <- data.frame(
+  ramprate = seq(0.001, 0.70, length.out = 500)
+)
+
+pred_draw_list <- vector("list", nrow(scenario_fits))
+
+for(i in seq_len(nrow(scenario_fits)))
+{
+  pred_draw_list[[i]] <- data.frame(
+    iter = scenario_fits$iter[i],
+    ramprate = ramp_grid$ramprate,
+    CTmax_pred = pred_dCTmax_fun(
+      ramprate = ramp_grid$ramprate,
+      tLs = tLs,
+      sCTmax = scenario_fits$sCTmax[i],
+      z = scenario_fits$z[i],
+      To = To,
+      Tc = Tc
+    )
+  )
+}
+
+pred_curves_draws <- do.call(rbind, pred_draw_list)
+
+pred_curves_sum <- pred_curves_draws %>%
+  dplyr::group_by(ramprate) %>%
+  dplyr::summarise(
+    median = median(CTmax_pred, na.rm = TRUE),
+    lower = quantile(CTmax_pred, 0.025, na.rm = TRUE),
+    upper = quantile(CTmax_pred, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# =========================================================
+# 10) Raw CTmax data for plotting
+# =========================================================
+ctmax_plot <- ctmax %>%
+  dplyr::filter(!is.na(CTmax), !is.na(Ramping)) %>%
+  dplyr::mutate(
+    Ramping_num = as.numeric(as.character(Ramping))
+  )
+
+# =========================================================
+# 11) Plot
+# =========================================================
+p_tdt_compare <- ggplot() +
+  
+  geom_ribbon(
+    data = pred_curves_sum,
+    aes(
+      x = ramprate,
+      ymin = lower,
+      ymax = upper
+    ),
+    inherit.aes = FALSE,
+    fill = "black",
+    alpha = 0.14
+  ) +
+
+  geom_line(
+    data = pred_curves_sum,
+    aes(
+      x = ramprate,
+      y = median
+    ),
+    inherit.aes = FALSE,
+    linewidth = 1.4,
+    colour = "black"
+  ) +
+
+  ggdist::stat_halfeye(
+    data = post_long,
+    aes(
+      x = Ramping_num,
+      y = CTmax_post,
+      group = Ramping,
+      fill = Ramping,
+      colour = Ramping
+    ),
+    point_interval = ggdist::mean_qi,
+    .width = 0.95,
+    adjust = 0.9,
+    width = 0.04,
+    size = 5,
+    slab_alpha = 0.3,
+    point_size = 4,
+    slab_colour = NA,
+    justification = -0.01,
+    position = position_nudge(x = 0.023)
+  ) +
+
+  geom_point(
+    data = ctmax_plot,
+    aes(
+      x = Ramping_num,
+      y = CTmax,
+      fill= factor(Ramping)
+    ),
+    position = position_jitter(width = 0.008, height = 0.001),
+    alpha = 0.9,
+    size = 4,
+    stroke = 1,
+    col = "white",
+    shape = 21,
+  ) +
+
+  coord_cartesian(
+    ylim = c(28, 35),
+    xlim = c(0, 0.60)
+  ) +
+
+  scale_x_continuous(
+    breaks = c(0.02, 0.3, 0.5),
+    labels = c("0.02", "0.3", "0.5")
+  ) +
+
+  scale_fill_manual(
+    values = c(
+      "0.02" = "#7e03a8",
+      "0.3" = "#cc4778",
+      "0.5" = "#f89540"
+    ),
+    guide = "none"
+  ) +
+
+  scale_colour_manual(
+    values = c(
+      "0.02" = "#7e03a8",
+      "0.3" = "#cc4778",
+      "0.5" = "#f89540"
+    ),
+    guide = "none"
+  ) +
+
+  labs(
+    x = "Ramping rate (°C/min)",
+    y = "Critical thermal maximum (°C)"
+  ) +
+  base_theme +
+  theme(
+    axis.line = element_blank(),
+    panel.border = element_rect(fill = NA, colour = "black", linewidth = 2.5)
+  )
+
+print(p_tdt_compare)
+
+ggsave(
+  file = "fig/CTmax_vs_TDT_predictions_with_propagated_uncertainty.png",
+  plot = p_tdt_compare,
+  width = 9,
+  height = 6,
+  dpi = 500
+)
+```
+
+
+### **Estimate z from ramping rate data** 
+
+#### Using code from Jorgensen et al.
+```{r}
+
+# =========================================================
+# 1) Inputs
+# =========================================================
+t_coma <- c(1, 10, 60)
+extra_sCTmax <- c(31, 32, 33, 34)
+extra_ramprates <- c(0.001, 0.01, 0.1, 1)
+
+Tc <- 26
+To <- 17.5
+
+# =========================================================
+# 2) Build summary dynamic data
+# =========================================================
+dynamic <- ctmax %>%
+  dplyr::group_by(Ramping) %>%
+  dplyr::summarise(
+    dCTmax = mean(CTmax, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    ramprate = as.numeric(as.character(Ramping)),
+    group = "all"
+  )
+
+# =========================================================
+# 3) Core prediction function
+# =========================================================
+pred_dCTmax_fun <- function(ramprate, tLs, sCTmax, z, To, Tc)
+{
+  To + (z / log(10)) * log(
+    (log(10) * ramprate * tLs / z) *
+      exp((log(10) / z) * (sCTmax - To)) +
+      exp((log(10) / z) * (Tc - To))
+  )
+}
+
+# =========================================================
+# 4) Original nls() check
+# =========================================================
+
+dtmp <- dynamic
+ramprates <- unique(dtmp$ramprate)
+
+nls_check_results <- data.frame(
+  t_coma = t_coma,
+  sCTmax_pred = NA_real_,
+  z_pred = NA_real_,
+  status = NA_character_
+)
+
+for(j in seq_along(t_coma))
+{
+  tLs <- t_coma[j]
+
+  fit_try <- try(
+    nls(
+      dCTmax ~ To + (z / log(10)) * log(
+        (log(10) * ramprate * tLs / z) *
+          exp((log(10) / z) * (sCTmax - To)) +
+          exp((log(10) / z) * (Tc - To))
+      ),
+      start = list(sCTmax = 31.5, z = 1.06),
+      data = dtmp
+    ),
+    silent = TRUE
+  )
+
+  if(inherits(fit_try, "try-error"))
+  {
+    err_msg <- as.character(fit_try)
+    nls_check_results$status[j] <- err_msg
+    cat("\nOriginal nls failed for t_coma =", tLs, "\n")
+    cat(err_msg, "\n")
+  } else {
+    nls_check_results$sCTmax_pred[j] <- as.numeric(fit_try$m$getPars()[1])
+    nls_check_results$z_pred[j] <- as.numeric(fit_try$m$getPars()[2])
+    nls_check_results$status[j] <- "ok"
+
+    cat("\nOriginal nls succeeded for t_coma =", tLs, "\n")
+    cat("  sCTmax =", nls_check_results$sCTmax_pred[j], "\n")
+    cat("  z =", nls_check_results$z_pred[j], "\n")
+  }
+} # Pretty close to z estimated from the data! 
+```
+
+
+#### Bayesian model adaptation
+```{r}
+
+# =========================================================
+# Bayesian adaptation of Jorgensen et al. for brown shrimp
+# using:
+#   - fit_sublethal_tdt
+#   - fit_ctmax
+# and propagating uncertainty in both directions
+# =========================================================
+
+# =========================================================
+# 1) Settings
+# =========================================================
+To <- 17.5
+Tc <- 26
+t_coma <- c(1, 10, 30, 60, 120, 240, 480)
+tLs_plot <- 60
+n_iter <- 1000
+set.seed(123)
+
+target_ramps_num <- c(0.02, 0.3, 0.5)
+target_ramps_chr <- c("0.02", "0.3", "0.5")
+
+# =========================================================
+# 2) Helper function: Jorgensen dynamic prediction
+# =========================================================
+pred_dCTmax_fun <- function(ramprate, tLs, sCTmax, z, To, Tc)
+{
+  inside <- (log(10) * ramprate * tLs / z) *
+    exp((log(10) / z) * (sCTmax - To)) +
+    exp((log(10) / z) * (Tc - To))
+  
+  out <- rep(NA_real_, length(ramprate))
+  ok <- is.finite(inside) & inside > 0
+  
+  out[ok] <- To + (z / log(10)) * log(inside[ok])
+  out
+}
+
+# =========================================================
+# 3) nls helpers
+# =========================================================
+fit_nls_fixed_z <- function(obs_ctmax, ramprates, tLs, z, To, Tc)
+{
+  dtmp <- data.frame(
+    dCTmax = obs_ctmax,
+    ramprate = ramprates
+  )
+  
+  start_vals <- c(max(obs_ctmax, na.rm = TRUE) + 0.25,
+                  max(obs_ctmax, na.rm = TRUE) + 0.75,
+                  35)
+  
+  for(s0 in start_vals)
+  {
+    fit_try <- try(
+      nls(
+        dCTmax ~ To + (z / log(10)) * log(
+          (log(10) * ramprate * tLs / z) *
+            exp((log(10) / z) * (sCTmax - To)) +
+            exp((log(10) / z) * (Tc - To))
+        ),
+        start = list(sCTmax = s0),
+        data = dtmp,
+        control = nls.control(
+          maxiter = 1000,
+          warnOnly = TRUE
+        )
+      ),
+      silent = TRUE
+    )
+    
+    if(!inherits(fit_try, "try-error"))
+    {
+      s_est <- as.numeric(coef(fit_try)[["sCTmax"]])
+      if(is.finite(s_est))
+      {
+        return(list(
+          converged = TRUE,
+          sCTmax = s_est
+        ))
+      }
+    }
+  }
+  
+  list(
+    converged = FALSE,
+    sCTmax = NA_real_
+  )
+}
+
+fit_nls_joint <- function(obs_ctmax, ramprates, tLs, To, Tc)
+{
+  dtmp <- data.frame(
+    dCTmax = obs_ctmax,
+    ramprate = ramprates
+  )
+  
+  start_grid <- expand.grid(
+    sCTmax = c(max(obs_ctmax, na.rm = TRUE) + 0.25, 32, 35),
+    z = c(0.7, 1.0, 1.5, 2.5)
+  )
+  
+  for(k in seq_len(nrow(start_grid)))
+  {
+    fit_try <- try(
+      nls(
+        dCTmax ~ To + (z / log(10)) * log(
+          (log(10) * ramprate * tLs / z) *
+            exp((log(10) / z) * (sCTmax - To)) +
+            exp((log(10) / z) * (Tc - To))
+        ),
+        start = list(
+          sCTmax = start_grid$sCTmax[k],
+          z = start_grid$z[k]
+        ),
+        data = dtmp,
+        control = nls.control(
+          maxiter = 1000,
+          warnOnly = TRUE
+        )
+      ),
+      silent = TRUE
+    )
+    
+    if(!inherits(fit_try, "try-error"))
+    {
+      pars <- coef(fit_try)
+      s_est <- as.numeric(pars[["sCTmax"]])
+      z_est <- as.numeric(pars[["z"]])
+      
+      if(is.finite(s_est) && is.finite(z_est) && z_est > 0)
+      {
+        return(list(
+          converged = TRUE,
+          sCTmax = s_est,
+          z = z_est
+        ))
+      }
+    }
+  }
+  
+  list(
+    converged = FALSE,
+    sCTmax = NA_real_,
+    z = NA_real_
+  )
+}
+
+# =========================================================
+# 4) Posterior draws from sublethal TDT model
+# model: log10_time_to_death ~ temp_c + ...
+# hence z = -1 / slope
+# =========================================================
+draws_sub <- as.data.frame(posterior::as_draws_df(fit_sublethal_tdt))
+
+if(!("b_temp_c" %in% names(draws_sub)))
+{
+  stop("Could not find 'b_temp_c' in fit_sublethal_tdt posterior draws.")
+}
+
+z_draws_all <- draws_sub %>%
+  dplyr::transmute(
+    z = -1 / b_temp_c
+  ) %>%
+  dplyr::filter(
+    is.finite(z),
+    z > 0
+  )
+
+if(nrow(z_draws_all) == 0)
+{
+  stop("No valid posterior draws of z were found from fit_sublethal_tdt.")
+}
+
+# =========================================================
+# 5) Posterior TDT predictions directly from fit_sublethal_tdt
+# this is the sublethal TDT ribbon for plot 1
+# =========================================================
+temps_sub_df <- data.frame(
+  assay_temp = seq(30.5, 34, by = 0.01)
+) %>%
+  dplyr::mutate(
+    temp_c = assay_temp - temp_mean,
+    date_experiment = factor(
+      levels(tdt_sub$date_experiment)[1],
+      levels = levels(tdt_sub$date_experiment)
+    ),
+    tank_ID = factor(
+      levels(tdt_sub$tank_ID)[1],
+      levels = levels(tdt_sub$tank_ID)
+    ),
+    cup_ID = factor(
+      levels(tdt_sub$cup_ID)[1],
+      levels = levels(tdt_sub$cup_ID)
+    )
+  )
+
+lp_sub <- posterior_linpred(
+  fit_sublethal_tdt,
+  newdata = temps_sub_df,
+  re_formula = NA
+)
+
+# lp_sub is on log10(minutes) scale
+sublethal_tdt_draws <- do.call(
+  rbind,
+  lapply(seq_len(nrow(lp_sub)), function(i) {
+    data.frame(
+      iter = i,
+      assay_temp = temps_sub_df$assay_temp,
+      log10_time = lp_sub[i, ],
+      time_min = 10^lp_sub[i, ],
+      source = "Sublethal TDT"
+    )
+  })
+)
+
+sublethal_tdt_sum <- sublethal_tdt_draws %>%
+  dplyr::group_by(assay_temp, source) %>%
+  dplyr::summarise(
+    median_log10 = median(log10_time, na.rm = TRUE),
+    lower_log10 = quantile(log10_time, 0.025, na.rm = TRUE),
+    upper_log10 = quantile(log10_time, 0.975, na.rm = TRUE),
+    median_time = median(time_min, na.rm = TRUE),
+    lower_time = quantile(time_min, 0.025, na.rm = TRUE),
+    upper_time = quantile(time_min, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# =========================================================
+# 6) Posterior expected CTmax from fit_ctmax
+# =========================================================
+nd_ctmax <- data.frame(
+  Ramping = factor(target_ramps_chr, levels = levels(ctmax$Ramping))
+)
+
+post_ctmax <- posterior_epred(
+  fit_ctmax,
+  newdata = nd_ctmax,
+  re_formula = NA
+)
+
+if(ncol(post_ctmax) != length(target_ramps_num))
+{
+  stop("Unexpected number of columns in post_ctmax.")
+}
+
+post_long <- data.frame(
+  Ramping = rep(target_ramps_chr, each = nrow(post_ctmax)),
+  CTmax_post = c(
+    post_ctmax[, 1],
+    post_ctmax[, 2],
+    post_ctmax[, 3]
+  )
+)
+
+post_long$Ramping_num <- as.numeric(post_long$Ramping)
+
+# =========================================================
+# 7) Match posterior iterations
+# =========================================================
+n_iter_use <- min(n_iter, nrow(z_draws_all), nrow(post_ctmax))
+
+z_idx <- sample(seq_len(nrow(z_draws_all)), size = n_iter_use, replace = FALSE)
+ctmax_idx <- sample(seq_len(nrow(post_ctmax)), size = n_iter_use, replace = FALSE)
+
+iter_df <- data.frame(
+  iter = seq_len(n_iter_use),
+  z_sub = z_draws_all$z[z_idx],
+  ctmax_002 = post_ctmax[ctmax_idx, 1],
+  ctmax_03 = post_ctmax[ctmax_idx, 2],
+  ctmax_05 = post_ctmax[ctmax_idx, 3]
+)
+
+ramprates_fit <- target_ramps_num
+
+# =========================================================
+# 8) Forward branch:
+# sublethal TDT -> dynamic CTmax
+# fixed z from fit_sublethal_tdt, estimate sCTmax for each t_coma
+# =========================================================
+forward_fit_list <- vector("list", nrow(iter_df) * length(t_coma))
+counter <- 1
+
+for(i in seq_len(nrow(iter_df)))
+{
+  if(i %% 100 == 0) cat("Forward branch:", i, "of", nrow(iter_df), "\n")
+  
+  obs_ctmax_i <- c(
+    iter_df$ctmax_002[i],
+    iter_df$ctmax_03[i],
+    iter_df$ctmax_05[i]
+  )
+  
+  for(j in seq_along(t_coma))
+  {
+    tLs_j <- t_coma[j]
+    
+    fit_out <- fit_nls_fixed_z(
+      obs_ctmax = obs_ctmax_i,
+      ramprates = ramprates_fit,
+      tLs = tLs_j,
+      z = iter_df$z_sub[i],
+      To = To,
+      Tc = Tc
+    )
+    
+    forward_fit_list[[counter]] <- data.frame(
+      iter = iter_df$iter[i],
+      t_coma = tLs_j,
+      z = iter_df$z_sub[i],
+      sCTmax_pred = fit_out$sCTmax,
+      converged = fit_out$converged
+    )
+    
+    counter <- counter + 1
+  }
+}
+
+forward_fits <- do.call(rbind, forward_fit_list) %>%
+  dplyr::filter(converged, is.finite(z), is.finite(sCTmax_pred))
+
+if(nrow(forward_fits) == 0)
+{
+  stop("All forward fits failed.")
+}
+
+forward_summary <- forward_fits %>%
+  dplyr::group_by(t_coma) %>%
+  dplyr::summarise(
+    n_iter = dplyr::n(),
+    z_median = median(z, na.rm = TRUE),
+    z_lower = quantile(z, 0.025, na.rm = TRUE),
+    z_upper = quantile(z, 0.975, na.rm = TRUE),
+    sCTmax_median = median(sCTmax_pred, na.rm = TRUE),
+    sCTmax_lower = quantile(sCTmax_pred, 0.025, na.rm = TRUE),
+    sCTmax_upper = quantile(sCTmax_pred, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(forward_summary)
+
+# dynamic CTmax ribbon from sublethal TDT branch
+ramp_grid <- data.frame(
+  ramprate = seq(0.001, 0.70, length.out = 500)
+)
+
+forward_plot_fits <- forward_fits %>%
+  dplyr::filter(t_coma == tLs_plot)
+
+forward_curve_draws <- do.call(
+  rbind,
+  lapply(seq_len(nrow(forward_plot_fits)), function(i) {
+    data.frame(
+      iter = forward_plot_fits$iter[i],
+      ramprate = ramp_grid$ramprate,
+      CTmax_pred = pred_dCTmax_fun(
+        ramprate = ramp_grid$ramprate,
+        tLs = tLs_plot,
+        sCTmax = forward_plot_fits$sCTmax_pred[i],
+        z = forward_plot_fits$z[i],
+        To = To,
+        Tc = Tc
+      ),
+      source = "Sublethal TDT"
+    )
+  })
+)
+
+forward_curve_sum <- forward_curve_draws %>%
+  dplyr::group_by(ramprate, source) %>%
+  dplyr::summarise(
+    median = median(CTmax_pred, na.rm = TRUE),
+    lower = quantile(CTmax_pred, 0.025, na.rm = TRUE),
+    upper = quantile(CTmax_pred, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# =========================================================
+# 9) Inverse branch:
+# dynamic CTmax -> TDT
+# estimate both z and sCTmax for each t_coma, then fit TDT line
+# =========================================================
+inverse_fit_list <- vector("list", nrow(iter_df) * length(t_coma))
+counter <- 1
+
+for(i in seq_len(nrow(iter_df)))
+{
+  if(i %% 100 == 0) cat("Inverse branch:", i, "of", nrow(iter_df), "\n")
+  
+  obs_ctmax_i <- c(
+    iter_df$ctmax_002[i],
+    iter_df$ctmax_03[i],
+    iter_df$ctmax_05[i]
+  )
+  
+  for(j in seq_along(t_coma))
+  {
+    tLs_j <- t_coma[j]
+    
+    fit_out <- fit_nls_joint(
+      obs_ctmax = obs_ctmax_i,
+      ramprates = ramprates_fit,
+      tLs = tLs_j,
+      To = To,
+      Tc = Tc
+    )
+    
+    inverse_fit_list[[counter]] <- data.frame(
+      iter = iter_df$iter[i],
+      t_coma = tLs_j,
+      z_pred = fit_out$z,
+      sCTmax_pred = fit_out$sCTmax,
+      converged = fit_out$converged
+    )
+    
+    counter <- counter + 1
+  }
+}
+
+inverse_fits <- do.call(rbind, inverse_fit_list) %>%
+  dplyr::filter(converged, is.finite(z_pred), z_pred > 0, is.finite(sCTmax_pred))
+
+if(nrow(inverse_fits) == 0)
+{
+  stop("All inverse fits failed.")
+}
+
+inverse_summary <- inverse_fits %>%
+  dplyr::group_by(t_coma) %>%
+  dplyr::summarise(
+    n_iter = dplyr::n(),
+    z_median = median(z_pred, na.rm = TRUE),
+    z_lower = quantile(z_pred, 0.025, na.rm = TRUE),
+    z_upper = quantile(z_pred, 0.975, na.rm = TRUE),
+    sCTmax_median = median(sCTmax_pred, na.rm = TRUE),
+    sCTmax_lower = quantile(sCTmax_pred, 0.025, na.rm = TRUE),
+    sCTmax_upper = quantile(sCTmax_pred, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(inverse_summary)
+
+# Reconstruct TDT line within each posterior draw
+inverse_tdt_draws <- do.call(
+  rbind,
+  lapply(seq_len(n_iter_use), function(i) {
+    tmp_i <- inverse_fits %>%
+      dplyr::filter(iter == i) %>%
+      dplyr::arrange(t_coma)
+    
+    if(nrow(tmp_i) < 2)
+    {
+      return(NULL)
+    }
+    
+    tdt_lm <- lm(log10(t_coma) ~ sCTmax_pred, data = tmp_i)
+    
+    pred_log10 <- predict(
+      tdt_lm,
+      newdata = data.frame(sCTmax_pred = temps_sub_df$assay_temp)
+    )
+    
+    data.frame(
+      iter = i,
+      assay_temp = temps_sub_df$assay_temp,
+      log10_time = pred_log10,
+      time_min = 10^pred_log10,
+      source = "Derived from ramping"
+    )
+  })
+)
+
+if(is.null(inverse_tdt_draws) || nrow(inverse_tdt_draws) == 0)
+{
+  stop("No ramp-derived TDT lines could be reconstructed.")
+}
+
+inverse_tdt_sum <- inverse_tdt_draws %>%
+  dplyr::group_by(assay_temp, source) %>%
+  dplyr::summarise(
+    median_log10 = median(log10_time, na.rm = TRUE),
+    lower_log10 = quantile(log10_time, 0.025, na.rm = TRUE),
+    upper_log10 = quantile(log10_time, 0.975, na.rm = TRUE),
+    median_time = median(time_min, na.rm = TRUE),
+    lower_time = quantile(time_min, 0.025, na.rm = TRUE),
+    upper_time = quantile(time_min, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# dynamic CTmax ribbon from ramp-derived TDT branch
+inverse_plot_fits <- inverse_fits %>%
+  dplyr::filter(t_coma == tLs_plot)
+
+inverse_curve_draws <- do.call(
+  rbind,
+  lapply(seq_len(nrow(inverse_plot_fits)), function(i) {
+    data.frame(
+      iter = inverse_plot_fits$iter[i],
+      ramprate = ramp_grid$ramprate,
+      CTmax_pred = pred_dCTmax_fun(
+        ramprate = ramp_grid$ramprate,
+        tLs = tLs_plot,
+        sCTmax = inverse_plot_fits$sCTmax_pred[i],
+        z = inverse_plot_fits$z_pred[i],
+        To = To,
+        Tc = Tc
+      ),
+      source = "Derived from ramping"
+    )
+  })
+)
+
+inverse_curve_sum <- inverse_curve_draws %>%
+  dplyr::group_by(ramprate, source) %>%
+  dplyr::summarise(
+    median = median(CTmax_pred, na.rm = TRUE),
+    lower = quantile(CTmax_pred, 0.025, na.rm = TRUE),
+    upper = quantile(CTmax_pred, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# =========================================================
+# 10) Combine for plotting
+# =========================================================
+tdt_compare_sum <- dplyr::bind_rows(
+  sublethal_tdt_sum,
+  inverse_tdt_sum
+)
+
+ctmax_compare_sum <- dplyr::bind_rows(
+  forward_curve_sum,
+  inverse_curve_sum
+)
+
+ctmax_plot <- ctmax %>%
+  dplyr::filter(!is.na(CTmax), !is.na(Ramping)) %>%
+  dplyr::mutate(
+    Ramping_num = as.numeric(as.character(Ramping))
+  )
+
+# =========================================================
+# 11) Plot 1: TDT comparison
+# =========================================================
+p_tdt_compare <- ggplot() +
+  geom_ribbon(
+    data = tdt_compare_sum %>% dplyr::filter(source == "Sublethal TDT"),
+    aes(x = assay_temp, ymin = lower_time, ymax = upper_time),
+    fill = "black",
+    alpha = 0.14
+  ) +
+  geom_line(
+    data = tdt_compare_sum %>% dplyr::filter(source == "Sublethal TDT"),
+    aes(x = assay_temp, y = median_time),
+    linewidth = 1.4,
+    colour = "black"
+  ) +
+  geom_ribbon(
+    data = tdt_compare_sum %>% dplyr::filter(source == "Derived from ramping"),
+    aes(x = assay_temp, ymin = lower_time, ymax = upper_time),
+    fill = "grey40",
+    alpha = 0.18
+  ) +
+  geom_line(
+    data = tdt_compare_sum %>% dplyr::filter(source == "Derived from ramping"),
+    aes(x = assay_temp, y = median_time),
+    linewidth = 1.4,
+    colour = "grey20",
+    linetype = "dashed"
+  ) +
+  geom_jitter(
+    data = tdt_sub,
+    aes(x = assay_temp, y = time_to_death),
+    width = 0.05,
+    height = 0,
+    size = 4,
+    alpha = 0.75,
+    shape = 21,
+    col = "white",
+    fill = "black"
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+  coord_cartesian(
+    xlim = c(30.5, 34),
+    ylim = c(0.2, 480)
+  ) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to death (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_tdt_compare)
+
+# =========================================================
+# 12) Plot 2: CTmax comparison
+# =========================================================
+p_ctmax_compare <- ggplot() +
+  geom_ribbon(
+    data = ctmax_compare_sum %>% dplyr::filter(source == "Sublethal TDT"),
+    aes(x = ramprate, ymin = lower, ymax = upper),
+    fill = "black",
+    alpha = 0.14
+  ) +
+  geom_line(
+    data = ctmax_compare_sum %>% dplyr::filter(source == "Sublethal TDT"),
+    aes(x = ramprate, y = median),
+    linewidth = 1.4,
+    colour = "black"
+  ) +
+  geom_ribbon(
+    data = ctmax_compare_sum %>% dplyr::filter(source == "Derived from ramping"),
+    aes(x = ramprate, ymin = lower, ymax = upper),
+    fill = "grey40",
+    alpha = 0.18
+  ) +
+  geom_line(
+    data = ctmax_compare_sum %>% dplyr::filter(source == "Derived from ramping"),
+    aes(x = ramprate, y = median),
+    linewidth = 1.4,
+    colour = "grey20",
+    linetype = "dashed"
+  ) +
+  ggdist::stat_halfeye(
+    data = post_long,
+    aes(
+      x = Ramping_num,
+      y = CTmax_post,
+      group = Ramping,
+      fill = Ramping,
+      colour = Ramping
+    ),
+    point_interval = ggdist::mean_qi,
+    .width = 0.95,
+    adjust = 0.9,
+    width = 0.04,
+    size = 5,
+    slab_alpha = 0.3,
+    point_size = 4,
+    slab_colour = NA,
+    justification = -0.01,
+    position = position_nudge(x = 0.023)
+  ) +
+  geom_point(
+    data = ctmax_plot,
+    aes(
+      x = Ramping_num,
+      y = CTmax,
+      fill = factor(Ramping)
+    ),
+    position = position_jitter(width = 0.008, height = 0.001),
+    alpha = 0.9,
+    size = 4,
+    stroke = 1,
+    col = "white",
+    shape = 21
+  ) +
+  coord_cartesian(
+    ylim = c(28, 35),
+    xlim = c(0, 0.60)
+  ) +
+  scale_x_continuous(
+    breaks = c(0.02, 0.3, 0.5),
+    labels = c("0.02", "0.3", "0.5")
+  ) +
+  scale_fill_manual(
+    values = c(
+      "0.02" = "#7e03a8",
+      "0.3" = "#cc4778",
+      "0.5" = "#f89540"
+    ),
+    guide = "none"
+  ) +
+  scale_colour_manual(
+    values = c(
+      "0.02" = "#7e03a8",
+      "0.3" = "#cc4778",
+      "0.5" = "#f89540"
+    ),
+    guide = "none"
+  ) +
+  labs(
+    x = "Ramping rate (°C/min)",
+    y = "Critical thermal maximum (°C)"
+  ) +
+  base_theme +
+  theme(
+    axis.line = element_blank(),
+    panel.border = element_rect(fill = NA, colour = "black", linewidth = 2.5)
+  )
+
+print(p_ctmax_compare)
+
+# =========================================================
+# 13) Save plots
+# =========================================================
+ggsave(
+  file = "fig/TDT_sublethal_vs_ramping_with_uncertainty.png",
+  plot = p_tdt_compare,
+  width = 9,
+  height = 6,
+  dpi = 500
+)
+
+ggsave(
+  file = "fig/CTmax_predictions_sublethal_vs_ramping_with_uncertainty.png",
+  plot = p_ctmax_compare,
+  width = 9,
+  height = 6,
+  dpi = 500
+)
+
+
+# =========================
+# Compare estimates obtained under both methods
+# =========================
+
+# =========================
+# Direct static TDT summary
+# =========================
+static_summary <- draws_sub %>%
+  dplyr::transmute(
+    slope = b_temp_c,
+    z = -1 / b_temp_c
+  ) %>%
+  dplyr::summarise(
+    slope_median = median(slope, na.rm = TRUE),
+    slope_lower = quantile(slope, 0.025, na.rm = TRUE),
+    slope_upper = quantile(slope, 0.975, na.rm = TRUE),
+    z_median = median(z, na.rm = TRUE),
+    z_lower = quantile(z, 0.025, na.rm = TRUE),
+    z_upper = quantile(z, 0.975, na.rm = TRUE)
+  )
+
+# =========================
+# Dynamic to static:
+# infer TDT slope from CTmax/ramping data
+# =========================
+dyn_to_static_coef <- lapply(seq_len(n_iter_use), function(i) {
+  tmp_i <- inverse_fits %>%
+    dplyr::filter(iter == i) %>%
+    dplyr::arrange(t_coma)
+  
+  if(nrow(tmp_i) < 2) return(NULL)
+  
+  mod <- lm(log10(t_coma) ~ sCTmax_pred, data = tmp_i)
+  cf <- coef(mod)
+  
+  data.frame(
+    iter = i,
+    slope = unname(cf[2])
+  )
+}) %>%
+  do.call(rbind, .)
+
+dyn_to_static_summary <- dyn_to_static_coef %>%
+  dplyr::summarise(
+    slope_median = median(slope, na.rm = TRUE),
+    slope_lower = quantile(slope, 0.025, na.rm = TRUE),
+    slope_upper = quantile(slope, 0.975, na.rm = TRUE)
+  )
+
+# =========================
+# Final compact table
+# =========================
+t_keep <- 60
+summary_compare <- dplyr::bind_rows(
+  data.frame(
+    approach = "Static",
+    parameter = c("slope", "z"),
+    median = c(
+      static_summary$slope_median,
+      static_summary$z_median
+    ),
+    lower = c(
+      static_summary$slope_lower,
+      static_summary$z_lower
+    ),
+    upper = c(
+      static_summary$slope_upper,
+      static_summary$z_upper
+    )
+  ),
+  data.frame(
+    approach = "Static to dynamic",
+    parameter = "sCTmax",
+    median = forward_summary$sCTmax_median[forward_summary$t_coma == t_keep],
+    lower = forward_summary$sCTmax_lower[forward_summary$t_coma == t_keep],
+    upper = forward_summary$sCTmax_upper[forward_summary$t_coma == t_keep]
+  ),
+  data.frame(
+    approach = "Dynamic to static",
+    parameter = c("slope", "z", "sCTmax"),
+    median = c(
+      dyn_to_static_summary$slope_median,
+      inverse_summary$z_median[inverse_summary$t_coma == t_keep],
+      inverse_summary$sCTmax_median[inverse_summary$t_coma == t_keep]
+    ),
+    lower = c(
+      dyn_to_static_summary$slope_lower,
+      inverse_summary$z_lower[inverse_summary$t_coma == t_keep],
+      inverse_summary$sCTmax_lower[inverse_summary$t_coma == t_keep]
+    ),
+    upper = c(
+      dyn_to_static_summary$slope_upper,
+      inverse_summary$z_upper[inverse_summary$t_coma == t_keep],
+      inverse_summary$sCTmax_upper[inverse_summary$t_coma == t_keep]
+    )
+  )
+) %>%
+  dplyr::mutate(
+    median = round(median, 3),
+    lower = round(lower, 3),
+    upper = round(upper, 3),
+    parameter = dplyr::recode(parameter,
+      "sCTmax" = "sCTmax (1 hour)")
+  )
+
+print(summary_compare)
+
+
+
+################# Compare z #####################
+
+# Static z
+z_static <- -1 / draws_sub$b_temp_c
+
+# Dynamic z (inverse)
+z_dynamic <- inverse_fits %>%
+  dplyr::filter(t_coma == t_keep) %>%
+  dplyr::pull(z_pred)
+
+# Match lengths
+n_min <- min(length(z_static), length(z_dynamic))
+
+z_static_s <- sample(z_static, n_min)
+z_dynamic_s <- sample(z_dynamic, n_min)
+
+# Compute difference
+z_diff <- z_static_s - z_dynamic_s
+
+z_test <- data.frame(
+  median = median(z_diff),
+  lower = quantile(z_diff, 0.025),
+  upper = quantile(z_diff, 0.975)
+)
+
+print(z_test) # Not statistically different; but lower z on average.
+```
+
+# **Comparison with environmental temperatures** 
+
+```{r}
+# Load temperature data from the last five years
+files <- list.files("data/field_temp", pattern = "\\.csv$", full.names = TRUE)
+
+field_temp <- files %>%
+  lapply(read.csv) %>%
+  do.call(rbind, .)
+
+# Replace "no data" with NA in all columns
+field_temp[field_temp == "no data"] <- NA
+
+# Rename columns
+names(field_temp) <- c(
+  "timestamp_utc",
+  "local_time_cet",
+  "salinity_1m_sjoboden",
+  "temp_1m_sjoboden",
+  "air_temp",
+  "sea_level_mm",
+  "sea_temp",
+  "deep_water_salinity_lab",
+  "deep_water_temp_lab",
+  "salinity_1m_ctd",
+  "surface_water_salinity_lab",
+  "surface_water_temp",
+  "temp_1m_ctd"
+)
+
+names(field_temp)[is.na(names(field_temp))] <- "tmp"
+
+field_temp$timestamp_utc <- as.POSIXct(field_temp$timestamp_utc, tz = "UTC")
+field_temp$sea_temp <- as.numeric(field_temp$sea_temp)
+field_temp$surface_water_temp <- as.numeric(field_temp$surface_water_temp)
+
+field_temp <- field_temp %>% dplyr::filter(surface_water_temp < 100)
+
+# Year separators
+year_lines <- data.frame(
+  x = seq(
+    as.POSIXct(paste0(format(min(field_temp$timestamp_utc, na.rm = TRUE), "%Y"), "-01-01"), tz = "UTC"),
+    as.POSIXct(paste0(format(max(field_temp$timestamp_utc, na.rm = TRUE), "%Y"), "-01-01"), tz = "UTC"),
+    by = "year"
+  )
+)
+
+# Plot temperature time series
+ggplot(field_temp, aes(x = timestamp_utc)) +
+  geom_line(aes(y = sea_temp, colour = "sea_temp"), linewidth = 0.7) +
+  geom_vline(data = year_lines, aes(xintercept = x), linetype = 2, colour = "grey60") +
+  labs(
+    x = "Date",
+    y = "Temperature (°C)",
+    colour = NULL
+  ) +
+  theme_classic(base_size = 16)
+
+max(field_temp$sea_temp, na.rm = T) # 25.1 degrees is the maximum temperature recorded in the past 5 years. 
+
+
+## ====================================
+# Temperatures during the study period
+# ====================================4
+
+field_temp <- field_temp %>%
+  dplyr::filter(
+    format(timestamp_utc, "%Y-%m-%d") >= "2025-06-12" &
+    format(timestamp_utc, "%Y-%m-%d") <= "2025-06-30"
+  )
+
+field_temp %>% summarise(mean_temp = mean(surface_water_temp), 
+                         sd_temp = sd(surface_water_temp),
+                         mean_salinity = mean(as.numeric(surface_water_salinity_lab)),
+                         sd_salinity = sd(as.numeric(surface_water_salinity_lab)))
+
+```
+
+### **Predicted accumulation of heat injury** 
+
+```{r}
+# =========================
+# Libraries
+# =========================
+library(dplyr)
+library(posterior)
+library(future.apply)
+
+# =========================
+# 1) Extract posterior parameter table once
+# =========================
+extract_4pl_pars <- function(fit_4pl,
+                             file_out = "Rdata/fit_4pl_pars.RDS",
+                             overwrite = FALSE) {
+  
+  if(file.exists(file_out) && !overwrite) {
+    return(readRDS(file_out))
+  }
+  
+  dr <- posterior::as_draws_df(fit_4pl) %>%
+    as.data.frame()
+  
+  get_par <- function(nm) {
+    if(nm %in% names(dr)) {
+      dr[[nm]]
+    } else {
+      rep(0, nrow(dr))
+    }
+  }
+  
+  pars <- data.frame(
+    .draw = dr$.draw,
+    low = plogis(get_par("b_lraw_Intercept")) * 0.49,
+    up = 0.51 + plogis(get_par("b_uraw_Intercept")) * 0.49,
+    k = exp(get_par("b_logk_Intercept")),
+    mid_int = get_par("b_mid_Intercept"),
+    mid_temp = get_par("b_mid_temp_c")
+  ) %>%
+    dplyr::filter(
+      is.finite(low),
+      is.finite(up),
+      is.finite(k),
+      is.finite(mid_int),
+      is.finite(mid_temp),
+      k > 0,
+      up > low
+    )
+  
+  saveRDS(pars, file_out)
+  pars
+}
+
+# =========================
+# 2) Core predictor for one scenario
+#    summary only by default
+# =========================
+predict_survival_fluctuating_4pl_fast <- function(temp_df,
+                                                  pars,
+                                                  temp_mean,
+                                                  n_draws = 1000,
+                                                  surv_grid = seq(0.99, 0.01, by = -0.05),
+                                                  save_draws = FALSE) {
+  
+  temp_df <- temp_df %>%
+    dplyr::arrange(datetime)
+  
+  if(nrow(temp_df) < 2) {
+    stop("temp_df must contain at least 2 rows.")
+  }
+  
+  n_use <- min(n_draws, nrow(pars))
+  pars_use <- pars %>%
+    dplyr::slice_sample(n = n_use)
+  
+  dt_h <- as.numeric(diff(temp_df$datetime), units = "hours")
+  temp0 <- temp_df$temp[-nrow(temp_df)]
+  temp1 <- temp_df$temp[-1]
+  tempc0 <- temp0 - temp_mean
+  tempc1 <- temp1 - temp_mean
+  
+  pred_list <- vector("list", nrow(pars_use))
+  
+  for(i in seq_len(nrow(pars_use))) {
+    
+    low_i <- pars_use$low[i]
+    up_i <- pars_use$up[i]
+    k_i <- pars_use$k[i]
+    mid0_i <- pars_use$mid_int[i] + pars_use$mid_temp[i] * tempc0
+    mid1_i <- pars_use$mid_int[i] + pars_use$mid_temp[i] * tempc1
+    
+    valid_s <- surv_grid[surv_grid > low_i & surv_grid < up_i]
+    
+    if(length(valid_s) == 0) {
+      next
+    }
+    
+    surv_mat <- matrix(NA_real_,
+                       nrow = nrow(temp_df),
+                       ncol = length(valid_s))
+    
+    for(j in seq_along(valid_s)) {
+      s_j <- valid_s[j]
+      
+      log10_t0 <- mid0_i + log((up_i - s_j) / (s_j - low_i)) / k_i
+      log10_t1 <- mid1_i + log((up_i - s_j) / (s_j - low_i)) / k_i
+      
+      t0_h <- 10^log10_t0
+      t1_h <- 10^log10_t1
+      
+      rate0 <- 1 / t0_h
+      rate1 <- 1 / t1_h
+      
+      cum_injury <- c(0, cumsum(dt_h * (rate0 + rate1) / 2))
+      surv_mat[, j] <- ifelse(cum_injury < 1, s_j, NA_real_)
+    }
+    
+    pred_survival <- apply(surv_mat, 1, function(x) {
+      if(all(is.na(x))) low_i else max(x, na.rm = TRUE)
+    })
+    
+    pred_list[[i]] <- data.frame(
+      .draw = pars_use$.draw[i],
+      datetime = temp_df$datetime,
+      temp = temp_df$temp,
+      pred_survival = pred_survival
+    )
+  }
+  
+  pred_draws <- dplyr::bind_rows(pred_list)
+  
+  pred_summary <- pred_draws %>%
+    dplyr::group_by(datetime, temp) %>%
+    dplyr::summarise(
+      survival_median = median(pred_survival, na.rm = TRUE),
+      survival_lower = quantile(pred_survival, 0.025, na.rm = TRUE),
+      survival_upper = quantile(pred_survival, 0.975, na.rm = TRUE),
+      mortality_median = 1 - median(pred_survival, na.rm = TRUE),
+      mortality_lower = 1 - quantile(pred_survival, 0.975, na.rm = TRUE),
+      mortality_upper = 1 - quantile(pred_survival, 0.025, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  if(save_draws) {
+    list(summary = pred_summary, draws = pred_draws)
+  } else {
+    list(summary = pred_summary)
+  }
+}
+
+# =========================
+# 3) Wrapper to run multiple scenarios
+#    in parallel and save RDS outputs
+# =========================
+run_fluctuating_scenarios <- function(field_temp,
+                                      fit_4pl,
+                                      temp_mean,
+                                      n_draws = 1000,
+                                      surv_grid = seq(0.99, 0.01, by = -0.05),
+                                      workers = 4,
+                                      overwrite = FALSE,
+                                      save_draws = FALSE) {
+  
+  dir.create("Rdata", showWarnings = FALSE)
+  
+  pars <- extract_4pl_pars(
+    fit_4pl = fit_4pl,
+    file_out = "Rdata/fit_4pl_pars.RDS",
+    overwrite = overwrite
+  )
+  
+  temp_df <- field_temp %>%
+    dplyr::select(datetime = timestamp_utc,
+                  temp = surface_water_temp) %>%
+    dplyr::filter(!is.na(temp)) %>%
+    dplyr::arrange(datetime)
+  
+  temp_scenarios <- list(
+    current = temp_df,
+    plus1 = temp_df %>% dplyr::mutate(temp = temp + 1),
+    plus2 = temp_df %>% dplyr::mutate(temp = temp + 2),
+    plus3 = temp_df %>% dplyr::mutate(temp = temp + 3)
+  )
+  
+  future::plan(future::multisession, workers = workers)
+  
+  out_list <- future.apply::future_lapply(names(temp_scenarios), function(nm) {
+    
+    file_out <- paste0("Rdata/fluctuating_", nm, "_", n_draws, "draws.RDS")
+    
+    if(file.exists(file_out) && !overwrite) {
+      return(readRDS(file_out))
+    }
+    
+    out <- predict_survival_fluctuating_4pl_fast(
+      temp_df = temp_scenarios[[nm]],
+      pars = pars,
+      temp_mean = temp_mean,
+      n_draws = n_draws,
+      surv_grid = surv_grid,
+      save_draws = save_draws
+    )
+    
+    out$summary$scenario <- nm
+    saveRDS(out, file_out)
+    out
+  })
+  
+  future::plan(future::sequential)
+  
+  pred_all <- dplyr::bind_rows(lapply(out_list, function(x) x$summary))
+  
+  saveRDS(pred_all, "Rdata/fluctuating_all_summaries.RDS")
+  
+  summary_end <- pred_all %>%
+    dplyr::group_by(scenario) %>%
+    dplyr::slice_tail(n = 1) %>%
+    dplyr::ungroup()
+  
+  saveRDS(summary_end, "Rdata/fluctuating_end_summary.RDS")
+  
+  list(
+    summary = pred_all,
+    end_summary = summary_end,
+    scenario_outputs = out_list
+  )
+}
+
+# =========================
+# 4) Example
+# =========================
+fluct_out <- run_fluctuating_scenarios(
+  field_temp = field_temp,
+  fit_4pl = fit_4pl,
+  temp_mean = temp_mean,
+  n_draws = 1000,
+  surv_grid = seq(0.99, 0.01, by = -0.05),
+  workers = 4,
+  overwrite = FALSE,
+  save_draws = FALSE
+)
+
+print(fluct_out$end_summary)
+```
+
+## **Model incorporating repair**
+
+```{r}
+# =========================================================
+# 0) Load objects and raw data
+# ========================================================
+
+fit_4pl <- readRDS(file = "Rdata/model_lethal_TDT.RDS")
+
+d <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx",
+                sheet = "LETHAL_TDT")
+
+# Transform data to get counts of individuals that survived/died
+d <- d %>%
+  mutate(
+    survival = 1 - Mortality_after_trial,
+    n_total = N_individuals_after_trial,
+    n_surv  = round(survival * n_total),
+    n_dead  = n_total - n_surv,
+    assay_temp = Temperature_assay,
+    duration = Duration_exposure_hours,
+    logd = log10(duration),
+    date_experiment = as.factor(Date),
+    tank_ID = as.factor(Tank),
+    body_mass = Total_Sample_body_mass_g,
+    start_min = as.numeric(format(Starting_time, "%H")) * 60 +
+      as.numeric(format(Starting_time, "%M")) +
+      as.numeric(format(Starting_time, "%S")) / 60
+  )
+
+d$obs <- factor(seq_len(nrow(d)))
+
+temp_mean <- mean(d$assay_temp, na.rm = TRUE)
+start_min_mean <- mean(d$start_min, na.rm = TRUE)
+
+d <- d %>%
+  mutate(
+    temp_c = assay_temp - temp_mean,
+    start_min_c = start_min - start_min_mean,
+    body_mass_c = body_mass - mean(body_mass, na.rm = TRUE)
+  )
+
+# =============================================
+# Load field temperatures
+# =============================================
+files <- list.files("data/field_temp", pattern = "\\.csv$", full.names = TRUE)
+
+field_temp <- files %>%
+  lapply(read.csv) %>%
+  do.call(rbind, .)
+
+field_temp[field_temp == "no data"] <- NA
+
+names(field_temp) <- c(
+  "timestamp_utc",
+  "local_time_cet",
+  "salinity_1m_sjoboden",
+  "temp_1m_sjoboden",
+  "air_temp",
+  "sea_level_mm",
+  "sea_temp",
+  "deep_water_salinity_lab",
+  "deep_water_temp_lab",
+  "salinity_1m_ctd",
+  "surface_water_salinity_lab",
+  "surface_water_temp",
+  "temp_1m_ctd"
+)
+
+names(field_temp)[is.na(names(field_temp))] <- "tmp"
+
+field_temp$timestamp_utc <- as.POSIXct(field_temp$timestamp_utc, tz = "UTC")
+field_temp$sea_temp <- as.numeric(field_temp$sea_temp)
+field_temp$surface_water_temp <- as.numeric(field_temp$surface_water_temp)
+
+field_temp <- field_temp %>%
+  dplyr::filter(surface_water_temp < 100)
+
+# =============================================
+# Plot theme
+# =============================================
+base_theme <- theme_classic(base_size = 22) +
+  theme(
+    axis.title = element_text(size = 24, face = "bold"),
+    axis.text  = element_text(size = 20),
+    legend.title = element_text(size = 22),
+    legend.text  = element_text(size = 20),
+    plot.title = element_text(size = 26, face = "bold", hjust = 0.5),
+    axis.line = element_line(linewidth = 1),
+    axis.ticks = element_line(linewidth = 1),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 2)
+  )
+
+# =========================================================
+# 1) Extract posterior 4PL parameters once from fit_4pl
+# =========================================================
+# We only keep the population-level parameters needed to reconstruct:
+#   - upper asymptote (up)
+#   - lower asymptote (low)
+#   - curve steepness (k)
+#   - temperature effect on the midpoint (mid)
+#
+# These posterior draws are the basis of all subsequent uncertainty
+# propagation under fluctuating temperatures.
+extract_4pl_pars <- function(fit_4pl,
+                             file_out = "Rdata/fit_4pl_pars.RDS",
+                             overwrite = FALSE) {
+  
+  if(file.exists(file_out) && !overwrite) {
+    return(readRDS(file_out))
+  }
+  
+  dr <- posterior::as_draws_df(fit_4pl) %>%
+    as.data.frame()
+  
+  get_par <- function(nm) {
+    if(nm %in% names(dr)) {
+      dr[[nm]]
+    } else {
+      rep(0, nrow(dr))
+    }
+  }
+  
+  pars <- data.frame(
+    .draw = dr$.draw,
+    low = plogis(get_par("b_lraw_Intercept")) * 0.49,
+    up = 0.51 + plogis(get_par("b_uraw_Intercept")) * 0.49,
+    k = exp(get_par("b_logk_Intercept")),
+    mid_int = get_par("b_mid_Intercept"),
+    mid_temp = get_par("b_mid_temp_c")
+  ) %>%
+    dplyr::filter(
+      is.finite(low),
+      is.finite(up),
+      is.finite(k),
+      is.finite(mid_int),
+      is.finite(mid_temp),
+      k > 0,
+      up > low,
+      low < 0.5,
+      up > 0.5
+    )
+  
+  saveRDS(pars, file_out)
+  pars
+}
+
+pars_4pl <- extract_4pl_pars(
+  fit_4pl = fit_4pl,
+  file_out = "Rdata/fit_4pl_pars.RDS",
+  overwrite = FALSE
+)
+
+# =========================================================
+# 2) Helper functions linking the fitted 4PL model to a
+#    continuous latent injury variable
+# =========================================================
+# Central idea:
+#   - For each posterior draw, the static 4PL model implies a T50 at each T.
+#   - We define latent injury dose D such that:
+#         D = 1  <=>  the LT50-equivalent cumulative injury dose
+#   - Under static conditions at temperature T:
+#         D = t / t50(T)
+#   - Under fluctuating conditions:
+#         D accumulates additively through time, and repair subtracts from D.
+#
+# We then map D back to survival using the same fitted 4PL curve.
+# This gives a continuous mortality prediction without reconstructing a
+# separate tolerance landscape from z and CTmax.
+
+# Time to any survival threshold s at temperature T
+time_to_surv_threshold <- function(temp,
+                                   s,
+                                   low,
+                                   up,
+                                   k,
+                                   mid_int,
+                                   mid_temp,
+                                   temp_mean) {
+  
+  temp_c <- temp - temp_mean
+  mid <- mid_int + mid_temp * temp_c
+  log10_t_h <- mid + log((up - s) / (s - low)) / k
+  10^log10_t_h
+}
+
+# Time to 50% survival at temperature T
+time_to_t50 <- function(temp,
+                        low,
+                        up,
+                        k,
+                        mid_int,
+                        mid_temp,
+                        temp_mean) {
+  
+  time_to_surv_threshold(
+    temp = temp,
+    s = 0.5,
+    low = low,
+    up = up,
+    k = k,
+    mid_int = mid_int,
+    mid_temp = mid_temp,
+    temp_mean = temp_mean
+  )
+}
+
+# Map latent injury dose D back to survival using the fitted 4PL shape
+# D = 1 corresponds to T50-equivalent injury.
+survival_from_dose <- function(dose,
+                               low,
+                               up,
+                               k) {
+  
+  dose_use <- pmax(dose, 1e-12)
+  c0 <- log((up - 0.5) / (0.5 - low)) / k
+  
+  low + (up - low) / (1 + exp(k * (log10(dose_use) + c0)))
+}
+
+# =========================================================
+# 3) Diagnostic curve: latent injury dose -> survival
+# =========================================================
+# This is useful for checking the implied mapping between accumulated
+# injury dose and survival, directly from the fitted 4PL model.
+get_dose_survival_curve <- function(pars,
+                                    dose_seq = 10^seq(-3, 1.2, length.out = 300),
+                                    n_draws = 1000,
+                                    file_out = "Rdata/dose_survival_curve.RDS",
+                                    overwrite = FALSE) {
+  
+  if(file.exists(file_out) && !overwrite) {
+    return(readRDS(file_out))
+  }
+  
+  n_use <- min(n_draws, nrow(pars))
+  pars_use <- pars %>%
+    dplyr::slice_sample(n = n_use)
+  
+  out <- do.call(
+    rbind,
+    lapply(seq_len(nrow(pars_use)), function(i) {
+      data.frame(
+        .draw = pars_use$.draw[i],
+        dose = dose_seq,
+        survival = survival_from_dose(
+          dose = dose_seq,
+          low = pars_use$low[i],
+          up = pars_use$up[i],
+          k = pars_use$k[i]
+        )
+      )
+    })
+  )
+  
+  out_sum <- out %>%
+    dplyr::group_by(dose) %>%
+    dplyr::summarise(
+      survival_median = median(survival, na.rm = TRUE),
+      survival_lower = quantile(survival, 0.025, na.rm = TRUE),
+      survival_upper = quantile(survival, 0.975, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  res <- list(
+    draws = out,
+    summary = out_sum
+  )
+  
+  saveRDS(res, file_out)
+  res
+}
+
+dose_surv_curve <- get_dose_survival_curve(
+  pars = pars_4pl,
+  n_draws = 1000,
+  file_out = "Rdata/dose_survival_curve.RDS",
+  overwrite = TRUE
+)
+
+p_dose_survival <- ggplot(dose_surv_curve$summary,
+                          aes(x = dose, y = survival_median)) +
+  geom_ribbon(
+    aes(ymin = survival_lower, ymax = survival_upper),
+    fill = "grey70",
+    alpha = 0.3
+  ) +
+  geom_line(linewidth = 1.5, colour = "black") +
+  geom_vline(xintercept = 1, linetype = 2) +
+  scale_x_log10() +
+  coord_cartesian(ylim = c(0, 1.02)) +
+  labs(
+    x = "Latent injury dose (LT50-equivalent units)",
+    y = "Predicted survival"
+  ) +
+  base_theme
+
+print(p_dose_survival)
+
+ggsave(
+  file = "fig/dose_survival_curve.png",
+  plot = p_dose_survival,
+  width = 8,
+  height = 6,
+  dpi = 500
+)
+
+# =========================================================
+# 3) Derive a damage-rate curve from the fitted 4PL model
+# =========================================================
+# Here we define DAMAGE in the same diagnostic units used by Arnold et al.:
+#
+#   damage_rate_pct_min = 100 / time_to_50_in_min
+#
+# This means:
+#   - if T50 = 100 min, damage rate = 1 % LT50-dose per min
+#   - if T50 = 10 min,  damage rate = 10 % LT50-dose per min
+#   - if T50 = 1 min,   damage rate = 100 % LT50-dose per min
+#
+# These are diagnostic units for plotting and interpreting net damage.
+# The dynamic model later converts this to latent-dose units internally.
+
+get_damage_rate_curve <- function(pars,
+                                  temp_mean,
+                                  temp_seq = seq(10, 36, by = 0.1),
+                                  n_draws = 1000,
+                                  file_out = "Rdata/damage_rate_curve_latent_dose.RDS",
+                                  overwrite = FALSE) {
+  
+  if(file.exists(file_out) && !overwrite) {
+    return(readRDS(file_out))
+  }
+  
+  n_use <- min(n_draws, nrow(pars))
+  pars_use <- pars %>%
+    dplyr::slice_sample(n = n_use)
+  
+  out <- do.call(
+    rbind,
+    lapply(seq_len(nrow(pars_use)), function(i) {
+      
+      t50_h <- time_to_t50(
+        temp = temp_seq,
+        low = pars_use$low[i],
+        up = pars_use$up[i],
+        k = pars_use$k[i],
+        mid_int = pars_use$mid_int[i],
+        mid_temp = pars_use$mid_temp[i],
+        temp_mean = temp_mean
+      )
+      
+      data.frame(
+        .draw = pars_use$.draw[i],
+        temp = temp_seq,
+        t50_h = t50_h,
+        damage_rate_dose_h = 1 / t50_h,
+        damage_rate_pct_min = 100 / (60 * t50_h)
+      )
+    })
+  ) %>%
+    dplyr::filter(
+      is.finite(damage_rate_dose_h),
+      damage_rate_dose_h >= 0
+    )
+  
+  out_sum <- out %>%
+    dplyr::group_by(temp) %>%
+    dplyr::summarise(
+      damage_rate_dose_h_median = median(damage_rate_dose_h, na.rm = TRUE),
+      damage_rate_dose_h_lower = quantile(damage_rate_dose_h, 0.025, na.rm = TRUE),
+      damage_rate_dose_h_upper = quantile(damage_rate_dose_h, 0.975, na.rm = TRUE),
+      damage_rate_pct_min_median = median(damage_rate_pct_min, na.rm = TRUE),
+      damage_rate_pct_min_lower = quantile(damage_rate_pct_min, 0.025, na.rm = TRUE),
+      damage_rate_pct_min_upper = quantile(damage_rate_pct_min, 0.975, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  res <- list(
+    draws = out,
+    summary = out_sum
+  )
+  
+  saveRDS(res, file_out)
+  res
+}
+
+damage_curve <- get_damage_rate_curve(
+  pars = pars_4pl,
+  temp_mean = temp_mean,
+  temp_seq = seq(10, 36, by = 0.1),
+  n_draws = 1000,
+  file_out = "Rdata/damage_rate_curve_latent_dose.RDS",
+  overwrite = TRUE
+)
+
+# =========================================================
+# 4) Sharpe-Schoolfield repair TPC
+# =========================================================
+# IMPORTANT:
+# This repair function is now defined in the SAME diagnostic units as damage:
+#
+#   % LT50-dose per min
+#
+# So its values can be compared directly to damage_rate_pct_min.
+#
+# The dynamic model later converts these units internally to dose per hour:
+#   dose_h = (% per min) / 100 * 60
+repair_rate_fun <- function(temp,
+                            TA,
+                            TAL,
+                            TAH,
+                            TL,
+                            TH,
+                            TREF,
+                            kdot_ref_pct_min) {
+  
+  out <- exp(TA * (1 / TREF - 1 / (273.15 + temp))) /
+    (1 +
+       exp(TAL * (1 / (273.15 + temp) - 1 / TL)) +
+       exp(TAH * (1 / TH - 1 / (273.15 + temp)))) *
+    kdot_ref_pct_min
+  
+  out[!is.finite(out)] <- 0
+  out[out < 0] <- 0
+  out
+}
+
+# =========================================================
+# 5) Set plausible repair-TPC shape for this system
+# =========================================================
+# These parameters control the SHAPE of repair vs temperature.
+# They do NOT define the absolute magnitude. Magnitude is set below
+# via low/moderate/high scenario values.
+#
+# Here we shift the warm decline of repair lower than before, so that:
+#   - repair peaks in the mid/high teens
+#   - starts falling strongly by the low 20s
+#   - is close to zero by the mid-20s
+repair_pars <- list(
+  TA = 14065,
+  TAL = 50000,
+  TAH = 120000,
+  TL = 10.5 + 273.15,
+  TH = 22.5 + 273.15,
+  TREF = 17 + 273.15
+)
+
+# =========================================================
+# 6) Define none / low / moderate / high repair scenarios
+# =========================================================
+# Here we follow Arnold et al. directly for the diagnostic repair levels.
+# These are expressed as:
+#
+#   % LT50-dose per min
+#
+# This is the cleanest way to make the plots comparable to Arnold's.
+#
+# Note:
+# These are scenario values, not empirically fitted repair rates.
+kdot_levels_pct_min <- c(
+  none = 0,
+  low = 0.007,
+  moderate = 0.0111,
+  high = 0.02
+)
+
+kdot_df <- data.frame(
+  repair_level = factor(names(kdot_levels_pct_min),
+                        levels = c("none", "low", "moderate", "high")),
+  kdot_ref_pct_min = as.numeric(kdot_levels_pct_min)
+)
+
+# =========================================================
+# 7) Plot damage, repair, and net damage over temperature
+# =========================================================
+# These are the Arnold-style diagnostic plots.
+# They are for checking assumptions, not for running the dynamic model.
+
+temp_seq_plot <- seq(10, 36, by = 0.1)
+
+repair_plot_df <- do.call(
+  rbind,
+  lapply(seq_len(nrow(kdot_df)), function(i) {
+    data.frame(
+      temp = temp_seq_plot,
+      repair_rate_pct_min = repair_rate_fun(
+        temp = temp_seq_plot,
+        TA = repair_pars$TA,
+        TAL = repair_pars$TAL,
+        TAH = repair_pars$TAH,
+        TL = repair_pars$TL,
+        TH = repair_pars$TH,
+        TREF = repair_pars$TREF,
+        kdot_ref_pct_min = kdot_df$kdot_ref_pct_min[i]
+      ),
+      repair_level = kdot_df$repair_level[i]
+    )
+  })
+)
+
+damage_plot_df <- damage_curve$summary %>%
+  dplyr::transmute(
+    temp = temp,
+    damage_rate_pct_min_median = damage_rate_pct_min_median,
+    damage_rate_pct_min_lower = damage_rate_pct_min_lower,
+    damage_rate_pct_min_upper = damage_rate_pct_min_upper
+  )
+
+# Damage plot
+p_damage <- ggplot(damage_plot_df,
+                   aes(x = temp, y = damage_rate_pct_min_median)) +
+  geom_ribbon(
+    aes(ymin = damage_rate_pct_min_lower, ymax = damage_rate_pct_min_upper),
+    fill = "grey70",
+    alpha = 0.3
+  ) +
+  geom_line(linewidth = 1.5, colour = "black") +
+  coord_cartesian(
+    xlim = c(20, 36),
+    ylim = c(0, 50)
+  ) +
+  labs(
+    x = "Temperature (°C)",
+    y = expression("Damage rate (% LT50-dose " * min^-1 * ")")
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_damage)
+
+ggsave(
+  file = "fig/damage_rate_latent_dose.png",
+  plot = p_damage,
+  width = 8,
+  height = 6,
+  dpi = 500
+)
+
+# Repair plot
+p_repair <- ggplot(
+  repair_plot_df %>% dplyr::filter(repair_level != "none"),
+  aes(x = temp, y = repair_rate_pct_min, colour = repair_level)
+) +
+  geom_line(linewidth = 1.3) +
+  coord_cartesian(
+    xlim = c(10, 36),
+    ylim = c(0, 0.06)
+  ) +
+  scale_colour_manual(
+    values = c(
+      "low" = "#7CAE00",
+      "moderate" = "#00BFC4",
+      "high" = "#F8766D"
+    ),
+    labels = c("Low", "Moderate", "High")
+  ) +
+  labs(
+    x = "Temperature (°C)",
+    y = expression("Repair rate (% LT50-dose " * min^-1 * ")"),
+    colour = NULL
+  ) +
+  base_theme
+
+print(p_repair)
+
+ggsave(
+  file = "fig/repair_rate_latent_dose.png",
+  plot = p_repair,
+  width = 8,
+  height = 6,
+  dpi = 500
+)
+
+# Net damage plot
+net_plot_df <- do.call(
+  rbind,
+  lapply(levels(kdot_df$repair_level), function(rr) {
+    
+    repair_tmp <- repair_plot_df %>%
+      dplyr::filter(repair_level == rr) %>%
+      dplyr::select(temp, repair_rate_pct_min)
+    
+    out <- damage_plot_df %>%
+      dplyr::left_join(repair_tmp, by = "temp") %>%
+      dplyr::mutate(
+        repair_level = rr,
+        net_damage_rate_pct_min = damage_rate_pct_min_median - repair_rate_pct_min
+      )
+    
+    out
+  })
+)
+
+p_net <- ggplot(
+  net_plot_df,
+  aes(x = temp, y = net_damage_rate_pct_min, colour = repair_level)
+) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_line(linewidth = 1.3) +
+  coord_cartesian(
+    xlim = c(10, 36),
+    ylim = c(-0.06, 0.10)
+  ) +
+  scale_colour_manual(
+    values = c(
+      "none" = "#A020F0",
+      "low" = "#7CAE00",
+      "moderate" = "#00BFC4",
+      "high" = "#F8766D"
+    ),
+    labels = c("None", "Low", "Moderate", "High")
+  ) +
+  annotate("text", x = 11, y = -0.04,
+           label = "Repair\noutweighs\ndamage", hjust = 0) +
+  annotate("text", x = 15, y = 0.05,
+           label = "Damage\noutweighs\nrepair", hjust = 0) +
+  labs(
+    x = "Temperature (°C)",
+    y = expression("Net damage rate (% LT50-dose " * min^-1 * ")"),
+    colour = NULL
+  ) +
+  base_theme
+
+print(p_net)
+
+ggsave(
+  file = "fig/net_damage_rate_latent_dose.png",
+  plot = p_net,
+  width = 8,
+  height = 6,
+  dpi = 500
+)
+
+# =========================================================
+# 8) Core fluctuating-temperature predictor using ONE
+#    continuous latent injury variable
+# =========================================================
+# The dynamic model itself runs on the latent-dose scale.
+#
+# Therefore, we convert repair from:
+#   % LT50-dose per min
+# to:
+#   latent-dose units per hour
+#
+# using:
+#   repair_rate_dose_h = repair_rate_pct_min / 100 * 60
+#
+# This makes damage and repair operate on the SAME scale inside the model.
+predict_survival_fluctuating_latent_dose <- function(temp_df,
+                                                     pars,
+                                                     temp_mean,
+                                                     n_draws = 1000,
+                                                     repair = FALSE,
+                                                     TA = NULL,
+                                                     TAL = NULL,
+                                                     TAH = NULL,
+                                                     TL = NULL,
+                                                     TH = NULL,
+                                                     TREF = NULL,
+                                                     kdot_ref_pct_min = 0,
+                                                     repair_scales_with_survival = TRUE,
+                                                     save_draws = FALSE) {
+  
+  temp_df <- temp_df %>%
+    dplyr::arrange(datetime)
+  
+  if(nrow(temp_df) < 2) {
+    stop("temp_df must contain at least 2 rows.")
+  }
+  
+  n_use <- min(n_draws, nrow(pars))
+  pars_use <- pars %>%
+    dplyr::slice_sample(n = n_use)
+  
+  dt_h <- as.numeric(diff(temp_df$datetime), units = "hours")
+  temp0 <- temp_df$temp[-nrow(temp_df)]
+  temp1 <- temp_df$temp[-1]
+  
+  pred_list <- vector("list", nrow(pars_use))
+  
+  for(i in seq_len(nrow(pars_use))) {
+    
+    low_i <- pars_use$low[i]
+    up_i <- pars_use$up[i]
+    k_i <- pars_use$k[i]
+    mid_int_i <- pars_use$mid_int[i]
+    mid_temp_i <- pars_use$mid_temp[i]
+    
+    # Damage rate on latent-dose scale
+    t50_0_h <- time_to_t50(
+      temp = temp0,
+      low = low_i,
+      up = up_i,
+      k = k_i,
+      mid_int = mid_int_i,
+      mid_temp = mid_temp_i,
+      temp_mean = temp_mean
+    )
+    
+    t50_1_h <- time_to_t50(
+      temp = temp1,
+      low = low_i,
+      up = up_i,
+      k = k_i,
+      mid_int = mid_int_i,
+      mid_temp = mid_temp_i,
+      temp_mean = temp_mean
+    )
+    
+    damage_rate0_dose_h <- 1 / t50_0_h
+    damage_rate1_dose_h <- 1 / t50_1_h
+    
+    # Repair rate on latent-dose scale
+    if(repair) {
+      repair_rate0_pct_min <- repair_rate_fun(
+        temp = temp0,
+        TA = TA,
+        TAL = TAL,
+        TAH = TAH,
+        TL = TL,
+        TH = TH,
+        TREF = TREF,
+        kdot_ref_pct_min = kdot_ref_pct_min
+      )
+      
+      repair_rate1_pct_min <- repair_rate_fun(
+        temp = temp1,
+        TA = TA,
+        TAL = TAL,
+        TAH = TAH,
+        TL = TL,
+        TH = TH,
+        TREF = TREF,
+        kdot_ref_pct_min = kdot_ref_pct_min
+      )
+      
+      repair_rate0_dose_h <- repair_rate0_pct_min / 100 * 60
+      repair_rate1_dose_h <- repair_rate1_pct_min / 100 * 60
+    } else {
+      repair_rate0_dose_h <- rep(0, length(dt_h))
+      repair_rate1_dose_h <- rep(0, length(dt_h))
+    }
+    
+    dose <- numeric(length = nrow(temp_df))
+    surv <- numeric(length = nrow(temp_df))
+    
+    dose[1] <- 0
+    surv[1] <- up_i
+    
+    for(tt in seq_along(dt_h)) {
+      
+      damage_inc <- dt_h[tt] * (damage_rate0_dose_h[tt] + damage_rate1_dose_h[tt]) / 2
+      repair_inc_raw <- dt_h[tt] * (repair_rate0_dose_h[tt] + repair_rate1_dose_h[tt]) / 2
+      
+      if(repair_scales_with_survival) {
+        repair_scale <- surv[tt] / up_i
+      } else {
+        repair_scale <- 1
+      }
+      
+      repair_inc <- repair_inc_raw * repair_scale
+      
+      dose_new <- max(0, dose[tt] + damage_inc - repair_inc)
+      
+      surv_potential <- survival_from_dose(
+        dose = dose_new,
+        low = low_i,
+        up = up_i,
+        k = k_i
+      )
+      
+      surv_new <- min(surv[tt], surv_potential)
+      
+      dose[tt + 1] <- dose_new
+      surv[tt + 1] <- surv_new
+    }
+    
+    pred_list[[i]] <- data.frame(
+      .draw = pars_use$.draw[i],
+      datetime = temp_df$datetime,
+      temp = temp_df$temp,
+      latent_dose = dose,
+      pred_survival = surv
+    )
+  }
+  
+  pred_draws <- do.call(rbind, pred_list)
+  
+  pred_summary <- pred_draws %>%
+    dplyr::group_by(datetime, temp) %>%
+    dplyr::summarise(
+      survival_median = median(pred_survival, na.rm = TRUE),
+      survival_lower = quantile(pred_survival, 0.025, na.rm = TRUE),
+      survival_upper = quantile(pred_survival, 0.975, na.rm = TRUE),
+      mortality_median = 1 - median(pred_survival, na.rm = TRUE),
+      mortality_lower = 1 - quantile(pred_survival, 0.975, na.rm = TRUE),
+      mortality_upper = 1 - quantile(pred_survival, 0.025, na.rm = TRUE),
+      latent_dose_median = median(latent_dose, na.rm = TRUE),
+      latent_dose_lower = quantile(latent_dose, 0.025, na.rm = TRUE),
+      latent_dose_upper = quantile(latent_dose, 0.975, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  if(save_draws) {
+    list(summary = pred_summary, draws = pred_draws)
+  } else {
+    list(summary = pred_summary)
+  }
+}
+
+# =========================================================
+# 9) Prepare field temperatures and warming scenarios
+# =========================================================
+temp_df <- field_temp %>%
+  dplyr::select(datetime = timestamp_utc,
+                temp = surface_water_temp) %>%
+  dplyr::filter(!is.na(temp)) %>%
+  dplyr::arrange(datetime)
+
+temp_scenarios <- list(
+  current = temp_df,
+  plus1 = temp_df %>% dplyr::mutate(temp = temp + 1),
+  plus2 = temp_df %>% dplyr::mutate(temp = temp + 2),
+  plus3 = temp_df %>% dplyr::mutate(temp = temp + 3)
+)
+
+# =========================================================
+# 10) Run all combinations of scenario x repair level
+# =========================================================
+run_fluctuating_scenarios_latent_dose <- function(temp_scenarios,
+                                                  pars,
+                                                  temp_mean,
+                                                  repair_pars,
+                                                  kdot_levels_pct_min,
+                                                  n_draws = 1000,
+                                                  workers = 4,
+                                                  overwrite = FALSE,
+                                                  save_draws = FALSE) {
+  
+  pars_use <- pars %>%
+    dplyr::slice_sample(n = min(n_draws, nrow(pars)))
+  
+  saveRDS(pars_use, "Rdata/pars_use_latent_dose.RDS")
+  
+  run_grid <- expand.grid(
+    scenario = names(temp_scenarios),
+    repair_level = names(kdot_levels_pct_min),
+    stringsAsFactors = FALSE
+  )
+  
+  future::plan(future::multisession, workers = workers)
+  
+  out_list <- future.apply::future_lapply(seq_len(nrow(run_grid)), function(i) {
+    
+    scn <- run_grid$scenario[i]
+    rep_level <- run_grid$repair_level[i]
+    kdot_ref_i <- kdot_levels_pct_min[[rep_level]]
+    
+    file_out <- paste0(
+      "Rdata/fluctuating_latentdose_",
+      scn,
+      "_repair_",
+      rep_level,
+      "_",
+      nrow(pars_use),
+      "draws.RDS"
+    )
+    
+    if(file.exists(file_out) && !overwrite) {
+      return(readRDS(file_out))
+    }
+    
+    out <- predict_survival_fluctuating_latent_dose(
+      temp_df = temp_scenarios[[scn]],
+      pars = pars_use,
+      temp_mean = temp_mean,
+      n_draws = nrow(pars_use),
+      repair = rep_level != "none",
+      TA = repair_pars$TA,
+      TAL = repair_pars$TAL,
+      TAH = repair_pars$TAH,
+      TL = repair_pars$TL,
+      TH = repair_pars$TH,
+      TREF = repair_pars$TREF,
+      kdot_ref_pct_min = kdot_ref_i,
+      repair_scales_with_survival = TRUE,
+      save_draws = save_draws
+    )
+    
+    out$summary$scenario <- scn
+    out$summary$repair_level <- rep_level
+    
+    saveRDS(out, file_out)
+    out
+  })
+  
+  future::plan(future::sequential)
+  
+  pred_all <- do.call(rbind, lapply(out_list, function(x) x$summary))
+  saveRDS(pred_all, "Rdata/fluctuating_latentdose_all_summaries.RDS")
+  
+  summary_end <- pred_all %>%
+    dplyr::group_by(scenario, repair_level) %>%
+    dplyr::slice_tail(n = 1) %>%
+    dplyr::ungroup()
+  
+  saveRDS(summary_end, "Rdata/fluctuating_latentdose_end_summary.RDS")
+  
+  list(
+    summary = pred_all,
+    end_summary = summary_end,
+    outputs = out_list
+  )
+}
+
+# =========================================================
+# 12) Plot mortality trajectories
+# =========================================================
+p_mortality <- ggplot(latent_out$summary,
+                      aes(x = datetime,
+                          y = mortality_median,
+                          colour = repair_level,
+                          group = interaction(scenario, repair_level))) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~scenario, ncol = 1) +
+  labs(
+    x = "Date",
+    y = "Predicted mortality",
+    colour = "Repair"
+  ) +
+  base_theme
+
+print(p_mortality)
+
+ggsave(
+  file = "fig/fluctuating_mortality_latent_dose.png",
+  plot = p_mortality,
+  width = 10,
+  height = 10,
+  dpi = 500
+)
+
+# =========================================================
+# 13) Plot latent injury dose trajectories
+# =========================================================
+p_dose <- ggplot(latent_out$summary,
+                 aes(x = datetime,
+                     y = latent_dose_median,
+                     colour = repair_level,
+                     group = interaction(scenario, repair_level))) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~scenario, ncol = 1) +
+  labs(
+    x = "Date",
+    y = "Latent injury dose (LT50-equivalent units)",
+    colour = "Repair"
+  ) +
+  base_theme
+
+print(p_dose)
+
+ggsave(
+  file = "fig/fluctuating_latent_dose.png",
+  plot = p_dose,
+  width = 10,
+  height = 10,
+  dpi = 500
+)
+
+# =========================================================
+# 14) Plot survival trajectories
+# =========================================================
+p_survival <- ggplot(latent_out$summary,
+                     aes(x = datetime,
+                         y = survival_median,
+                         colour = repair_level,
+                         group = interaction(scenario, repair_level))) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~scenario, ncol = 1) +
+  labs(
+    x = "Date",
+    y = "Predicted survival",
+    colour = "Repair"
+  ) +
+  base_theme
+
+print(p_survival)
+
+ggsave(
+  file = "fig/fluctuating_survival_latent_dose.png",
+  plot = p_survival,
+  width = 10,
+  height = 10,
+  dpi = 500
+)
+```
+
+
+# **Figures for publication** 
+
+## **Figure 1** 
+```{r, fig.height = 10, fig.width = 10}
+
+```
+
+
