@@ -1,0 +1,172 @@
+---
+title: "How `bayesian_TDT_shrimp.qmd` lines up with `tdt_problems.qmd`"
+author: "Daniel Noble (with Claude)"
+date: 2026-04-28
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Why this note exists
+
+[bayesian_TDT_shrimp.qmd](../R/bayesian_TDT_shrimp.qmd) is the brown-shrimp analysis pipeline (lethal counts, sublethal time-to-death, dynamic CTmax, field-temperature HI projections). [tdt_problems.qmd](../tdt_problems.qmd) is the manifesto: every statistical defect of the classical two-step TDT workflow plus a worked argument for replacing it with a single hierarchical Bayesian 4PL.
+
+Question 1: **Are they doing the same thing?** Mostly yes, with three concrete extensions in the shrimp script and three small gaps relative to the manifesto.
+
+Question 2: **Are the solutions consistent?** Yes — the shrimp script is essentially an empirical instantiation of the recipe in §9 / §11 of `tdt_problems.qmd`. The two documents do not contradict each other.
+
+The remainder of this note is the point-by-point map.
+
+## One-line summary
+
+> The shrimp script does almost everything the manifesto recommends, plus two pieces the manifesto only points at (a coupled lethal-TDT ↔ ramping-CTmax reconciliation in the @jorgensen_unifying_2021 framework, and a Sharpe–Schoolfield repair extension along the lines of @kingsolver_woods_2016). It under-delivers in three small areas (posterior-predictive diagnostics, an Arrhenius-form sensitivity check, and a fully-Bayesian version of the dCTmax fit).
+
+## Direct correspondence — section-by-section
+
+### Two-step inference on derived quantities (§2 of `tdt_problems.qmd`)
+
+**Manifesto position:** estimate everything from a single hierarchical likelihood on the raw counts; do not feed `log10(LT50_hat)` into a second-stage OLS [@pagan1984; @murphytopel1985].
+
+**Shrimp script:** matches exactly. The lethal-TDT block fits
+
+```
+n_surv | trials(n_total) ~ eta
+mid ~ temp_c + (1 | date_experiment) + (1 | tank_ID)
+```
+
+in a single `brms` call, with the TDT slope (and therefore *z*) read off as the posterior of `b_mid_temp_c`:
+
+```r
+z_draws <- -1 / dr$b_mid_temp_c # This is the temperature slope on the across the mid temps (~LT50), which is 0.5. So, this is equivalent to z
+```
+
+**Note that to benchmark this we would predict that z_draws would be numerically identical to the slope_T → z mapping applied to the classical TDT slope estimate.**
+
+This is the closed-form `slope_T → z` mapping in the manifesto's `extract_tdt_params()` helper (§9 of `tdt_problems.qmd`), executed on actual data. **No two-stage OLS anywhere.** Right-censoring on temperatures where mortality never reached 50 % is implicit because the likelihood is written in counts, not LT50s — exactly the manifesto's recommendation.
+
+### Statistical treatment of proportion data (§3)
+
+**Manifesto position:** binomial likelihood on counts; observation-level random effect or beta-binomial for overdispersion [@harrison_olre_2014; @harrison_bb_2015]; no arcsine, no OLS on percentages.
+
+**Shrimp script:** binomial(logit) likelihood, plus an observation-level random effect via `lf(z ~ 0 + (1 | obs))` and `d$obs <- factor(seq_len(nrow(d)))`. This is the OLRE recipe verbatim. No transformation of proportions.
+
+One small note: the manifesto lists OLRE *or* beta-binomial as alternatives. The shrimp script picks OLRE without explicitly comparing the two. For an MEE referee, a one-paragraph justification ("OLRE chosen because the binomial denominator varies across rows and we want a Gaussian random scalar that scales the linear predictor rather than re-parameterising the sampling distribution") would be sufficient.
+
+### Pseudoreplication and hierarchical structure (§4)
+
+**Manifesto position:** every real level of nesting (animal, tube, batch, day) gets its own random effect [@bolker2009; @schielzeth_nested_2013].
+
+**Shrimp script:** `(1 | date_experiment) + (1 | tank_ID) + (1 | obs)` for the lethal counts, and additionally `(1 | cup_ID)` in the sublethal time-to-death model. This respects the day → tank → cup nesting in the experimental design. There is no individual-animal random effect for the lethal data because each row already aggregates the tank-level count rather than tracking individuals separately — the OLRE absorbs the residual individual-level variability the design cannot identify.
+
+### Functional-form assumptions (§5)
+
+**Manifesto position:** 4-parameter logistic with free but identifiably-parameterised asymptotes [@ritz_drc_2015; @bolker_ecologicalmodels_2008].
+
+**Shrimp script:** matches exactly. Asymptotes are constrained to identifiable ranges via inverse-logit transforms:
+
+```
+low = inv_logit(lraw) * 0.49
+up  = 0.51 + inv_logit(uraw) * 0.49
+```
+
+with `lraw`, `uraw`, `logk` priors centred on logit/log of plausible values. Slope is reparameterised as `exp(logk)` to keep it positive. This is the parameterisation the manifesto puts forward as the resolution to the @bolker_ecologicalmodels_2008 identifiability concern.
+
+**Where the script goes beyond the manifesto:** it tests the manifesto's "common-slope-across-temperatures is assumed but rarely tested" critique by fitting a competing model with a `temp_c × logd` interaction inside the sigmoid kernel, and uses LOO-PSIS to compare. The interaction does not improve fit (`loo_compare(reloo_4pl, reloo_4pl_int)` ≈ 0). This is a more direct test than the manifesto suggests and should be cited as a positive result in the manuscript.
+
+### CTmax / log-linear extrapolation (§6)
+
+**Manifesto position:** the linear `log10(LT50) ~ T` form is empirical, not Arrhenius; CTmax is an extrapolation that should carry large uncertainty.
+
+**Shrimp script:** does not test an Arrhenius (1/T-Kelvin) alternative. It does propagate full posterior uncertainty into the dCTmax estimates via the @jorgensen_unifying_2021 ramping equation, so the *uncertainty* point is addressed. The *functional-form* point (Celsius-linear vs. inverse-Kelvin) is not. **Recommendation for a sensitivity check:** refit `mid ~ inv_kelvin_c` and compare ELPD; expected to be indistinguishable inside the 28–34 °C window but informative for reviewers.
+
+### Endpoint heterogeneity (§7)
+
+**Manifesto position:** different endpoints (mortality, righting, cardiac, cell viability) measure different quantities; ramping rate and start temperature change CTmax [@terblanche_ctmax_2007; @kingsolver_umbanhowar_2018].
+
+**Shrimp script:** explicitly fits the *same* species at *three* endpoints — lethal mortality (TDT), sublethal time-to-death, and dynamic CTmax at three ramping rates (~0.02, ~0.3, ~0.5 °C/min) — and uses the @jorgensen_unifying_2021 dCTmax equation to reconcile them. This is a stronger empirical answer than the manifesto's qualitative warning. Within the brown shrimp data, *z* from the static sublethal TDT and *z* recovered from the dynamic CTmax (inverse branch) are not statistically different, but the dynamic-derived *z* is lower on average — exactly the kind of endpoint-dependent shift the manifesto flags. **This finding is a manuscript-grade result, not just a methodological note.**
+
+### Static-landscape fiction (§8)
+
+**Manifesto position:** species-level *z* is an uncontrolled average over body size, acclimation, sex, etc.; static TDT under-predicts dynamic-regime mortality without a damage / repair extension [@kingsolver_woods_2016; @jorgensen_unifying_2021].
+
+**Shrimp script:**
+
+1. *Body size:* tested as `body_mass_c` covariate on `mid` and again on the sublethal model and CTmax model. LOO does not prefer the body-mass version. So body size is *checked* but does not condition the final model.
+2. *Time-of-day:* tested as `start_min_c`, also dropped after LOO. The script flags `cor(temp_c, start_min_c) = 0.71` for sublethal data — a real collinearity warning that should be carried into the manuscript.
+3. *Repair:* a Sharpe-Schoolfield repair kernel `r(T)` is added in the "Model incorporating repair" section, integrating $\dot D = 1/\text{LT50}(T) - r(T)\,D$ across hourly field temperatures. This is precisely the extension the manifesto §11 names but does not implement.
+4. *Field-temperature projections:* HI is integrated under the measured Baltic surface-temperature trace and three warming scenarios (+1, +2, +3 °C). This is the operational deliverable the manifesto §11 advertises.
+
+### Researcher degrees of freedom (§9)
+
+**Manifesto position:** the analyst can change functional form, link, weighting, and inclusion rules; report at least one alternative specification [@simmons_falsepositive_2011; @gelman_loken_2014].
+
+**Shrimp script:** runs and saves four competing model specifications (base / + body mass / + start time / + interaction) and compares them with `reloo()` because of high Pareto-k values. The Pareto-k inflation is itself a useful result to report — it tells the reader the LT50 region is genuinely influence-dominated by a small number of leverage points, which justifies the move to `reloo`. **No silent model selection.**
+
+### Equivalence between two-step and 4PL (§10 — the heart of the manifesto)
+
+**Manifesto position:** the two-step is a 4PL with asymptotes pinned to {0, 1}, slope assumed equal across temperatures, no random effects, point estimates plugged into a second regression. Every classical TDT output is recoverable as a one-line posterior summary of the 4PL fit.
+
+**Shrimp script:** the closed-form derivations are reproduced verbatim — `log10_t_h = mid + log((up - 0.5)/(0.5 - low)) / k` — and the resulting `t50_min = 60 * 10^log10_t_h` posterior is summarised across the assay-temperature grid to produce the TDT plot with credible bands. The manifesto's `extract_tdt_params()`/`LT50_T_curve()` helpers are present in inline form (helper `get_4pl_draws()` does the per-draw extraction). Functional equivalence is confirmed by the script: classical TDT slope, *z*, and the LT50-vs-T credible ribbons all fall out of the same posterior.
+
+## Pieces in the shrimp script that *go beyond* the manifesto
+
+Three things the shrimp pipeline does that `tdt_problems.qmd` only points at:
+
+### Coupled lethal-TDT ↔ dynamic-CTmax reconciliation
+
+The "Test CTmax assumptions" and "Estimate z from ramping rate data" sections fit @jorgensen_unifying_2021's
+
+$$\text{dCTmax} = T_o + \frac{z}{\ln 10}\,\ln\!\left[\frac{\ln 10\cdot r\cdot t_{Ls}}{z}\,e^{(\ln 10/z)(\text{sCTmax} - T_o)} + e^{(\ln 10/z)(T_c - T_o)}\right]$$
+
+once with *z* fixed from the sublethal TDT posterior (forward branch: TDT → CTmax) and once with both *z* and `sCTmax` free (inverse branch: CTmax → TDT). Posterior draws of both *z* and CTmax are propagated through the optimiser. The plotted output places the static-TDT and ramp-derived TDT lines on the same axes (with credible bands), and likewise the ramp-derived dCTmax curve next to the observed CTmax half-eyes. This is operational equivalence-testing — the question the project title (`tls_model_equivalence`) is built around.
+
+The manifesto §11 alludes to this with "if the question is about dynamic or fluctuating exposures, move from static LT50 to a rate-based damage-accumulation model" but does not run it. **The shrimp script does. It belongs in the manuscript as Figure X or Box X.**
+
+One caveat: the dCTmax fits use `nls()` per posterior draw, not a fully-Bayesian joint fit of (4PL counts, sublethal log10 time-to-death, dCTmax ramping data). A Stan model with all three likelihoods would be cleaner — the current pipeline propagates posteriors *into* `nls`, which inherits whatever optimisation pathologies the @jorgensen_unifying_2021 surface has near the asymptotes. For the methods paper, either (a) move to a joint Stan fit, or (b) document the `nls`-on-each-draw approach explicitly and run a sensitivity analysis using a different optimiser to confirm robustness.
+
+### Sharpe-Schoolfield repair under fluctuating field temperatures
+
+The "Model incorporating repair" section integrates
+
+$$\dot D(t) = \frac{1}{\text{LT50}(T(t))} - r\bigl(T(t)\bigr)\,D(t),\quad r(T) = \text{Sharpe-Schoolfield}(T)$$
+
+across the measured Baltic surface-water temperature trace, with full posterior propagation of the 4PL parameters. Repair shape is parameterised so that repair peaks in the mid-teens and collapses by the mid-20s, which is biologically sensible for a temperate marine species. This implements §11.5 of the manifesto and matches @kingsolver_woods_2016 / @jorgensen_unifying_2021's repair-kernel framework. **The manifesto names this; the shrimp script does it.**
+
+The repair-kernel parameters are *fixed*, not fit. That's a defensible choice given the data don't identify them, but it should be flagged as a *prior* on the repair shape rather than an estimate. Sensitivity to the repair-shape assumptions should be in the supplement.
+
+### Generalised dose → mortality mapping
+
+The `survival_from_dose()` helper implements the closed-form `p(D) = low + (up - low)/(1 + D^k * (up - 0.5)/(0.5 - low))` mapping that §10 of the manifesto derives. Combined with cumulative HI under fluctuating temperatures, this gives full posterior survival trajectories — not just LT50 lines. This is the operational version of the manifesto's "any percentile, not just LT50" point.
+
+## Pieces in the manifesto that the shrimp script *does not yet do*
+
+Three small gaps the shrimp script could close before the methods paper goes out:
+
+### 1. Posterior-predictive checks and randomised-quantile residuals
+
+The manifesto §5.4 explicitly calls for `pp_check()` and randomised-quantile residual plots [@gabry_viz_2019]. The shrimp script runs `print(fit_4pl)` and `r2(fit_4pl)` but does not visualise posterior-predictive draws against the observed counts or the survival surface. Add a `pp_check(fit_4pl, type = "stat_grouped", group = "assay_temp")` and a per-temperature residual plot to the supplement. One paragraph; high reviewer payoff.
+
+### 2. Arrhenius-form sensitivity check
+
+§6 of the manifesto makes the point that Celsius-linear `mid ~ T_c` is empirical, not thermodynamic. The shrimp script does not refit with `mid ~ I(1/(T_K) - 1/T_K_ref)` and compare ELPD. Inside the 28–34 °C window the two will be near-indistinguishable, but reporting the comparison closes the methodological loop — and within an MEE methods paper the specific aim is to *demonstrate* methodological diligence.
+
+### 3. Fully-Bayesian dCTmax fit
+
+As noted above, the dCTmax reconciliation propagates posteriors through `nls()` per draw rather than fitting a joint Stan model. This is fine for a results paper; for a methods paper it is a soft target — a referee will ask why the dynamic equation isn't inside the same `brms` (or raw Stan) call as the rest. Worth attempting; falls back to the per-draw `nls` if not feasible.
+
+## Verdict
+
+The two documents are aligned. `tdt_problems.qmd` is the argument; `bayesian_TDT_shrimp.qmd` is the demonstration. The script implements the recipe — joint hierarchical 4PL on counts with free identifiable asymptotes, OLRE for overdispersion, nested random effects, model comparison via PSIS-LOO, and posterior-derived classical TDT outputs — and extends it in two directions (coupled lethal-sublethal-CTmax reconciliation, and a repair-kernel HI integral) that the manifesto names but does not implement.
+
+For the methods-paper pitch this is a strong position: we have the methodological argument *and* a worked empirical example on a non-trivial system that already operationalises the bits of the manifesto reviewers will probe hardest. Three small additions (pp_check, Arrhenius sensitivity, fully-Bayesian dCTmax) close the remaining gaps.
+
+## References {.unnumbered}
+
+::: {#refs}
+:::
