@@ -25,6 +25,8 @@ The thermal death time (TDT) framework for ectotherm thermal tolerance is domina
 
 Each broad section is visible by default; drill-down sub-issues are in foldable panels. References at the end are all verified against their journal of record.
 
+
+
 ## Two-step inference on derived quantities
 
 The workhorse TDT pipeline has two stages: (i) at each assay temperature, fit a dose–response curve and extract a point estimate of LT50 (the time producing 50 % mortality); (ii) regress `log10(LT50)` on assay temperature with ordinary least squares (OLS) to obtain a slope (−1/z) and an x-intercept (CTmax proxy). This two-stage architecture is the single largest statistical defect of the field and the source of most of the downstream problems.

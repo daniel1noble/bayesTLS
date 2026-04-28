@@ -41,3 +41,41 @@ None yet. Any GitHub Pages tutorials or supplementary case studies will be linke
 ## Conventions
 
 Coding, writing, testing, and collaboration conventions live in [CLAUDE.md](CLAUDE.md).
+
+## TODO list
+
+**TODO list:** 
+
+- [ ]  Make a general function to fit 4 PL model from survival data
+    - [ ]  Fix issues with priors being too strong (i.e., they are currently derived from data)
+    - [ ]  Make sure to use beta binomial implementation instead of OLRE
+    - [ ]  Add options for covariates + interactions + random effects?? Or just leave the code so people can adapt easily?
+    - [ ]  Add option for number of chains, iterations etc
+    - [ ]  Spit summary (z, R2 etc) + potential problems
+
+- [ ]  Make a general function to generate survival curves and check everything is ok. 
+
+- [ ]  Make a general function to derive TDT curve from 4PL model
+    - [ ]  Make an adjustment with different temperature targets (0.5 by default, but could be less)
+     - [ ]  If there are multiple categories (interaction), then facet_wrap
+   
+- [ ]  Make a general function to derive TDT landscape 
+
+- [ ]  Make a general function to derive temperatures tolerated for 1 hour from 4PL model
+
+- [ ]  Make a general function to predict accumulation of heat injury in fluctuating temperature regimes
+    - [ ]  Simulate temperatures with known predicted accumulation of injury. One with none; one with a single spike (e.g., predicted to result in 50% mortality or 100% injury); one with multiple spikes.
+    - [ ]  Have an option for repair = TRUE
+    - [ ]  By default, we can try to estimate the TPC for repair based on when damage starts to accumulate exponentially; and X degrees below this for the optimum temperature for repair? 
+    - [ ]  Make sure everything is in Kelvin if we are using Arrhenius equations. 
+
+- [ ]  Make a general function to plot predicted injury/repair at different temperatures (with uncertainty)
+
+- [ ]  Make a general function to predict survival/mortality rate over the time series. 
+
+- [ ]  Make a general function to derive TDT parameters from dynamic data; and dynamic data to TDT parameters.
+
+
+
+
+
