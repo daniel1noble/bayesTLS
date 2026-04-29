@@ -9,7 +9,6 @@
 <meta name="author" content="Daniel W.A. Noble">
 <meta name="author" content="Pieter A. Arnold">
 <meta name="author" content="Patrice Pottier">
-<meta name="dcterms.date" content="2026-04-29">
 <meta name="keywords" content="thermal death time, tolerance landscape, hierarchical Bayesian model, 4-parameter logistic, heat injury, CTmax, ectotherm">
 
 <title>A flexible modelling framework for estimating thermal sensitivity across life</title>
@@ -2303,57 +2302,7 @@ window.Quarto = {
 
 <div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
 <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-  <nav id="TOC" role="doc-toc" class="toc-active">
-    <h2 id="toc-title">Table of contents</h2>
-   
-  <ul>
-  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction"><span class="header-section-number">1</span> Introduction</a>
-  <ul class="collapse">
-  <li><a href="#the-thermal-death-time-framework" id="toc-the-thermal-death-time-framework" class="nav-link" data-scroll-target="#the-thermal-death-time-framework"><span class="header-section-number">1.1</span> The thermal death time framework</a></li>
-  <li><a href="#statistical-liabilities-of-the-two-step-pipeline" id="toc-statistical-liabilities-of-the-two-step-pipeline" class="nav-link" data-scroll-target="#statistical-liabilities-of-the-two-step-pipeline"><span class="header-section-number">1.2</span> Statistical liabilities of the two-step pipeline</a></li>
-  <li><a href="#aims-and-contributions" id="toc-aims-and-contributions" class="nav-link" data-scroll-target="#aims-and-contributions"><span class="header-section-number">1.3</span> Aims and contributions</a></li>
-  </ul></li>
-  <li><a href="#applying-hierarchical-bayesian-dose-response-curves-for-modelling-the-impacts-of-temperature-and-time-on-fitness" id="toc-applying-hierarchical-bayesian-dose-response-curves-for-modelling-the-impacts-of-temperature-and-time-on-fitness" class="nav-link" data-scroll-target="#applying-hierarchical-bayesian-dose-response-curves-for-modelling-the-impacts-of-temperature-and-time-on-fitness"><span class="header-section-number">2</span> Applying hierarchical Bayesian dose-response curves for modelling the impacts of temperature and time on fitness</a>
-  <ul class="collapse">
-  <li><a href="#model-specification" id="toc-model-specification" class="nav-link" data-scroll-target="#model-specification"><span class="header-section-number">2.1</span> Model specification</a></li>
-  </ul></li>
-  <li><a href="#application-of-bayesian-dose-response-models-to-the-tls-framework" id="toc-application-of-bayesian-dose-response-models-to-the-tls-framework" class="nav-link" data-scroll-target="#application-of-bayesian-dose-response-models-to-the-tls-framework"><span class="header-section-number">3</span> Application of Bayesian dose-response models to the TLS framework</a></li>
-  <li><a href="#case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp" id="toc-case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp" class="nav-link" data-scroll-target="#case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp"><span class="header-section-number">4</span> Case Study 1: Thermal sensitivity estimation across life stages in shrimp</a>
-  <ul class="collapse">
-  <li><a href="#priors" id="toc-priors" class="nav-link" data-scroll-target="#priors"><span class="header-section-number">4.1</span> Priors</a></li>
-  <li><a href="#random-effects-structure" id="toc-random-effects-structure" class="nav-link" data-scroll-target="#random-effects-structure"><span class="header-section-number">4.2</span> Random-effects structure</a></li>
-  <li><a href="#censoring-boundary-observations-and-overdispersion" id="toc-censoring-boundary-observations-and-overdispersion" class="nav-link" data-scroll-target="#censoring-boundary-observations-and-overdispersion"><span class="header-section-number">4.3</span> Censoring, boundary observations, and overdispersion</a></li>
-  </ul></li>
-  <li><a href="#equivalence-with-the-classical-pipeline" id="toc-equivalence-with-the-classical-pipeline" class="nav-link" data-scroll-target="#equivalence-with-the-classical-pipeline"><span class="header-section-number">5</span> Equivalence with the classical pipeline</a>
-  <ul class="collapse">
-  <li><a href="#closed-form-mapping-from-4pl-parameters-to-z-and-ctmax" id="toc-closed-form-mapping-from-4pl-parameters-to-z-and-ctmax" class="nav-link" data-scroll-target="#closed-form-mapping-from-4pl-parameters-to-z-and-ctmax"><span class="header-section-number">5.1</span> Closed-form mapping from 4PL parameters to z and CTmax</a></li>
-  <li><a href="#heat-injury-integral-as-a-posterior-quantity" id="toc-heat-injury-integral-as-a-posterior-quantity" class="nav-link" data-scroll-target="#heat-injury-integral-as-a-posterior-quantity"><span class="header-section-number">5.2</span> Heat-injury integral as a posterior quantity</a></li>
-  <li><a href="#what-the-4pl-delivers-that-the-two-step-cannot" id="toc-what-the-4pl-delivers-that-the-two-step-cannot" class="nav-link" data-scroll-target="#what-the-4pl-delivers-that-the-two-step-cannot"><span class="header-section-number">5.3</span> What the 4PL delivers that the two-step cannot</a></li>
-  </ul></li>
-  <li><a href="#worked-example-brown-shrimp-thermal-tolerance" id="toc-worked-example-brown-shrimp-thermal-tolerance" class="nav-link" data-scroll-target="#worked-example-brown-shrimp-thermal-tolerance"><span class="header-section-number">6</span> Worked example: brown shrimp thermal tolerance</a>
-  <ul class="collapse">
-  <li><a href="#data-and-experimental-design" id="toc-data-and-experimental-design" class="nav-link" data-scroll-target="#data-and-experimental-design"><span class="header-section-number">6.1</span> Data and experimental design</a></li>
-  <li><a href="#lethal-tdt-hierarchical-4pl-on-counts" id="toc-lethal-tdt-hierarchical-4pl-on-counts" class="nav-link" data-scroll-target="#lethal-tdt-hierarchical-4pl-on-counts"><span class="header-section-number">6.2</span> Lethal TDT — hierarchical 4PL on counts</a></li>
-  <li><a href="#sublethal-time-to-death" id="toc-sublethal-time-to-death" class="nav-link" data-scroll-target="#sublethal-time-to-death"><span class="header-section-number">6.3</span> Sublethal time-to-death</a></li>
-  <li><a href="#dynamic-ctmax-across-ramping-rates" id="toc-dynamic-ctmax-across-ramping-rates" class="nav-link" data-scroll-target="#dynamic-ctmax-across-ramping-rates"><span class="header-section-number">6.4</span> Dynamic CTmax across ramping rates</a></li>
-  <li><a href="#reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation" id="toc-reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation" class="nav-link" data-scroll-target="#reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation"><span class="header-section-number">6.5</span> Reconciling the three endpoints via the Jørgensen ramping equation</a></li>
-  <li><a href="#field-temperature-heat-injury-projections-under-warming-scenarios" id="toc-field-temperature-heat-injury-projections-under-warming-scenarios" class="nav-link" data-scroll-target="#field-temperature-heat-injury-projections-under-warming-scenarios"><span class="header-section-number">6.6</span> Field-temperature heat-injury projections under warming scenarios</a></li>
-  </ul></li>
-  <li><a href="#discussion" id="toc-discussion" class="nav-link" data-scroll-target="#discussion"><span class="header-section-number">7</span> Discussion</a>
-  <ul class="collapse">
-  <li><a href="#what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default" id="toc-what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default" class="nav-link" data-scroll-target="#what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default"><span class="header-section-number">7.1</span> What changes for the field if the hierarchical 4PL becomes the default</a></li>
-  <li><a href="#limits-of-the-present-analysis" id="toc-limits-of-the-present-analysis" class="nav-link" data-scroll-target="#limits-of-the-present-analysis"><span class="header-section-number">7.2</span> Limits of the present analysis</a></li>
-  <li><a href="#recommendations-for-primary-studies-and-meta-analyses" id="toc-recommendations-for-primary-studies-and-meta-analyses" class="nav-link" data-scroll-target="#recommendations-for-primary-studies-and-meta-analyses"><span class="header-section-number">7.3</span> Recommendations for primary studies and meta-analyses</a></li>
-  </ul></li>
-  <li><a href="#conclusions" id="toc-conclusions" class="nav-link" data-scroll-target="#conclusions"><span class="header-section-number">8</span> Conclusions</a></li>
-  <li><a href="#acknowledgements" id="toc-acknowledgements" class="nav-link" data-scroll-target="#acknowledgements"><span class="header-section-number">9</span> Acknowledgements</a></li>
-  <li><a href="#author-contributions" id="toc-author-contributions" class="nav-link" data-scroll-target="#author-contributions">Author contributions</a></li>
-  <li><a href="#data-and-code-availability" id="toc-data-and-code-availability" class="nav-link" data-scroll-target="#data-and-code-availability">Data and code availability</a></li>
-  <li><a href="#conflict-of-interest" id="toc-conflict-of-interest" class="nav-link" data-scroll-target="#conflict-of-interest">Conflict of interest</a></li>
-  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">References</a></li>
-  </ul>
-<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="ms.docx"><i class="bi bi-file-word"></i>MS Word</a></li></ul></div></nav>
-</div>
+<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="ms.docx"><i class="bi bi-file-word"></i>MS Word</a></li></ul></div></div>
 <main class="content" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
@@ -2395,12 +2344,6 @@ window.Quarto = {
 <div class="quarto-title-meta">
 
       
-    <div>
-    <div class="quarto-title-meta-heading">Published</div>
-    <div class="quarto-title-meta-contents">
-      <p class="date">April 29, 2026</p>
-    </div>
-  </div>
   
     
   </div>
@@ -2409,10 +2352,10 @@ window.Quarto = {
   <div class="abstract">
     <div class="block-title">Abstract</div>
     <ol type="1">
-    <li><p><em>Background.</em> The thermal death time (TDT) framework is dominant in ectotherm thermal-tolerance research, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of <span class="math inline">\(\log_{10}\text{LT50}\)</span> on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).</p></li>
-    <li><p><em>Approach.</em> We develop a single-stage hierarchical Bayesian four-parameter logistic (4PL) survival model fit directly to raw binomial count data, with identifiably-parameterised free asymptotes, observation-level overdispersion, and random effects for every real level of experimental nesting. We prove algebraically that every classical TDT output — slope, <em>z</em>-value, CTmax at any reference time, and the heat-injury (HI) integral — is a one-line posterior summary of this fit, with correctly-calibrated credible intervals.</p></li>
-    <li><p><em>Demonstration.</em> We apply the framework to brown shrimp (<em>Crangon crangon</em>) thermal-tolerance data spanning three endpoints (lethal mortality, sublethal time-to-death, and dynamic CTmax at three ramping rates), reconcile the endpoints through the <span class="citation" data-cites="jorgensen_unifying_2021">Jørgensen <em>et al.</em> (<a href="#ref-jorgensen_unifying_2021" role="doc-biblioref">2021</a>)</span> ramping equation under full posterior propagation, and project mortality risk under measured Baltic field temperatures and warming scenarios using a damage-accumulation model with a Sharpe–Schoolfield repair kernel.</p></li>
-    <li><p><em>Implications.</em> The classical and Bayesian frameworks are equivalent in the limit, but the hierarchical 4PL delivers properly propagated uncertainty, accommodates censoring and overdispersion by construction, and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.</p></li>
+    <li><p>The thermal load sensitivity (TLS) framework is the gold standard for estimating and predicting thermal tolerance in nature, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of <span class="math inline">\(\log_{10}\text{LT50}\)</span> on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).</p></li>
+    <li><p>We describe a flexible Bayesian, single-stage four-parameter logistic (4PL) model for modelling the impact of temperature and time on survival and fertility. We demonstrate how such an approach can recover all the classical TDT output typical of a two-stage modelling framework — including thermal sensitivity (<span class="math inline">\(z\)</span>, slopes), critical thermal limit (<span class="math inline">\(CT_{max_{1hr}}\)</span>) and the heat-injury (HI) integral, which allows for one to predict thermal injury in nature under realistic exposure temperatures. Given its fully Bayesian implementation, it allows for error propagation to account for uncertainty at all stages of modelling as well as improved inferences.</p></li>
+    <li><p>We applied our new modelling framework to data from brown shrimp (<em>Crangon crangon</em>) and XX to demonstrate the equivalencies and benefits of such an approach.</p></li>
+    <li><p>We show that the classical and Bayesian frameworks are equivalent, but that the hierarchical 4PL delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, , and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.</p></li>
     </ol>
   </div>
 </div>
@@ -2427,9 +2370,12 @@ window.Quarto = {
 </header>
 
 
-<section id="introduction" class="level1" data-number="1">
-<h1 data-number="1"><span class="header-section-number">1</span> Introduction</h1>
-<p>Climate change is fueling more frequent and extreme heat events globally, compromising organism survival and reproduction, and leading to widespread population declines <span class="citation" data-cites="snook_fertility_2026 arnold_thermal_2025 rezende_drosophila_mortality_2020">(<a href="#ref-arnold_thermal_2025" role="doc-biblioref">Arnold <em>et al.</em> 2025</a>; <a href="#ref-rezende_drosophila_mortality_2020" role="doc-biblioref">Rezende <em>et al.</em> 2020</a>; <a href="#ref-snook_fertility_2026" role="doc-biblioref">Snook <em>et al.</em> 2026</a>)</span>. Establishing thermal-tolerance limits across species is now central to forecasting climate-change impacts on organisms in nature <span class="citation" data-cites="sunday_global_2011 deutsch_latitude_2008 sunday_redistribution_2012 pinsky_marine_2019">(<a href="#ref-deutsch_latitude_2008" role="doc-biblioref">Deutsch <em>et al.</em> 2008</a>; <a href="#ref-pinsky_marine_2019" role="doc-biblioref">Pinsky <em>et al.</em> 2019</a>; <a href="#ref-sunday_global_2011" role="doc-biblioref">Sunday <em>et al.</em> 2011</a>, <a href="#ref-sunday_redistribution_2012" role="doc-biblioref">2012</a>)</span>. Traditionally, static measures of heat tolerance such as <span class="math inline">\(CT_{max}\)</span> have been used to establish differences in vulnerability among taxa and predict climate change impacts <span class="citation" data-cites="kellermann_drosophila_2012">(<a href="#ref-kellermann_drosophila_2012" role="doc-biblioref">Kellermann <em>et al.</em> 2012</a>)</span>. While useful, static measures are not able to capture how fitness depends on both heat intensity and duration <span class="citation" data-cites="rezende_landscapes_2014 jorgensen_unifying_2021">(<a href="#ref-jorgensen_unifying_2021" role="doc-biblioref">Jørgensen <em>et al.</em> 2021</a>; <a href="#ref-rezende_landscapes_2014" role="doc-biblioref">Rezende <em>et al.</em> 2014</a>)</span>.</p>
+<section id="introduction" class="level1">
+<h1>Introduction</h1>
+<p>Climate change is driving more frequent and extreme heat events globally, compromising organism fitness <span class="citation" data-cites="snook_fertility_2026 arnold_thermal_2025 rezende_drosophila_mortality_2020">(<a href="#ref-arnold_thermal_2025" role="doc-biblioref">Arnold <em>et al.</em> 2025</a>; <a href="#ref-rezende_drosophila_mortality_2020" role="doc-biblioref">Rezende <em>et al.</em> 2020</a>; <a href="#ref-snook_fertility_2026" role="doc-biblioref">Snook <em>et al.</em> 2026</a>)</span>, with cascading consequences for population persistence and biodiversity <span class="citation" data-cites="smale_marine_2019 wiens_localextinctions_2016">(<a href="#ref-smale_marine_2019" role="doc-biblioref">Smale <em>et al.</em> 2019</a>; <a href="#ref-wiens_localextinctions_2016" role="doc-biblioref">Wiens 2016</a>)</span>. Quantifying differences in thermal tolerance across species is now central to forecasting climate-change impacts on organisms in nature <span class="citation" data-cites="sunday_global_2011 deutsch_latitude_2008 sunday_redistribution_2012 pinsky_marine_2019">(<a href="#ref-deutsch_latitude_2008" role="doc-biblioref">Deutsch <em>et al.</em> 2008</a>; <a href="#ref-pinsky_marine_2019" role="doc-biblioref">Pinsky <em>et al.</em> 2019</a>; <a href="#ref-sunday_global_2011" role="doc-biblioref">Sunday <em>et al.</em> 2011</a>, <a href="#ref-sunday_redistribution_2012" role="doc-biblioref">2012</a>)</span>. Static measures of heat tolerance, such as <span class="math inline">\(CT_{max}\)</span>, have long been used to establish differences in vulnerability among taxa and predicting climate change risk <span class="citation" data-cites="pottier_amphibians_2025 sunday_global_2011 deutsch_latitude_2008 sunday_redistribution_2012 pinsky_marine_2019">(<a href="#ref-deutsch_latitude_2008" role="doc-biblioref">Deutsch <em>et al.</em> 2008</a>; <a href="#ref-pinsky_marine_2019" role="doc-biblioref">Pinsky <em>et al.</em> 2019</a>; <a href="#ref-pottier_amphibians_2025" role="doc-biblioref">Pottier <em>et al.</em> 2025</a>; <a href="#ref-sunday_global_2011" role="doc-biblioref">Sunday <em>et al.</em> 2011</a>, <a href="#ref-sunday_redistribution_2012" role="doc-biblioref">2012</a>)</span>. While useful, static measures do not capture how the negative effects of extreme heat on fitness depend on both heat intensity and duration, limiting our ability to make realistic predictions under more dynamic thermal environments <span class="citation" data-cites="rezende_landscapes_2014 orsted_finding_2022 jorgensen_unifying_2021">(<a href="#ref-jorgensen_unifying_2021" role="doc-biblioref">Jørgensen <em>et al.</em> 2021</a>; <a href="#ref-orsted_finding_2022" role="doc-biblioref">Ørsted <em>et al.</em> 2022</a>; <a href="#ref-rezende_landscapes_2014" role="doc-biblioref">Rezende <em>et al.</em> 2014</a>)</span>.</p>
+<p>The Thermal Load Sensitivity (TLS) framework (or equivalently Thermal Death Time framework) <span class="citation" data-cites="rezende_landscapes_2014 orsted_finding_2022 arnold_thermal_2025">(<a href="#ref-arnold_thermal_2025" role="doc-biblioref">Arnold <em>et al.</em> 2025</a>; <a href="#ref-orsted_finding_2022" role="doc-biblioref">Ørsted <em>et al.</em> 2022</a>; <a href="#ref-rezende_landscapes_2014" role="doc-biblioref">Rezende <em>et al.</em> 2014</a>)</span> resolves these limitations by jointly modelling the effects of heat intensity and duration on fitness (e.g., survival, fertility, reproduction). This matters because physiological damage accumulates in a dose-dependent manner — physiological damage accumulates faster at higher temperatures and over longer exposures <span class="citation" data-cites="orsted_finding_2022 rezende_landscapes_2014 arnold_thermal_2025">(<a href="#ref-arnold_thermal_2025" role="doc-biblioref">Arnold <em>et al.</em> 2025</a>; <a href="#ref-orsted_finding_2022" role="doc-biblioref">Ørsted <em>et al.</em> 2022</a>; <a href="#ref-rezende_landscapes_2014" role="doc-biblioref">Rezende <em>et al.</em> 2014</a>)</span>. Organisms experiencing fluctuating thermal environments in nature can therefore accumulate damage to physiological systems that results in sublethal injury that compounds across successive heat exposures if not fully repaired <span class="citation" data-cites="arnold_thermal_2025 buckley_damage_2025 jorgensen_unifying_2021">(<a href="#ref-arnold_thermal_2025" role="doc-biblioref">Arnold <em>et al.</em> 2025</a>; <a href="#ref-buckley_damage_2025" role="doc-biblioref">Buckley <em>et al.</em> 2025</a>; <a href="#ref-jorgensen_unifying_2021" role="doc-biblioref">Jørgensen <em>et al.</em> 2021</a>)</span>. Such processes can lead to delayed responses to extreme heat events.</p>
+<p>Thermal sensitivity is traditionally modelled in a two-step approach <span class="citation" data-cites="orsted_finding_2022 rezende_drosophila_mortality_2020">(<a href="#ref-orsted_finding_2022" role="doc-biblioref">Ørsted <em>et al.</em> 2022</a>; <a href="#ref-rezende_drosophila_mortality_2020" role="doc-biblioref">Rezende <em>et al.</em> 2020</a>)</span>. First, the proportion of live/dead (or fertile/infertile, if sub-lethal) is modelled as a function of temperature and log transformed time (in minutes or hours). Experiments will typically manipulate a range of temperatures and times (5 temperatures x 5 durations). Dose-response curves are then fit to each time-response curve for all temperatures (usually at each temperature treatment independently). A threshold response, e.g., <span class="math inline">\(LT_{50}\)</span> or <span class="math inline">\(LT_{80}\)</span>, is then derived from these curves. Second, the log transformed time taken to reach the threshold (e.g., <span class="math inline">\(LT_{50}\)</span>) and temperature are regressed against each other using a linear model and thermal sensitivity (i.e., the slope of this regression, <em>z</em>) and critical thermal maxima (i.e., the intercept of the regression, <span class="math inline">\(CT_{max_{time}}\)</span>) are then derived <span class="citation" data-cites="rezende_landscapes_2014 orsted_finding_2022">(<a href="#ref-orsted_finding_2022" role="doc-biblioref">Ørsted <em>et al.</em> 2022</a>; <a href="#ref-rezende_landscapes_2014" role="doc-biblioref">Rezende <em>et al.</em> 2014</a>)</span>. <span class="math inline">\(CT_{max_{time}}\)</span> is usually computed at 1 min or 1 hour duration. Thermal sensitivity and <span class="math inline">\(CT_{max_{1min}}\)</span> are than used to quantify Heat Injury (HI) (e.g., <span class="citation" data-cites="jorgensen_drosophila_2019">Jørgensen <em>et al.</em> (<a href="#ref-jorgensen_drosophila_2019" role="doc-biblioref">2019</a>)</span>) in response to realistic temperatures in nature. Heat injury measures the cumulative percentage or probability until reaching a given threshold (e.g., <span class="math inline">\(LT_{50}\)</span>), at which point we would predict 50% of the population to have died. Recent work has emphasized the importance of repair in heat injury dynamics and developed some methods to capture these damage-repair dynamics <span class="citation" data-cites="arnold_thermal_2025 buckley_damage_2025">(<a href="#ref-arnold_thermal_2025" role="doc-biblioref">Arnold <em>et al.</em> 2025</a>; <a href="#ref-buckley_damage_2025" role="doc-biblioref">Buckley <em>et al.</em> 2025</a>)</span>.</p>
+<p>While the two-step approach to modelling thermal sensitivity is intuitive and simple in practice it has numerous practical and statistical limitations. First, the two-step pipeline propagates uncertainty incorrectly. The <span class="math inline">\(LT_{50}\)</span> estimates from the first stage are themselves uncertain, and their sampling variance is heteroscedastic — typically larger at the temperature extremes, where the dose-response curve is poorly sampled, than near the centre of the assay range. Treating these point estimates as if they were observed without error in the second-stage regression discards this structured uncertainty and miscalibrates the standard errors on the slope (<span class="math inline">\(z\)</span>) and intercept (<span class="math inline">\(CT_{max}\)</span>). Second, group comparisons (between species, sexes, or life stages) inherit the miscalibrated uncertainty of the first stage. As such, differences in <span class="math inline">\(z\)</span> between groups cannot be attributed to differences in the upper asymptote, lower asymptote, or curve steepness of the dose-response curve, because all three are collapsed into a single <span class="math inline">\(LT_{50}\)</span> before the comparison is made. Third, the <span class="math inline">\(LT_{50}\)</span>-extraction step collapses the within-replicate count, foreclosing hierarchical decomposition of variance across replicates, plates, populations, sexes, and life stages — a level of inference routinely available in survival data fitted with random effects <span class="citation" data-cites="harrison_olre_2014 harrison_mixed_2018">(<a href="#ref-harrison_olre_2014" role="doc-biblioref">Harrison 2014</a>; <a href="#ref-harrison_mixed_2018" role="doc-biblioref">Harrison <em>et al.</em> 2018</a>)</span>. Fourth, propagating uncertainty from a two-step fit into downstream predictions — such as cumulative heat injury under a measured temperature trace — is mathematically awkward and rarely attempted in practice; predictions are typically reported as point trajectories, understating the credible range of fitness loss in the field.</p>
 <!--
 The introduction should:
 - Establish that thermal-tolerance limits are central to forecasting climate-change impacts on ectotherms (cite @sunday_global_2011, @deutsch_latitude_2008, @sunday_redistribution_2012, @pinsky_marine_2019).
@@ -2441,25 +2387,13 @@ The introduction should:
     (ii) an algebraic proof that classical TDT outputs are posterior summaries of the joint fit, with credible intervals;
     (iii) a worked, multi-endpoint empirical demonstration that recovers, reconciles, and extends the classical outputs.
 -->
-<section id="the-thermal-death-time-framework" class="level2" data-number="1.1">
-<h2 data-number="1.1" class="anchored" data-anchor-id="the-thermal-death-time-framework"><span class="header-section-number">1.1</span> The thermal death time framework</h2>
 </section>
-<section id="statistical-liabilities-of-the-two-step-pipeline" class="level2" data-number="1.2">
-<h2 data-number="1.2" class="anchored" data-anchor-id="statistical-liabilities-of-the-two-step-pipeline"><span class="header-section-number">1.2</span> Statistical liabilities of the two-step pipeline</h2>
-</section>
-<section id="aims-and-contributions" class="level2" data-number="1.3">
-<h2 data-number="1.3" class="anchored" data-anchor-id="aims-and-contributions"><span class="header-section-number">1.3</span> Aims and contributions</h2>
-</section>
-</section>
-<section id="applying-hierarchical-bayesian-dose-response-curves-for-modelling-the-impacts-of-temperature-and-time-on-fitness" class="level1" data-number="2">
-<h1 data-number="2"><span class="header-section-number">2</span> Applying hierarchical Bayesian dose-response curves for modelling the impacts of temperature and time on fitness</h1>
-<!--
-This is the methodological core of the paper. It should be readable as a
-self-contained methods section; the supplement carries the full derivations
-and software listings.
--->
-<section id="model-specification" class="level2" data-number="2.1">
-<h2 data-number="2.1" class="anchored" data-anchor-id="model-specification"><span class="header-section-number">2.1</span> Model specification</h2>
+<section id="a-non-linear-bayesian-hierarchical-model-for-characterizing-thermal-load-sensitivity" class="level1">
+<h1>A non-linear Bayesian hierarchical model for characterizing thermal load sensitivity</h1>
+<p>Here, we introduce the four-parameter logistic function which allows one to model the effects of temperature and time on critical parameters characterising fitness curves. We then demonstrate how such an approach can recover all the classical TDT parameters used characterising thermal sensitivity across taxa and modelling the impacts of extreme heat in nature. We then apply this modelling framework using two case studies (XX).</p>
+<p>In a single-stage Bayesian fit, the same prediction is a posterior over trajectories with no extra machinery</p>
+<section id="model-specification" class="level2">
+<h2 class="anchored" data-anchor-id="model-specification">Model specification</h2>
 <p>Let <span class="math inline">\(y_{ij}\)</span> denote the number of survivors out of <span class="math inline">\(n_{ij}\)</span> individuals in trial <span class="math inline">\(j\)</span> exposed for time <span class="math inline">\(t_{ij}\)</span> (minutes) at assay temperature <span class="math inline">\(T_{ij}\)</span> (°C). We model the counts directly with a binomial likelihood (but a beta-binomial likelihood function can also be used and controls for overdispersion):</p>
 <p><span id="eq-likelihood"><span class="math display">\[
 y_{ij} \mid n_{ij}, p_{ij} \;\sim\; \text{Binomial}(n_{ij},\, p_{ij}),
@@ -2477,8 +2411,8 @@ p_{ij} \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - m
 </ul>
 </section>
 </section>
-<section id="application-of-bayesian-dose-response-models-to-the-tls-framework" class="level1" data-number="3">
-<h1 data-number="3"><span class="header-section-number">3</span> Application of Bayesian dose-response models to the TLS framework</h1>
+<section id="application-of-bayesian-dose-response-models-to-the-tls-framework" class="level1">
+<h1>Application of Bayesian dose-response models to the TLS framework</h1>
 <p>We used a four-parameter logistic function to model the impact of temperature and duration (hours/minutes) on survival probability thermal sensitivity, estimate <span class="math inline">\(CT_{max1h}\)</span></p>
 <p>To break the well-known likelihood ridges among <span class="math inline">\((\ell, u, k)\)</span> in unconstrained 4PL fits <span class="citation" data-cites="bolker_ecologicalmodels_2008 gelman_priors_2006">(<a href="#ref-bolker_ecologicalmodels_2008" role="doc-biblioref">Bolker 2008</a>; <a href="#ref-gelman_priors_2006" role="doc-biblioref">Gelman 2006</a>)</span>, we estimate the identifiable parameterisation</p>
 <p><span id="eq-reparam"><span class="math display">\[
@@ -2494,20 +2428,20 @@ m_{ij} \;=\; \beta_0 \;+\; \beta_1\,(T_{ij} - \bar T) \;+\; \mathbf{x}_{ij}^{\to
 <p>where <span class="math inline">\(\bar T\)</span> is the grand mean of assay temperatures (centring stabilises sampling and decorrelates <span class="math inline">\(\beta_0\)</span> from <span class="math inline">\(\beta_1\)</span>), <span class="math inline">\(\mathbf{x}_{ij}\)</span> holds any additional fixed covariates with coefficients <span class="math inline">\(\boldsymbol{\gamma}\)</span>, <span class="math inline">\(b_{j}\)</span> collects the nested random effects and <span class="math inline">\(\varepsilon_{ij} \sim \mathcal{N}(0, \sigma_\varepsilon^2)\)</span> is an observation-level random effect that absorbs the binomial overdispersion characteristic of replicated count assays <span class="citation" data-cites="harrison_olre_2014">(<a href="#ref-harrison_olre_2014" role="doc-biblioref">Harrison 2014</a>)</span>. However, we could also remove the observation-level random effect from the model and instead fit a beta-binomial error distribution which estimates a dispersion parameter (<span class="math inline">\(\phi\)</span>) more naturally.</p>
 <p>Together, <a href="#eq-likelihood" class="quarto-xref">Equation 1</a>–<a href="#eq-linpred" class="quarto-xref">Equation 4</a> define the hierarchical Bayesian 4PL fit directly to the raw binomial counts. Every classical TDT quantity — slope, <span class="math inline">\(z\)</span>, CTmax at any reference time, and the heat-injury integral — is recovered as a one-line posterior summary of this single joint fit, as derived in §<a href="#equivalence-with-the-classical-pipeline">Equivalence with the classical pipeline</a>.</p>
 </section>
-<section id="case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp" class="level1" data-number="4">
-<h1 data-number="4"><span class="header-section-number">4</span> Case Study 1: Thermal sensitivity estimation across life stages in shrimp</h1>
-<section id="priors" class="level2" data-number="4.1">
-<h2 data-number="4.1" class="anchored" data-anchor-id="priors"><span class="header-section-number">4.1</span> Priors</h2>
+<section id="case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp" class="level1">
+<h1>Case Study 1: Thermal sensitivity estimation across life stages in shrimp</h1>
+<section id="priors" class="level2">
+<h2 class="anchored" data-anchor-id="priors">Priors</h2>
 </section>
-<section id="random-effects-structure" class="level2" data-number="4.2">
-<h2 data-number="4.2" class="anchored" data-anchor-id="random-effects-structure"><span class="header-section-number">4.2</span> Random-effects structure</h2>
+<section id="random-effects-structure" class="level2">
+<h2 class="anchored" data-anchor-id="random-effects-structure">Random-effects structure</h2>
 </section>
-<section id="censoring-boundary-observations-and-overdispersion" class="level2" data-number="4.3">
-<h2 data-number="4.3" class="anchored" data-anchor-id="censoring-boundary-observations-and-overdispersion"><span class="header-section-number">4.3</span> Censoring, boundary observations, and overdispersion</h2>
+<section id="censoring-boundary-observations-and-overdispersion" class="level2">
+<h2 class="anchored" data-anchor-id="censoring-boundary-observations-and-overdispersion">Censoring, boundary observations, and overdispersion</h2>
 </section>
 </section>
-<section id="equivalence-with-the-classical-pipeline" class="level1" data-number="5">
-<h1 data-number="5"><span class="header-section-number">5</span> Equivalence with the classical pipeline</h1>
+<section id="equivalence-with-the-classical-pipeline" class="level1">
+<h1>Equivalence with the classical pipeline</h1>
 <!--
 Algebraic statement: solving p(t; T) = 0.5 for t gives a closed-form
 log10 LT50(T) that is linear in T with slope = beta1, and the classical
@@ -2519,24 +2453,24 @@ key identities in the manuscript and put the rest in the supplement.
 Helpers extract_tdt_params(), LT50_T_curve(), heat_injury(),
 time_to_mortality() should be cited and listed in the supplement.
 -->
-<section id="closed-form-mapping-from-4pl-parameters-to-z-and-ctmax" class="level2" data-number="5.1">
-<h2 data-number="5.1" class="anchored" data-anchor-id="closed-form-mapping-from-4pl-parameters-to-z-and-ctmax"><span class="header-section-number">5.1</span> Closed-form mapping from 4PL parameters to z and CTmax</h2>
+<section id="closed-form-mapping-from-4pl-parameters-to-z-and-ctmax" class="level2">
+<h2 class="anchored" data-anchor-id="closed-form-mapping-from-4pl-parameters-to-z-and-ctmax">Closed-form mapping from 4PL parameters to z and CTmax</h2>
 </section>
-<section id="heat-injury-integral-as-a-posterior-quantity" class="level2" data-number="5.2">
-<h2 data-number="5.2" class="anchored" data-anchor-id="heat-injury-integral-as-a-posterior-quantity"><span class="header-section-number">5.2</span> Heat-injury integral as a posterior quantity</h2>
+<section id="heat-injury-integral-as-a-posterior-quantity" class="level2">
+<h2 class="anchored" data-anchor-id="heat-injury-integral-as-a-posterior-quantity">Heat-injury integral as a posterior quantity</h2>
 </section>
-<section id="what-the-4pl-delivers-that-the-two-step-cannot" class="level2" data-number="5.3">
-<h2 data-number="5.3" class="anchored" data-anchor-id="what-the-4pl-delivers-that-the-two-step-cannot"><span class="header-section-number">5.3</span> What the 4PL delivers that the two-step cannot</h2>
+<section id="what-the-4pl-delivers-that-the-two-step-cannot" class="level2">
+<h2 class="anchored" data-anchor-id="what-the-4pl-delivers-that-the-two-step-cannot">What the 4PL delivers that the two-step cannot</h2>
 </section>
 </section>
-<section id="worked-example-brown-shrimp-thermal-tolerance" class="level1" data-number="6">
-<h1 data-number="6"><span class="header-section-number">6</span> Worked example: brown shrimp thermal tolerance</h1>
+<section id="worked-example-brown-shrimp-thermal-tolerance" class="level1">
+<h1>Worked example: brown shrimp thermal tolerance</h1>
 <!--
 Multi-endpoint demonstration on Crangon crangon.
 Source pipeline: R/bayesian_TDT_shrimp.qmd.
 -->
-<section id="data-and-experimental-design" class="level2" data-number="6.1">
-<h2 data-number="6.1" class="anchored" data-anchor-id="data-and-experimental-design"><span class="header-section-number">6.1</span> Data and experimental design</h2>
+<section id="data-and-experimental-design" class="level2">
+<h2 class="anchored" data-anchor-id="data-and-experimental-design">Data and experimental design</h2>
 <div id="tbl-data-summary" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-data-summary-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -2550,29 +2484,29 @@ Table 1: Sample sizes and experimental design across the three thermal-toleranc
 </figure>
 </div>
 </section>
-<section id="lethal-tdt-hierarchical-4pl-on-counts" class="level2" data-number="6.2">
-<h2 data-number="6.2" class="anchored" data-anchor-id="lethal-tdt-hierarchical-4pl-on-counts"><span class="header-section-number">6.2</span> Lethal TDT — hierarchical 4PL on counts</h2>
+<section id="lethal-tdt-hierarchical-4pl-on-counts" class="level2">
+<h2 class="anchored" data-anchor-id="lethal-tdt-hierarchical-4pl-on-counts">Lethal TDT — hierarchical 4PL on counts</h2>
 </section>
-<section id="sublethal-time-to-death" class="level2" data-number="6.3">
-<h2 data-number="6.3" class="anchored" data-anchor-id="sublethal-time-to-death"><span class="header-section-number">6.3</span> Sublethal time-to-death</h2>
+<section id="sublethal-time-to-death" class="level2">
+<h2 class="anchored" data-anchor-id="sublethal-time-to-death">Sublethal time-to-death</h2>
 </section>
-<section id="dynamic-ctmax-across-ramping-rates" class="level2" data-number="6.4">
-<h2 data-number="6.4" class="anchored" data-anchor-id="dynamic-ctmax-across-ramping-rates"><span class="header-section-number">6.4</span> Dynamic CTmax across ramping rates</h2>
+<section id="dynamic-ctmax-across-ramping-rates" class="level2">
+<h2 class="anchored" data-anchor-id="dynamic-ctmax-across-ramping-rates">Dynamic CTmax across ramping rates</h2>
 </section>
-<section id="reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation" class="level2" data-number="6.5">
-<h2 data-number="6.5" class="anchored" data-anchor-id="reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation"><span class="header-section-number">6.5</span> Reconciling the three endpoints via the Jørgensen ramping equation</h2>
+<section id="reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation" class="level2">
+<h2 class="anchored" data-anchor-id="reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation">Reconciling the three endpoints via the Jørgensen ramping equation</h2>
 </section>
-<section id="field-temperature-heat-injury-projections-under-warming-scenarios" class="level2" data-number="6.6">
-<h2 data-number="6.6" class="anchored" data-anchor-id="field-temperature-heat-injury-projections-under-warming-scenarios"><span class="header-section-number">6.6</span> Field-temperature heat-injury projections under warming scenarios</h2>
+<section id="field-temperature-heat-injury-projections-under-warming-scenarios" class="level2">
+<h2 class="anchored" data-anchor-id="field-temperature-heat-injury-projections-under-warming-scenarios">Field-temperature heat-injury projections under warming scenarios</h2>
 </section>
 </section>
-<section id="discussion" class="level1" data-number="7">
-<h1 data-number="7"><span class="header-section-number">7</span> Discussion</h1>
-<section id="what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default" class="level2" data-number="7.1">
-<h2 data-number="7.1" class="anchored" data-anchor-id="what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default"><span class="header-section-number">7.1</span> What changes for the field if the hierarchical 4PL becomes the default</h2>
+<section id="discussion" class="level1">
+<h1>Discussion</h1>
+<section id="what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default" class="level2">
+<h2 class="anchored" data-anchor-id="what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default">What changes for the field if the hierarchical 4PL becomes the default</h2>
 </section>
-<section id="limits-of-the-present-analysis" class="level2" data-number="7.2">
-<h2 data-number="7.2" class="anchored" data-anchor-id="limits-of-the-present-analysis"><span class="header-section-number">7.2</span> Limits of the present analysis</h2>
+<section id="limits-of-the-present-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="limits-of-the-present-analysis">Limits of the present analysis</h2>
 <!--
 Honest discussion of:
 - Repair kernel parameters fixed, not fit
@@ -2581,15 +2515,15 @@ Honest discussion of:
 - Endpoint heterogeneity is not eliminated, only made visible
 -->
 </section>
-<section id="recommendations-for-primary-studies-and-meta-analyses" class="level2" data-number="7.3">
-<h2 data-number="7.3" class="anchored" data-anchor-id="recommendations-for-primary-studies-and-meta-analyses"><span class="header-section-number">7.3</span> Recommendations for primary studies and meta-analyses</h2>
+<section id="recommendations-for-primary-studies-and-meta-analyses" class="level2">
+<h2 class="anchored" data-anchor-id="recommendations-for-primary-studies-and-meta-analyses">Recommendations for primary studies and meta-analyses</h2>
 </section>
 </section>
-<section id="conclusions" class="level1" data-number="8">
-<h1 data-number="8"><span class="header-section-number">8</span> Conclusions</h1>
+<section id="conclusions" class="level1">
+<h1>Conclusions</h1>
 </section>
-<section id="acknowledgements" class="level1" data-number="9">
-<h1 data-number="9"><span class="header-section-number">9</span> Acknowledgements</h1>
+<section id="acknowledgements" class="level1">
+<h1>Acknowledgements</h1>
 </section>
 <section id="author-contributions" class="level1 unnumbered">
 <h1 class="unnumbered">Author contributions</h1>
@@ -2612,6 +2546,9 @@ Arnold, P.A., Noble, D.W.A., Nicotra, A.B., Kearney, M.R., Rezende, E.L., Andrew
 <div id="ref-bolker_ecologicalmodels_2008" class="csl-entry" role="listitem">
 Bolker, B.M. (2008). <em><a href="https://press.princeton.edu/books/hardcover/9780691125220/ecological-models-and-data-in-r">Ecological models and data in <span>R</span></a></em>. Princeton University Press, Princeton, NJ.
 </div>
+<div id="ref-buckley_damage_2025" class="csl-entry" role="listitem">
+Buckley, L.B., Huey, R.B. &amp; Ma, C.-S. (2025). <a href="https://doi.org/10.1093/icb/icaf019">How damage, recovery, and repair alter the fitness impacts of thermal stress</a>. <em>Integrative and Comparative Biology</em>, 65, 1061–1075.
+</div>
 <div id="ref-burkner_brms_2017" class="csl-entry" role="listitem">
 Bürkner, P.-C. (2017). <a href="https://doi.org/10.18637/jss.v080.i01"><span class="nocase">brms</span>: An <span>R</span> package for <span>B</span>ayesian multilevel models using <span>S</span>tan</a>. <em>Journal of Statistical Software</em>, 80, 1–28.
 </div>
@@ -2624,14 +2561,23 @@ Gelman, A. (2006). <a href="https://doi.org/10.1214/06-BA117A">Prior distributio
 <div id="ref-harrison_olre_2014" class="csl-entry" role="listitem">
 Harrison, X.A. (2014). <a href="https://doi.org/10.7717/peerj.616">Using observation-level random effects to model overdispersion in count data in ecology and evolution</a>. <em>PeerJ</em>, 2, e616.
 </div>
+<div id="ref-harrison_mixed_2018" class="csl-entry" role="listitem">
+Harrison, X.A., Donaldson, L., Correa-Cano, M.E., Evans, J., Fisher, D.N., Goodwin, C.E.D., <em>et al.</em> (2018). <a href="https://doi.org/10.7717/peerj.4794">A brief introduction to mixed effects modelling and multi-model inference in ecology</a>. <em>PeerJ</em>, 6, e4794.
+</div>
+<div id="ref-jorgensen_drosophila_2019" class="csl-entry" role="listitem">
+Jørgensen, L.B., Malte, H. &amp; Overgaard, J. (2019). <a href="https://doi.org/10.1111/1365-2435.13279">How to assess <span>D</span>rosophila heat tolerance: Unifying static and dynamic tolerance assays to predict heat distribution limits</a>. <em>Functional Ecology</em>, 33, 629–642.
+</div>
 <div id="ref-jorgensen_unifying_2021" class="csl-entry" role="listitem">
 Jørgensen, L.B., Malte, H. &amp; Overgaard, J. (2021). <a href="https://doi.org/10.1038/s41598-021-92004-6">A unifying model to estimate thermal tolerance limits in ectotherms across static, dynamic and fluctuating exposures to thermal stress</a>. <em>Scientific Reports</em>, 11, 12840.
 </div>
-<div id="ref-kellermann_drosophila_2012" class="csl-entry" role="listitem">
-Kellermann, V., Overgaard, J., Hoffmann, A.A., Fløjgaard, C., Svenning, J.-C. &amp; Loeschcke, V. (2012). <a href="https://doi.org/10.1073/pnas.1207553109">Upper thermal limits of <span>D</span>rosophila are linked to species distributions and strongly constrained phylogenetically</a>. <em>Proceedings of the National Academy of Sciences</em>, 109, 16228–16233.
+<div id="ref-orsted_finding_2022" class="csl-entry" role="listitem">
+Ørsted, M., Jørgensen, L.B. &amp; Overgaard, J. (2022). <a href="https://doi.org/10.1242/jeb.244514">Finding the right thermal limit: A framework to reconcile ecological, physiological and methodological aspects of <span>CT</span>max in ectotherms</a>. <em>Journal of Experimental Biology</em>, 225, jeb244514.
 </div>
 <div id="ref-pinsky_marine_2019" class="csl-entry" role="listitem">
 Pinsky, M.L., Eikeset, A.M., McCauley, D.J., Payne, J.L. &amp; Sunday, J.M. (2019). <a href="https://doi.org/10.1038/s41586-019-1132-4">Greater vulnerability to warming of marine versus terrestrial ectotherms</a>. <em>Nature</em>, 569, 108–111.
+</div>
+<div id="ref-pottier_amphibians_2025" class="csl-entry" role="listitem">
+Pottier, P., Kearney, M.R., Wu, N.C., Gunderson, A.R., Rej, J.E., Rivera-Villanueva, A.N., <em>et al.</em> (2025). <a href="https://doi.org/10.1038/s41586-025-08665-0">Vulnerability of amphibians to global warming</a>. <em>Nature</em>, 639, 954–961.
 </div>
 <div id="ref-rezende_drosophila_mortality_2020" class="csl-entry" role="listitem">
 Rezende, E.L., Bozinovic, F., Szilágyi, A. &amp; Santos, M. (2020). <a href="https://doi.org/10.1126/science.aba9287">Predicting temperature mortality and selection in natural <span>D</span>rosophila populations</a>. <em>Science</em>, 369, 1242–1245.
@@ -2642,6 +2588,9 @@ Rezende, E.L., Castañeda, L.E. &amp; Santos, M. (2014). <a href="https://doi.or
 <div id="ref-ritz_drc_2015" class="csl-entry" role="listitem">
 Ritz, C., Baty, F., Streibig, J.C. &amp; Gerhard, D. (2015). <a href="https://doi.org/10.1371/journal.pone.0146021">Dose-response analysis using <span>R</span></a>. <em>PLoS ONE</em>, 10, e0146021.
 </div>
+<div id="ref-smale_marine_2019" class="csl-entry" role="listitem">
+Smale, D.A., Wernberg, T., Oliver, E.C.J., Thomsen, M., Harvey, B.P., Straub, S.C., <em>et al.</em> (2019). <a href="https://doi.org/10.1038/s41558-019-0412-1">Marine heatwaves threaten global biodiversity and the provision of ecosystem services</a>. <em>Nature Climate Change</em>, 9, 306–312.
+</div>
 <div id="ref-snook_fertility_2026" class="csl-entry" role="listitem">
 Snook, R.R., Bretman, A., Dougherty, L.R. &amp; Fricke, C. (2026). <a href="https://doi.org/10.1038/s44358-026-00142-4">The consequences of rising temperatures for animal fertility</a>. <em>Nature Reviews Biodiversity</em>, 2, 225–241.
 </div>
@@ -2650,6 +2599,9 @@ Sunday, J.M., Bates, A.E. &amp; Dulvy, N.K. (2011). <a href="https://doi.org/10.
 </div>
 <div id="ref-sunday_redistribution_2012" class="csl-entry" role="listitem">
 Sunday, J.M., Bates, A.E. &amp; Dulvy, N.K. (2012). <a href="https://doi.org/10.1038/nclimate1539">Thermal tolerance and the global redistribution of animals</a>. <em>Nature Climate Change</em>, 2, 686–690.
+</div>
+<div id="ref-wiens_localextinctions_2016" class="csl-entry" role="listitem">
+Wiens, J.J. (2016). <a href="https://doi.org/10.1371/journal.pbio.2001104">Climate-related local extinctions are already widespread among plant and animal species</a>. <em>PLOS Biology</em>, 14, e2001104.
 </div>
 </div>
 </section>

@@ -23,15 +23,14 @@ affiliations:
     name: Department of Biological and Environmental Sciences, University of Gothenburg
     city: Gothenburg
     country: Sweden
-date: today
 abstract: |
-  1. *Background.* The thermal death time (TDT) framework is dominant in ectotherm thermal-tolerance research, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of $\log_{10}\text{LT50}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
+  1.  The thermal load sensitivity (TLS) framework is the gold standard for estimating and predicting thermal tolerance in nature, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of $\log_{10}\text{LT50}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
 
-  2. *Approach.* We develop a single-stage hierarchical Bayesian four-parameter logistic (4PL) survival model fit directly to raw binomial count data, with identifiably-parameterised free asymptotes, observation-level overdispersion, and random effects for every real level of experimental nesting. We prove algebraically that every classical TDT output — slope, *z*-value, CTmax at any reference time, and the heat-injury (HI) integral — is a one-line posterior summary of this fit, with correctly-calibrated credible intervals.
+  2. We describe a flexible Bayesian, single-stage four-parameter logistic (4PL) model for modelling the impact of temperature and time on survival and fertility. We demonstrate how such an approach can recover all the classical TDT output typical of a two-stage modelling framework — including thermal sensitivity ($z$, slopes), critical thermal limit ($CT_{max_{1hr}}$) and the heat-injury (HI) integral, which allows for one to predict thermal injury in nature under realistic exposure temperatures. Given its fully Bayesian implementation, it allows for error propagation to account for uncertainty at all stages of modelling as well as improved inferences.
 
-  3. *Demonstration.* We apply the framework to brown shrimp (*Crangon crangon*) thermal-tolerance data spanning three endpoints (lethal mortality, sublethal time-to-death, and dynamic CTmax at three ramping rates), reconcile the endpoints through the @jorgensen_unifying_2021 ramping equation under full posterior propagation, and project mortality risk under measured Baltic field temperatures and warming scenarios using a damage-accumulation model with a Sharpe–Schoolfield repair kernel.
+  3. We applied our new modelling framework to data from brown shrimp (*Crangon crangon*) and XX to demonstrate the equivalencies and benefits of such an approach. 
 
-  4. *Implications.* The classical and Bayesian frameworks are equivalent in the limit, but the hierarchical 4PL delivers properly propagated uncertainty, accommodates censoring and overdispersion by construction, and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.
+  4. We show that the classical and Bayesian frameworks are equivalent, but that the hierarchical 4PL delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, , and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.
 keywords:
   - thermal death time
   - tolerance landscape
@@ -42,9 +41,9 @@ keywords:
   - ectotherm
 format:
   html:
-    toc: true
+    toc: false
     toc-depth: 3
-    number-sections: true
+    number-sections: false
     embed-resources: true
     fig-cap-location: bottom
   docx:
@@ -93,10 +92,14 @@ set.seed(123)
 
 # Introduction
 
-Climate change is fueling more frequent and extreme heat events globally, compromising organism survival and reproduction, and leading to widespread population declines [@snook_fertility_2026; @arnold_thermal_2025; @rezende_drosophila_mortality_2020]. Establishing thermal-tolerance limits across species is now central to forecasting climate-change impacts on organisms in nature [@sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019]. Traditionally, static measures of heat tolerance, such as $CT_{max}$, have been used to establish differences in vulnerability among taxa and predict climate change impacts [@kellermann_drosophila_2012]. While useful, static measures are not able to capture how fitness depends on both heat intensity and duration [@rezende_landscapes_2014; @jorgensen_unifying_2021].
+Climate change is driving more frequent and extreme heat events globally, compromising organism fitness [@snook_fertility_2026; @arnold_thermal_2025; @rezende_drosophila_mortality_2020], with cascading consequences for population persistence and biodiversity [@smale_marine_2019; @wiens_localextinctions_2016]. Quantifying differences in thermal tolerance across species is now central to forecasting climate-change impacts on organisms in nature [@sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019]. Static measures of heat tolerance, such as $CT_{max}$, have long been used to establish differences in vulnerability among taxa and predicting climate change risk [@pottier_amphibians_2025; @sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019]. While useful, static measures do not capture how the negative effects of extreme heat on fitness depend on both heat intensity and duration, limiting our ability to make realistic predictions under more dynamic thermal environments [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021].
 
 
+The Thermal Load Sensitivity (TLS) framework (or equivalently Thermal Death Time framework) [@rezende_landscapes_2014; @orsted_finding_2022; @arnold_thermal_2025] resolves these limitations by jointly modelling the effects of heat intensity and duration on fitness (e.g., survival, fertility, reproduction). This matters because physiological damage accumulates in a dose-dependent manner — physiological damage accumulates faster at higher temperatures and over longer exposures [@orsted_finding_2022; @rezende_landscapes_2014; @arnold_thermal_2025]. Organisms experiencing fluctuating thermal environments in nature can therefore accumulate damage to physiological systems that results in sublethal injury that compounds across successive heat exposures if not fully repaired [@arnold_thermal_2025; @buckley_damage_2025; @jorgensen_unifying_2021]. Such processes can lead to delayed responses to extreme heat events.
 
+Thermal sensitivity is traditionally modelled in a two-step approach [@orsted_finding_2022; @rezende_drosophila_mortality_2020]. First, the proportion of live/dead (or fertile/infertile, if sub-lethal) is modelled as a function of temperature and log transformed time (in minutes or hours). Experiments will typically manipulate a range of temperatures and times (5 temperatures x 5 durations). Dose-response curves are then fit to each time-response curve for all temperatures (usually at each temperature treatment independently). A threshold response, e.g., $LT_{50}$ or $LT_{80}$, is then derived from these curves. Second, the log transformed time taken to reach the threshold (e.g., $LT_{50}$) and temperature are regressed against each other using a linear model and thermal sensitivity (i.e., the slope of this regression, *z*) and critical thermal maxima (i.e., the intercept of the regression, $CT_{max_{time}}$) are then derived [@rezende_landscapes_2014; @orsted_finding_2022]. $CT_{max_{time}}$ is usually computed at 1 min or 1 hour duration. Thermal sensitivity and $CT_{max_{1min}}$ are than used to quantify Heat Injury (HI) (e.g., @jorgensen_drosophila_2019) in response to realistic temperatures in nature. Heat injury measures the cumulative percentage or probability until reaching a given threshold (e.g., $LT_{50}$), at which point we would predict 50% of the population to have died. Recent work has emphasized the importance of repair in heat injury dynamics and developed some methods to capture these damage-repair dynamics [@arnold_thermal_2025; @buckley_damage_2025].
+
+While the two-step approach to modelling thermal sensitivity is intuitive and simple in practice it has numerous practical and statistical limitations. First, the two-step pipeline propagates uncertainty incorrectly. The $LT_{50}$ estimates from the first stage are themselves uncertain, and their sampling variance is heteroscedastic — typically larger at the temperature extremes, where the dose-response curve is poorly sampled, than near the centre of the assay range. Treating these point estimates as if they were observed without error in the second-stage regression discards this structured uncertainty and miscalibrates the standard errors on the slope ($z$) and intercept ($CT_{max}$). Second, group comparisons (between species, sexes, or life stages) inherit the miscalibrated uncertainty of the first stage. As such, differences in $z$ between groups cannot be attributed to differences in the upper asymptote, lower asymptote, or curve steepness of the dose-response curve, because all three are collapsed into a single $LT_{50}$ before the comparison is made. Third, the $LT_{50}$-extraction step collapses the within-replicate count, foreclosing hierarchical decomposition of variance across replicates, plates, populations, sexes, and life stages — a level of inference routinely available in survival data fitted with random effects [@harrison_olre_2014; @harrison_mixed_2018]. Fourth, propagating uncertainty from a two-step fit into downstream predictions — such as cumulative heat injury under a measured temperature trace — is mathematically awkward and rarely attempted in practice; predictions are typically reported as point trajectories, understating the credible range of fitness loss in the field. 
 
 <!--
 The introduction should:
@@ -110,19 +113,12 @@ The introduction should:
     (iii) a worked, multi-endpoint empirical demonstration that recovers, reconciles, and extends the classical outputs.
 -->
 
-## The thermal death time framework
 
-## Statistical liabilities of the two-step pipeline
+# A non-linear Bayesian hierarchical model for characterizing thermal load sensitivity
 
-## Aims and contributions
+Here, we introduce the four-parameter logistic function which allows one to model the effects of temperature and time on critical parameters characterising fitness curves. We then demonstrate how such an approach can recover all the classical TDT parameters used characterising thermal sensitivity across taxa and modelling the impacts of extreme heat in nature. We then apply this modelling framework using two case studies (XX).
 
-# Applying hierarchical Bayesian dose-response curves for modelling the impacts of temperature and time on fitness
-
-<!--
-This is the methodological core of the paper. It should be readable as a
-self-contained methods section; the supplement carries the full derivations
-and software listings.
--->
+In a single-stage Bayesian fit, the same prediction is a posterior over trajectories with no extra machinery
 
 ## Model specification
 
