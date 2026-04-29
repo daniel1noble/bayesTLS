@@ -52,7 +52,3 @@ rsconnect/
 # Local/editor settings
 .claude/
 .vscode/
-
-# Quarto rendered outputs
-R/*.html
-R/*_files/
