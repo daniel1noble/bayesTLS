@@ -1,15 +1,28 @@
 ---
-title: "A hierarchical Bayesian 4PL recovers the classical thermal death time framework and resolves its statistical pathologies"
-shorttitle: "Bayesian 4PL for thermal tolerance"
+title: "A flexible modelling framework for estimating thermal sensitivity across life"
+shorttitle: "Bayesian models of thermal tolerance"
 author:
-  - name: "Daniel Noble"
-    email: daniel.wa.noble@gmail.com
+  - name: "Daniel W.A. Noble"
+    email: daniel.noble@anu.edu.au
     corresponding: true
     affiliations:
-      - id: anu
-        name: Division of Ecology and Evolution, Research School of Biology, Australian National University
-        city: Canberra
-        country: Australia
+      - ref: anu
+  - name: "Pieter A. Arnold"
+    affiliations:
+      - ref: anu
+  - name: "Patrice Pottier"
+    email: patrice.pottier@bioenv.gu.se
+    affiliations:
+      - ref: gu
+affiliations:
+  - id: anu
+    name: Division of Ecology and Evolution, Research School of Biology, Australian National University
+    city: Canberra
+    country: Australia
+  - id: gu
+    name: Department of Biological and Environmental Sciences, University of Gothenburg
+    city: Gothenburg
+    country: Sweden
 date: today
 abstract: |
   1. *Background.* The thermal death time (TDT) framework is dominant in ectotherm thermal-tolerance research, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of $\log_{10}\text{LT50}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
@@ -80,6 +93,11 @@ set.seed(123)
 
 # Introduction
 
+Climate change is fueling more frequent and extreme heat events globally, compromising organism survival and reproduction, and leading to widespread population declines [@snook_fertility_2026; @arnold_thermal_2025; @rezende_drosophila_mortality_2020]. Establishing thermal-tolerance limits across species is now central to forecasting climate-change impacts on organisms in nature [@sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019]. Traditionally, static measures of heat tolerance, such as $CT_{max}$, have been used to establish differences in vulnerability among taxa and predict climate change impacts [@kellermann_drosophila_2012]. While useful, static measures are not able to capture how fitness depends on both heat intensity and duration [@rezende_landscapes_2014; @jorgensen_unifying_2021].
+
+
+
+
 <!--
 The introduction should:
 - Establish that thermal-tolerance limits are central to forecasting climate-change impacts on ectotherms (cite @sunday_global_2011, @deutsch_latitude_2008, @sunday_redistribution_2012, @pinsky_marine_2019).
@@ -98,7 +116,7 @@ The introduction should:
 
 ## Aims and contributions
 
-# The hierarchical Bayesian 4PL
+# Applying hierarchical Bayesian dose-response curves for modelling the impacts of temperature and time on fitness
 
 <!--
 This is the methodological core of the paper. It should be readable as a
@@ -108,16 +126,52 @@ and software listings.
 
 ## Model specification
 
-<!--
-- 4PL on raw binomial counts: n_surv | trials(n_total) ~ Binomial(p)
-- p = low + (up - low) / (1 + exp(k*(log10 t - mid)))
-- Identifiable parameterisation:
-    low = inv_logit(lraw) * 0.49
-    up  = 0.51 + inv_logit(uraw) * 0.49
-    k   = exp(logk)
-- mid ~ temp_c + group covariates + nested random effects
-- Observation-level random effect for overdispersion (cite @harrison_olre_2014).
--->
+Let $y_{ij}$ denote the number of survivors out of $n_{ij}$ individuals in trial $j$ exposed for time $t_{ij}$ (minutes) at assay temperature $T_{ij}$ (°C). We model the counts directly with a binomial likelihood (but a beta-binomial likelihood function can also be used and controls for overdispersion):
+
+$$
+y_{ij} \mid n_{ij}, p_{ij} \;\sim\; \text{Binomial}(n_{ij},\, p_{ij}),
+$$ {#eq-likelihood}
+
+with survival probability $p_{ij}$ given by a four-parameter logistic (4PL) function of $\log_{10}$-exposure time,
+
+$$
+p_{ij} \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - m_{ij})\bigr)}.
+$$ {#eq-4pl}
+
+The four parameters of @eq-4pl have direct biological interpretations:
+
+- $\ell$ — **lower asymptote**: the survival floor as $t \to \infty$. Non-zero values absorb baseline mortality, handling loss, and assay-gate noise that the conventional 2PL forces to zero [@ritz_drc_2015; @bolker_ecologicalmodels_2008].
+- $u$ — **upper asymptote**: the survival ceiling as $t \to 0$. Values below one absorb pre-assay mortality and gate leakage.
+- $k > 0$ — **slope**: steepness of the kill transition on the $\log_{10} t$ axis. Larger $k$ gives a sharper sigmoid.
+- $m_{ij}$ — **inflection point**: the value of $\log_{10} t$ at which $p$ falls to the midpoint between $\ell$ and $u$. When asymptotes are near 0 and 1, $m_{ij}$ coincides with $\log_{10}\text{LT50}$ at trial $j$.
+
+# Application of Bayesian dose-response models to the TLS framework
+We used a four-parameter logistic function to model the impact of temperature and duration (hours/minutes) on survival probability thermal sensitivity, estimate $CT_{max1h}$
+
+To break the well-known likelihood ridges among $(\ell, u, k)$ in unconstrained 4PL fits [@bolker_ecologicalmodels_2008; @gelman_priors_2006], we estimate the identifiable parameterisation
+
+$$
+\ell = 0.49\,\text{logit}^{-1}(\tilde{\ell}), \qquad
+u   = 0.51 + 0.49\,\text{logit}^{-1}(\tilde{u}), \qquad
+k   = \exp(\kappa),
+$$ {#eq-reparam}
+
+with $\tilde{\ell},\tilde{u},\kappa \in \mathbb{R}$. This constrains $\ell \in [0, 0.49]$ and $u \in [0.51, 1]$ into disjoint intervals so that $u > \ell$ by construction, the curve direction is unambiguous, and $k$ is positive on the natural scale.
+
+The inflection point $m_{ij}$ is modelled as a linear function of (mean-centred) assay temperature, with additional fixed covariates and nested random effects:
+
+$$
+m_{ij} \;=\; \beta_0 \;+\; \beta_1\,(T_{ij} - \bar T) \;+\; \mathbf{x}_{ij}^{\top}\boldsymbol{\gamma} \;+\; b_{j} \;+\; \varepsilon_{ij},
+$$ {#eq-linpred}
+
+where $\bar T$ is the grand mean of assay temperatures (centring stabilises sampling and decorrelates $\beta_0$ from $\beta_1$), $\mathbf{x}_{ij}$ holds any additional fixed covariates with coefficients $\boldsymbol{\gamma}$, $b_{j}$ collects the nested random effects and $\varepsilon_{ij} \sim \mathcal{N}(0, \sigma_\varepsilon^2)$ is an observation-level random effect that absorbs the binomial overdispersion characteristic of replicated count assays [@harrison_olre_2014]. However, we could also remove the observation-level random effect from the model and instead fit a beta-binomial error distribution which estimates a dispersion parameter ($\phi$) more naturally.
+
+Together, @eq-likelihood–@eq-linpred define the hierarchical Bayesian 4PL fit directly to the raw binomial counts. Every classical TDT quantity — slope, $z$, CTmax at any reference time, and the heat-injury integral — is recovered as a one-line posterior summary of this single joint fit, as derived in §[Equivalence with the classical pipeline].
+
+# Case Study 1: Thermal sensitivity estimation across life stages in shrimp
+
+
+
 
 ## Priors
 
