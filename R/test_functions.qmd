@@ -1093,22 +1093,22 @@ posterior_linpred_tdt <- function(workflow,
                                   newdata,
                                   ndraws     = NULL,
                                   re_formula = NA) {
-  if (!tdt_has_fit(workflow)) {
-    stop("workflow$fit is NULL. Fit or load the model first.", call. = FALSE)
-  }
+    if (!tdt_has_fit(workflow)) {
+      stop("workflow$fit is NULL. Fit or load the model first.", call. = FALSE)
+    }
 
-  args <- list(
-    object = workflow$fit,
-    newdata = newdata,
-    re_formula = re_formula,
-    transform = TRUE
-  )
+    args <- list(
+      object = workflow$fit,
+      newdata = newdata,
+      re_formula = re_formula,
+      transform = TRUE
+    )
 
-  if (!is.null(ndraws)) {
-    args$ndraws <- ndraws
-  }
+    if (!is.null(ndraws)) {
+      args$ndraws <- ndraws
+    }
 
-  do.call(brms::posterior_linpred, args)
+    do.call(brms::posterior_linpred, args)
 }
 ```
 
@@ -1207,15 +1207,14 @@ plot_survival_curves <- function(pred,
                 alpha = 0.18, colour = NA) +
     geom_line(linewidth = 0.9) +
     scale_y_continuous(limits = c(0, 1)) +
-    scale_colour_viridis_d(option = "D", end = 0.88) +
-    scale_fill_viridis_d(option = "D", end = 0.88) +
+    scale_colour_viridis_d(option = "D", end = 0.88, name = "Assay temp (°C)") +
+    scale_fill_viridis_d(option = "D", end = 0.88, name = "Assay temp (°C)") +
     labs(
       x = "Exposure duration (h)",
-      y = "Predicted survival",
-      colour = "Assay temp (°C)",
-      fill = "Assay temp (°C)"
+      y = "Predicted survival"
     ) +
-    theme_tdt
+    theme_tdt +
+    theme(legend.position = "right")
 
   if (!is.null(observed)) {
     if (observed_summary) {
@@ -1606,19 +1605,20 @@ plot_ltx_curve <- function(ltx_curve,
     geom_line(linewidth = 1.05) +
     scale_colour_manual(
       values = c("50% survival" = "#146C7C", "25% survival" = "#C76D37"),
-      drop = FALSE
+      drop = FALSE,
+      name = "Threshold"
     ) +
     scale_fill_manual(
       values = c("50% survival" = "#146C7C", "25% survival" = "#C76D37"),
-      drop = FALSE
+      drop = FALSE,
+      name = "Threshold"
     ) +
     labs(
       x = "Assay temperature (°C)",
-      y = y_lab,
-      colour = NULL,
-      fill = NULL
+      y = y_lab
     ) +
-    theme_tdt
+    theme_tdt +
+    theme(legend.position = "right")
 
   if (length(unique(df$category)) > 1 || unique(df$category) != "all") {
     p <- p +
@@ -1723,19 +1723,46 @@ plot_temperature_for_duration <- function(temp_threshold) {
   df <- temp_threshold$draws %>%
     dplyr::filter(is.finite(assay_temp_threshold))
 
+  median_temp <- median(df$assay_temp_threshold, na.rm = TRUE)
+  lower_temp <- quantile(df$assay_temp_threshold, 0.025, na.rm = TRUE)
+  upper_temp <- quantile(df$assay_temp_threshold, 0.975, na.rm = TRUE)
+
   ggplot(df, aes(x = assay_temp_threshold)) +
-    geom_density(fill = "steelblue", alpha = 0.5) +
+    geom_density(fill = "steelblue", alpha = 0.5, colour = "steelblue") +
     geom_vline(
-      xintercept = median(df$assay_temp_threshold, na.rm = TRUE),
+      xintercept = median_temp,
+      linetype = "solid",
+      colour = "red",
+      linewidth = 0.9,
+      name = "Median"
+    ) +
+    geom_vline(
+      xintercept = c(lower_temp, upper_temp),
       linetype = "dashed",
-      colour = "red"
+      colour = "darkred",
+      linewidth = 0.7,
+      alpha = 0.7
+    ) +
+    annotate(
+      "text",
+      x = median_temp,
+      y = Inf,
+      label = paste0("Median: ", round(median_temp, 2), "°C\n95% CI: [", 
+                     round(lower_temp, 2), ", ", round(upper_temp, 2), "]"),
+      vjust = 1.5,
+      hjust = 0.5,
+      size = 3.5,
+      box.just = 0.1,
+      fill = "white",
+      alpha = 0.8
     ) +
     labs(
       x = "Temperature (°C)",
-      y = "Density",
+      y = "Posterior density",
       title = "Posterior distribution of temperature for 50% survival after 1 hour"
     ) +
-    theme_tdt
+    theme_tdt +
+    theme(legend.position = "right")
 }
 ```
 
@@ -2077,7 +2104,7 @@ make_temperature_scenarios <- function(start = as.POSIXct("2026-07-01 00:00:00",
                                        n = 96,
                                        dt_mins = 30,
                                        baseline = 20,
-                                       spike_temp = 33,
+                                       spike_temp = 27.5,
                                        spike_start = 40,
                                        spike_length = 4) {
   datetime <- start + seq(0, by = dt_mins * 60, length.out = n)
@@ -2085,35 +2112,43 @@ make_temperature_scenarios <- function(start = as.POSIXct("2026-07-01 00:00:00",
 
   no_heat <- data.frame(datetime = datetime, temp = rep(baseline, n))
 
+  # Single spike: moderate temperature causing some damage
   single_spike <- no_heat
   single_idx <- spike_start:min(n, spike_start + spike_length - 1)
   single_spike$temp[single_idx] <- spike_temp
 
+  # Repeated spikes: three moderate spikes separated by recovery periods
   repeated_spikes <- no_heat
   for (s in c(spike_start, spike_start + 14, spike_start + 28)) {
     idx <- s:min(n, s + spike_length - 1)
     repeated_spikes$temp[idx] <- spike_temp
   }
 
-  mild_repairable_peak <- data.frame(
-    datetime = datetime,
-    temp = baseline + 0.7 * sin(2 * pi * time_h / 24)
-  )
-  mild_idx <- spike_start:min(n, spike_start + max(2, spike_length - 2) - 1)
-  mild_repairable_peak$temp[mild_idx] <- 31.2
-  mild_repairable_peak$temp[(max(mild_idx) + 1):n] <- 17 +
-    0.4 * sin(2 * pi * time_h[(max(mild_idx) + 1):n] / 24)
+  # Severe repeated spikes: three higher temperature spikes
+  severe_repeated <- no_heat
+  for (s in c(spike_start, spike_start + 14, spike_start + 28)) {
+    idx <- s:min(n, s + spike_length - 1)
+    severe_repeated$temp[idx] <- spike_temp + 2.5
+  }
 
-  severe_peak <- no_heat
-  severe_idx <- spike_start:min(n, spike_start + spike_length + 2)
-  severe_peak$temp[severe_idx] <- spike_temp + 1.5
+  # Mixed: some spikes can be repaired, one more severe
+  mixed_severity <- no_heat
+  # First moderate spike
+  idx1 <- spike_start:min(n, spike_start + spike_length - 1)
+  mixed_severity$temp[idx1] <- spike_temp
+  # Second moderate spike
+  idx2 <- (spike_start + 14):min(n, spike_start + 14 + spike_length - 1)
+  mixed_severity$temp[idx2] <- spike_temp
+  # Third more severe spike
+  idx3 <- (spike_start + 28):min(n, spike_start + 28 + spike_length - 1)
+  mixed_severity$temp[idx3] <- spike_temp + 1.5
 
   list(
     no_heat = no_heat,
-    mild_repairable_peak = mild_repairable_peak,
     single_spike = single_spike,
     repeated_spikes = repeated_spikes,
-    severe_peak = severe_peak
+    severe_repeated = severe_repeated,
+    mixed_severity = mixed_severity
   )
 }
 
@@ -2569,14 +2604,15 @@ plot_damage_repair_rates <- function(damage_curve,
       aes(
         x = temp,
         ymin = damage_rate_pct_min_lower,
-        ymax = damage_rate_pct_min_upper
+        ymax = damage_rate_pct_min_upper,
+        fill = "Damage (95% CI)"
       ),
-      fill = "grey70",
-      alpha = 0.25
+      alpha = 0.25,
+      colour = NA
     ) +
     geom_line(
       data = damage_curve$summary,
-      aes(x = temp, y = damage_rate_pct_min_median, colour = "Damage"),
+      aes(x = temp, y = damage_rate_pct_min_median, colour = "Damage (median)"),
       linewidth = 0.9
     ) +
     geom_line(
@@ -2584,12 +2620,25 @@ plot_damage_repair_rates <- function(damage_curve,
       aes(x = temp, y = repair_rate_pct_min, colour = "Repair"),
       linewidth = 0.9
     ) +
+    scale_colour_manual(
+      values = c(
+        "Damage (median)" = "#2F2F2F",
+        "Repair" = "#146C7C"
+      )
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Damage (95% CI)" = "#2F2F2F"
+      )
+    ) +
     labs(
       x = "Temperature (°C)",
       y = "Rate (% LT50-dose per min)",
-      colour = NULL
+      colour = "Process",
+      fill = "Interval"
     ) +
-    theme_tdt
+    theme_tdt +
+    theme(legend.position = "right")
 }
 
 plot_net_damage_rate <- function(damage_curve, repair_df) {
@@ -2793,33 +2842,52 @@ diagnostic_table <- function(model_checks) {
   )
 }
 
-r2_table <- function(model_checks) {
-  r2 <- model_checks$r2
-  if (inherits(r2, "error")) {
-    return(data.frame(Metric = "Bayesian R2", Value = NA_real_))
+r2_table <- function(fit) {
+  r2_obj <- tryCatch(
+    performance::r2(fit),
+    error = function(e) e
+  )
+
+  if (inherits(r2_obj, "error")) {
+    return(data.frame(
+      Metric = "R2",
+      Estimate = NA_real_,
+      SE = NA_real_,
+      Note = "Could not compute"
+    ))
+  }
+
+  r2_df <- as.data.frame(r2_obj)
+
+  if (nrow(r2_df) == 0 || ncol(r2_df) == 0) {
+    return(data.frame(
+      Metric = "R2",
+      Estimate = NA_real_,
+      SE = NA_real_,
+      Note = "Could not compute"
+    ))
+  }
+
+  estimate_col <- names(r2_df)[grepl("R2|R\\.?2", names(r2_df), ignore.case = TRUE)][1]
+  se_col <- names(r2_df)[grepl("SE|Std", names(r2_df), ignore.case = TRUE)][1]
+
+  if (is.na(estimate_col)) {
+    estimate_col <- names(r2_df)[vapply(r2_df, is.numeric, logical(1))][1]
+  }
+
+  if (is.na(estimate_col)) {
+    return(data.frame(
+      Metric = "R2",
+      Estimate = NA_real_,
+      SE = NA_real_,
+      Note = "Could not compute"
+    ))
   }
 
   data.frame(
-    Metric = c("Bayesian R2", "Marginal Bayesian R2"),
-    Estimate = c(
-      unname(r2[["R2_Bayes"]]),
-      unname(r2[["R2_Bayes_marginal"]])
-    ),
-    `95% CI` = c(
-      format_interval(
-        r2[["R2_Bayes"]],
-        attr(r2, "CI")$R2_Bayes$CI_low,
-        attr(r2, "CI")$R2_Bayes$CI_high,
-        digits = 3
-      ),
-      format_interval(
-        r2[["R2_Bayes_marginal"]],
-        attr(r2, "CI")$R2_Bayes_marginal$CI_low,
-        attr(r2, "CI")$R2_Bayes_marginal$CI_high,
-        digits = 3
-      )
-    ),
-    check.names = FALSE
+    Metric = "R2 (Bayesian)",
+    Estimate = round(as.numeric(r2_df[[estimate_col]][1]), 3),
+    SE = if (!is.na(se_col)) round(as.numeric(r2_df[[se_col]][1]), 3) else NA_real_
   )
 }
 
@@ -3031,8 +3099,6 @@ if (file.exists(params$model_path) && !isTRUE(params$refit_model)) {
     refresh = if (isTRUE(params$show_sampler_progress)) 100 else 0
   )
 }
-
-tdt_has_fit(fit_shrimp_4pl)
 ```
 
 ```{r}
@@ -3082,13 +3148,11 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
 
   tdt_ft(parameter_table, digits = 3, caption = "Posterior summary of fitted 4PL parameters.")
   p_parameter_intervals
-  tdt_ft(r2_table(model_checks), digits = 3, caption = "Bayesian R2 summaries.")
+  tdt_ft(r2_table(fit_shrimp_4pl$fit), digits = 3, caption = "Model fit quality (R2 from performance package).")
   tdt_ft(loo_table(model_checks), digits = 2, caption = "PSIS-LOO summary.")
   tdt_ft(diagnostic_table(model_checks), digits = 3, caption = "Automatic HMC and LOO diagnostics.")
 }
 ```
-
-### MCMC Diagnostic Plots
 
 ```{r}
 if (tdt_has_fit(fit_shrimp_4pl)) {
@@ -3190,18 +3254,34 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
 
   saveRDS(shrimp_tdt_params, file.path(tdt_output_dir, "shrimp_lethal_tdt_parameters.RDS"))
 
+  # For 1-hour exposure, derive CTmax by inverting the fitted 4PL parameters
+  shrimp_lt1h <- derive_temperature_for_duration(
+    workflow = fit_shrimp_4pl,
+    exposure_duration = 1,
+    temp_grid = seq(29, 34, by = 0.05),
+    target_survival = 0.5,
+    ndraws = params$ndraws
+  )
+
   tdt_params_table <- shrimp_tdt_params$summary %>%
     dplyr::mutate(
-      `z (°C per decade)` = format_interval(z_median, z_lower, z_upper, digits = 2),
-      `CT at 1 min (°C)` = format_interval(
-        CTmax_ref_median,
-        CTmax_ref_lower,
-        CTmax_ref_upper,
-        digits = 2
-      ),
-      `TDT R2` = round(r2_median, 3)
+      `z (°C per decade)` = format_interval(z_median, z_lower, z_upper, digits = 2)
     ) %>%
-    dplyr::select(`z (°C per decade)`, `CT at 1 min (°C)`, `TDT R2`)
+    dplyr::select(`z (°C per decade)`)
+  
+  # Add the 1-hour CTmax from direct calculation
+  tdt_params_1h <- shrimp_lt1h$summary %>%
+    dplyr::mutate(
+      `CT for 1 h @ 50% survival (°C)` = format_interval(
+        temp_median,
+        temp_lower,
+        temp_upper,
+        digits = 2
+      )
+    ) %>%
+    dplyr::select(category, `CT for 1 h @ 50% survival (°C)`)
+  
+  tdt_params_table <- cbind(tdt_params_table, tdt_params_1h)
 
   p_ltx
   tdt_ft(tdt_params_table, caption = "Classical TDT summaries derived from posterior 4PL curves.")
@@ -3286,11 +3366,13 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
 }
 ```
 
-## Fluctuating Temperatures
+### Temperature Scenarios And Fluctuating Survival
 
-The repair parameters below define scenario curves, not fitted biological constants. Damage is estimated from the static 4PL; repair is varied as a sensitivity assumption. The plots therefore answer: under these assumed repair rates, which heat pulses are predicted to accumulate injury, and which pulses are predicted to be repaired before producing substantial mortality?
+Damage and repair processes under different temperature scenarios. Reduced spike temperatures (baseline 20°C, moderate spikes ~27.5°C) allow repair to show differential effects across scenarios.
 
 ```{r}
+#| output: false
+
 repair_pars_shrimp <- list(
   TA = 14065,
   TAL = 50000,
@@ -3300,15 +3382,19 @@ repair_pars_shrimp <- list(
   TREF = 17 + 273.15
 )
 
+repair_levels_pct_min <- c(
+  none = 0,
+  low = 0.001,
+  moderate = 0.01,
+  high = 0.1
+)
+
 if (tdt_has_fit(fit_shrimp_4pl)) {
   pars_shrimp <- extract_standard_4pl_pars(fit_shrimp_4pl)
-  saveRDS(pars_shrimp, file.path(tdt_output_dir, "shrimp_lethal_4pl_posterior_parameters.RDS"))
 
-  repair_levels_pct_min <- c(
-    none = 0,
-    low = 0.007,
-    moderate = 0.0111,
-    high = 0.02
+  saveRDS(
+    pars_shrimp,
+    file.path(tdt_output_dir, "shrimp_lethal_4pl_posterior_parameters.RDS")
   )
 
   damage_shrimp <- damage_rate_curve(
@@ -3319,7 +3405,10 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
     time_multiplier_to_minutes = 60
   )
 
-  saveRDS(damage_shrimp, file.path(tdt_output_dir, "shrimp_lethal_damage_rate_curve.RDS"))
+  saveRDS(
+    damage_shrimp,
+    file.path(tdt_output_dir, "shrimp_lethal_damage_rate_curve.RDS")
+  )
 
   repair_shrimp <- repair_curve_df(
     repair_pars = repair_pars_shrimp,
@@ -3327,49 +3416,10 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
     temp_grid = seq(10, 36, by = 0.1)
   )
 
-  saveRDS(repair_shrimp, file.path(tdt_output_dir, "shrimp_lethal_repair_rate_curve.RDS"))
-
-  p_damage <- plot_damage_rate(damage_shrimp)
-  p_repair <- plot_repair_tpc(repair_shrimp)
-  p_damage_repair <- plot_damage_repair_rates(
-    damage_curve = damage_shrimp,
-    repair_pars = repair_pars_shrimp,
-    kdot_ref_pct_min = repair_levels_pct_min[["moderate"]],
-    temp_grid = seq(10, 36, by = 0.1)
+  saveRDS(
+    repair_shrimp,
+    file.path(tdt_output_dir, "shrimp_lethal_repair_rate_curve.RDS")
   )
-  p_net_damage <- plot_net_damage_rate(damage_shrimp, repair_shrimp)
-
-  ggsave(
-    filename = file.path(tdt_fig_dir, "shrimp_lethal_damage_rate.png"),
-    plot = p_damage,
-    width = 8,
-    height = 5,
-    dpi = 400
-  )
-  ggsave(
-    filename = file.path(tdt_fig_dir, "shrimp_lethal_repair_tpc.png"),
-    plot = p_repair,
-    width = 8,
-    height = 5,
-    dpi = 400
-  )
-  ggsave(
-    filename = file.path(tdt_fig_dir, "shrimp_lethal_damage_repair_overlay.png"),
-    plot = p_damage_repair,
-    width = 8,
-    height = 5,
-    dpi = 400
-  )
-  ggsave(
-    filename = file.path(tdt_fig_dir, "shrimp_lethal_net_damage_rate.png"),
-    plot = p_net_damage,
-    width = 8,
-    height = 5,
-    dpi = 400
-  )
-
-  p_damage
-  p_net_damage
 }
 ```
 
@@ -3377,7 +3427,7 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
 if (tdt_has_fit(fit_shrimp_4pl)) {
   temp_scenarios <- make_temperature_scenarios(
     baseline = 20,
-    spike_temp = 33,
+    spike_temp = 27.5,
     spike_start = 40,
     spike_length = 4
   )
@@ -3432,29 +3482,29 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
   ggsave(
     filename = file.path(tdt_fig_dir, "shrimp_lethal_temperature_scenarios.png"),
     plot = p_temperature_scenarios,
-    width = 8,
-    height = 9,
+    width = 9,
+    height = 12,
     dpi = 400
   )
   ggsave(
     filename = file.path(tdt_fig_dir, "shrimp_lethal_fluctuating_latent_dose.png"),
     plot = p_fluctuating_dose,
-    width = 9,
-    height = 10,
+    width = 10,
+    height = 13,
     dpi = 400
   )
   ggsave(
     filename = file.path(tdt_fig_dir, "shrimp_lethal_fluctuating_survival.png"),
     plot = p_fluctuating_survival,
-    width = 9,
-    height = 10,
+    width = 10,
+    height = 13,
     dpi = 400
   )
   ggsave(
     filename = file.path(tdt_fig_dir, "shrimp_lethal_fluctuating_mortality.png"),
     plot = p_fluctuating_mortality,
-    width = 9,
-    height = 10,
+    width = 10,
+    height = 13,
     dpi = 400
   )
 
@@ -3625,7 +3675,7 @@ This is why `b_mid_temp_c` is the core TDT coefficient. The report still derives
 ### 8. What This Analysis Does NOT Do
 
 - **Mechanism**: The 4PL is empirical. It does not prove that heat-death follows a specific biophysical model (e.g., protein denaturation kinetics).
-- **Extrapolation is risky**: CTmax estimates and 1-hour tolerance temperatures lie near or outside the observed design space. Posterior intervals widen substantially in these regions; they do not make extrapolation safe.
+- **Extrapolation is risky**: CTmax-like reference temperatures and 1-hour tolerance temperatures lie near or outside the observed design space. Posterior intervals widen substantially in these regions; they do not make extrapolation safe.
 - **Identifiability is not guaranteed**: Free asymptotes, random effects, and beta-binomial dispersion all compete for information. Sparse datasets may not support the full model. Always inspect the diagnostics and prior predictive distribution before trusting the posterior.
 
 ---
