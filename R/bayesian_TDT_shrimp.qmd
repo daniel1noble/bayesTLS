@@ -31,11 +31,10 @@ pacman::p_load(
   future.apply)
 ```
 
-
-
 # **Lethal TDT**
 
 ## **Bayesian 4PL model**
+
 ```{r}
 base_theme <- theme_classic(base_size = 22) +
   theme(
@@ -1221,8 +1220,6 @@ ggsave(
 )
 ```
 
-
-
 ### **Model comparisons**
 
 ```{r}
@@ -1500,8 +1497,6 @@ loo_compare(reloo_4pl, reloo_4pl_int) # Adding an interaction term does not impr
 
 ```
 
-
-
 # Sublethal data (Bayesian approach)
 
 ```{r}
@@ -1696,6 +1691,7 @@ ggsave(
 ```
 
 ## **Visualisation with median time to death**
+
 ```{r}
 # =========================
 # Summary data
@@ -1831,7 +1827,7 @@ p_sublethal_log <- ggplot(pred_df_tdt_sub) +
 print(p_sublethal_lin + p_sublethal_log + patchwork::plot_layout(ncol = 2))
 ```
 
-## **Without the 32 degrees temperature** 
+## **Without the 32 degrees temperature**
 
 ```{r}
 
@@ -2068,9 +2064,8 @@ p_sublethal_log_compare <- ggplot() +
 print(p_sublethal_lin_compare + p_sublethal_log_compare + patchwork::plot_layout(ncol = 2))
 ```
 
-
-
 ## **Model comparisons**
+
 ```{r}
 tdt_sub <- tdt_sub %>% 
   mutate(ind_body_mass_c = scale(ind_body_mass, scale = F, center = T))
@@ -2175,6 +2170,7 @@ loo_compare(
 ```
 
 ## **Temperature-driven mortality**
+
 ```{r}
 tdt_trial <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx", sheet = "SUBLETHAL_TDT_trial_data")
 
@@ -2296,11 +2292,9 @@ p_sub_survival <- ggplot(
 p_sub_survival
 ```
 
-
-
 # **CTmax**
 
-## **Ramping rate** 
+## **Ramping rate**
 
 ```{r}
 # ========================
@@ -2437,7 +2431,8 @@ ggplot(all_plot, aes(x = Time_min, y = Temperature)) +
   theme_classic(base_size = 16)
 ```
 
-## **Data processing** 
+## **Data processing**
+
 ```{r}
 ctmax <- read_excel("data/Data_Shrimp_TDT_CTmax_experiment.xlsx",
                 sheet = "CTMAX")
@@ -2593,7 +2588,6 @@ ctmax %>%
             sd_body_mass = sd(body_mass),
             n = n())
 ```
-
 
 ## **Bayesian linear model**
 
@@ -2756,7 +2750,7 @@ loo_compare(loo_ctmax, loo_ctmax_observer) # Base model is better
 loo_compare(loo_ctmax, loo_ctmax_start_temp) # Base model is better
 ```
 
-### **Final model** 
+### **Final model**
 
 ```{r}
 # =========================
@@ -2903,7 +2897,6 @@ ggplot() +
 
 ggsave(file = "fig/CTmax.png", width = 8, height = 6, dpi = 500)
 ```
-
 
 ## Test CTmax assumptions
 
@@ -3271,10 +3264,10 @@ ggsave(
 )
 ```
 
-
-### **Estimate z from ramping rate data** 
+### **Estimate z from ramping rate data**
 
 #### Using code from Jorgensen et al.
+
 ```{r}
 
 # =========================================================
@@ -3362,8 +3355,8 @@ for(j in seq_along(t_coma))
 } # Pretty close to z estimated from the data! 
 ```
 
-
 #### Bayesian model adaptation
+
 ```{r}
 
 # =========================================================
@@ -4219,7 +4212,7 @@ z_test <- data.frame(
 print(z_test) # Not statistically different; but lower z on average.
 ```
 
-# **Comparison with environmental temperatures** 
+# **Comparison with environmental temperatures**
 
 ```{r}
 # Load temperature data from the last five years
@@ -4297,7 +4290,7 @@ field_temp %>% summarise(mean_temp = mean(surface_water_temp),
 
 ```
 
-### **Predicted accumulation of heat injury** 
+### **Predicted accumulation of heat injury**
 
 ```{r}
 # =========================
@@ -5542,12 +5535,10 @@ ggsave(
 )
 ```
 
+# **Figures for publication**
 
-# **Figures for publication** 
+## **Figure 1**
 
-## **Figure 1** 
 ```{r, fig.height = 10, fig.width = 10}
 
 ```
-
-
