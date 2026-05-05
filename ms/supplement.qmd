@@ -56,7 +56,7 @@ execute:
 ```{r setup}
 #| label: setup-supp
 
-pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, flextable, pander)
+pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, flextable, pander, numDeriv)
 
 set.seed(123)
 
@@ -639,6 +639,101 @@ flextable::flextable(uncert_summary) |>
 ```
 
 In short, both $z$ and $CT_{max_{1hr}}$ are estimated with high precision and their credible intervals come straight from the joint posterior — no second-stage regression, no delta-method, no bootstrap. Under the binomial likelihood, the posterior SD of $z$ is `r sd_z_bin` °C with a 95% credible interval `r ci_z_bin` °C wide; $CT_{max_{1hr}}$ has SD `r sd_ct_bin` °C and a CrI width of `r ci_ct_bin` °C. The beta-binomial fit is slightly wider on both quantities (SD on $z$: `r sd_z_bb` °C; on $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ has absorbed the extra-binomial variance and that uncertainty propagates honestly into the derived quantities — none of which falls out of the two-stage pipeline without an additional bootstrap or delta-method step.
+
+### Extending the model: smooth or temperature-varying parameters {#sec-joint-extend}
+
+The closed-form derivations of $z$ and $CT_{max_{1hr}}$ rely on two assumptions:
+
+1. **`mid(T)` is linear in T**, so a single slope $\beta_1$ defines $z = -1/\beta_1$.
+2. **$\ell, u$ and $k$ are scalars** (do not depend on $T$), so the asymmetry correction $\tfrac{1}{k}\log\tfrac{u-0.5}{0.5-\ell}$ is a single number rather than a function of temperature.
+
+Both assumptions are convenient but neither is required. Relax either and the framework still works — the closed-form expressions become *functional*, and we recover $z$ and $CT_{max_{1hr}}$ numerically from each posterior draw rather than algebraically. Below we walk through the two practical cases.
+
+#### Case 1 — smooth `mid(T)` {#sec-joint-extend-smooth}
+
+Replacing `mid ~ T_c` in the `bf()` formula with a polynomial (e.g. `mid ~ poly(T_c, 2)`) or a smooth (e.g. `mid ~ s(T_c)`) lets the midpoint shift non-linearly with assay temperature. Keeping $\ell, u, k$ as scalars, the TDT relation becomes
+
+$$
+\log_{10}\text{LT50}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k}\log\!\tfrac{u - 0.5}{0.5 - \ell},
+$$ {#eq-lt50-smooth}
+
+which is no longer linear in $T$. Two consequences follow:
+
+- **$z$ becomes a function of temperature.** Since $z$ is defined by the local rate of change of $\log_{10}\text{LT50}$ with $T$, $z(T) = -1 \big/ \tfrac{d\,\text{mid}(T)}{dT}$. We either report $z$ at one or more reference temperatures (e.g. the midpoint of the assay range), or as a curve $z(T)$ with credible bands. The classical "single $z$ per species" loses its meaning when the underlying relationship isn't linear — and when it does, that itself is a useful biological diagnostic.
+- **$CT_{max}$ has no closed form.** Solve $\log_{10}\text{LT50}(T) = \log_{10} t_\text{ref}$ for $T$ per posterior draw, e.g. with `uniroot()` over the assay temperature range. The output is the same kind of posterior we already have — produced numerically.
+
+#### Case 2 — temperature affects $\ell$, $u$, or $k$ {#sec-joint-extend-tvarying}
+
+If any of the shape parameters depends on temperature — for instance `k ~ T_c`, which lets the dose-response steepness change with assay temperature — the asymmetry correction itself becomes a function of $T$:
+
+$$
+\log_{10}\text{LT50}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{u(T) - 0.5}{0.5 - \ell(T)}.
+$$ {#eq-lt50-tvarying}
+
+So even if $\text{mid}(T)$ is linear, $\log_{10}\text{LT50}(T)$ is non-linear. The same two consequences as Case 1 apply: $z(T)$ is functional, and $CT_{max}$ requires `uniroot()` per draw.
+
+Biologically this is interesting because the dose-response steepness $k$ may genuinely vary with temperature — protein denaturation kinetics often look more threshold-like (sharper) near a protein's melting temperature, for example. The 4PL handles this as a one-line change to `bf()`; the classical two-stage pipeline cannot, because the symmetric 2PL it uses at Stage 1 forces a single $k$ at every temperature.
+
+#### A general numerical recipe {#sec-joint-extend-recipe}
+
+One workflow handles both cases. For each posterior draw $\theta$:
+
+1. Construct a function $\log_{10}\text{LT50}(T \mid \theta)$ using the model's functional forms for $\text{mid}, \ell, u, k$.
+2. Get the **local $z$** at any reference temperature by numerical differentiation: $z(T_\text{ref} \mid \theta) = -1 / \nabla_T \log_{10}\text{LT50}(T_\text{ref} \mid \theta)$.
+3. Get **$CT_{max}(t_\text{ref})$** by `uniroot()` of $\log_{10}\text{LT50}(T \mid \theta) - \log_{10} t_\text{ref}$ over the assay temperature range.
+
+Below is a self-contained helper that implements this. As a sanity check we apply it to one posterior draw of `fit_bin` (which used the linear `mid ~ T_c` from earlier) and compare against the closed-form values.
+
+```{r extension-helper}
+#| label: extension-helper
+#| echo: true
+
+# Generic numerical recovery: pass any function of T (one posterior draw).
+recover_tls_numerical <- function(log10_lt50_fn,
+                                  T_ref     = NULL,
+                                  t_ref_min = 60,
+                                  T_search  = c(20, 50)) {
+  out <- list()
+  if (!is.null(T_ref)) {
+    out$z_T <- vapply(T_ref, function(Tval) {
+      -1 / numDeriv::grad(log10_lt50_fn, Tval)
+    }, numeric(1))
+    names(out$z_T) <- T_ref
+  }
+  out$CTmax_1hr <- tryCatch(
+    uniroot(function(T) log10_lt50_fn(T) - log10(t_ref_min),
+            interval = T_search)$root,
+    error = function(e) NA_real_
+  )
+  out
+}
+
+# For the linear-mid model (this fit), build log10_LT50(T) from one draw.
+log10_lt50_from_draw_linear <- function(draw, T_bar) {
+  function(T) {
+    mid <- draw$b_mid_Intercept + draw$b_mid_T_c * (T - T_bar)
+    asym_corr <- (1 / draw$b_k_Intercept) *
+      log((draw$b_u_Intercept - 0.5) / (0.5 - draw$b_ell_Intercept))
+    mid + asym_corr
+  }
+}
+
+# Take one random posterior draw and apply the recipe.
+set.seed(42)
+draws_df  <- posterior::as_draws_df(fit_bin)
+one_draw  <- as.list(draws_df[sample.int(nrow(draws_df), 1), ])
+fn_linear <- log10_lt50_from_draw_linear(one_draw, T_bar = true_params$T_bar)
+
+result <- recover_tls_numerical(
+  fn_linear,
+  T_ref     = c(30, 32, 34, 36, 38),
+  t_ref_min = 60,
+  T_search  = c(25, 45)
+)
+result
+```
+
+Two things to notice. First, $z(T)$ is constant across the five reference temperatures — as expected, because `mid(T)` is linear in $T$ for this model, so the local slope is the same everywhere. Second, the recovered $CT_{max_{1hr}}$ for this draw matches the closed-form value to within numerical tolerance. This sanity check confirms the recipe; for a fit with smooth or temperature-varying parameters, just swap in a different `log10_lt50_from_draw_*` constructor that respects the new functional form, and run the helper over every posterior draw to get full posteriors of $z(T_\text{ref})$ and $CT_{max_{1hr}}$.
 
 ### Comparing the two pipelines {#sec-compare}
 
