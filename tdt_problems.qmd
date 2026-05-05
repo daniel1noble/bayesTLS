@@ -232,9 +232,23 @@ and in our parameterisation `mid(T)` is linear in temperature for each species:
 
 $$\text{mid}_s(T) = \beta_0^{(s)} + \beta_1^{(s)}\,(T - \bar{T}).$$
 
-Solving `p(t; T) = 0.5` gives a closed form for LT50(T):
+Solving `p(t; T) = 0.5` gives a closed form for LT50(T). Setting $p(t;T) = 0.5$ in the 4PL and isolating the exponential term gives
+
+$$
+\exp\!\bigl(k\,(\log_{10} t - \text{mid}(T))\bigr) \;=\; \frac{\text{up} - \text{low}}{0.5 - \text{low}} - 1 \;=\; \frac{\text{up} - 0.5}{0.5 - \text{low}}.
+$$
+
+Taking the natural log of both sides and rearranging for $\log_{10} t$ at the lethal threshold yields
+
+$$
+\log_{10}\text{LT50}_s(T) \;=\; \text{mid}_s(T) \;+\; \frac{1}{k_s}\log\!\frac{\text{up}_s - 0.5}{0.5 - \text{low}_s}.
+$$
+
+This says that LT50 is the midpoint of the 4PL shifted by an asymmetry correction that vanishes only when $\text{low}_s + \text{up}_s = 1$ (i.e., when the curve is symmetric about $p = 0.5$). Substituting the linear temperature model $\text{mid}_s(T) = \beta_0^{(s)} + \beta_1^{(s)}(T - \bar{T})$ and grouping all terms that do not depend on $T$ into an intercept $\alpha_s$ gives
 
 $$\log_{10} \text{LT50}_s(T) \;=\; \underbrace{\Bigl[\beta_0^{(s)} + \tfrac{1}{k_s}\log\!\tfrac{\text{up}_s - 0.5}{0.5 - \text{low}_s} - \beta_1^{(s)}\bar{T}\Bigr]}_{\alpha_s} \;+\; \beta_1^{(s)}\,T.$$
+
+Two things are worth flagging. First, the asymmetry correction $\tfrac{1}{k_s}\log\tfrac{\text{up}_s - 0.5}{0.5 - \text{low}_s}$ couples $\alpha_s$ to all four 4PL parameters per posterior draw — the two-step pipeline implicitly assumes this term is zero by reading $\alpha_s$ off a fitted LT50–$T$ regression. Second, the slope $\beta_1^{(s)}$ is identified entirely by the temperature dependence of the midpoint and is unaffected by $(\text{low}_s, \text{up}_s, k_s)$; this is why $z_s = -1/\beta_1^{(s)}$ recovers the classical TDT slope cleanly even when the asymptotes are not at 0 and 1.
 
 This is the classical TDT linear relation, now a derived posterior rather than a two-step plug-in. The same biological quantities drop out:
 
