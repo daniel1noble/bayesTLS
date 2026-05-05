@@ -1,14 +1,34 @@
 ---
-title: "Supplementary information for: A hierarchical Bayesian 4PL recovers the classical thermal death time framework and resolves its statistical pathologies"
+title: "Supplementary information for: A flexible modelling framework for estimating thermal sensitivity across life"
+shorttitle: "Bayesian models of thermal tolerance — Supplementary information"
 author:
-  - name: "Daniel Noble"
-    email: daniel.wa.noble@gmail.com
+  - name: "Daniel W.A. Noble"
+    email: daniel.noble@anu.edu.au
     corresponding: true
+    affiliations:
+      - ref: anu
+  - name: "Pieter A. Arnold"
+    affiliations:
+      - ref: anu
+  - name: "Patrice Pottier"
+    email: patrice.pottier@bioenv.gu.se
+    affiliations:
+      - ref: gu
+affiliations:
+  - id: anu
+    name: Division of Ecology and Evolution, Research School of Biology, Australian National University
+    city: Canberra
+    country: Australia
+  - id: gu
+    name: Department of Biological and Environmental Sciences, University of Gothenburg
+    city: Gothenburg
+    country: Sweden
 date: today
 format:
   html:
     toc: true
     toc-depth: 3
+    toc-location: left
     number-sections: true
     embed-resources: true
     fig-cap-location: bottom
@@ -24,6 +44,8 @@ crossref:
   tbl-prefix: "Table S"
   eq-prefix: "Equation S"
   sec-prefix: "Section S"
+editor_options:
+  chunk_output_type: console
 execute:
   echo: false
   warning: false
@@ -34,79 +56,655 @@ execute:
 ```{r setup}
 #| label: setup-supp
 
-library(here)
-library(dplyr)
-library(ggplot2)
-library(brms)
-library(posterior)
-library(flextable)
+pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, flextable, pander)
 
 set.seed(123)
+
+# Cache directory for brms fits (per CLAUDE.md: save fits manually as .rds).
+models_dir <- here::here("output", "models")
+if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
 
-# Statistical liabilities of the two-step TDT pipeline {#sec-pathologies}
+# A Tutorial with Simulations
 
-<!--
-Full version of the §2–§9 catalogue from tdt_problems.qmd, with citations:
-  - Generated-regressor problem (@pagan1984, @murphytopel1985)
-  - Heteroscedasticity discarded by point-estimate LT50
-  - Right-censoring at temperatures where mortality never reached 50 %
-  - Arcsine vs logit (@warton_arcsine_2011)
-  - Mean-variance mismatch in OLS on percentages
-  - Overdispersion (@harrison_olre_2014, @harrison_bb_2015)
-  - Boundary observations
-  - Pseudoreplication (@hurlbert_1984, @schielzeth_nested_2013, @bolker2009)
-  - 4PL identifiability (@bolker_ecologicalmodels_2008, @ritz_drc_2015)
-  - Common-slope-across-temperatures
-  - Forking paths (@simmons_falsepositive_2011, @gelman_loken_2014)
-  - Endpoint heterogeneity (@terblanche_ctmax_2007, @sinclair_predict_2016)
-This text exists in long form in tdt_problems.qmd — port it here and
-shorten the main-text version accordingly.
--->
+This section is a guided tutorial. We show, step by step, that the Bayesian hierarchical 4PL described in the main text can recover a *known* dose-response surface from simulated data — under both binomial sampling and the more realistic beta-binomial (overdispersed) case. The point is to build intuition for what the framework actually does and to show, transparently, that the model works on data where we know the right answer in advance.
 
-# Algebraic equivalence between the 4PL and the classical TDT pipeline {#sec-equivalence}
+By the end you will see:
 
-## Closed-form LT50 from the 4PL
+- A 4PL surface generated from realistic, biologically meaningful parameter values.
+- Two synthetic datasets (binomial and beta-binomial) sampled from that surface.
+- A single `brms` call that fits the Bayesian 4PL hierarchically.
+- Posterior estimates that recover every true parameter, with calibrated uncertainty.
 
-## Closed-form heat-injury integral
+## Simulating Data
+### Step 1 — Pick realistic, biologically meaningful parameters {#sec-sim-step1}
 
-## Closed-form dose → mortality mapping for arbitrary mortality fractions
+We choose values typical of a thermal mortality assay. The four 4PL parameters are the lower and upper asymptotes ($\ell, u$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value below has a clear biological reading.
 
-# Reusable R helpers {#sec-helpers}
+```{r sim-params}
+#| label: sim-params
+#| echo: true
 
-<!--
-Listings (from §10 of tdt_problems.qmd):
-- extract_tdt_params()
-- LT50_T_curve()
-- heat_injury()
-- time_to_mortality()
--->
-
-# Posterior-predictive checks and residual diagnostics {#sec-ppc}
-
-```{r ppc-lethal}
-#| label: fig-ppc-lethal
-#| fig-cap: "Posterior-predictive checks for the lethal-TDT 4PL: observed vs. simulated counts grouped by assay temperature, and randomised-quantile residuals against fitted values."
-#| eval: false
+true_params <- list(
+  ell      = 0.03,   # 3% of individuals survive even at the longest exposures
+  u        = 0.97,   # 97% are alive at very short exposures
+  k        = 8,      # steepness of the survival drop on the log10(t) axis
+  m_beta0  = 1.5,    # midpoint at the grand-mean temperature: ~31.6 min
+  m_beta1  = -0.15,  # midpoint drops 0.15 log10-min per °C; z = -1/beta1 ≈ 6.7 °C
+  T_bar    = 34      # grand-mean temperature
+)
 ```
 
-# Sensitivity analyses {#sec-sensitivity}
+The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$°C — the temperature change that shifts LT50 by a factor of 10. From the same parameters we can also compute the simulation truth for the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the critical thermal limit at 1 hour $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ — both pipelines below will be checked against these known values.
 
-## Celsius-linear vs. Arrhenius (1/T-Kelvin) parameterisation of `mid(T)`
+```{r sim-truth}
+#| label: sim-truth
+#| echo: true
 
-## OLRE vs. beta-binomial overdispersion
-
-## Repair-kernel parameter sensitivity
-
-# Pareto-k diagnostics and `reloo()` results {#sec-loo}
-
-# Computing environment {#sec-session}
-
-```{r session-info}
-sessionInfo()
+true_z      <- -1 / true_params$m_beta1
+true_alpha  <- true_params$m_beta0 +
+  (1 / true_params$k) *
+  log((true_params$u - 0.5) / (0.5 - true_params$ell)) -
+  true_params$m_beta1 * true_params$T_bar
+true_CTmax  <- (log10(60) - true_alpha) / true_params$m_beta1
 ```
+
+### Step 2 — Lay out a factorial assay design {#sec-sim-step2}
+
+We mimic a textbook TDT experiment: a grid of five assay temperatures crossed with six log-spaced exposure durations, repeated 30 times per cell, with 30 individuals tested per replicate. That gives 900 trials and 27,000 individuals — large enough to recover the parameters with negligible posterior uncertainty, but small enough to fit in a few minutes. Of course, in practice we will not have this much data as will be seen in the case studies, but simulations are a good starting point to understand the models being fit and the conversions. 
+
+```{r sim-design}
+#| label: sim-design
+#| echo: true
+
+temps     <- c(30, 32, 34, 36, 38)             # 5 assay temperatures (°C)
+durations <- c(1, 5, 15, 45, 135, 405)         # 6 durations (minutes, log-spaced)
+n_rep     <- 30                                # 30 replicates per cell
+n_per_rep <- 30                                # 30 individuals per replicate
+
+design <- tidyr::expand_grid(
+  T   = temps,
+  t   = durations,
+  rep = seq_len(n_rep)
+) |>
+  dplyr::mutate(
+    log10_t = log10(t),
+    T_c     = T - true_params$T_bar,                        # mean-centred T
+    mid     = true_params$m_beta0 + true_params$m_beta1 * T_c,  # mid(T)
+    p_true  = true_params$ell +
+      (true_params$u - true_params$ell) /
+      (1 + exp(true_params$k * (log10_t - mid))),
+    n = n_per_rep
+  )
+```
+
+### Step 3 — Look at the truth before we fit anything {#sec-sim-step3}
+
+Before generating noisy data, let's plot the *true* survival surface (@fig-true-surface) so we know what the model is being asked to recover. Each line is the 4PL at one assay temperature, plotted against $\log_{10}$ exposure time.
+
+```{r true-surface}
+#| label: fig-true-surface
+#| fig-cap: "The known 4PL dose-response surface used to generate the simulated data, evaluated on a dense time grid at each of the five assay temperatures. The horizontal line marks 50% survival; where each curve crosses it gives the true LT50 at that temperature."
+#| fig-width: 7
+#| fig-height: 4
+
+truth_grid <- tidyr::expand_grid(
+  T = temps,
+  t = 10 ^ seq(log10(0.5), log10(1000), length.out = 200)
+) |>
+  dplyr::mutate(
+    log10_t = log10(t),
+    T_c     = T - true_params$T_bar,
+    mid     = true_params$m_beta0 + true_params$m_beta1 * T_c,
+    p_true  = true_params$ell +
+      (true_params$u - true_params$ell) /
+      (1 + exp(true_params$k * (log10_t - mid)))
+  )
+
+ggplot2::ggplot(truth_grid,
+                ggplot2::aes(log10_t, p_true, colour = factor(T))) +
+  ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_line(linewidth = 0.8) +
+  ggplot2::labs(
+    x = expression(log[10]~exposure~time~(min)),
+    y = "True survival probability",
+    colour = "Temperature (°C)"
+  ) +
+  ggplot2::theme_minimal()
+```
+
+Notice the curves shift left as temperature rises: hotter temperatures kill faster, so the LT50 is reached at shorter durations. That horizontal shift in midpoints is exactly what $\beta_1$ encodes. This is the structure the model has to recover from noisy survival counts.
+
+### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
+
+Real survival counts have at least two flavours of noise. **Binomial** sampling is the textbook case: each replicate's survival count is a draw from $\text{Binomial}(n, p)$ with $p$ from the 4PL surface. **Beta-binomial** sampling adds *overdispersion* — replicate-to-replicate variability in $p$ that the binomial cannot capture, e.g., from cohort effects or unmodelled heterogeneity. Real TDT data almost always show overdispersion.
+
+```{r sim-data}
+#| label: sim-data
+#| echo: true
+
+# (a) Binomial: y ~ Binomial(n, p_true)
+sim_bin <- design |>
+  dplyr::mutate(y = rbinom(dplyr::n(), size = n, prob = p_true))
+
+# (b) Beta-binomial: replicate-level p drawn from Beta(p*phi, (1-p)*phi)
+phi <- 5  # smaller phi = more overdispersion
+sim_bb <- design |>
+  dplyr::mutate(
+    p_draw = rbeta(dplyr::n(), p_true * phi, (1 - p_true) * phi),
+    y      = rbinom(dplyr::n(), size = n, prob = p_draw)
+  )
+```
+
+# The classical two-stage TDT pipeline {#sec-twostage}
+
+We first run the simulated data through the **classical two-stage TDT pipeline** [@rezende_landscapes_2014; @orsted_finding_2022], which is dominant in the thermal-tolerance literature.
+
+1. **Stage 1.** At each assay temperature, fit a logistic dose-response curve to the count data and read off a point estimate of $\log_{10}\text{LT50}_T$.
+2. **Stage 2.** Regress those Stage-1 point estimates on assay temperature with ordinary least squares, then derive $z = -1/\beta_1$ and $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ from the fitted line.
+
+## Stage 1 — per-temperature dose-response curves {#sec-twostage-step1}
+
+We fit a binomial GLM with a logit link separately at each assay temperature. This is the most-common Stage-1 specification in the TDT literature: a two-parameter logistic with asymptotes constrained to 0% and 100%. The midpoint $\log_{10}\text{LT50}_T = -\beta_0/\beta_1$ falls out of the GLM's two coefficients.
+
+```{r stage1-twostage}
+#| label: stage1-twostage
+#| echo: true
+
+fit_stage1 <- function(sim_data) {
+  sim_data |>
+    dplyr::group_by(T) |>
+    dplyr::group_modify(function(d, key) {
+      f  <- glm(cbind(y, n - y) ~ log10_t, data = d, family = binomial())
+      co <- coef(f)
+      tibble::tibble(log10_lt50 = as.numeric(-co[1] / co[2]))
+    }) |>
+    dplyr::ungroup()
+}
+
+stage1_bin <- fit_stage1(sim_bin)
+stage1_bb  <- fit_stage1(sim_bb)
+```
+
+```{r tbl-stage1-lt50}
+#| label: tbl-stage1-lt50
+#| tbl-cap: "Per-temperature Stage-1 estimates of $\\log_{10}\\text{LT50}$ from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with $\\log_{10}\\text{LT50}$ here because the simulation asymptotes are near 0 and 1)."
+
+stage1_table <- dplyr::full_join(
+  stage1_bin |> dplyr::rename(bin_log10_lt50 = log10_lt50),
+  stage1_bb  |> dplyr::rename(bb_log10_lt50  = log10_lt50),
+  by = "T"
+) |>
+  dplyr::mutate(
+    truth_log10_lt50 = true_params$m_beta0 +
+      true_params$m_beta1 * (T - true_params$T_bar)
+  ) |>
+  dplyr::select(T, truth_log10_lt50, bin_log10_lt50, bb_log10_lt50)
+
+flextable::flextable(stage1_table) |>
+  flextable::colformat_double(digits = 3) |>
+  flextable::autofit()
+```
+
+With the simulation's true asymptotes near 0 and 1, the 2PL's forced-asymptote constraint introduces negligible bias here, so each Stage-1 estimate sits close to the simulation truth.
+
+## Stage 2 — log-linear TDT regression {#sec-twostage-step2}
+
+Stage 2 regresses Stage-1 $\log_{10}\text{LT50}$ on assay temperature with ordinary least squares. The classical TDT quantities — $z = -1/\beta_1$ and $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ — fall out of the fitted line.
+
+```{r stage2-twostage}
+#| label: stage2-twostage
+#| echo: true
+
+fit_stage2 <- function(stage1) {
+  fit2 <- lm(log10_lt50 ~ T, data = stage1)
+  co   <- coef(fit2)
+
+  tibble::tibble(
+    quantity = c("z (°C)", "CTmax at 1 hr (°C)"),
+    est      = c(as.numeric(-1 / co["T"]),
+                 as.numeric((log10(60) - co["(Intercept)"]) / co["T"]))
+  )
+}
+
+ts_bin <- fit_stage2(stage1_bin)
+ts_bb  <- fit_stage2(stage1_bb)
+```
+
+@fig-stage2-regression visualises the Stage-2 fit. Each point is one Stage-1 $\log_{10}\text{LT50}$ estimate from @tbl-stage1-lt50; the solid line is the OLS regression through them. The slope is $\beta_1$, from which $z = -1/\beta_1$ — i.e., the temperature step that changes $\log_{10}\text{LT50}$ by one decade. The line's height at $\log_{10} 60 \approx 1.78$ (1 hour) is at the temperature equal to $CT_{max_{1hr}}$ — the vertical dotted line drops from this intersection straight to the temperature axis to mark it. The dashed grey line is the simulation truth.
+
+```{r fig-stage2-regression}
+#| label: fig-stage2-regression
+#| fig-cap: "Stage-2 OLS regression of $\\log_{10}\\text{LT50}$ on assay temperature, fit separately to the binomial and beta-binomial simulated datasets. Points are the Stage-1 per-temperature LT50 estimates; solid coloured lines are the OLS fits; the dashed grey line is the simulation truth. The slope of each line equals $\\beta_1$, from which $z = -1/\\beta_1$. The horizontal dotted line marks $\\log_{10} 60$ (1 hour); the vertical dotted line drops from where the truth crosses 1 hour straight down to the temperature axis, marking $CT_{max_{1hr}}$ visually."
+#| fig-width: 7
+#| fig-height: 4.5
+
+stage1_combined <- dplyr::bind_rows(
+  stage1_bin |> dplyr::mutate(dataset = "Binomial"),
+  stage1_bb  |> dplyr::mutate(dataset = "Beta-binomial")
+)
+
+truth_line <- tibble::tibble(
+  T = seq(min(temps), max(temps), length.out = 100)
+) |>
+  dplyr::mutate(
+    log10_lt50 = true_params$m_beta0 +
+      true_params$m_beta1 * (T - true_params$T_bar)
+  )
+
+ggplot2::ggplot(stage1_combined,
+                ggplot2::aes(x = T, y = log10_lt50, colour = dataset)) +
+  ggplot2::geom_hline(yintercept = log10(60),
+                      linetype = "dotted", colour = "grey60") +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = true_CTmax, xend = true_CTmax,
+                 y = log10(60), yend = -Inf),
+    inherit.aes = FALSE,
+    linetype = "dotted", colour = "grey60"
+  ) +
+  ggplot2::geom_line(data = truth_line,
+                     ggplot2::aes(x = T, y = log10_lt50),
+                     inherit.aes = FALSE,
+                     linetype = "dashed", colour = "grey40",
+                     linewidth = 0.7) +
+  ggplot2::geom_smooth(method = "lm", se = FALSE, linewidth = 0.7) +
+  ggplot2::geom_point(size = 3) +
+  ggplot2::annotate("text", x = max(temps), y = log10(60),
+                    label = "log[10]~60~(1*' hour')", parse = TRUE,
+                    hjust = 1, vjust = -0.4, colour = "grey50", size = 3) +
+  ggplot2::annotate("text", x = true_CTmax, y = -Inf,
+                    label = "CT[max[1*hr]]", parse = TRUE,
+                    hjust = -0.15, vjust = -0.7, colour = "grey50", size = 3) +
+  ggplot2::labs(
+    x = "Assay temperature (°C)",
+    y = expression(log[10]~LT[50]~(min)),
+    colour = "Stage-1 dataset"
+  ) +
+  ggplot2::theme_classic()
+```
+
+This is the entire two-stage workflow. The point estimates that come out — $z$ and $CT_{max_{1hr}}$ — are what the field reports. We carry them forward (`ts_bin` and `ts_bb`) for the side-by-side comparison once we have the joint Bayesian results.
+
+# A joint Bayesian 4PL {#sec-joint}
+
+Instead of fitting a separate logistic at each assay temperature and then regressing the LT50s, the joint fit estimates every parameter — $\ell$, $u$, $k$, $\beta_0$ and $\beta_1$ — in a single hierarchical model on the raw counts. We now use the same simulated data to derive the $z$ and $CT_{max_{1hr}}$ from the posterior, in one model rather than two.
+
+## Specifying the 4PL in `brms` {#sec-joint-spec}
+
+The model has two pieces. The first is the 4PL itself — survival probability as a function of $\log_{10}$ exposure time:
+
+$$
+p_{ij} \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - \text{mid}_{ij})\bigr)},
+$$ {#eq-4pl}
+
+where $\ell$ and $u$ are the lower and upper asymptotes, $k$ is the slope on the $\log_{10} t$ axis, and $\text{mid}_{ij}$ is the value of $\log_{10} t$ at which the curve crosses the midpoint between $\ell$ and $u$. The second piece lets the midpoint vary linearly with mean-centred temperature:
+
+$$
+\text{mid}_{ij} \;=\; \beta_0 + \beta_1\,(T_{ij} - \bar{T}),
+$$ {#eq-mid-temp}
+
+so that $\beta_1$ encodes how fast the dose-response curve shifts on the time axis as assay temperature changes; $\bar{T}$ is the grand-mean temperature, included so that $\beta_0$ is interpretable as the midpoint at the average assay temperature.
+
+In `brms` non-linear syntax these two pieces become one formula and four sub-formulas — one for each parameter in the 4PL model:
+
+```{r model-spec}
+#| label: model-spec
+#| echo: true
+
+# Soft constraints to keep the parameters in their natural ranges.
+# These are not informative priors — just the bounds the parameters
+# must obey to be biologically meaningful.
+priors_4pl <- c(
+  prior(beta(1, 5),    nlpar = "ell", lb = 0, ub = 1),
+  prior(beta(5, 1),    nlpar = "u",   lb = 0, ub = 1),
+  prior(normal(0, 10), nlpar = "k",   lb = 0),
+  prior(normal(0, 5),  nlpar = "mid")
+)
+
+bform_bin <- bf(
+  y | trials(n) ~ ell + (u - ell) / (1 + exp(k * (log10_t - mid))),
+  ell ~ 1, u ~ 1, k ~ 1, mid ~ T_c,
+  nl = TRUE,
+  family = binomial(link = "identity")
+)
+
+# Same model, beta-binomial likelihood for the overdispersed dataset.
+bform_bb <- bf(
+  y | trials(n) ~ ell + (u - ell) / (1 + exp(k * (log10_t - mid))),
+  ell ~ 1, u ~ 1, k ~ 1, mid ~ T_c,
+  nl = TRUE,
+  family = beta_binomial(link = "identity")
+)
+```
+
+The first line in `bf()` is @eq-4pl. The next four lines say (i) the asymptotes and slope are simply scalars and we estimate an overall intercept for each (`ell ~ 1`, `u ~ 1`, `k ~ 1`) and (ii) the midpoint depends linearly on mean-centred temperature (`mid ~ T_c`), recovering @eq-mid-temp. This is the entire model.
+
+::: {.callout-important}
+
+The model we fit is rather simple — it can be extended in several ways. The assumption that midpoints shift *linearly* with temperature can be relaxed by fitting a polynomial (`mid ~ T_c + I(T_c^2)`) or a smoother (`mid ~ s(T_c)`). Random effects can be added to any of the four 4PL parameters; for instance, `mid ~ T_c + (1 | day)` allows the midpoint to vary across assay days or batches. Temperature can also be a predictor for the other 4PL parameters — adding `k ~ T_c`, for instance, would let the slope of the dose-response curve itself depend on temperature. Random effects in the joint fit also enable a much more detailed variance decomposition than the two-stage pipeline can deliver.
+
+:::
+
+## Fitting the model {#sec-joint-fit}
+
+Now that we have the model formula set up and priors we can fit the model. We pass `file = ...` and `file_refit = "on_change"` directly to `brm()`. This tells `brms` to save the fit to disk on first run and to reload it on subsequent runs unless the model or data has changed.
+
+```{r fit-4pl}
+#| label: fit-4pl
+#| echo: true
+
+fit_bin <- brm(
+  bform_bin, data = sim_bin, prior = priors_4pl,
+  chains = 4, iter = 2000, cores = 4, seed = 123,
+  file = file.path(models_dir, "sim_4pl_binomial"),
+  file_refit = "on_change"
+)
+
+fit_bb <- brm(
+  bform_bb, data = sim_bb, prior = priors_4pl,
+  chains = 4, iter = 2000, cores = 4, seed = 123,
+  file = file.path(models_dir, "sim_4pl_betabinomial"),
+  file_refit = "on_change"
+)
+```
+
+## Checking parameter recovery {#sec-joint-recovery}
+
+We can now check how well our fitted model recovered the true parameters that generated the data. The most direct check is to compare posterior medians (with 95% credible intervals) to the known truth (@tbl-recovery). We have big sample sizes here so our values should be pretty close to our true values.
+
+```{r recovery-table}
+#| label: tbl-recovery
+#| tbl-cap: "Posterior medians and 95% credible intervals for the four 4PL parameters and the temperature slope, compared to the known truth used to generate the simulated data. Recovery is judged successful when the credible interval covers the truth."
+
+post_summary <- function(fit) {
+  d <- posterior::as_draws_df(fit)
+  pars <- c(ell = "b_ell_Intercept", u = "b_u_Intercept",
+            k   = "b_k_Intercept",   mid_beta0 = "b_mid_Intercept",
+            mid_beta1 = "b_mid_T_c")
+  purrr::map_dfr(pars, \(p) tibble::tibble(
+    median = median(d[[p]]),
+    lower  = quantile(d[[p]], 0.025),
+    upper  = quantile(d[[p]], 0.975)
+  ), .id = "param")
+}
+
+truth <- tibble::tibble(
+  param = c("ell", "u", "k", "mid_beta0", "mid_beta1"),
+  truth = c(true_params$ell, true_params$u, true_params$k,
+            true_params$m_beta0, true_params$m_beta1)
+)
+
+recovery <- truth |>
+  dplyr::left_join(post_summary(fit_bin) |>
+                     dplyr::rename_with(~ paste0("bin_", .x), -param),
+                   by = "param") |>
+  dplyr::left_join(post_summary(fit_bb) |>
+                     dplyr::rename_with(~ paste0("bb_", .x), -param),
+                   by = "param")
+
+flextable::flextable(recovery) |>
+  flextable::colformat_double(digits = 3) |>
+  flextable::autofit()
+```
+
+We can also overlay the posterior fitted curves on the simulated data (@fig-recovery-fit). If the model has recovered the true surface, the fitted lines should track the simulated proportions at every assay temperature.
+
+```{r recovery-fit-plot}
+#| label: fig-recovery-fit
+#| fig-cap: "Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overlaid on the simulated binomial data (points). One panel-coloured line per assay temperature. Where the fitted curves track the simulated proportions across all five temperatures, the model has recovered the underlying dose-response surface."
+#| fig-width: 8
+#| fig-height: 5
+
+pred_grid <- tidyr::expand_grid(
+  T = temps,
+  t = 10 ^ seq(log10(0.5), log10(800), length.out = 100),
+  n = 1
+) |>
+  dplyr::mutate(
+    log10_t = log10(t),
+    T_c     = T - true_params$T_bar
+  )
+
+fit_lines <- tidybayes::add_epred_draws(pred_grid, fit_bin, ndraws = 200) |>
+  dplyr::group_by(T, t, log10_t) |>
+  dplyr::summarise(
+    p_med = median(.epred),
+    p_lo  = quantile(.epred, 0.025),
+    p_hi  = quantile(.epred, 0.975),
+    .groups = "drop"
+  )
+
+ggplot2::ggplot() +
+  ggplot2::geom_jitter(
+    data = sim_bin,
+    ggplot2::aes(x = log10_t, y = y / n, colour = factor(T)),
+    width = 0.02, height = 0, alpha = 0.25, size = 0.7
+  ) +
+  ggplot2::geom_ribbon(
+    data = fit_lines,
+    ggplot2::aes(x = log10_t, ymin = p_lo, ymax = p_hi, fill = factor(T)),
+    alpha = 0.2
+  ) +
+  ggplot2::geom_line(
+    data = fit_lines,
+    ggplot2::aes(x = log10_t, y = p_med, colour = factor(T)),
+    linewidth = 0.7
+  ) +
+  ggplot2::labs(
+    x = expression(log[10]~exposure~time~(min)),
+    y = "Survival probability",
+    colour = "Temperature (°C)",
+    fill   = "Temperature (°C)"
+  ) +
+  ggplot2::theme_classic()
+```
+
+## Deriving $z$ and $CT_{max_{1hr}}$ from the posterior {#sec-joint-derive}
+
+The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities — thermal sensitivity ($z$) and the critical thermal limit at a reference duration ($CT_{max_{1hr}}$) — fall out as one-line transformations of the posterior we just fit. We never refit the model; we just push the posterior draws of $(\ell, u, k, \beta_0, \beta_1)$ through the same closed-form expressions used to derive the simulation truth in Step 1.
+
+```{r derive-tls}
+#| label: derive-tls
+#| echo: true
+
+# Helper: push posterior draws of (ell, u, k, beta0, beta1) through the closed-
+# form derivations from the main text to get z and CTmax at 1 hour.
+derive_z_ctmax <- function(fit) {
+  posterior::as_draws_df(fit) |>      # Pulls out posterior distribution for each parameter from the model as a data frame
+    dplyr::mutate(
+      z         = -1 / b_mid_T_c,    # Take each draw from the model and calculate a value of z, giving us a poetrior distribution of sensitivity values, z
+      alpha     = b_mid_Intercept +
+        (1 / b_k_Intercept) *
+        log((b_u_Intercept - 0.5) / (0.5 - b_ell_Intercept)) -
+        b_mid_T_c * true_params$T_bar,   # Take upper, lower and slope of temp (along with overall mean) to caluclate the intercept.
+      CTmax_1hr = (log10(60) - alpha) / b_mid_T_c # Now, use alpha and temperature slope on midpoints, referencing at 1hour, to calculate CTmax
+    ) |>
+    dplyr::select(z, CTmax_1hr) # Select out the whole posterior distribution for our new derived variables
+}
+
+# Now, lets use our function to extract the estimates from these two fitted models.
+draws_bin_d <- derive_z_ctmax(fit_bin)
+draws_bb_d  <- derive_z_ctmax(fit_bb)
+```
+
+```{r tls-recovery-table}
+#| label: tbl-tls-recovery
+#| tbl-cap: "Posterior medians and 95% credible intervals for thermal sensitivity ($z$) and the critical thermal limit at a 1-hour reference duration ($CT_{max_{1hr}}$), derived directly from the joint Bayesian 4PL fit. Both quantities recover the simulation truth under both binomial and beta-binomial likelihoods."
+
+summarise_post <- function(x) {
+  c(median = median(x),
+    lower  = quantile(x, 0.025, names = FALSE),
+    upper  = quantile(x, 0.975, names = FALSE))
+}
+
+tls_recovery <- tibble::tibble(
+  quantity   = c("z (°C)", "CTmax at 1 hr (°C)"),
+  truth      = c(true_z, true_CTmax),
+  bin_median = c(summarise_post(draws_bin_d$z)["median"],
+                 summarise_post(draws_bin_d$CTmax_1hr)["median"]),
+  bin_lower  = c(summarise_post(draws_bin_d$z)["lower"],
+                 summarise_post(draws_bin_d$CTmax_1hr)["lower"]),
+  bin_upper  = c(summarise_post(draws_bin_d$z)["upper"],
+                 summarise_post(draws_bin_d$CTmax_1hr)["upper"]),
+  bb_median  = c(summarise_post(draws_bb_d$z)["median"],
+                 summarise_post(draws_bb_d$CTmax_1hr)["median"]),
+  bb_lower   = c(summarise_post(draws_bb_d$z)["lower"],
+                 summarise_post(draws_bb_d$CTmax_1hr)["lower"]),
+  bb_upper   = c(summarise_post(draws_bb_d$z)["upper"],
+                 summarise_post(draws_bb_d$CTmax_1hr)["upper"])
+)
+
+flextable::flextable(tls_recovery) |>
+  flextable::colformat_double(digits = 3) |>
+  flextable::autofit()
+```
+
+```{r tls-recovery-plot}
+#| label: fig-tls-recovery
+#| fig-cap: "Posterior distributions for thermal sensitivity ($z$) and $CT_{max_{1hr}}$ from the binomial fit (blue) and beta-binomial fit (orange). Vertical dashed lines mark the simulation truth. Both posteriors are tightly concentrated around the truth, illustrating that the joint Bayesian fit recovers the classical TLS quantities with calibrated uncertainty without any additional regression step."
+#| fig-width: 8
+#| fig-height: 4
+
+post_long <- dplyr::bind_rows(
+  draws_bin_d |> dplyr::mutate(model = "Binomial"),
+  draws_bb_d  |> dplyr::mutate(model = "Beta-binomial")
+) |>
+  tidyr::pivot_longer(c(z, CTmax_1hr), names_to = "quantity", values_to = "value") |>
+  dplyr::mutate(quantity = dplyr::recode(quantity,
+                                         z = "z (°C)",
+                                         CTmax_1hr = "CTmax at 1 hr (°C)"))
+
+truth_long <- tibble::tibble(
+  quantity = c("z (°C)", "CTmax at 1 hr (°C)"),
+  truth    = c(true_z, true_CTmax)
+)
+
+ggplot2::ggplot(post_long, ggplot2::aes(value, fill = model)) +
+  ggplot2::geom_density(alpha = 0.5, colour = NA) +
+  ggplot2::geom_vline(data = truth_long,
+                      ggplot2::aes(xintercept = truth),
+                      linetype = "dashed", colour = "black") +
+  ggplot2::facet_wrap(~ quantity, scales = "free") +
+  ggplot2::labs(x = NULL, y = "Posterior density", fill = "Model") +
+  ggplot2::theme_classic()
+```
+
+The two derived quantities recover their simulation truth in both fits (@tbl-tls-recovery, @fig-tls-recovery), with credible intervals that reflect joint uncertainty in all four 4PL parameters and the temperature slope. Crucially, **we did not run a second regression** to get $z$ and $CT_{max_{1hr}}$. They are properties of the same posterior we already have. This is the key practical advantage of the joint approach over the two-step pipeline: every classical TLS quantity is one transformation away from the fit we have already run, and every quantity inherits the same calibrated uncertainty.
+
+Given that we have the full distribution of $z$ and $CT_{max_{1hr}}$, we can now report on uncertainty in their values *very* easily. All we need to do is take the standard deviation of this distribution for the standard error or we can even summaise with quantiles as follows:
+
+```{r uncert-z-ct}
+#| label: tbl-uncert-z-ct
+#| tbl-cap: "Posterior summaries of $z$ and $CT_{max_{1hr}}$ from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval (2.5% and 97.5% quantiles), reported separately for the binomial and beta-binomial fits."
+
+summarise_draws <- function(x) {
+  q <- quantile(x, c(0.025, 0.5, 0.975), names = FALSE)
+  tibble::tibble(
+    mean   = mean(x),
+    sd     = sd(x),
+    median = q[2],
+    lower  = q[1],
+    upper  = q[3]
+  )
+}
+
+uncert_summary <- dplyr::bind_rows(
+  summarise_draws(draws_bin_d$z)         |>
+    dplyr::mutate(quantity = "z (°C)",             likelihood = "Binomial"),
+  summarise_draws(draws_bin_d$CTmax_1hr) |>
+    dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Binomial"),
+  summarise_draws(draws_bb_d$z)          |>
+    dplyr::mutate(quantity = "z (°C)",             likelihood = "Beta-binomial"),
+  summarise_draws(draws_bb_d$CTmax_1hr)  |>
+    dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Beta-binomial")
+) |>
+  dplyr::select(quantity, likelihood, mean, sd, median, lower, upper)
+
+# Scalars for inline reporting in the next paragraph.
+sd_z_bin  <- round(sd(draws_bin_d$z), 2)
+sd_z_bb   <- round(sd(draws_bb_d$z), 2)
+sd_ct_bin <- round(sd(draws_bin_d$CTmax_1hr), 2)
+sd_ct_bb  <- round(sd(draws_bb_d$CTmax_1hr), 2)
+ci_z_bin  <- round(diff(quantile(draws_bin_d$z, c(0.025, 0.975), names = FALSE)), 2)
+ci_z_bb   <- round(diff(quantile(draws_bb_d$z, c(0.025, 0.975), names = FALSE)), 2)
+ci_ct_bin <- round(diff(quantile(draws_bin_d$CTmax_1hr, c(0.025, 0.975), names = FALSE)), 2)
+ci_ct_bb  <- round(diff(quantile(draws_bb_d$CTmax_1hr, c(0.025, 0.975), names = FALSE)), 2)
+
+flextable::flextable(uncert_summary) |>
+  flextable::set_header_labels(
+    quantity   = "Quantity",
+    likelihood = "Likelihood",
+    mean       = "Mean",
+    sd         = "SD",
+    median     = "Median",
+    lower      = "2.5%",
+    upper      = "97.5%"
+  ) |>
+  flextable::colformat_double(digits = 3) |>
+  flextable::autofit()
+```
+
+In short, both $z$ and $CT_{max_{1hr}}$ are estimated with high precision and their credible intervals come straight from the joint posterior — no second-stage regression, no delta-method, no bootstrap. Under the binomial likelihood, the posterior SD of $z$ is `r sd_z_bin` °C with a 95% credible interval `r ci_z_bin` °C wide; $CT_{max_{1hr}}$ has SD `r sd_ct_bin` °C and a CrI width of `r ci_ct_bin` °C. The beta-binomial fit is slightly wider on both quantities (SD on $z$: `r sd_z_bb` °C; on $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ has absorbed the extra-binomial variance and that uncertainty propagates honestly into the derived quantities — none of which falls out of the two-stage pipeline without an additional bootstrap or delta-method step.
+
+# Comparing the two pipelines {#sec-compare}
+
+## Point-estimate agreement on the same data {#sec-compare-table}
+
+@tbl-twostage-compare puts the two-stage point estimates next to the joint Bayesian posterior medians for both simulated datasets.
+
+```{r tbl-compare-twostage}
+#| label: tbl-twostage-compare
+#| tbl-cap: "Point estimates (two-stage) and posterior medians (joint Bayesian) for thermal sensitivity ($z$) and $CT_{max_{1hr}}$, recovered by each of four estimator–dataset combinations from the same simulated datasets. Truth values are the simulation parameters."
+
+compare_table <- tibble::tibble(
+  quantity   = c("z (°C)", "CTmax at 1 hr (°C)"),
+  truth      = c(true_z, true_CTmax),
+  ts_bin     = ts_bin$est,
+  joint_bin  = c(median(draws_bin_d$z),
+                 median(draws_bin_d$CTmax_1hr)),
+  ts_bb      = ts_bb$est,
+  joint_bb   = c(median(draws_bb_d$z),
+                 median(draws_bb_d$CTmax_1hr))
+)
+
+flextable::flextable(compare_table) |>
+  flextable::set_header_labels(
+    quantity  = "Quantity",
+    truth     = "Truth",
+    ts_bin    = "Two-stage (binomial)",
+    joint_bin = "Joint Bayesian (binomial)",
+    ts_bb     = "Two-stage (beta-binomial)",
+    joint_bb  = "Joint Bayesian (beta-binomial)"
+  ) |>
+  flextable::colformat_double(digits = 3) |>
+  flextable::autofit()
+```
+
+All four estimators land on essentially the same point estimates for $z$ and $CT_{max_{1hr}}$, and all sit close to the simulation truth. The joint Bayesian 4PL gives the same answer the classical pipeline gives — it is *not* in disagreement with the field's existing point estimates, it reproduces them.
+
+## Why the joint fit recovers the truth more closely {#sec-compare-why}
+
+Read @tbl-twostage-compare carefully and the joint Bayesian point estimates sit a little closer to the simulation truth than the two-stage estimates. On benign data the gap is small, but it is real, and it widens under more realistic conditions. Three structural advantages of the joint fit explain it.
+
+**Information pooling across temperatures.** The joint 4PL fits a *single* set of asymptotes ($\ell, u$) and a single slope $k$ across all five temperatures, so each temperature's data anchors all of them. The two-stage's Stage-1 GLM fits each temperature in isolation, with no constraint shared across temperatures; per-temperature LT50 estimates therefore have higher sampling variance than they need to, and that variance carries through to Stage 2. The joint fit borrows strength across temperatures by construction.
+
+**Asymptote correctness.** The 2PL Stage-1 model forces the asymptotes to 0 and 1. With true asymptotes at $\ell = 0.03$ and $u = 0.97$ the bias is small but non-zero — the Stage-1 LT50 is the temperature at which the *2PL* crosses 0.5, which is not exactly the same as the temperature at which the *4PL* with asymmetric asymptotes crosses 0.5. The joint 4PL estimates $\ell$ and $u$ from the data and so has no analogous bias. The bias grows as the true asymptotes move away from 0 and 1.
+
+**Overdispersion handling.** For the beta-binomial dataset, the joint fit's beta-binomial likelihood explicitly absorbs the extra-binomial variance into a dispersion parameter ($\phi$). The two-stage's Stage-1 binomial GLM cannot — so per-temperature LT50 estimates are noisier on the beta-binomial dataset than on the binomial one, and that noise propagates into Stage 2. The joint beta-binomial fit removes that noise at its source.
+
+None of these gaps is large in this benign simulation, where the asymptotes anchor near 0 and 1, overdispersion is moderate, and the design is balanced. They will be larger in less benign data — and the joint fit's structural advantages compound when asymptotes are well off the boundaries, when overdispersion is severe, or when the experimental design has nested replication that the two-stage cannot incorporate at all.
+
 
 # References {.unnumbered}
 
 ::: {#refs}
 :::
+
+# Session Information
+
+```{r session-info}
+#| label: session-info
+#| results: asis
+
+pander::pander(sessionInfo())
+```
