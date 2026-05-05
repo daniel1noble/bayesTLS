@@ -27,7 +27,7 @@ date: today
 format:
   html:
     toc: true
-    toc-depth: 3
+    toc-depth: 4
     toc-location: left
     number-sections: true
     embed-resources: true
@@ -67,17 +67,10 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 # A Tutorial with Simulations
 
-This section is a guided tutorial. We show, step by step, that the Bayesian hierarchical 4PL described in the main text can recover a *known* dose-response surface from simulated data — under both binomial sampling and the more realistic beta-binomial (overdispersed) case. The point is to build intuition for what the framework actually does and to show, transparently, that the model works on data where we know the right answer in advance.
+This section is a guided tutorial using simulated data. We show, step by step, how the Bayesian hierarchical 4PL — under both binomial sampling and the more realistic beta-binomial (overdispersed) case – can recover thermal sensitivity ($z$) and $CT_{max_{1hr}}$ from the single joint model, yet provide substantial downstream benefits in terms of propagating uncertainty and giving more flexibility. We then complement the simulation with a few case studies which walk through real data that is presented within the main manuscript in other sections.
 
-By the end you will see:
-
-- A 4PL surface generated from realistic, biologically meaningful parameter values.
-- Two synthetic datasets (binomial and beta-binomial) sampled from that surface.
-- A single `brms` call that fits the Bayesian 4PL hierarchically.
-- Posterior estimates that recover every true parameter, with calibrated uncertainty.
-
-## Simulating Data
-### Step 1 — Pick realistic, biologically meaningful parameters {#sec-sim-step1}
+### Simulating Data
+#### Step 1 — Pick realistic, biologically meaningful parameters {#sec-sim-step1}
 
 We choose values typical of a thermal mortality assay. The four 4PL parameters are the lower and upper asymptotes ($\ell, u$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value below has a clear biological reading.
 
@@ -109,7 +102,7 @@ true_alpha  <- true_params$m_beta0 +
 true_CTmax  <- (log10(60) - true_alpha) / true_params$m_beta1
 ```
 
-### Step 2 — Lay out a factorial assay design {#sec-sim-step2}
+#### Step 2 — Lay out a factorial assay design {#sec-sim-step2}
 
 We mimic a textbook TDT experiment: a grid of five assay temperatures crossed with six log-spaced exposure durations, repeated 30 times per cell, with 30 individuals tested per replicate. That gives 900 trials and 27,000 individuals — large enough to recover the parameters with negligible posterior uncertainty, but small enough to fit in a few minutes. Of course, in practice we will not have this much data as will be seen in the case studies, but simulations are a good starting point to understand the models being fit and the conversions. 
 
@@ -138,7 +131,7 @@ design <- tidyr::expand_grid(
   )
 ```
 
-### Step 3 — Look at the truth before we fit anything {#sec-sim-step3}
+#### Step 3 — Look at the truth before we fit anything {#sec-sim-step3}
 
 Before generating noisy data, let's plot the *true* survival surface (@fig-true-surface) so we know what the model is being asked to recover. Each line is the 4PL at one assay temperature, plotted against $\log_{10}$ exposure time.
 
@@ -175,7 +168,7 @@ ggplot2::ggplot(truth_grid,
 
 Notice the curves shift left as temperature rises: hotter temperatures kill faster, so the LT50 is reached at shorter durations. That horizontal shift in midpoints is exactly what $\beta_1$ encodes. This is the structure the model has to recover from noisy survival counts.
 
-### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
+#### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
 
 Real survival counts have at least two flavours of noise. **Binomial** sampling is the textbook case: each replicate's survival count is a draw from $\text{Binomial}(n, p)$ with $p$ from the 4PL surface. **Beta-binomial** sampling adds *overdispersion* — replicate-to-replicate variability in $p$ that the binomial cannot capture, e.g., from cohort effects or unmodelled heterogeneity. Real TDT data almost always show overdispersion.
 
@@ -196,14 +189,14 @@ sim_bb <- design |>
   )
 ```
 
-# The classical two-stage TDT pipeline {#sec-twostage}
+### The classical two-stage TDT pipeline {#sec-twostage}
 
 We first run the simulated data through the **classical two-stage TDT pipeline** [@rezende_landscapes_2014; @orsted_finding_2022], which is dominant in the thermal-tolerance literature.
 
 1. **Stage 1.** At each assay temperature, fit a logistic dose-response curve to the count data and read off a point estimate of $\log_{10}\text{LT50}_T$.
 2. **Stage 2.** Regress those Stage-1 point estimates on assay temperature with ordinary least squares, then derive $z = -1/\beta_1$ and $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ from the fitted line.
 
-## Stage 1 — per-temperature dose-response curves {#sec-twostage-step1}
+#### Stage 1 — per-temperature dose-response curves {#sec-twostage-step1}
 
 We fit a binomial GLM with a logit link separately at each assay temperature. This is the most-common Stage-1 specification in the TDT literature: a two-parameter logistic with asymptotes constrained to 0% and 100%. The midpoint $\log_{10}\text{LT50}_T = -\beta_0/\beta_1$ falls out of the GLM's two coefficients.
 
@@ -248,7 +241,7 @@ flextable::flextable(stage1_table) |>
 
 With the simulation's true asymptotes near 0 and 1, the 2PL's forced-asymptote constraint introduces negligible bias here, so each Stage-1 estimate sits close to the simulation truth.
 
-## Stage 2 — log-linear TDT regression {#sec-twostage-step2}
+#### Stage 2 — log-linear TDT regression {#sec-twostage-step2}
 
 Stage 2 regresses Stage-1 $\log_{10}\text{LT50}$ on assay temperature with ordinary least squares. The classical TDT quantities — $z = -1/\beta_1$ and $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ — fall out of the fitted line.
 
@@ -325,11 +318,11 @@ ggplot2::ggplot(stage1_combined,
 
 This is the entire two-stage workflow. The point estimates that come out — $z$ and $CT_{max_{1hr}}$ — are what the field reports. We carry them forward (`ts_bin` and `ts_bb`) for the side-by-side comparison once we have the joint Bayesian results.
 
-# A joint Bayesian 4PL {#sec-joint}
+### A joint Bayesian 4PL {#sec-joint}
 
 Instead of fitting a separate logistic at each assay temperature and then regressing the LT50s, the joint fit estimates every parameter — $\ell$, $u$, $k$, $\beta_0$ and $\beta_1$ — in a single hierarchical model on the raw counts. We now use the same simulated data to derive the $z$ and $CT_{max_{1hr}}$ from the posterior, in one model rather than two.
 
-## Specifying the 4PL in `brms` {#sec-joint-spec}
+#### Specifying the 4PL in `brms` {#sec-joint-spec}
 
 The model has two pieces. The first is the 4PL itself — survival probability as a function of $\log_{10}$ exposure time:
 
@@ -385,7 +378,7 @@ The model we fit is rather simple — it can be extended in several ways. The as
 
 :::
 
-## Fitting the model {#sec-joint-fit}
+#### Fitting the model {#sec-joint-fit}
 
 Now that we have the model formula set up and priors we can fit the model. We pass `file = ...` and `file_refit = "on_change"` directly to `brm()`. This tells `brms` to save the fit to disk on first run and to reload it on subsequent runs unless the model or data has changed.
 
@@ -408,7 +401,7 @@ fit_bb <- brm(
 )
 ```
 
-## Checking parameter recovery {#sec-joint-recovery}
+#### Checking parameter recovery {#sec-joint-recovery}
 
 We can now check how well our fitted model recovered the true parameters that generated the data. The most direct check is to compare posterior medians (with 95% credible intervals) to the known truth (@tbl-recovery). We have big sample sizes here so our values should be pretty close to our true values.
 
@@ -499,7 +492,7 @@ ggplot2::ggplot() +
   ggplot2::theme_classic()
 ```
 
-## Deriving $z$ and $CT_{max_{1hr}}$ from the posterior {#sec-joint-derive}
+### Deriving $z$ and $CT_{max_{1hr}}$ from the posterior {#sec-joint-derive}
 
 The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities — thermal sensitivity ($z$) and the critical thermal limit at a reference duration ($CT_{max_{1hr}}$) — fall out as one-line transformations of the posterior we just fit. We never refit the model; we just push the posterior draws of $(\ell, u, k, \beta_0, \beta_1)$ through the same closed-form expressions used to derive the simulation truth in Step 1.
 
@@ -595,6 +588,7 @@ Given that we have the full distribution of $z$ and $CT_{max_{1hr}}$, we can now
 
 ```{r uncert-z-ct}
 #| label: tbl-uncert-z-ct
+#| echo: true
 #| tbl-cap: "Posterior summaries of $z$ and $CT_{max_{1hr}}$ from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval (2.5% and 97.5% quantiles), reported separately for the binomial and beta-binomial fits."
 
 summarise_draws <- function(x) {
@@ -646,9 +640,9 @@ flextable::flextable(uncert_summary) |>
 
 In short, both $z$ and $CT_{max_{1hr}}$ are estimated with high precision and their credible intervals come straight from the joint posterior — no second-stage regression, no delta-method, no bootstrap. Under the binomial likelihood, the posterior SD of $z$ is `r sd_z_bin` °C with a 95% credible interval `r ci_z_bin` °C wide; $CT_{max_{1hr}}$ has SD `r sd_ct_bin` °C and a CrI width of `r ci_ct_bin` °C. The beta-binomial fit is slightly wider on both quantities (SD on $z$: `r sd_z_bb` °C; on $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ has absorbed the extra-binomial variance and that uncertainty propagates honestly into the derived quantities — none of which falls out of the two-stage pipeline without an additional bootstrap or delta-method step.
 
-# Comparing the two pipelines {#sec-compare}
+### Comparing the two pipelines {#sec-compare}
 
-## Point-estimate agreement on the same data {#sec-compare-table}
+#### Point-estimate agreement on the same data {#sec-compare-table}
 
 @tbl-twostage-compare puts the two-stage point estimates next to the joint Bayesian posterior medians for both simulated datasets.
 
@@ -682,20 +676,18 @@ flextable::flextable(compare_table) |>
 
 All four estimators land on essentially the same point estimates for $z$ and $CT_{max_{1hr}}$, and all sit close to the simulation truth. The joint Bayesian 4PL gives the same answer the classical pipeline gives — it is *not* in disagreement with the field's existing point estimates, it reproduces them.
 
-## Why the joint fit recovers the truth more closely {#sec-compare-why}
+#### Why the joint fit recovers the truth more closely {#sec-compare-why}
 
-Read @tbl-twostage-compare carefully and the joint Bayesian point estimates sit a little closer to the simulation truth than the two-stage estimates. On benign data the gap is small, but it is real, and it widens under more realistic conditions. Three structural advantages of the joint fit explain it.
+Read @tbl-twostage-compare carefully and you might notice that the joint Bayesian point estimates sit a little closer to the simulation truth than the two-stage estimates. While the gap is minimal here given the large sample sizes we have, in real datasets it's likely to be larger. There are three advantages of the joint fit that are likely important in explaining these differences.
 
 **Information pooling across temperatures.** The joint 4PL fits a *single* set of asymptotes ($\ell, u$) and a single slope $k$ across all five temperatures, so each temperature's data anchors all of them. The two-stage's Stage-1 GLM fits each temperature in isolation, with no constraint shared across temperatures; per-temperature LT50 estimates therefore have higher sampling variance than they need to, and that variance carries through to Stage 2. The joint fit borrows strength across temperatures by construction.
 
-**Asymptote correctness.** The 2PL Stage-1 model forces the asymptotes to 0 and 1. With true asymptotes at $\ell = 0.03$ and $u = 0.97$ the bias is small but non-zero — the Stage-1 LT50 is the temperature at which the *2PL* crosses 0.5, which is not exactly the same as the temperature at which the *4PL* with asymmetric asymptotes crosses 0.5. The joint 4PL estimates $\ell$ and $u$ from the data and so has no analogous bias. The bias grows as the true asymptotes move away from 0 and 1.
+**Asymptote correctness.** The 2PL Stage-1 model forces the asymptotes to 0 and 1. With true asymptotes at $\ell = 0.03$ and $u = 0.97$ the bias is small but non-zero — the Stage-1 LT50 is the temperature at which the *2PL* crosses 0.5, which is not exactly the same as the temperature at which the *4PL* with asymmetric asymptotes crosses 0.5. The joint 4PL estimates $\ell$ and $u$ from the data and so has no analogous bias. The bias grows as the true asymptotes move away from 0 and 1 even further.
 
-**Overdispersion handling.** For the beta-binomial dataset, the joint fit's beta-binomial likelihood explicitly absorbs the extra-binomial variance into a dispersion parameter ($\phi$). The two-stage's Stage-1 binomial GLM cannot — so per-temperature LT50 estimates are noisier on the beta-binomial dataset than on the binomial one, and that noise propagates into Stage 2. The joint beta-binomial fit removes that noise at its source.
-
-None of these gaps is large in this benign simulation, where the asymptotes anchor near 0 and 1, overdispersion is moderate, and the design is balanced. They will be larger in less benign data — and the joint fit's structural advantages compound when asymptotes are well off the boundaries, when overdispersion is severe, or when the experimental design has nested replication that the two-stage cannot incorporate at all.
+**Overdispersion handling.** For the beta-binomial dataset, the joint fit's beta-binomial likelihood explicitly absorbs the extra-binomial variance into a dispersion parameter ($\phi$). The two-stage's Stage-1 binomial GLM in its crrent configulation cannot — so per-temperature LT50 estimates are noisier on the beta-binomial dataset than on the binomial one, and that noise propagates into Stage 2. The joint beta-binomial fit removes that noise at its source.
 
 
-# References {.unnumbered}
+# References 
 
 ::: {#refs}
 :::
