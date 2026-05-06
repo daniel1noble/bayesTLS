@@ -52,3 +52,5 @@ rsconnect/
 # Local/editor settings
 .claude/
 .vscode/
+
+/.luarc.json
