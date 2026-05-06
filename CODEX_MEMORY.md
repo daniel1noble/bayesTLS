@@ -94,12 +94,18 @@ Current git status when this file was written:
 - Supplement figures and tables deliberately use Quarto custom float IDs:
   `suppfig-*` and `supptbl-*`. These are configured in `_quarto.yml` with
   `space-before-numbering: false`, producing `Figure S1` and `Table S1`
-  without a Lua filter.
+  without a Lua filter. `supptbl` also sets `caption-location: top` because
+  custom floats default captions to the bottom, unlike built-in Quarto tables.
 - If adding a supplemental figure/table, wrap the executable chunk in a fenced
   div such as `::: {#suppfig-my-figure}` or `::: {#supptbl-my-table}` and put
   the caption as the final paragraph inside the div. Do not use built-in
   `fig-*` / `tbl-*` labels for supplement objects unless you want normal main
   numbering.
+- Chapter-level authors must use `authors:` rather than `author:` in
+  `ms/ms.qmd` and `ms/supplement.qmd`. The Quarto book DOCX title-block
+  template normalizes the plural key for chapter title blocks; using the
+  singular Pandoc key allowed the abstract to print but skipped the chapter
+  author/affiliation block.
 - Cross-reference labels must be globally unique across the book. The
   supplement 4PL equations are named `eq-supp-4pl` and `eq-supp-mid-temp` to
   avoid colliding with the main manuscript's `eq-4pl` and `eq-mid-temp`.
