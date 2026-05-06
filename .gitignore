@@ -54,3 +54,24 @@ rsconnect/
 .vscode/
 
 /.luarc.json
+
+/.quarto/
+
+# ---- Quarto book outputs --------------------------------------------------
+# The book renders to _book/. We ignore all the rendered assets (HTML,
+# bootstrap libs, search index, JS/CSS, etc.) and keep only:
+#   - _book/<book>.docx (Word output for collaborators)
+#   - _book/<book>.pdf  (if PDF rendering is added later)
+# Sources (qmd, lua, _quarto.yml, Makefile) are tracked normally.
+_book/*
+!_book/*.docx
+!_book/*.pdf
+
+# Per-chapter standalone outputs (when running `make ms` / `make supplement`)
+# and any other rendered HTML/DOCX from individual qmd files.
+ms/*.html
+ms/*.docx
+*_files/
+
+# Quarto build caches
+*_cache/
