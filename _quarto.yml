@@ -54,7 +54,9 @@ link-citations: true
 #
 # Supplement figures and tables use custom float types (`suppfig-*` and
 # `supptbl-*`) so Quarto can render them as Figure S1 and Table S1 using
-# `space-before-numbering: false`, without a Lua relabelling filter.
+# `space-before-numbering: false`, without a Lua relabelling filter. Custom
+# floats default captions to the bottom, so supplemental tables explicitly set
+# `caption-location: top`.
 crossref:
   chapters: false
   custom:
@@ -68,6 +70,7 @@ crossref:
       reference-prefix: "Table S"
       caption-prefix: "Table S"
       space-before-numbering: false
+      caption-location: top
 
 execute:
   echo: false
