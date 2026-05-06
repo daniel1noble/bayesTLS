@@ -1,7 +1,7 @@
 ---
 title: "A flexible modelling framework for estimating thermal sensitivity across life"
 shorttitle: "Bayesian models of thermal tolerance"
-author:
+authors:
   - name: "Daniel W.A. Noble"
     email: daniel.noble@anu.edu.au
     corresponding: true
@@ -28,7 +28,7 @@ abstract: |
 
   2. We describe a flexible Bayesian, single-stage four-parameter logistic (4PL) model for modelling the impact of temperature and time on survival and fertility. We demonstrate how such an approach can recover all the classical TDT output typical of a two-stage modelling framework — including thermal sensitivity ($z$, slopes), critical thermal limit ($CT_{max_{1hr}}$) and the heat-injury (HI) integral, which allows for one to predict thermal injury in nature under realistic exposure temperatures. Given its fully Bayesian implementation, it allows for error propagation to account for uncertainty at all stages of modelling as well as improved inferences.
 
-  3. We applied our new modelling framework to data from brown shrimp (*Crangon crangon*) and XX to demonstrate the equivalencies and benefits of such an approach. 
+  3. We applied our new modelling framework to data from brown shrimp (*Crangon crangon*) and XX to demonstrate the equivalencies and benefits of such an approach.
 
   4. We show that the classical and Bayesian frameworks are equivalent, but that the hierarchical 4PL delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, , and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.
 keywords:
@@ -144,7 +144,7 @@ where $\text{mid}_{ij}$ is the midpoint ($\log_{10}$-time at 50% survival betwee
 Setting $p_{ij} = 0.5$ in @eq-4pl, isolating the exponential, and taking natural logs gives $\log_{10}\text{LT50}(T) = \text{mid}(T) + (1/k)\log[(u - 0.5)/(0.5 - \ell)]$. Substituting into @eq-mid-temp and grouping all terms that do not depend on $T$ into an intercept, $\alpha$, recovers the classical TDT linear relation:
 
 $$
-\log_{10} \text{LT50}(T) \;=\; \underbrace{\Bigl[\beta_0 + \tfrac{1}{k}\log\!\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}\Bigr]}_{\alpha} \;+\; \beta_1\,T,
+\log_{10} \text{LT50}(T) \;=\; \underbrace{\left[\beta_0 + \tfrac{1}{k}\log\!\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}\right]}_{\alpha} \;+\; \beta_1\,T,
 $$ {#eq-lt50}
 
 Note that @eq-lt50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. Without this subtraction, the intercept would estimate $\log_{10}\text{LT50}$ at the average temperature ($\bar{T}$); with it, the intercept estimates $\log_{10}\text{LT50}$ at $T = 0$°C, matching the uncentred parameterisation used in classical TLS regressions. From @eq-lt50, the classical TLS quantities fall out directly: thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\ell$, $u$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
@@ -227,14 +227,11 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Data and experimental design
 
-```{r data-summary}
-#| label: tbl-data-summary
-#| tbl-cap: "Sample sizes and experimental design across the three thermal-tolerance endpoints (lethal TDT, sublethal time-to-death, dynamic CTmax)."
-#| eval: false
+<!-- Placeholder: a flextable summarising n trials, n individuals, temperature
+     range, and exposure range for each of the three endpoints will be added
+     here once the case-study analyses are complete. The chunk is omitted
+     while empty so it doesn't produce a dangling cross-reference. -->
 
-# Render a flextable summarising n trials, n individuals, temperature range,
-# and exposure range for each of the three endpoints.
-```
 
 ## Lethal TDT — hierarchical 4PL on counts
 
