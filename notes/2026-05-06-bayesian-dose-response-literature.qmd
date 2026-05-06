@@ -1,0 +1,267 @@
+---
+title: "Bayesian dose-response literature — core peer-reviewed papers"
+date: 2026-05-06
+author: "Daniel W.A. Noble (with literature-search assist from Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+---
+
+## Aim
+
+Pull together the peer-reviewed methodological literature on **Bayesian dose-response modelling** that is general enough to support claims in the main manuscript (MS) and the supplement. Each entry below includes: citation, what the paper shows, suggested locations in MS / supplement where it could be cited, and a verification flag indicating whether I extracted quotes directly from the paper or only from abstract / search summaries.
+
+Verification flags:
+
+- **[verified]** — I fetched the paper and extracted at least one verbatim passage.
+- **[abstract only]** — I confirmed citation and headline claims from PubMed / publisher abstract.
+- **[search summary]** — Citation confirmed via a credible secondary source; I did not retrieve full text. Use only for orienting cites; verify quotes before paraphrasing.
+
+## Core papers
+
+### Bürkner (2017, 2018) — `brms` software [verified]
+
+**Bürkner, P.-C. (2017). brms: An R Package for Bayesian Multilevel Models Using Stan. *Journal of Statistical Software*, 80(1), 1–28.** (Already in `bib/tdt_problems.bib` as `burkner_brms_2017`.)
+
+**Bürkner, P.-C. (2018). Advanced Bayesian Multilevel Modeling with the R Package brms. *The R Journal*, 10(1), 395–411.** Not yet in our bib — worth adding for the non-linear, distributional, and custom-family features we use.
+
+What they show: `brms` provides a `lme4`-style formula syntax that compiles to Stan, supports non-linear predictors, custom likelihoods (incl. `beta_binomial`), distributional models (priors / predictors on every parameter), splines, and per-parameter priors. The 2018 paper specifically notes:
+
+> "Usually, the functionality of these implementations is limited insofar as they only predict the mean of the response distribution… it is desirable to allow prediction of *all* response parameters at the same time."
+
+Use in MS / supplement:
+
+- **MS, Methods (joint Bayesian 4PL spec)** — anchor cite when introducing the model; supports the claim that one-line `bf()` syntax can express the 4PL non-linear form.
+- **Supplement, joint-fit chunk** — cite both `burkner_brms_2017` and the 2018 R Journal paper when describing the formula and why the framework supports non-linear, distributional, beta-binomial, hierarchical structure simultaneously.
+
+---
+
+### Ritz, Baty, Streibig & Gerhard (2015) — `drc` package [verified]
+
+**Ritz, C., Baty, F., Streibig, J. C., & Gerhard, D. (2015). Dose-Response Analysis Using R. *PLOS ONE*, 10(12), e0146021. doi:10.1371/journal.pone.0146021.** (Already in `bib/tdt_problems.bib` as `ritz_drc_2015`.)
+
+What it shows: The canonical reference for the standard frequentist dose-response toolkit in R. Provides 4PL, log-logistic, Weibull, Brain–Cousens, and other sigmoidal forms with a single interface. Verified abstract phrasing:
+
+> "The extension package drc for the statistical environment R provides a flexible and versatile infrastructure for dose-response analyses in general."
+
+Use in MS / supplement:
+
+- **MS, Introduction** — cite when describing the existing standard for fitting per-temperature dose-response curves in TDT (already cited in this role).
+- **Supplement, Stage-1 description** — cite when introducing the typical per-temperature 2PL/4PL fit that the two-stage pipeline performs.
+
+---
+
+### Hamza, Cipriani, Furukawa, Egger, Orsini & Salanti (2021) — Bayesian DR meta-analysis [verified]
+
+**Hamza, T., Cipriani, A., Furukawa, T. A., Egger, M., Orsini, N., & Salanti, G. (2021). A Bayesian dose–response meta-analysis model: A simulations study and application. *Statistical Methods in Medical Research*, 30(5), 1358–1372. doi:10.1177/0962280220982643.** (Not in our bib; worth adding.)
+
+What it shows: Bayesian hierarchical dose-response meta-analysis with normal *or* binomial likelihood, using restricted cubic splines for the dose-response shape and exchangeability across studies. Demonstrates two specific advantages:
+
+1. The binomial Bayesian model has lower bias than normal-likelihood Bayesian or frequentist one-stage models when sample sizes are small.
+2. Hierarchical exchangeability lets the model borrow strength across studies, including studies that report only a single dose-specific effect (would otherwise be excluded by frequentist approaches).
+
+Verbatim:
+
+> "The binomial Bayesian model has lower bias than the Bayesian model with normal likelihood and the frequentist one-stage model when studies have small sample size."
+
+Use in MS / supplement:
+
+- **MS, Introduction (statistical liabilities of two-stage)** — cite alongside @pagan1984 / @murphytopel1985 to support the claim that joint Bayesian fitting on raw counts outperforms two-stage point-estimate pipelines, especially with small per-cell samples.
+- **Supplement, comparison section** — cite when discussing why a Bayesian binomial / beta-binomial likelihood is preferable to OLS on transformed point estimates.
+
+---
+
+### Johnstone, Bardenet, Gavaghan & Mirams (2017) — hierarchical Bayesian for ion channel dose-response [verified]
+
+**Johnstone, R. H., Bardenet, R., Gavaghan, D. J., & Mirams, G. R. (2017). Hierarchical Bayesian inference for ion channel screening dose-response data. *Wellcome Open Research*, 1, 6. doi:10.12688/wellcomeopenres.9945.2.** (Not in our bib; worth adding.)
+
+What it shows: Demonstrates explicit hierarchical Bayesian fitting of Hill (3PL/4PL-equivalent) curves where each experimental replicate has its own IC50 and Hill coefficient drawn from a shared population distribution. Key methodological points relevant to us:
+
+1. Bayes returns a posterior distribution over IC50 / Hill coefficient, not a point estimate.
+2. Forward propagation of that uncertainty into downstream models (e.g. ion-channel simulations, or for us — heat-injury integrals) is direct.
+3. Single-level fits *miss* parameter-specific inter-experiment variability that the hierarchical version exposes.
+
+Verbatim:
+
+> "Instead of computing point-estimates for the IC50 value and Hill coefficient, we infer probability distributions of these parameters, as well as a distribution for the possible observational noise."
+>
+> "parameter-specific inter-experiment variability can be missed when using a 'single-level' statistical model."
+
+Use in MS / supplement:
+
+- **MS, Introduction / "limitations of two-stage"** — cite as a methodologically clean external example of why hierarchical Bayes captures variability that single-level / two-stage models hide.
+- **MS, Discussion** — cite when arguing that joint Bayesian outputs are particularly valuable for downstream uncertainty propagation (e.g. into HI integrals).
+- **Supplement, opening of joint-fit section** — supports the claim that the joint fit returns posteriors of every quantity, not point estimates.
+
+---
+
+### Caprio, Malaquias & Reisig (2025) — Bayesian DR with overdispersion in entomology [verified]
+
+**Caprio, M. A., Malaquias, J. B., & Reisig, D. (2025). A Bayesian approach to the analysis of dose–response data: estimating natural survivorship without Abbott's correction and inclusion of overdispersion estimates. *Journal of Economic Entomology*, 118(1), 369–380. doi:10.1093/jee/toae287.** (Not in our bib; closest fit to our overdispersion claims.)
+
+What it shows: A direct empirical demonstration in ecological / entomological dose-response data that:
+
+1. Bayesian GLM with natural survivorship as a *parameter* outperforms the historical Abbott's-correction approach (model selected in 196 of 200 simulated datasets by WAIC).
+2. Beta-binomial (Model 4) was preferred to plain binomial (Model 3) at every level of overdispersion — and equivalent to plain binomial at low overdispersion.
+
+Verbatim:
+
+> "a Bayesian GLM that incorporates natural survivorship as a parameter into the GLM recovers generative parameters better than a Bayesian GLM that uses Abbott's correction."
+>
+> "even when there is little overdispersion in the data, Model 4 fit the data as well as Model 3 and should be preferred."
+
+Use in MS / supplement:
+
+- **MS, Methods** — cite when motivating beta-binomial as the default likelihood (instead of binomial) for ectotherm survival data.
+- **Supplement, beta-binomial chunk** — cite when explaining why we offer beta-binomial alongside binomial and why we recommend it for real data.
+- **MS, Discussion** — supporting reference for the broader claim that baseline mortality / overdispersion handling matters for inference.
+
+---
+
+### Wakefield, Smith, Racine-Poon & Gelfand (1994) — foundational Bayesian Gibbs population models [search summary]
+
+**Wakefield, J. C., Smith, A. F. M., Racine-Poon, A., & Gelfand, A. E. (1994). Bayesian Analysis of Linear and Non-Linear Population Models by Using the Gibbs Sampler. *Journal of the Royal Statistical Society: Series C (Applied Statistics)*, 43(1), 201–221. doi:10.2307/2986121.**
+
+What it shows (from search summary, not full text): Foundational paper applying the Gibbs sampler to *non-linear* hierarchical population models. Demonstrated that Bayesian methods can fit hierarchical non-linear models (like dose-response) without relying on linearisation approximations that frequentist NLME methods of the time required.
+
+Use in MS / supplement:
+
+- **MS, Methods** — historical / foundational citation when motivating the Bayesian non-linear hierarchical approach. Probably one-line in the paragraph that establishes precedent.
+- **Supplement, joint Bayesian fit** — possible cite when noting that hierarchical Bayes for non-linear dose-response has 30+ years of methodological precedent.
+
+⚠ Verify before citing in body text — I have not extracted a verbatim quote.
+
+---
+
+### Davidian & Giltinan (2003) — non-linear mixed-effects review [search summary]
+
+**Davidian, M., & Giltinan, D. M. (2003). Nonlinear models for repeated measurement data: An overview and update. *Journal of Agricultural, Biological, and Environmental Statistics*, 8(4), 387–419. doi:10.1198/1085711032697.** (Already in `bib/tdt_problems.bib` as `davidian_giltinan_2003`.)
+
+What it shows: Standard review of non-linear mixed-effects models for repeated-measurement data including dose-response, pharmacokinetics, and growth/decay. Treats both frequentist NLME and Bayesian variants.
+
+Use in MS / supplement:
+
+- **MS, Methods** — supports the general claim that 4PL-with-random-effects is the standard framework for individual-level variation in dose-response data.
+- **Supplement, model spec** — cite when noting that random effects on `mid`, `k`, `u`, `ell` are well-established practice in non-linear mixed effects.
+
+⚠ Verify before citing in body text — I have not extracted a verbatim quote (PDF was binary-encoded).
+
+---
+
+### Liu et al. (2020) — Bayesian hierarchical DR meta-analysis (epidemiology) [search summary]
+
+**Liu, Y., Lu, M., Wei, X., Wang, S., Pan, Z., & Wang, X. (2020). Bayesian hierarchical dose-response meta-analysis of epidemiological studies: Modeling and target population prediction methods. *Environment International*, 145, 106081. doi:10.1016/j.envint.2020.106081.** (PMC7780081 — verified citation.)
+
+What it shows: Hierarchical Bayesian framework for dose-response meta-analysis of epidemiological case-control and cohort studies. Estimates study-specific slopes and a pooled slope, and adds a target-population prediction step.
+
+Use in MS / supplement:
+
+- **MS, Discussion** — cite when arguing that the joint Bayesian framework generalises naturally to meta-analysis across studies/populations, where the two-stage frequentist pipeline doesn't.
+- Lower priority for MS body unless we're doing meta-analytic work; could be useful as a "see also" reference.
+
+⚠ Not yet retrieved in full; abstract claim verified via search summary only.
+
+---
+
+### Shao & Shapiro (2018) — Bayesian benchmark dose web app [search summary]
+
+**Shao, K., & Shapiro, A. J. (2018). A Web-Based System for Bayesian Benchmark Dose Estimation. *Environmental Health Perspectives*, 126(1), 017002. doi:10.1289/EHP1289.** (PMC6014690 — verified citation.)
+
+What it shows: Practical Bayesian Benchmark Dose (BBMD) estimation system; uses Markov chain Monte Carlo for parameter estimation and supports Bayesian model averaging across dose-response model families.
+
+Use in MS / supplement:
+
+- **MS, Discussion** — cite as evidence that Bayesian dose-response is now being adopted in regulatory/risk-assessment contexts, not just academic methods.
+- **Supplement** — possibly cite when discussing model averaging / posterior weighting if we extend the framework that direction later.
+
+⚠ Not retrieved in full; cite carefully.
+
+---
+
+### Ritz (2010) — unified ecotoxicology dose-response [search summary]
+
+**Ritz, C. (2010). Toward a unified approach to dose–response modeling in ecotoxicology. *Environmental Toxicology and Chemistry*, 29(1), 220–229. doi:10.1002/etc.7.** (Wiley access blocked during this search.)
+
+What it shows: Argues for a unified family of sigmoidal dose-response models (log-logistic, Weibull) parameterised consistently — direct conceptual parent of the 4PL framework we use.
+
+Use in MS / supplement:
+
+- **MS, Introduction / Methods** — anchor cite when introducing the 4PL family as the canonical sigmoidal dose-response form.
+- **Supplement, Stage-1 description** — cite alongside `ritz_drc_2015` when describing the per-temperature dose-response fit.
+
+⚠ Get full PDF before quoting in body text.
+
+---
+
+### Tansey et al. (2019) — Bayesian Tensor Filtering for cancer drug dose-response [search summary]
+
+**Tansey, W., Li, K., Zhang, H., Linderman, S. W., Rabadan, R., Blei, D. M., & Wiggins, C. H. (2019). Dose-response modeling in high-throughput cancer drug screenings: A case study with recommendations for practitioners. *arXiv preprint arXiv:1906.04072*.** Final published version: *Annals of Applied Statistics* (check exact citation if used).
+
+What it shows: Hierarchical Bayesian model for dose-response in high-throughput drug screening, with low-dimensional embeddings borrowing strength across drugs and cell lines.
+
+Use in MS / supplement:
+
+- **MS, Discussion** — cite as an example of the joint Bayesian framework scaling to large hierarchical structure (many drugs × many cell lines), if we extend the discussion to high-dimensional applications.
+
+⚠ Lower priority; verify final journal citation before adding to bib.
+
+## Suggested additions to `bib/tdt_problems.bib`
+
+If we decide to use these in the MS or supplement, the following are worth adding (all verified above):
+
+```bibtex
+@article{burkner_brms_2018,
+  author  = {B{\"u}rkner, Paul-Christian},
+  title   = {Advanced {Bayesian} Multilevel Modeling with the {R} Package brms},
+  journal = {The R Journal},
+  volume  = {10},
+  number  = {1},
+  pages   = {395--411},
+  year    = {2018},
+  doi     = {10.32614/RJ-2018-017}
+}
+
+@article{hamza_bayesian_dr_2021,
+  author  = {Hamza, Tasnim and Cipriani, Andrea and Furukawa, Toshi A. and Egger, Matthias and Orsini, Nicola and Salanti, Georgia},
+  title   = {A {Bayesian} dose--response meta-analysis model: A simulations study and application},
+  journal = {Statistical Methods in Medical Research},
+  volume  = {30},
+  number  = {5},
+  pages   = {1358--1372},
+  year    = {2021},
+  doi     = {10.1177/0962280220982643}
+}
+
+@article{johnstone_hierarchical_2017,
+  author  = {Johnstone, Ross H. and Bardenet, R{\'e}mi and Gavaghan, David J. and Mirams, Gary R.},
+  title   = {Hierarchical {Bayesian} inference for ion channel screening dose-response data},
+  journal = {Wellcome Open Research},
+  volume  = {1},
+  pages   = {6},
+  year    = {2017},
+  doi     = {10.12688/wellcomeopenres.9945.2}
+}
+
+@article{caprio_bayesian_dr_2025,
+  author  = {Caprio, Michael A. and Malaquias, Jos{\'e} B. and Reisig, Dominic},
+  title   = {A {Bayesian} approach to the analysis of dose--response data: estimating natural survivorship without {Abbott}'s correction and inclusion of overdispersion estimates},
+  journal = {Journal of Economic Entomology},
+  volume  = {118},
+  number  = {1},
+  pages   = {369--380},
+  year    = {2025},
+  doi     = {10.1093/jee/toae287}
+}
+```
+
+For the [search summary] entries (Wakefield 1994, Liu 2020, Shao & Shapiro 2018, Ritz 2010, Tansey 2019), retrieve full text first and only add to the bib once verified.
+
+## What I did not retrieve
+
+- **Davidian & Giltinan 2003 full text** — PDF was binary-encoded; would need a text-extracted copy.
+- **Ritz 2010 ETC full text** — Wiley access blocked; try institutional access or interlibrary loan.
+- **Tansey et al. 2019 final published version** — check the *Annals of Applied Statistics* version against the arXiv preprint.
+
+These should be retrieved before quoting in MS or supplement body text.

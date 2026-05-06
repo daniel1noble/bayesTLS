@@ -50,7 +50,11 @@ execute:
 
 ```{r setup}
 #| label: setup-supp
+#| cache: false
 
+# Setup chunk must NOT be cached — caching skips the package-loading side
+# effects on subsequent renders, so library() calls in pacman::p_load() never
+# run and downstream chunks fail with "could not find function ...".
 pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, flextable, pander)
 
 set.seed(123)
@@ -402,6 +406,11 @@ Now that we have the model formula set up and priors we can fit the model. We pa
 ```{r fit-4pl}
 #| label: fit-4pl
 #| echo: true
+#| cache: false
+
+# Disable Quarto chunk caching: brms's `file = ...` / `file_refit = "on_change"`
+# already handles refitting on formula/data changes. Quarto's own cache would
+# hold a stale fit object across renders.
 
 fit_bin <- brm(
   bform_bin, data = sim_bin, prior = priors_4pl,
@@ -973,6 +982,12 @@ We just need to remember in our fits that these values are transformed so we nee
 ```{r fit-4pl-ext}
 #| label: fit-4pl-ext
 #| echo: true
+#| cache: false
+
+# Disable Quarto chunk caching here so brms's own `file = ...` /
+# `file_refit = "on_change"` mechanism is the sole source of truth for whether
+# to refit. Without this, the project default `cache: true` can hold an old
+# fit object even after the formula or priors change.
 
 # Same 4PL likelihood as before, but with constrained transformations:
 #   ell = 0.49 * inv_logit(ellraw)
@@ -1029,10 +1044,14 @@ fit_bb_ext <- brm(
 
 The printed model summary is now mainly a convergence check because the coefficients live on raw transformed scales. We still want Rhat near 1 and reasonable effective sample sizes, but recovery is easier to inspect after transforming the posterior draws back to natural 4PL parameters.
 
-```{r, fit_bb_ext}
+```{r fit_bb_ext}
 #| label: fit_bb_ext
 #| echo: true
+#| cache: false
 
+# Force this chunk to re-run on every render so the printed summary always
+# reflects the current `fit_bb_ext` object (the project default `cache: true`
+# would otherwise hold onto a stale snapshot when the model is refit upstream).
 fit_bb_ext
 ```
 

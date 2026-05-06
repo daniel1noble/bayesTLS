@@ -118,3 +118,15 @@ Must cover:
 - No silent changes to analysis decisions — always log in a note first.
 - Never overwrite files in `data/`.
 - No inline numbers in the manuscript that aren't produced by code.
+
+## 13. Web fetches and citation verification
+
+`WebFetch` and `WebSearch` are pre-approved for this project — use them freely to verify citations, find peer-reviewed papers, and pull primary text before paraphrasing. Do not preface fetches with permission asks; just run them. Citations in the manuscript or supplement must trace to a verifiable source — when in doubt, fetch and confirm.
+
+## 14. Verifying changes before declaring done
+
+When edits affect rendering, execution, or downstream behaviour (`.qmd`, `_quarto.yml`, Lua filters, the `Makefile`, package loading, the crossref engine, brms caching, etc.), verify end-to-end before reporting back:
+
+- Run the relevant `make` target or `quarto render` and inspect the output (visible labels, generated tables, cross-references).
+- When fixing a problem caused by a system mechanism (caching, YAML schema, package loading), trace which other components depend on the same mechanism and patch them in the same pass.
+- If verification isn't possible in this environment (long-running fits, environment-specific), say so explicitly. Do not present unverified changes with confident phrasing — no "should work" / "this should fix it".
