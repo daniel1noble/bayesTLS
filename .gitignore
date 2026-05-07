@@ -75,3 +75,4 @@ ms/*.docx
 
 # Quarto build caches
 *_cache/
+bib/tdt_problems.bib.before-bbt-migration.20260507
