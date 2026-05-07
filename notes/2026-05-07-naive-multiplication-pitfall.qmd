@@ -1,0 +1,302 @@
+---
+title: "Why you can't just multiply per-interval survival probabilities — and what Rezende and Jørgensen actually do"
+date: 2026-05-07
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Question
+
+Given a dose-response model that returns $S(T, \tau)$ — survival probability at temperature $T$ for duration $\tau$ — the natural intuition is: for a temperature time series, compute the per-interval survival $p_i = S(T_i, \Delta i)$ at each step and multiply: $S_{\text{total}} = \prod_i p_i$. Is this what `@rezende_drosophila_mortality_2020` and `@jorgensen_unifying_2021` do? Can the joint Bayesian 4PL be used in this way?
+
+## Short answer
+
+**No — and the reason matters.** The naive product overestimates survival because it pretends the organism resets to a fresh state at the start of every interval. The dose-response $S(T, \tau)$ is a *marginal* probability conditional on starting at $\tau = 0$; multiplying marginals across consecutive intervals double-counts the protective effect of being fresh.
+
+Rezende 2020 and Jørgensen 2021 instead track a single running quantity — the **effective cumulative exposure time at a reference temperature** — and evaluate the dose-response *once* at the end. This handles the damage history correctly.
+
+## Why naive multiplication fails
+
+### The mathematical setup
+
+The 4PL gives $S(T, \tau)$, the probability of surviving from a fresh start at temperature $T$ for duration $\tau$. By definition, $S(T, 0) = 1$ (no time elapsed, no damage), $S(T, \infty) = 0$ at temperatures where prolonged exposure is lethal, and $S(T, LT_{50}(T)) = 0.5$.
+
+The naive proposal is
+
+$$
+S_{\text{naive}}(t) \;\stackrel{?}{=}\; \prod_i S(T_i, \Delta i)
+$$
+
+across discretised intervals.
+
+### A concrete example showing the error
+
+Take a constant exposure at $T = 40\,°\text{C}$ where $LT_{50} = 1$ h, so by definition $S(40, 1\text{ h}) = 0.5$. With a 4PL of moderate steepness, $S(40, 30\,\text{min}) \approx 0.85$ (more time elapsed at lethal $T$ → less alive, but at half the LT50 we're still well above the inflection).
+
+Splitting the 1-hour exposure into two 30-minute intervals and multiplying marginals:
+
+$$
+S_{\text{naive}}(60\,\text{min}) \;=\; S(40, 30) \times S(40, 30) \;=\; 0.85 \times 0.85 \;=\; 0.72.
+$$
+
+But the truth, by definition of $LT_{50}$, is $S(40, 60) = 0.50$. The naive product overestimates survival by $\approx 0.22$ in absolute terms — a 44 % relative overestimate.
+
+The discrepancy widens further when more intervals are taken (60 × 1-min intervals at 40 °C would give an even bigger naive over-estimate).
+
+### Why this happens
+
+The product $\prod_i S(T_i, \Delta i)$ implicitly assumes each interval starts on a fresh, fully-healthy organism. But after interval 1 the organism has accumulated damage; its conditional survival in interval 2 is *lower* than the fresh-start marginal $S(T_2, \Delta i_2)$ would suggest.
+
+The correct conditional, by chain rule, is
+
+$$
+P(\text{survive interval } i \mid \text{alive at start}) \;=\; \frac{S(T_i, \tau_{\text{cumulative}}(i) + \Delta i)}{S(T_i, \tau_{\text{cumulative}}(i))},
+$$
+
+where $\tau_{\text{cumulative}}(i)$ is the dose-equivalent exposure already accumulated by the start of interval $i$ at the current temperature $T_i$. The numerator is the marginal survival up through the *end* of interval $i$ at $T_i$; the denominator is the marginal at the *start*. Multiplying these conditional ratios across all intervals telescopes correctly back to the true marginal at the end.
+
+For our example:
+
+$$
+\frac{S(40, 60)}{S(40, 30)} \;=\; \frac{0.50}{0.85} \;\approx\; 0.59 \quad\text{(conditional survival of interval 2)}
+$$
+
+$$
+0.85 \times 0.59 \;=\; 0.50 \quad\text{✓ (matches the truth)}
+$$
+
+So the chain-of-conditionals approach is correct. But it's awkward to implement directly under variable $T(t)$, because at each step you need to know what fresh-start time at $T_i$ is equivalent to your current damaged state.
+
+## What Rezende 2020 and Jørgensen 2021 actually do
+
+Both papers use the **survival-probability shift** identity (Rezende 2020 Eq. 2):
+
+$$
+S_{T_1}(\tau) \;=\; S_{T_2}\!\big(10^{(T_2 - T_1)/z}\,\tau\big).
+$$
+
+In words: surviving $\tau$ at $T_1$ is *equivalent in damage* to surviving $10^{(T_2 - T_1)/z}\,\tau$ at $T_2$. Hot temperatures translate into longer effective exposure at a reference $T_2$; cool temperatures, into shorter effective exposure.
+
+Using this identity, you can pick any reference temperature $T_{\text{ref}}$ and accumulate the **effective cumulative exposure time** under any temperature trajectory:
+
+$$
+\tau_{\text{eff}}(t) \;=\; \int_0^t 10^{\,(T(i)\,-\,T_{\text{ref}})/z}\,di.
+$$ {#eq-tau-eff}
+
+Each instant $di$ at temperature $T(i)$ contributes $10^{(T(i) - T_{\text{ref}})/z}\,di$ to the running effective-time accumulator. Hot moments add a lot; cool moments add a little; moments below $T_c$ add nothing.
+
+Survival at any time $t$ is then read off the dose-response surface *once*:
+
+$$
+S_{\text{pred}}(t) \;=\; S\!\big(T_{\text{ref}},\, \tau_{\text{eff}}(t)\big).
+$$ {#eq-S-pred}
+
+This is the formulation the joint Bayesian 4PL plugs into directly: $\tau_{\text{eff}}(t)$ accumulates from the temperature trace and the posterior draw of $z$; $S(T_{\text{ref}}, \tau_{\text{eff}}(t))$ comes from the posterior draw of $(\ell, u, k, m(T_{\text{ref}}))$. Each posterior draw produces a complete predicted survival trajectory under the field exposure.
+
+### Connection to the canonical HI integral
+
+The HI integral `@eq-hi` is a one-summary-statistic version of `@eq-tau-eff` and `@eq-S-pred` together. It measures *cumulative dose* in units of one $LT_{50}$ at a 1-hour reference. When $HI(t) = 100\,\%$, $\tau_{\text{eff}}(t)$ has reached one $LT_{50,\,1\text{h}}$, and $S_{\text{pred}}(t) = 0.5$ regardless of how the trajectory got there. HI compresses the entire survival trajectory into a single threshold-crossing time; the survival-surface simulation gives the entire curve.
+
+Both use the dose-response model. Both use the same $z$ and the same TDT machinery. The HI formulation is the *summary-statistic* form; the survival-surface formulation is the *full-trajectory* form.
+
+## Why this matters for the manuscript's framing
+
+Daniel's "multiply marginals" intuition is useful pedagogically because it frames the framework's substantive contribution: **the joint Bayesian 4PL gives you the full $S(T, \tau)$ surface, but using it correctly under variable $T(t)$ requires effective-time tracking, not naive multiplication.** This is exactly the kind of subtlety that the two-stage pipeline (which collapses each $T$ to a single $LT_{50}$) cannot represent — but using the 4PL "wrong" (naive multiplication) gives a worse answer than even the two-stage canonical HI, which at least handles the damage-additivity correctly within its scalar summary.
+
+A short Discussion paragraph or Box could set this up explicitly: the 4PL supports richer survival-trajectory predictions via @eq-tau-eff and @eq-S-pred, but the naive "multiply per-interval $S$" shortcut is incorrect — and seeing why is one of the most useful didactic exercises in the framework.
+
+## Yes — you *can* use the predict function directly, two equivalent ways
+
+The intuition "use the model's predict function on each (temperature, duration) pair to get probabilities, then combine them while keeping track of cumulative survival impact" is right — but the *combine* step is what matters, and naive multiplication is not it. Two equivalent correct approaches both use the predict function (or the underlying $S(T, \tau)$ closed form), and both give the same answer.
+
+### Approach A — effective-time accumulator, predict once
+
+For each interval $i$ with temperature $T_i$ and duration $\Delta i$, contribute an *effective-time increment* at a reference temperature $T_{\text{ref}}$:
+
+$$
+\Delta \tau_{\text{eff},\,i} \;=\; \Delta i \cdot 10^{\,(T_i - T_{\text{ref}})/z}.
+$$
+
+Sum to get the running $\tau_{\text{eff}}(t) = \sum_{i \leq t} \Delta\tau_{\text{eff},\,i}$. Then predict survival *once*:
+
+$$
+S_{\text{pred}}(t) \;=\; S\!\big(T_{\text{ref}},\, \tau_{\text{eff}}(t)\big).
+$$
+
+This is the form @rezende_drosophila_mortality_2020 and @jorgensen_unifying_2021 use directly.
+
+### Approach B — track current $S$, invert-and-re-predict
+
+Start with $S = 1$ at $t = 0$ (fresh). For each interval $i$ with temperature $T_i$ and duration $\Delta i$:
+
+1. **Invert** the 4PL: find the fresh-start time at $T_i$ that would have produced the current $S$. Algebraically, $\tau_{\text{at } T_i} = 10^{m(T_i)\,+\,(1/k)\log_{10}((u-S)/(S-\ell))}$.
+2. **Add** the interval duration: $\tau_{\text{new}} = \tau_{\text{at } T_i} + \Delta i$.
+3. **Predict** new survival at $(T_i, \tau_{\text{new}})$: $S \leftarrow S(T_i, \tau_{\text{new}})$.
+
+This is the most direct "predict-function-only" recipe — it never references $z$ explicitly, only the 4PL surface.
+
+### Why A and B are the same
+
+Approaches A and B are mathematically identical. The cross-temperature scaling needed in B's step 1 ($\tau_{\text{at } T_i}$ at the current damage state) falls out of the relationship between $m(T_i)$ at consecutive temperatures, which equals $-(T_i - T_{\text{ref}})/z$ by construction of the linear midpoint regression. So B doesn't avoid $z$ — it's just baked into $m(T)$ rather than explicit in the integrand.
+
+Use whichever is easier to code. Approach A needs one cumulative-sum and one predict call. Approach B needs an invert-predict-update loop but only ever uses temperature-current 4PL evaluations.
+
+## Simulation: naive product vs three correct approaches that all give the same answer
+
+The simulation below uses a hypothetical organism with 4PL parameters $\ell = 0$, $u = 1$, $k = 4$, and $\log_{10} LT_{50}(T) = \log_{10}(60) - (T - 36)/z$ with $z = 4$ °C — i.e., $LT_{50} = 60$ min at $T = 36$ °C, and $LT_{50}$ shifts by a factor of 10 for every 4 °C. So $CT_{max_{1\text{hr}}} = 36$ °C in this organism. A 5-day sinusoidal hourly temperature trace runs between 28 °C and 44 °C.
+
+We compute survival three different correct ways, plus the naive marginal product, and check that all three correct approaches give numerically identical answers.
+
+```{r}
+#| label: predict-vs-naive-setup
+#| message: false
+#| warning: false
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# 4PL survival surface
+ell  <- 0
+uu   <- 1
+kk   <- 4
+z    <- 4
+T_eq <- 36                                          # CTmax_1hr in this organism
+m_T  <- function(T_val) log10(60) - (T_val - T_eq) / z   # midpoint as fn of T
+S_4PL <- function(T_val, tau_min) {
+  ell + (uu - ell) / (1 + exp(kk * (log10(pmax(tau_min, .Machine$double.eps)) - m_T(T_val))))
+}
+
+# Inverse: given survival S at temperature T, return tau (min) on the fresh-start curve at T.
+# Note: the 4PL inversion uses natural log, not log10 — solving
+#   S = ell + (u-ell)/(1 + exp(k*(log10(tau) - m(T))))
+# for tau gives  log10(tau) = m(T) + (1/k) * ln((u-S)/(S-ell))
+tau_at_T <- function(S, T_val) {
+  S <- pmin(pmax(S, ell + 1e-12), uu - 1e-12)
+  10 ^ (m_T(T_val) + (1 / kk) * log((uu - S) / (S - ell)))
+}
+
+# Temperature trajectory: 5 days, hourly, sinusoidal between 28 and 44 °C
+hours    <- 0:(24 * 5 - 1)
+T_traj   <- 36 + 8 * sin(2 * pi * (hours - 6) / 24)
+T_c      <- 30                                     # damage threshold
+delta_t  <- 60                                     # minutes per hourly interval
+
+T_ref      <- T_eq                                 # reference for τ_eff
+CT_max_1hr <- T_eq                                 # = T_ref by construction
+t_ref_min  <- 60                                   # 1 hour reference duration in minutes
+```
+
+### Approach 1 — canonical HI integral (the manuscript's `@eq-hi`), then convert HI back to $S$
+
+```{r}
+#| label: approach-1-HI
+
+# HI integral in canonical TDT form, time in hours
+hi_per_hour <- ifelse(T_traj > T_c,
+                      100 * 10 ^ ((T_traj - CT_max_1hr) / z),
+                      0)
+HI_canonical <- cumsum(hi_per_hour * 1)            # Δi = 1 hour
+
+# Convert HI back to predicted survival via the 4PL surface at CTmax_1hr.
+# When HI = 100, cumulative dose = 1 LT50 at CTmax_1hr → S = 0.5.
+# Generally:  τ_eff at CTmax_1hr (min) = HI × t_ref_min / 100
+tau_eff_from_HI <- HI_canonical * t_ref_min / 100
+S_from_HI       <- S_4PL(CT_max_1hr, pmax(tau_eff_from_HI, .Machine$double.eps))
+```
+
+### Approach 2 — effective-time accumulator at $T_{\text{ref}}$, then predict once
+
+```{r}
+#| label: approach-2-tau-eff
+
+inc        <- ifelse(T_traj > T_c, delta_t * 10^((T_traj - T_ref) / z), 0)
+tau_eff    <- cumsum(inc)                          # cumulative effective minutes at T_ref
+S_tau_eff  <- S_4PL(T_ref, pmax(tau_eff, .Machine$double.eps))
+```
+
+### Approach 3 — track current $S$, invert the 4PL at each step, advance, re-predict
+
+```{r}
+#| label: approach-3-invert-predict
+
+S_invert  <- numeric(length(hours))
+S_current <- uu                                    # fresh start
+for (i in seq_along(hours)) {
+  if (T_traj[i] > T_c) {
+    tau_now   <- tau_at_T(S_current, T_traj[i])
+    S_current <- S_4PL(T_traj[i], tau_now + delta_t)
+  }
+  S_invert[i] <- S_current
+}
+```
+
+### Naive multiplication — the wrong approach, included for contrast
+
+```{r}
+#| label: naive-product
+
+s_per_hour <- ifelse(T_traj > T_c, S_4PL(T_traj, delta_t), 1)
+S_naive    <- cumprod(s_per_hour)
+```
+
+### Numerical comparison: all three correct approaches must agree
+
+```{r}
+#| label: agreement-check
+
+sprintf("Max |S_from_HI − S_tau_eff|:   %.3e", max(abs(S_from_HI  - S_tau_eff)))
+sprintf("Max |S_from_HI − S_invert|:    %.3e", max(abs(S_from_HI  - S_invert)))
+sprintf("Max |S_tau_eff − S_invert|:    %.3e", max(abs(S_tau_eff  - S_invert)))
+sprintf("Max |S_from_HI − S_naive|:     %.3e", max(abs(S_from_HI  - S_naive)))
+```
+
+```{r}
+#| label: fig-all-approaches
+#| fig-cap: "Predicted survival fraction over a 5-day hourly temperature trajectory under four approaches. The three correct approaches — HI-then-S, effective-time accumulator, and invert-and-re-predict — overlap to floating-point precision. The naive marginal product diverges because it pretends the organism resets to fresh state at every interval."
+#| fig-height: 3.5
+
+df <- tibble(
+  hour                                                  = hours,
+  `1: HI integral (eq-hi) → S`                          = S_from_HI,
+  `2: effective-time accumulator → S`                   = S_tau_eff,
+  `3: invert-and-re-predict each hour`                  = S_invert,
+  `Naive: multiply per-interval marginals`              = S_naive
+) |>
+  pivot_longer(-hour, names_to = "Approach", values_to = "S")
+
+ggplot(df, aes(hour, S,
+               colour    = Approach,
+               linetype  = Approach)) +
+  geom_line(linewidth = 1.5, alpha = 0.65) +
+  scale_linetype_manual(values = c("solid", "dashed", "dotted", "longdash")) +
+  labs(x = "Time (h)", y = "Predicted survival fraction") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        legend.direction = "vertical")
+```
+
+### What the simulation shows
+
+- **All three correct approaches agree to numerical precision.** Approaches 1 (HI integral converted to $S$) and 2 (effective-time accumulator) agree to floating-point round-off ($\approx 10^{-16}$). Approach 3 (invert-and-re-predict) agrees with the other two to $\approx 10^{-8}$ — slightly larger because each hourly inversion picks up a tiny round-trip error that accumulates over 120 hours, but still far below any biologically meaningful magnitude. The three are mathematically equivalent; the small spread is purely numerical, not conceptual.
+- **The naive product diverges substantially** from the three correct approaches (max difference $\approx 0.088$ in absolute survival fraction). Each hour, it pretends the organism is fresh again, so the per-interval marginals overstate cumulative survival. The bias compounds monotonically across the trace.
+- **Each correct approach uses the 4PL surface differently.**
+  - Approach 1 uses only $z$ and $CT_{max_{1\text{hr}}}$ to accumulate HI, then plugs into the full 4PL surface at $CT_{max_{1\text{hr}}}$ once at the end to convert HI back to $S$.
+  - Approach 2 uses $z$ to accumulate effective time at $T_{\text{ref}}$, then the full 4PL surface once at the end.
+  - Approach 3 uses the full 4PL surface at every step (with $z$ baked in via $m(T)$ during the invert step).
+  All three agree because they describe the same TDT line and the same survival surface — just labelled and computed differently.
+- **For the manuscript**: this confirms numerically that the canonical `@eq-hi` form (HI tracking) is *fully consistent* with predicting from the 4PL model directly (Approaches 2 and 3). HI tracking and predict-from-4PL are not competing methods — they are alternative views of the same underlying inference, with HI as the threshold-crossing summary statistic and Approaches 2/3 yielding the full survival curve.
+
+## Verification status
+
+- **Mathematical claim** (naive product overestimates survival): direct chain-rule argument; verified by the worked numerical example. The discrepancy generalises: any partition into $\geq 2$ intervals with the marginal-product approach gives an upper bound on true survival, with the gap widening as the partition refines.
+- **`@rezende_drosophila_mortality_2020`** Eq. 2 (survival-probability shift) and Eq. 3 (finite-difference update under variable $T$): **[verified]** against the paper text on 2026-05-07 in the parent literature note. The paper explicitly says "the survival rate at any given time $\tau'$ can be calculated by summing up the infinitesimal small changes in the time interval $[0, \tau']$" — i.e. running-clock accumulation, not marginal-product multiplication.
+- **`@jorgensen_unifying_2021`** Eqs. 1, 3, 7 (damage integral, equivalent to @eq-tau-eff under reparameterisation): **[verified]** against the paper text. Their R-scripts at https://github.com/MOersted/Thermal-tolerances implement exactly the running-clock approach.
+- **No code chunk in this note yet** — a short worked simulation comparing naive product to the running-clock formulation for a 40 °C constant trajectory would demonstrate the discrepancy concretely. Flagged for a future session.
