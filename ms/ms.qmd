@@ -163,6 +163,7 @@ In practice, however, these corrections may not often be needed so long as the e
 
 # Predicting heat injury under dynamic 
 
+A particularly powerful aspect of TLS models are their ability to translate dynamic temperature times series' from nature and predict how such temperature leads to heat injury (HI) accumulation towards a threshold (e.g., $LT_{50}$) [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. 
 
 # Application of Bayesian dose-response models to the TLS framework
 We used a four-parameter logistic function to model the impact of temperature and duration (hours/minutes) on survival probability thermal sensitivity, estimate $CT_{max1h}$

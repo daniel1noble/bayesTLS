@@ -273,7 +273,7 @@ ts_bin <- fit_stage2(stage1_bin)
 ts_bb  <- fit_stage2(stage1_bb)
 ```
 
-@suppfig-stage2-regression visualises the Stage-2 fit. Each point is one Stage-1 $\log_{10}\text{LT50}$ estimate from @supptbl-stage1-lt50; the solid line is the OLS regression through them. The slope is $\beta_1$, from which $z = -1/\beta_1$ — i.e., the temperature step that changes $\log_{10}\text{LT50}$ by one decade. The line's height at $\log_{10} 60 \approx 1.78$ (1 hour) is at the temperature equal to $CT_{max_{1hr}}$ — the vertical dotted line drops from this intersection straight to the temperature axis to mark it. The dashed grey line is the simulation truth.
+@suppfig-stage2-regression visualises the Stage-2 fit. Each point is one Stage-1 $\log_{10}\text{LT50}$ estimate from @supptbl-stage1-lt50; the solid line is the OLS regression through them. The slope is $\beta_1$, from which $z = -1/\beta_1$ — i.e., the temperature increase that causes LT50 to change by a factor of 10. The line's height at $\log_{10} 60 \approx 1.78$ (1 hour) is at the temperature equal to $CT_{max_{1hr}}$ — the vertical dotted line drops from this intersection straight to the temperature axis to mark it. The dashed grey line is the simulation truth.
 
 ::: {#suppfig-stage2-regression}
 
@@ -1225,6 +1225,12 @@ adjusted_z_ext |>
 ```
 
 Compared to the simple-model $z = `r round(true_z, 2)`$ °C (where shape parameters did not vary with temperature), this adjusted $z$ is `r round(median(adjusted_z_ext$z_mean), 2)` °C with 95% credible interval [`r round(quantile(adjusted_z_ext$z_mean, 0.025), 2)`, `r round(quantile(adjusted_z_ext$z_mean, 0.975), 2)`] °C — slightly lower in point estimate, with the simple-model value sitting near the upper end of the credible interval. With stronger T-dependence in $k$ and $u$, the bent $\log_{10}\text{LT50}(T)$ curve would have more variation across temperatures and the two summaries would diverge more.
+
+### Heat injury accumulation
+
+A particularly powerful aspect of TLS models are their ability to translate dynamic temperature times series' from nature and predict how such temperature leads to heat injury (HI) accumlation towards a threshold (e.g., $LT_{50}$) [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. Heat Injury is calculated as:
+
+
 
 # **References**
 
