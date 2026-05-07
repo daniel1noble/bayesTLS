@@ -35,7 +35,7 @@ affiliations:
 format:
   html:
     toc: true
-    toc-location: left
+    toc-location: right
     toc-depth: 4
     number-sections: true
     embed-resources: true

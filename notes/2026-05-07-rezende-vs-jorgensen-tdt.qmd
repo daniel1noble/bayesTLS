@@ -1,0 +1,192 @@
+---
+title: "Rezende et al. (2014) tolerance landscape vs Jørgensen et al. (2021) log-linear TDT — what's the difference?"
+date: 2026-05-07
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Question
+
+How do `@rezende_landscapes_2014`'s thermal tolerance landscape and `@jorgensen_unifying_2021`'s log-linear TDT relate to each other? Are they the same model, competing models, or sequential developments? This came up in the context of `ThermalPhysiology.jl` implementing both as separate model classes (`ToleranceLandscape` and `LogLinearTDTModel`).
+
+## Short answer
+
+**Same underlying log-linear equation; different framing and different scope of inference.** Jørgensen 2021 is a forward extension of Rezende's framework to dynamic and fluctuating temperature exposures. They share the canonical TDT relation but differ in what they *do* with it.
+
+## Shared core
+
+Both rest on the log-linear thermal-death-time relationship — knockdown time decreases by a factor of 10 for every $z$ °C rise in temperature:
+
+$$
+t(T) = t_{\text{ref}} \cdot 10^{(T_{\text{CTmax}} - T)/z}
+$$ {#eq-tdt-canonical}
+
+or equivalently (Rezende's parameterisation),
+
+$$
+\log_{10} \mathrm{LT50}(T) = \alpha - \beta T, \qquad \beta = 1/z.
+$$
+
+`z` (or its reciprocal $\beta$) is the same parameter in both papers — the temperature change required for a 10-fold change in survival time. There is no methodological disagreement about what the line *is*; they both treat it as a phenotype with biological meaning.
+
+## Rezende et al. 2014 — *static tolerance landscape*
+
+- **What it does**: empirically constructs a 3-D survival surface $S(T, \tau)$ from constant-temperature mortality assays, where $T$ is exposure temperature and $\tau$ is exposure duration.
+- **How it estimates `z`**: at each constant temperature, fits a survival curve (typically a parametric model on proportion-survival data); extracts $\mathrm{LT50}_T$; regresses $\log_{10} \mathrm{LT50}$ on $T$ across temperatures; the slope is $-1/z$.
+- **Key conceptual move**: the entire family of constant-temperature survival curves collapses onto a single curve when each is *z-shifted* in time by $z \log_{10}(t/t_{\text{ref}})$. This is the "tolerance landscape" — a phenotype-level summary.
+- **Scope**: silent on dynamic exposure. The framework has no built-in mechanism to predict outcomes under a temperature ramp or a fluctuating-temperature regime; those exposures sit outside the domain over which the static landscape was estimated.
+
+## Jørgensen et al. 2021 — *unifying static and dynamic exposure*
+
+- **What it does**: shows that the same log-linear TDT line, when read as a *damage-accrual rate*, predicts mortality and dynamic CTmax under arbitrary time-varying $T(t)$.
+- **The mechanism**: cumulative damage at time $t$ is the integral of a temperature-dependent injury rate,
+
+$$
+D(t) = \int_0^t 10^{\,(T(\tau) - T_{\text{ref}})/z} \, d\tau ,
+$$ {#eq-damage-integral}
+
+  with death occurring when $D$ crosses an organism-specific threshold. For static exposure ($T(\tau) = T$ constant), this reduces to Rezende's $t(T)$.
+- **The "unifying" claim**: the *same* $z$ extracted from static assays predicts (i) dynamic CTmax under ramping protocols and (ii) survival under fluctuating regimes. Static, dynamic, and fluctuating exposures should all collapse onto the same TDT line if processed through the damage-integral lens.
+- **Scope**: covers the whole experimental landscape of how thermal-tolerance assays are run in practice — static knockdown, ramping CTmax, heatwave simulations. This is where the manuscript's `dCTmax across ramping rates` section in `ms.qmd` leans on it.
+
+## Relationship and implementation
+
+Jørgensen 2021 is **derivative of and consistent with** Rezende's framework — Rezende's tolerance landscape is the static special case of Jørgensen's damage integral. They are not competing models. Cite Rezende for the original concept, Jørgensen for the dynamic generalisation.
+
+`ThermalPhysiology.jl` reflects this division of labour:
+
+- `ToleranceLandscape` (citing `@rezende_landscapes_2014`, `@rezende_drosophila_mortality_2020`) — stores the empirical $S(T, \tau)$ surface.
+- `LogLinearTDTModel` (citing `@jorgensen_unifying_2021`) — exposes $z$, $T_{\text{CTmax}}$, $t_{\text{ref}}$ for the dynamic-damage formulation.
+
+Neither package model handles uncertainty propagation, joint estimation across temperatures, or proportion-data likelihoods. That is the gap our manuscript fills.
+
+## Implications for the manuscript
+
+1. **Citation pairing**: when describing the standard pipeline, cite Rezende 2014 for the static tolerance landscape concept and Jørgensen 2021 for the dynamic-damage extension. Don't conflate them.
+
+2. **Dynamic CTmax section** (`ms.qmd:246`): this section *requires* Jørgensen 2021's damage integral, not Rezende 2014. Make sure that ref is in the right place.
+
+3. **Equivalence framing**: per project memory, our paper's job is to show that the joint Bayesian 4PL recovers the same $z$ and CTmax that the two-stage pipeline does, under benign conditions. The two-stage pipeline being recovered is *Rezende's* (regress $\log_{10} \mathrm{LT50}$ on $T$), not Jørgensen's (the dynamic integral is downstream of the line, not part of how $z$ is estimated). So the comparison is specifically: hierarchical Bayesian 4PL ↔ two-stage Rezende pipeline → both yield the same line; Jørgensen's machinery then sits on top of either.
+
+4. **Software positioning**: a one-line note in the discussion that the Bayesian framework could be implemented as an extension to `ThermalPhysiology.jl` would situate the work cleanly — since the package implements the deterministic line but lacks uncertainty propagation.
+
+## Follow-up: Rezende et al. 2020 (Science) — is this doing something *different* from Jørgensen 2021?
+
+**Short answer: same machinery, different purpose. They are not competing models — they are complementary uses of the same dynamic-damage-accrual framework, with different empirical anchors.**
+
+### What Rezende et al. 2020 actually does
+
+`@rezende_drosophila_mortality_2020` (DOI: 10.1126/science.aba9287, *Science* 369:1242–1245; authors Rezende, Bozinovic, Szilágyi, Santos). Verified against the paper text on 2026-05-07.
+
+The paper's mathematical core is built around three equations:
+
+1. **Eq. 1** — log-linear TDT for any constant survival $S$:
+   $$\frac{\tau_2}{\tau_1} = 10^{(T_1 - T_2)/z}$$
+   where $z > 0$ is "the thermal sensitivity describing the $\Delta T$ required to change $\tau$ one order of magnitude" (verbatim, p. 1242). This is exactly the same line as @eq-tdt-canonical above, and the same $z$ throughout.
+
+2. **Eq. 2** — survival-probability shift between two temperatures: any survival probability function $S_T(\tau)$ shifts horizontally by $10^{-1/z}$ for each 1 °C increase in temperature, so
+   $$S_{T_1}(\tau_1) = S_{T_2}\!\left(10^{(T_2-T_1)/z}\,\tau_1\right).$$
+
+3. **Eq. 3** — finite-difference update under variable $T(t)$:
+   $$\Delta S_{T(\tau)}(\tau) \approx \left.\frac{dS(\tau)}{d\tau}\right|_{T(\tau)} \Delta\tau.$$
+   The paper says "the survival rate at any given time $\tau'$ can be calculated by summing up the infinitesimal small changes in the time interval $[0, \tau']$. This can be accomplished analytically or numerically (supplementary materials)." Mathematically this is equivalent to a damage-rate integral driven by $T(t)$ (i.e. @eq-damage-integral), but @rezende_drosophila_mortality_2020 expresses the dynamics in terms of survival-probability shift rather than cumulative damage.
+
+**Reference temperature convention.** @rezende_drosophila_mortality_2020 anchors the regression line at $T_{\max}$, defined as "the temperature at which mean $\tau = 1\,\text{min}$" — i.e. the point where the log-linear regression touches the abscissa with $\log_{10}(\tau)$ in minutes. Our manuscript anchors at $\mathrm{CT_{max}}_{,1\mathrm{hr}}$ (mean $\tau = 60$ min). The two are interconvertible: $T_{\max}^{(\mathrm{Rezende})} = \mathrm{CT_{max}}_{,1\mathrm{hr}} + z\,\log_{10}(60) \approx \mathrm{CT_{max}}_{,1\mathrm{hr}} + 1.78\,z$, so for $z \approx 4$ they differ by about 7 °C. Important when comparing numerical values across papers.
+
+**What's validated.** Three regimes:
+
+- **Constant-temperature lab assays**: 11 *Drosophila* species, $n=1289$ individuals at temperatures between 32 and 43.5 °C. Across species, $T_{\max}$ ranged 38.9–44.8 °C and $z$ ranged 1.81–3.53 °C. Fitted vs measured $R^2 = 0.965 \pm 0.012$ (mean ± SD across species) — a single $S(\tau)$ per species describes survival across all the constant-temperature data.
+- **Ramping (dynamic) lab assays**: $n=504$ individuals warmed from 19 °C at 0.05, 0.10, and 0.25 °C/min until death. Predicted vs measured death times $R^2 = 0.999$; predicted vs measured lethal temperatures $R^2 = 0.962$.
+- **Field validation**: *D. subobscura* in Santiago, Chile. Cold- and warm-acclimated cohorts compared to ambient hourly temperature records (1984–1991 vs 2014–2018) and against monthly field-abundance data. Predicted cumulative-mortality curves track observed seasonal population collapse, and detect a heat-driven shrinkage of the reproductive window between the two periods.
+
+**The headline message.** The paper says explicitly: "we propose a paradigm shift from a static critical limit to a dynamic, more realistic and theoretically sound framework" (p. 1245). And: "critical temperatures are unreliable predictors of mortality" (abstract). It also notes that "a nearly imperceptible daily mortality of 1% results in a cumulative mortality of ~20% after 3 weeks" — the cumulative-damage argument made concrete. **This is the strongest empirical attack on point-estimate CTmax in the published literature** and aligns directly with our manuscript's critique of the two-stage TDT pipeline.
+
+### The Jørgensen lineage (2019, 2021, 2022)
+
+The damage-integral framework that translates static thermal tolerance into dynamic and fluctuating predictions was developed by the **Jørgensen / Overgaard group** in a sequence of papers (all in `bib/tdt_problems.bib`):
+
+#### `@jorgensen_drosophila_2019` (*Funct. Ecol.* 33:629–642) — the foundational framework
+
+This is the paper that introduced the closed-form static-to-dynamic conversion. It establishes:
+
+- **Equation 1**: injury accumulation rate $R(T) = R_0 \, e^{k(T - T_c)}$, where $k = \ln(10)/z$ and $T_c$ is a critical temperature below which injury is repaired as fast as accumulated.
+- **Equation 7**: closed-form analytical conversion from static parameters to dynamic knockdown time under a linear ramp $T(t) = T_0 + b t$:
+$$t_{\text{Ld}} = \frac{1}{kb} \ln\!\left[k b\, t_{\text{Ls}}\, e^{k(T - T_0)} + e^{k(T_c - T_0)}\right].$$
+- **Empirical validation** in 11 *Drosophila* species under static (9–17 temperatures, mean $R^2 = 0.98$ for the log-linear TDT) plus ramping (0.05, 0.10, 0.25 °C/min). The model recovers $\mathrm{dCT_{max}}$ within ±0.2 °C of the observed value across species and ramp rates.
+- A separate methodological argument (Q2 in their paper) that the previously claimed **trade-off between $z$ and $\mathrm{sCT_{max(1\,min)}}$** (`@rezende_landscapes_2014`, Castañeda et al. 2015, Truebano et al. 2018) is an **analytical artefact** — it disappears, and even reverses sign, when interpolated $\mathrm{sCT_{max(1\,h)}}$ is used instead of extrapolated $\mathrm{sCT_{max(1\,min)}}$. They demonstrate this by exhaustive subsampling of three-point combinations from their own data. **This is direct precedent for our manuscript's critique of two-stage extrapolation pipelines.**
+- **Reference convention**: $\mathrm{sCT_{max(1\,h)}}$ — the temperature causing knockdown after 1 hour. This is the convention that `@jorgensen_unifying_2021` and `@orsted_finding_2022` standardise on.
+
+#### `@jorgensen_unifying_2021` (*Sci. Rep.* 11:12840) — extension to fluctuating exposures
+
+Builds on `@jorgensen_drosophila_2019` and adds three substantive extensions:
+
+- **Explicit injury-additivity test** (their Fig. 3B,C): flies given a partial fraction of TDT-predicted lethal injury at $T_1 \approx 39.5\,°\text{C}$, then transferred to $T_2 \approx 36.5\,°\text{C}$ until knockdown. Fractional injury accumulation at $T_1$ vs $T_2$ summed to ≈1 ($R^2 > 0.78$, regression statistically indistinguishable from the line of additivity). **This is a direct experimental test of the additivity assumption underlying the damage integral**, and it passes. Neither `@rezende_drosophila_mortality_2020` nor `@jorgensen_drosophila_2019` performs this test.
+- **Laboratory-controlled randomly fluctuating temperatures** (their Fig. 4): 13 groups of *D. melanogaster* exposed to randomly fluctuating $T$ between 34.5 and 42.5 °C. TDT-predicted vs observed $t_{\text{coma}}$ correlated $R^2 > 0.94$, with mean accumulated injury at observed knockdown of ~1.10 (vs the predicted 1.00). Validates the integral $D(t) = \int R[T(\tau)]\,d\tau$ for **arbitrary $T(t)$**, not just monotonic ramps.
+- **Cross-species literature validation** (their Fig. 5): published heat-tolerance estimates from 9 ectotherm species (a crustacean, several insects, two collembolans, two fishes, one mollusc) converted to a common $\mathrm{sCT_{max(1\,h)}}$ metric, mixing static and dynamic input data within species. Useful precedent for our argument that the joint Bayesian 4PL gives a single $z$ comparable across protocols and taxa.
+- **R-scripts** at `https://github.com/MOersted/Thermal-tolerances` for both directions of conversion.
+
+#### `@jorgensen_nature_2022` (*Nature* 611:93–98) — climate-projection meta-analysis
+
+Builds on the framework to make a global-warming argument:
+
+- Compiles activation energies $E_a$ for 1,351 biological rates from 314 species in the **permissive** range (median $E_a = 0.48\,\mathrm{eV}$, $Q_{10} \approx 1.9$) and 123 heat-failure datasets from 112 species in the **stressful** range (median $E_a = 6.13\,\mathrm{eV}$, $Q_{10} > 1{,}500$, i.e. heat failure rate **more than doubles per °C**).
+- Uses Arrhenius framework, equivalent to TDT $z$ via $Q_{10} = 10^{10/z}$.
+- Operationalises $T_c$ as the temperature causing heat failure in 24 h.
+- Projects that under SSP2-4.5, terrestrial heat failure rate increases by ~774 % and aquatic by ~180 % by 2100.
+- **This paper is the strongest published case that point-estimate CTmax is misleading** because the underlying rate is so steep — directly relevant to our paper's critique of the two-stage TDT pipeline.
+
+### Where Rezende et al. 2020 fits in this lineage
+
+`@rezende_drosophila_mortality_2020` was published *after* `@jorgensen_drosophila_2019` and explicitly *uses Jørgensen's data* (their citation 17 is the Jørgensen 2019 dataset) for the cross-species fitting of static landscapes. The mathematical machinery — exponential injury rate driving cumulative damage under variable $T(t)$ — is the same as in `@jorgensen_drosophila_2019`, expressed in survival-probability-shift form (Eq. 2: $S_{T_1}(\tau_1) = S_{T_2}(10^{(T_2-T_1)/z}\tau_1)$) plus a finite-difference update under variable $T(t)$ (Eq. 3).
+
+Rezende 2020's distinct contribution is **field validation in natural populations**: combining the static landscape with hourly ambient temperature records (Santiago, Chile, 1984–91 vs 2014–18) and *D. subobscura* monthly field abundance, demonstrating that predicted cumulative-mortality curves track observed seasonal population collapse. The dynamic-prediction framework itself was already in `@jorgensen_drosophila_2019` (which Rezende 2020 cites as their data source).
+
+### Comparison
+
+| Aspect | `@rezende_drosophila_mortality_2020` (Science 2020) | `@jorgensen_drosophila_2019` (Funct Ecol) | `@jorgensen_unifying_2021` (Sci Rep) |
+| --- | --- | --- | --- |
+| Mathematical formulation | $S(\tau)$ shift + finite-difference under variable $T(t)$ | Damage integral $D(t) = \int R[T(\tau)]\,d\tau$, $R(T) = R_0 e^{k(T-T_c)}$ | Same as 2019 |
+| Static→dynamic conversion | Implicit (numerical) | **Explicit closed-form (Eq 7)** | Builds on 2019 |
+| Reference convention | $T_{\max}$ at $\tau = 1\,\mathrm{min}$ | $\mathrm{sCT_{max(1\,h)}}$ | $\mathrm{sCT_{max(1\,h)}}$ |
+| Lab validation | Constant + ramping (3 rates) | Constant + ramping (3 rates) | **Constant + ramping + injury-additivity test + random fluctuating** |
+| Field validation | **Yes — *D. subobscura* abundance vs hourly ambient $T$, multi-decade** | No | No |
+| Taxonomic scope | 11 *Drosophila* species | 11 *Drosophila* species | **9 ectotherm species** (fishes, crustacean, collembolans, mollusc, insects) — literature data |
+| Trade-off critique | No | **Yes — argues $z$/sCTmax trade-off is an analytical artefact of extrapolation** | No |
+| Headline | "Critical temperatures are unreliable in nature" | "Static and dynamic assays measure the same $z$" | "The same $z$ predicts injury under arbitrary $T(t)$" |
+
+`@jorgensen_drosophila_2019` is the methodological keystone. `@jorgensen_unifying_2021` extends it to fluctuating exposures and broader taxa with an explicit injury-additivity test. `@rezende_drosophila_mortality_2020` applies the same machinery to a field-validation problem in natural *Drosophila* populations.
+
+### Which to cite — practical guidance for the manuscript
+
+- **The static-to-dynamic conversion equation** (whenever our paper writes one): `@jorgensen_drosophila_2019` for the original closed-form derivation; `@jorgensen_unifying_2021` if the integrand form is used (it generalises to arbitrary $T(t)$).
+- **Vindication of the 1-hour reference choice**: `@jorgensen_drosophila_2019` recommend interpolated $\mathrm{sCT_{max(1\,h)}}$ over extrapolated $\mathrm{sCT_{max(1\,min)}}$ on the grounds that 1 h falls inside typical assay durations whereas 1 min requires substantial extrapolation. **This is a low-cost, directly relevant citation** for the part of the manuscript that introduces the $CT_{max_{1\mathrm{hr}}}$ convention (around `ms.qmd:100`). Concrete proposed wording is in the chat reply that prompted this revision.
+- **The Jørgensen 2019 autocorrelation / "trade-off is an artefact" critique** is a *cross-study comparison* argument (it concerns plotting $z$ vs sCTmax across species/populations), not a within-experiment statistical-correctness argument. It does **not** directly map onto our manuscript's five-point critique in `ms.qmd:102`, which is entirely about within-experiment uncertainty propagation. The two critiques are cousins, not siblings — both target the two-stage pipeline, but at different levels. Crowbarring it into the introduction would distract more than it adds. **At most**, mention it briefly in the discussion as "related but distinct" prior work.
+- **"CTmax point-estimates are unreliable in real-world contexts"**: `@rezende_drosophila_mortality_2020` (field anchor, *Science*) + `@jorgensen_nature_2022` (meta-analytical anchor, *Nature*). Cite both — the first for ecological realism, the second for scope.
+- **"The same $z$ applies across static, ramping, and fluctuating protocols"**: `@jorgensen_unifying_2021` is the right citation. `@rezende_drosophila_mortality_2020` covers static + ramping + field, but `@jorgensen_unifying_2021` is the paper that explicitly demonstrates additivity under randomly fluctuating $T$ in the lab.
+- **The original tolerance-landscape concept**: `@rezende_landscapes_2014` (the static framework, descriptive).
+- **The CTmax framework / methodological reconciliation**: `@orsted_finding_2022` is also relevant — same group, *J. Exp. Biol.* 2022, builds on this lineage.
+
+For `ms.qmd`, the cleanest citation pattern is: **`@rezende_landscapes_2014; @jorgensen_drosophila_2019; @jorgensen_unifying_2021; @rezende_drosophila_mortality_2020; @jorgensen_nature_2022`** — chronological, lineage-respecting, with each paper carrying a distinct argumentative role.
+
+## Verification status
+
+All four primary papers verified directly from PDFs on 2026-05-07:
+
+- `@rezende_landscapes_2014` (tolerance landscape, *Funct. Ecol.* 2014): **working knowledge only** — not re-fetched in this session. Used for the static-landscape characterisation; consistent with how the Jørgensen and Rezende-2020 papers cite it.
+- `@jorgensen_drosophila_2019` (foundational damage-integral framework, *Funct. Ecol.* 2019): **[verified]**. Equation 7 (closed-form static→dynamic conversion), the Q2 trade-off-artefact analysis, the $\mathrm{sCT_{max(1\,h)}}$ convention, and the 11-Drosophila-species validation are all directly from the paper text.
+- `@rezende_drosophila_mortality_2020` (field validation in natural *Drosophila*, *Science* 2020): **[verified]**. Equations 1–3, $T_{\max}$ convention ($T$ at $\tau = 1\,\mathrm{min}$), validation regimes (constant + ramping + field), and the "paradigm shift from a static critical limit" framing are all directly from the paper text. Their citation 17 confirms the dataset is from `@jorgensen_drosophila_2019`.
+- `@jorgensen_unifying_2021` (extension to fluctuating exposures, *Sci. Rep.* 2021): **[verified]**. Equations 1–7, the injury-additivity test, the random-fluctuating-temperature experiment, and the 9-species cross-taxon literature validation are all directly from the paper text. Their citations 15 and 48 confirm the lineage relationship to `@jorgensen_drosophila_2019` and `@rezende_drosophila_mortality_2020`.
+- `@jorgensen_nature_2022` (climate-projection meta-analysis, *Nature* 2022): **[verified]**. The activation-energy meta-analysis, the median $E_a$ values for permissive vs stressful ranges, the SSP-scenario projections (774 % terrestrial, 180 % aquatic for SSP2-4.5), and the Arrhenius–TDT correspondence are all directly from the paper text.
+
+The damage-integral form (@eq-damage-integral) is consistent with `@jorgensen_drosophila_2019`'s and `@jorgensen_unifying_2021`'s explicit formulation. Rezende 2020 expresses the same dynamics in survival-probability-shift language; the two formulations are mathematically equivalent.
+
+**Earlier-version corrections logged here for traceability**: the first version of this note (a) mis-attributed a search-summary phrase ("numerical approximation to the analytical solution based on differential calculus") to Rezende 2020's paper body — the paper actually says "summing up infinitesimal small changes" and "basic calculus"; (b) cited Rezende 2020 as the introducer of the dynamic damage-integral framework — this is wrong; the framework is in `@jorgensen_drosophila_2019`, which Rezende 2020 builds on. Both are now corrected above.
+
+**Update propagated to supplement (2026-05-07):** the phrase "by one decade" at `supplement.qmd:276` was replaced with "by a factor of 10" to match the convention already used at `supplement.qmd:90` and the verbatim language in both `@rezende_drosophila_mortality_2020` ("change $\tau$ one order of magnitude") and `@jorgensen_drosophila_2019` ("the temperature change required to change $t_{\text{coma}}$ by an order of magnitude").
