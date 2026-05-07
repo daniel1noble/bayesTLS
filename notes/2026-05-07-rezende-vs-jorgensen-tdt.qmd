@@ -142,6 +142,48 @@ Builds on the framework to make a global-warming argument:
 - Projects that under SSP2-4.5, terrestrial heat failure rate increases by ~774 % and aquatic by ~180 % by 2100.
 - **This paper is the strongest published case that point-estimate CTmax is misleading** because the underlying rate is so steep — directly relevant to our paper's critique of the two-stage TDT pipeline.
 
+### Applications and extensions: `@li2023` and `@orsted_suzukii_2024` (verified 2026-05-07)
+
+Two recent papers apply or extend the HI-integral framework. Both are in `bib/tdt_problems.bib`.
+
+#### `@li2023` (*J. Therm. Biol.* 114:103583) — heat *and* cold HI in aphid community dynamics
+
+A textbook application of `@jorgensen_unifying_2021` to a pest system. They:
+
+- Built TDT curves for three cereal-aphid species (*M. dirhodum*, *S. avenae*, *R. padi*) × three life stages × heat (34–40 °C) and cold (−3 to −11 °C) ranges.
+- Used the canonical HI integral (their Methods):
+$$
+\text{Daily HI} = \sum_{i=1}^{1440} \frac{100\,(t_{i+1}-t_i)}{10^{\beta\,\max(T_i, T_{i+1})\,+\,\alpha}}
+$$
+where $\alpha$ is slope and $\beta$ is intercept of the TDT line (their notation reverses the typical Greek-letter convention; mathematically equivalent to the Jørgensen / Ørsted form).
+- Defined $T_c$ (heat) and $T_c'$ (cold) as the temperatures causing $L_{t50}$ in **one week** — more conservative than `@orsted_suzukii_2024`'s 24 h convention and `@jorgensen_nature_2022`'s 24 h convention.
+- Computed minute-by-minute HI from interpolated hourly weather records at three Chinese sites (Beijing, Xinxiang, Wuhan) for winter and summer 2016–17.
+- Showed that predicted HI rankings match observed field-abundance shifts (heat-tolerant *R. padi* increases with heat-wave frequency; heat-sensitive *M. dirhodum* declines).
+
+**Relevance to our manuscript**: empirical evidence that the TDT-driven HI integral predicts species-level field outcomes in a pest community — useful in the introduction alongside `@rezende_drosophila_mortality_2020` when motivating that HI predicts real-world community structure. Pure application, no methodological extension.
+
+#### `@orsted_suzukii_2024` (*Ecology Letters* 27:e14421) — **extension** to reproductive traits
+
+This is the paper that matters most for our manuscript's "survival *and* fertility" framing.
+
+Key findings:
+
+1. **The TDT exponential law extends to productivity** (offspring/female/day). Linear regression of $\log_{10}(Et_{50})$ on $T$ gives $R^2 > 0.97$ for productivity, mirroring the mortality-based pattern. The TDT/HI machinery is not specific to mortality — it generalises to sublethal reproductive traits.
+2. **Productivity is more thermally sensitive than mortality.** In *D. suzukii* females, $\mathrm{sCT_{max(4h)}} = 34.3$ °C for productivity vs $35.2$ °C for mortality. $Q_{10} = 1{,}154$ for productivity loss, $Q_{10} = 1{,}991$ for mortality. Productivity has its **own** $z$, $\mathrm{sCT_{max}}$, and $T_c$, distinct from mortality.
+3. **HI integral for productivity** uses the same formula as `@jorgensen_unifying_2021`, with $L_{t50}$ replaced by $Et_{50}$:
+$$
+\text{HI}_{\text{prod}} = \sum_{T_e > T_c} \frac{100\,(t_{i+1}-t_i)}{10^{(-1/z)\max(T_i, T_{i+1})\,+\,\alpha}}.
+$$
+Modelled at the collection site (Thorigné-Fouillard, France) using NicheMapR microclimate temperatures.
+4. **Reproductive HI is the binding constraint in field-realistic exposures.** Productivity reached 100 % HI on 9–10 days/year while mortality reached 100 % on only 6 days. Populations can fail to reproduce at temperatures below those causing measurable mortality.
+5. **Heat coma is *more* thermally sensitive than either mortality or productivity** (steepest TDT slope). Coma is therefore not a clean predictor of organismal failure at intermediate exposures.
+
+**Relevance to our manuscript**:
+
+- Our abstract claims the joint Bayesian 4PL models "the impact of temperature and time on survival and fertility" (`ms.qmd:29`). `@orsted_suzukii_2024` is the **empirical anchor for the fertility half** of that claim. Cite explicitly when introducing the fertility extension.
+- Their finding that productivity has its own $(z, \mathrm{sCT_{max}}, T_c)$, distinct from mortality, is exactly the multi-endpoint structure the joint Bayesian 4PL handles natively (different likelihood families per endpoint, shared hierarchical structure on slope/midpoint priors). Worth flagging in the discussion as a use case our framework supports more cleanly than separate two-stage fits.
+- Their two-stage approach (fit dose-response per $T$, regress $\log_{10}(Et_{50})$ on $T$) is itself an instance of the pipeline our manuscript critiques. They are an **excellent worked-example dataset** for the equivalence comparison, on reproductive endpoints — possibly worth approaching authors for the data, or working with their public Zenodo deposit (https://doi.org/10.5281/zenodo.8337969).
+
 ### Where Rezende et al. 2020 fits in this lineage
 
 `@rezende_drosophila_mortality_2020` was published *after* `@jorgensen_drosophila_2019` and explicitly *uses Jørgensen's data* (their citation 17 is the Jørgensen 2019 dataset) for the cross-species fitting of static landscapes. The mathematical machinery — exponential injury rate driving cumulative damage under variable $T(t)$ — is the same as in `@jorgensen_drosophila_2019`, expressed in survival-probability-shift form (Eq. 2: $S_{T_1}(\tau_1) = S_{T_2}(10^{(T_2-T_1)/z}\tau_1)$) plus a finite-difference update under variable $T(t)$ (Eq. 3).
@@ -184,6 +226,8 @@ All four primary papers verified directly from PDFs on 2026-05-07:
 - `@rezende_drosophila_mortality_2020` (field validation in natural *Drosophila*, *Science* 2020): **[verified]**. Equations 1–3, $T_{\max}$ convention ($T$ at $\tau = 1\,\mathrm{min}$), validation regimes (constant + ramping + field), and the "paradigm shift from a static critical limit" framing are all directly from the paper text. Their citation 17 confirms the dataset is from `@jorgensen_drosophila_2019`.
 - `@jorgensen_unifying_2021` (extension to fluctuating exposures, *Sci. Rep.* 2021): **[verified]**. Equations 1–7, the injury-additivity test, the random-fluctuating-temperature experiment, and the 9-species cross-taxon literature validation are all directly from the paper text. Their citations 15 and 48 confirm the lineage relationship to `@jorgensen_drosophila_2019` and `@rezende_drosophila_mortality_2020`.
 - `@jorgensen_nature_2022` (climate-projection meta-analysis, *Nature* 2022): **[verified]**. The activation-energy meta-analysis, the median $E_a$ values for permissive vs stressful ranges, the SSP-scenario projections (774 % terrestrial, 180 % aquatic for SSP2-4.5), and the Arrhenius–TDT correspondence are all directly from the paper text.
+- `@li2023` (aphid pest community application, *J. Therm. Biol.* 2023): **[verified]**. The HI integral formula (with their $\alpha$/$\beta$ slope/intercept role-reversal), $T_c$-as-1-week-$L_{t50}$ convention, three-site Chinese weather analysis, and the pest-abundance ranking results are all directly from the paper text.
+- `@orsted_suzukii_2024` (TDT extension to productivity, *Ecology Letters* 2024): **[verified]**. Equations 1–7 of TDT modelling for coma/mortality/productivity, the $\mathrm{sCT_{max(4h)}}$ values, the $Q_{10}$ values (1{,}154 for female productivity, 1{,}991 for mortality), the field HI accumulation (productivity 100 % on 9–10 days vs mortality on 6), and the NicheMapR microclimate methodology are all directly from the paper text.
 
 The damage-integral form (@eq-damage-integral) is consistent with `@jorgensen_drosophila_2019`'s and `@jorgensen_unifying_2021`'s explicit formulation. Rezende 2020 expresses the same dynamics in survival-probability-shift language; the two formulations are mathematically equivalent.
 

@@ -1,0 +1,306 @@
+---
+title: "Heat-injury integral: two equivalent parameterisations explained"
+date: 2026-05-07
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Question
+
+In `ms.qmd:166`, the heat-injury (HI) integral is now written in two forms — `@eq-hi` (matching `@orsted_suzukii_2024`'s exact published form using $\alpha$ and $-1/z$) and `@eq-hi-tdt` (the canonical TDT form using $z$ and $CT_{max,t_{\text{ref}}}$). What is the difference between them, and why both?
+
+## Short answer
+
+**They are the same equation written in two parameterisations.** The TDT line $\log_{10} LT_{50}(T) = \text{slope}\cdot T + \text{intercept}$ is fully determined by two parameters, but you can label it by *any* two reference points. The two forms in the manuscript correspond to two different choices of reference points; the underlying line, the underlying $LT_{50}(T)$, and the underlying HI integral are identical.
+
+## The TDT line and its parameters
+
+Both forms describe the same straight line in $(T, \log_{10} LT_{50})$ space:
+
+$$
+\log_{10} LT_{50}(T) \;=\; \text{slope}\cdot T \;+\; \text{intercept}.
+$$
+
+This line has two free parameters. Any pair of independent constraints on the line — e.g. a y-intercept and a slope, or two $(T, LT_{50})$ points — fixes it uniquely. Different parameterisations differ in *which* two numbers you read off, not in the line itself.
+
+## Form 1 — `@eq-hi`: $(\alpha, z)$, anchored at $T = 0$
+
+`@orsted_suzukii_2024`, `@jorgensen_drosophila_2019`, and `@li2023` all parameterise the line by its **slope and y-intercept extrapolated to $T = 0$ °C**:
+
+- $\alpha$ = $\log_{10} LT_{50}$ at $T = 0$ °C — the y-intercept that an OLS regression returns directly.
+- $-1/z$ = the slope; equivalently $z$ is the temperature change (°C) producing a 10-fold change in $LT_{50}$.
+
+So $\log_{10} LT_{50}(T) = \alpha - T/z$, and the HI integrand is
+
+$$
+\frac{1}{LT_{50}(T(\tau))} \;=\; \frac{1}{10^{\,\alpha\,-\,T(\tau)/z}} \;=\; \frac{1}{10^{\,(-1/z)\,T(\tau)\,+\,\alpha}},
+$$
+
+giving `@eq-hi`. **Pros**: the parameters are exactly what an OLS fit (or the joint Bayesian 4PL's marginal regression) produces, with no further algebra. **Cons**: $\alpha$ is the temperature-zero extrapolation of the line — it has no biological interpretation (no organism is asked how long it survives at 0 °C). It's a parameterisation convenience, not a phenotype.
+
+## Form 2 — `@eq-hi-tdt`: $(z, CT_{max,t_{\text{ref}}}, t_{\text{ref}})$, anchored at a biologically meaningful point
+
+`@jorgensen_drosophila_2019`, `@jorgensen_unifying_2021`, `@orsted_finding_2022`, and our manuscript anchor the line at a chosen $(T, LT_{50})$ pair: the temperature at which $LT_{50}$ equals a chosen reference duration $t_{\text{ref}}$.
+
+- $t_{\text{ref}}$ = chosen reference exposure duration (typically 60 min).
+- $CT_{max,t_{\text{ref}}}$ = the temperature satisfying $LT_{50}(CT_{max,t_{\text{ref}}}) = t_{\text{ref}}$. For $t_{\text{ref}} = 60$ min this is $CT_{max_{1\text{hr}}}$ — "the temperature that kills half the population in 1 hour."
+- $z$ = same thermal sensitivity as in Form 1.
+
+These three numbers carry only two degrees of freedom (you choose $t_{\text{ref}}$, then $CT_{max,t_{\text{ref}}}$ and $z$ are estimated), so the line is still fully specified.
+
+The HI integrand becomes
+
+$$
+\frac{1}{LT_{50}(T(\tau))} \;=\; \frac{1}{t_{\text{ref}} \cdot 10^{(CT_{max,t_{\text{ref}}}\,-\,T(\tau))/z}} \;=\; \frac{1}{t_{\text{ref}}}\cdot 10^{\,(T(\tau)\,-\,CT_{max,t_{\text{ref}}})/z},
+$$
+
+giving `@eq-hi-tdt`. **Pros**: the parameters are biologically interpretable — $CT_{max_{1\text{hr}}}$ is a phenotype experimentalists already think about. **Cons**: requires picking $t_{\text{ref}}$ as a convention; not directly returned by an OLS fit.
+
+## Why they're the same equation: explicit algebra
+
+The TDT line connects the two forms via the constraint that the line passes through both $(0, \alpha)$ and $(CT_{max,t_{\text{ref}}}, \log_{10} t_{\text{ref}})$. Setting $T = CT_{max,t_{\text{ref}}}$ in the line equation,
+
+$$
+\log_{10} t_{\text{ref}} \;=\; \alpha \;-\; \frac{CT_{max,t_{\text{ref}}}}{z}
+\quad\Longleftrightarrow\quad
+\alpha \;=\; \log_{10} t_{\text{ref}} \;+\; \frac{CT_{max,t_{\text{ref}}}}{z}.
+$$ {#eq-translation}
+
+Substituting `@eq-translation` into `@eq-hi` recovers `@eq-hi-tdt` algebraically (and vice versa). The HI integrals computed under either form, on the same temperature trajectory $T(\tau)$, return identical numerical values.
+
+A small numerical sanity check: $z = 4$ °C, $CT_{max_{1\text{hr}}} = 40$ °C, $t_{\text{ref}} = 60$ min. Then $\alpha = \log_{10}(60) + 40/4 = 1.778 + 10 = 11.778$. At $T = 36$ °C, both forms give $LT_{50} = 10^{11.778 - 36/4} = 10^{2.778} \approx 600$ min, as expected from the $z = 4$ scaling: 4 °C below $CT_{max_{1\text{hr}}}$, $LT_{50}$ is $10\times$ longer than $t_{\text{ref}}$.
+
+## When to use which
+
+| Situation | Preferred form |
+| --- | --- |
+| Implementing the HI integral algorithmically from a regression's output | `@eq-hi` $(\alpha, z)$ — directly read off slope and intercept |
+| Reproducing a published Ørsted-, Li-, or Rezende-group calculation | `@eq-hi` (matches their exact form) |
+| Communicating to a biological reader what the parameters mean | `@eq-hi-tdt` $(z, CT_{max_{1\text{hr}}})$ — both are recognisable phenotypes |
+| Connecting HI to a $CT_{max}$ value derived elsewhere in the manuscript | `@eq-hi-tdt` (the manuscript's $CT_{max_{1\text{hr}}}$ derivation feeds straight in) |
+| Cross-walking to the joint Bayesian 4PL output | Either — under the joint fit, $\alpha$ and $z$ are both linear functions of $\beta_0$, $\beta_1$, $\bar T$ from `@eq-linpred` plus the asymptote correction in `@eq-lt50-corrected` |
+
+## Implications for the manuscript
+
+- **Both forms in the same section is appropriate.** The first form lets readers cross-walk to the published TDT/HI literature; the second form connects to the rest of the paper, which uses $CT_{max_{1\text{hr}}}$ throughout.
+- **The current text frames `@eq-hi-tdt` as a re-expression of `@eq-hi`** ("equivalently, in canonical TDT form, @eq-hi can be re-expressed in terms of $z$ and $CT_{max,t_{\text{ref}}}$…"). That's correct and reads naturally — keep it.
+- **Joint Bayesian 4PL recovery.** Under the joint fit, $\alpha$ corresponds to $\beta_0 - \beta_1 \bar T$ plus the asymptote correction term in `@eq-lt50-corrected`. The supplement at `supplement.qmd:90` already defines this "uncentred TDT intercept" $\alpha$ explicitly. Worth a single sentence in the manuscript noting the recovery, but the supplement carries the algebra.
+- **Don't introduce a third parameterisation.** Slope/intercept-on-centred-temperature ($\beta_0, \beta_1$ with $T$ centred at $\bar T$) is a third way to write the same line, used by `@eq-linpred`. It's correct but redundant with $(\alpha, z)$ and would add notational clutter to the HI section. Keep $(\alpha, z)$ as the literature-canonical pair in `@eq-hi`.
+
+## Follow-up: $t_{\text{ref}}$ as a time-unit converter (does *not* change $CT_{max,t_{\text{ref}}}$)
+
+A separate clarification that came up: $t_{\text{ref}}$ in the canonical-form equation has two roles, and they are easy to conflate.
+
+**Role 1 — defines $CT_{max,t_{\text{ref}}}$.** When you say $CT_{max_{1\text{hr}}}$, you have committed to 1 hour as the reference duration. This is fixed by the experiment and does not change during analysis.
+
+**Role 2 — bridges the time unit of integration.** The prefactor $1/t_{\text{ref}}$ in `@eq-hi-tdt` carries units (1/time), and so does $di$. Their product is dimensionless, so the integral is well-defined regardless of whether you tick $i$ in hours, minutes, or seconds — *provided* $t_{\text{ref}}$ is expressed in the same time unit as $i$.
+
+So with $CT_{max_{1\text{hr}}}$ already fixed, you can integrate in whichever unit you want by setting $t_{\text{ref}}$ accordingly:
+
+| Time unit of $i$ | $t_{\text{ref}}$ | Prefactor $100/t_{\text{ref}}$ | Static-at-$CT_{max_{1\text{hr}}}$-for-1-h check |
+|---|---|---|---|
+| hours | $1$ h | $100$ | $100 \cdot \int_0^1 1\, di = 100$ ✓ |
+| minutes | $60$ min | $\approx 1.67$ | $(100/60)\cdot \int_0^{60} 1\, di = 100$ ✓ |
+| seconds | $3600$ s | $\approx 0.0278$ | $(100/3600)\cdot \int_0^{3600} 1\, di = 100$ ✓ |
+
+All three return identical $HI$ for the same temperature trajectory; $z$ and $CT_{max_{1\text{hr}}}$ are untouched. The choice is purely about what time unit you want to tick the clock in.
+
+**Practical implication for the manuscript.** The current `@eq-hi` in `ms.qmd` drops $t_{\text{ref}}$ because it commits to hours throughout, matching typical hourly field-temperature records. If a future analysis ever needs minute-resolution (e.g.\ minute-by-minute logger data, as in `@orsted_suzukii_2024`'s `NicheMapR` interpolation), $t_{\text{ref}} = 60$ min can be reinstated in the prefactor without re-fitting anything — same $z$, same $CT_{max_{1\text{hr}}}$, same biological calibration.
+
+**Conceptual summary.** $t_{\text{ref}}$ is doing two things at once in the general form: (i) labelling the line via $CT_{max,t_{\text{ref}}}$ — fixed by the experiment; (ii) carrying the time-unit of the integration — chosen by the analyst. Once you commit to one time unit (hours, in our case), Role 2 collapses to the trivial $t_{\text{ref}} = 1$ h, and the prefactor disappears from the equation.
+
+## Numerical demonstration: the two forms give identical HI
+
+The algebra in `@eq-translation` says the two parameterisations describe the same line, so the HI predictions from a temperature trajectory must be numerically identical (up to floating-point noise). The following R simulation makes this concrete.
+
+```{r}
+#| label: hi-equivalence-setup
+#| message: false
+#| warning: false
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# --- Synthetic hourly temperature: 5 days, sinusoidal diurnal cycle -----
+hours    <- 0:(24 * 5 - 1)
+T_series <- 32 + 8 * sin(2 * pi * (hours - 6) / 24)   # range 24–40 °C, peaks at noon
+
+# --- TDT parameters for a hypothetical organism ---------------------------
+z         <- 4    # thermal sensitivity (°C per 10-fold change in LT50)
+CT_max_1h <- 38   # 1-hour static critical limit (°C)
+T_c       <- 28   # critical temperature below which no injury accrues
+
+# --- Form A (Ørsted, α, −1/z), time in hours ----------------------------
+# log10(LT50)(T) = α − T/z, with α calibrated so LT50(CT_max_1h) = 1 h:
+# 0 = α − CT_max_1h/z  ⇒  α = CT_max_1h/z
+alpha_hr <- CT_max_1h / z
+rate_A   <- ifelse(T_series > T_c,
+                   100 / 10 ^ (alpha_hr - T_series / z),
+                   0)
+HI_A     <- cumsum(rate_A * 1)     # Δi = 1 h
+
+# --- Form B (canonical, z and CT_max_1h), time in hours -----------------
+rate_B <- ifelse(T_series > T_c,
+                 100 * 10 ^ ((T_series - CT_max_1h) / z),
+                 0)
+HI_B   <- cumsum(rate_B * 1)
+
+# --- Numerical equivalence check ----------------------------------------
+max_abs_diff <- max(abs(HI_A - HI_B))
+sprintf("Max |HI_A − HI_B| over 5-day series: %.3e", max_abs_diff)
+```
+
+**Temperature trajectory** (the input shared by both calculations):
+
+```{r}
+#| label: fig-hi-eq-temperature
+#| fig-cap: "Hourly temperature trace (synthetic). Dotted line is $CT_{max_{1\\text{hr}}} = 38$ °C; dashed line is $T_c = 28$ °C, below which no heat injury accrues."
+#| fig-height: 2.6
+
+ggplot(tibble(hour = hours, T = T_series), aes(hour, T)) +
+  geom_line(colour = "darkred") +
+  geom_hline(yintercept = CT_max_1h, linetype = "dotted") +
+  geom_hline(yintercept = T_c,       linetype = "dashed") +
+  annotate("text", x = max(hours), y = CT_max_1h,
+           label = "CTmax,1hr", hjust = 1, vjust = -0.4, size = 3) +
+  annotate("text", x = max(hours), y = T_c,
+           label = "T_c",       hjust = 1, vjust = -0.4, size = 3) +
+  labs(x = "Time (h)", y = "Temperature (°C)") +
+  theme_minimal(base_size = 11)
+```
+
+**Cumulative HI under both parameterisations, overlaid:**
+
+```{r}
+#| label: fig-hi-eq-overlay
+#| fig-cap: "Cumulative HI under Ørsted's $(\\alpha, z)$ form and the canonical $(z, CT_{max_{1\\text{hr}}})$ form. The two curves overlap exactly — they are the same equation in different parameter labels."
+#| fig-height: 3.0
+
+df <- tibble(
+  hour                              = hours,
+  `Ørsted form (α, z)`              = HI_A,
+  `Canonical form (z, CTmax,1hr)`   = HI_B
+) |>
+  pivot_longer(c(`Ørsted form (α, z)`, `Canonical form (z, CTmax,1hr)`),
+               names_to  = "Parameterisation",
+               values_to = "HI")
+
+ggplot(df, aes(hour, HI,
+               colour    = Parameterisation,
+               linetype  = Parameterisation)) +
+  geom_line(linewidth = 1.4, alpha = 0.65) +
+  scale_linetype_manual(values = c("solid", "dashed")) +
+  labs(x = "Time (h)", y = "Cumulative HI (%)",
+       subtitle = sprintf("Max |HI_A − HI_B| = %.2e — numerical noise only",
+                          max_abs_diff)) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+### What the simulation shows
+
+1. **The two HI curves overlap exactly.** Visually they cannot be distinguished; the dashed and solid lines lie on top of each other.
+2. **The maximum absolute difference between $HI_A$ and $HI_B$ is at the level of floating-point noise** (≪ 10⁻¹⁰), confirming that the two forms are not just "approximately" equivalent — they are *algebraically* equivalent.
+3. **HI accumulates fastest during the daily peaks** when $T > CT_{max_{1\text{hr}}}$, slows when temperature is between $T_c$ and $CT_{max_{1\text{hr}}}$, and pauses entirely overnight when $T < T_c$. The shape of the cumulative HI curve is the same under both parameterisations because both use the *same TDT line* — they just label its slope and intercept differently.
+4. **Reusable as a sanity check.** Anyone implementing HI from $(α, z)$ output (e.g. an OLS fit of $\log_{10} LT_{50}$ on $T$) and someone implementing from $(z, CT_{max_{1\text{hr}}})$ (e.g. our joint Bayesian 4PL) should agree to numerical precision when given the same temperature trajectory and the consistency relation $\alpha = CT_{max_{1\text{hr}}}/z$ (with time in hours). If they don't, there is a unit error somewhere.
+
+## Follow-up: does the same equivalence hold if we anchor at $CT_{max_{1\text{min}}}$ instead of $CT_{max_{1\text{hr}}}$?
+
+Yes — provided the *prefactor* and *time unit of $i$* are adjusted to match, the equation gives identical HI predictions. The TDT line itself does not move; only its anchor on the line changes.
+
+**The key relationship.** $CT_{max_{1\text{min}}}$ and $CT_{max_{1\text{hr}}}$ sit on the same TDT line at different points. At $CT_{max_{1\text{hr}}}$, $LT_{50} = 60$ min; at $CT_{max_{1\text{min}}}$, $LT_{50} = 1$ min. Solving for both points on $\log_{10} LT_{50}(T) = \alpha - T/z$ and subtracting gives
+
+$$
+CT_{max_{1\text{min}}} \;=\; CT_{max_{1\text{hr}}} \;+\; z \log_{10}(60) \;\approx\; CT_{max_{1\text{hr}}} \;+\; 1.778\,z.
+$$ {#eq-ctmax-conversion}
+
+For our simulation parameters ($z = 4$, $CT_{max_{1\text{hr}}} = 38$ °C), this gives $CT_{max_{1\text{min}}} \approx 45.1$ °C — about 7 °C hotter than the 1-hour limit, exactly as expected for an organism that can survive 1 minute much higher than it can survive 1 hour.
+
+**Three forms must agree.** With the conversion above, we now have three formally distinct parameterisations of the same line:
+
+- **Form A** (Ørsted): $\alpha$ and $-1/z$, time in hours.
+- **Form B** (canonical, current `@eq-hi`): $CT_{max_{1\text{hr}}}$ and $z$, time in hours.
+- **Form C** (canonical, anchored at 1-minute reference): $CT_{max_{1\text{min}}}$ and $z$, time in **minutes** (with prefactor $100/t_{\text{ref}} = 100/(1 \text{ min}) = 100$).
+
+The simulation below adds Form C and confirms it agrees with Forms A and B to floating-point precision.
+
+```{r}
+#| label: hi-equivalence-sim-1min
+#| message: false
+#| warning: false
+
+# Form C: canonical with CT_max_1min, integration in minutes
+CT_max_1min <- CT_max_1h + z * log10(60)        # ≈ 45.108 °C
+
+# Resample temperature to minute resolution (constant within each hour)
+T_series_min <- rep(T_series, each = 60)
+above_Tc_min <- T_series_min > T_c
+
+rate_C    <- ifelse(above_Tc_min,
+                    100 * 10 ^ ((T_series_min - CT_max_1min) / z),  # %/min
+                    0)
+HI_C_min  <- cumsum(rate_C * 1)                  # Δi = 1 min
+
+# Sample HI_C at end-of-hour boundaries to align with hourly HI_A and HI_B.
+# HI_C_min[60·k] is HI accumulated through the end of hour k, which is what
+# cumsum(rate_A * 1)[k] = HI_A[k] also represents — so the alignment is direct.
+HI_C <- HI_C_min[seq(60, length(T_series_min), by = 60)]
+
+# Numerical comparison across all three forms
+max_abs_diff_AC <- max(abs(HI_A - HI_C))
+max_abs_diff_BC <- max(abs(HI_B - HI_C))
+
+sprintf("CT_max_1min derived: %.3f °C", CT_max_1min)
+sprintf("Max |HI_A − HI_C|: %.3e", max_abs_diff_AC)
+sprintf("Max |HI_B − HI_C|: %.3e", max_abs_diff_BC)
+```
+
+```{r}
+#| label: fig-hi-eq-three-forms
+#| fig-cap: "Cumulative HI under three parameterisations of the same TDT line: Ørsted's $(\\alpha, z)$ form, the canonical $(z, CT_{max_{1\\text{hr}}})$ form, and the canonical $(z, CT_{max_{1\\text{min}}})$ form integrated in minutes. All three curves overlap exactly because they describe the same line."
+#| fig-height: 3.0
+
+df3 <- tibble(
+  hour                                            = hours,
+  `A: Ørsted (α, z), hours`                       = HI_A,
+  `B: canonical (z, CTmax,1hr), hours`            = HI_B,
+  `C: canonical (z, CTmax,1min), minutes`         = HI_C
+) |>
+  pivot_longer(-hour, names_to = "Parameterisation", values_to = "HI")
+
+ggplot(df3, aes(hour, HI,
+                colour    = Parameterisation,
+                linetype  = Parameterisation)) +
+  geom_line(linewidth = 1.4, alpha = 0.55) +
+  scale_linetype_manual(values = c("solid", "dashed", "dotted")) +
+  labs(x = "Time (h)", y = "Cumulative HI (%)",
+       subtitle = sprintf("Max |A − C| = %.2e, Max |B − C| = %.2e",
+                          max_abs_diff_AC, max_abs_diff_BC)) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        legend.direction = "vertical")
+```
+
+### What this confirms
+
+- **The 1-minute and 1-hour anchors describe the same TDT line.** $CT_{max_{1\text{min}}}$ is *higher* than $CT_{max_{1\text{hr}}}$ by $z \log_{10}(60) \approx 1.78\,z$ °C, exactly as the line geometry requires.
+- **HI is reference-invariant.** The HI predicted at each hour boundary is bit-for-bit identical (up to floating-point noise) regardless of whether you anchor at $CT_{max_{1\text{hr}}}$, $CT_{max_{1\text{min}}}$, or write the line in $(\alpha, z)$ form. The choice is a labelling convenience; it never changes what HI value comes out.
+- **Watch out for unit consistency.** What does *not* work is plugging $CT_{max_{1\text{min}}}$ into the equation as currently written in `@eq-hi` (which has $CT_{max_{1\text{hr}}}$ and is integrated in hours) without adjusting either the prefactor or the time unit. The same equation with the wrong $CT_{max}$ value gives wildly different — and wrong — HI.
+
+**Practical implication.** If a co-author or reviewer reports a $CT_{max}$ value at a non-standard reference duration (say, $CT_{max_{30\text{min}}}$), don't substitute it into `@eq-hi` directly. Either convert it to $CT_{max_{1\text{hr}}}$ via @eq-ctmax-conversion-style algebra ($CT_{max_{1\text{hr}}} = CT_{max_{30\text{min}}} - z \log_{10}(2)$) and then use the equation as written, or rewrite the equation with a matching $t_{\text{ref}}$ and time unit. The line is one object; how you label its anchor is your choice.
+
+## Verification status
+
+- Algebra (`@eq-translation`) verified by direct substitution in both directions and cross-checked against the numerical example above.
+- `@orsted_suzukii_2024` form: **[verified]** against the paper's Methods text on 2026-05-07 — they write the integrand denominator exactly as $10^{(-1/z)\cdot \max(T_i, T_{i+1}) + \alpha}$, with $\beta = -1/z$ as slope and $\alpha$ as y-intercept of $\log_{10}(Lt_{50}) = \beta T + \alpha$.
+- `@li2023` form: **[verified]** — they use $\alpha$ for slope and $\beta$ for intercept (Greek-letter convention reversed from Ørsted), but the underlying $1/LT_{50}$ structure is identical.
+- `@jorgensen_drosophila_2019` form: **[verified]** — they parameterise the static-to-dynamic conversion (their Eq. 7) using $z$ and $sCT_{max}$, equivalent to `@eq-hi-tdt`.
+- The manuscript's $\alpha$-at-$T=0$ definition matches the supplement's `supplement.qmd:90` "uncentred TDT intercept" derivation under the asymptote-corrected midpoint regression.

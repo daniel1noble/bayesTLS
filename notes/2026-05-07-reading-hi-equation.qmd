@@ -1,0 +1,109 @@
+---
+title: "How to read the heat-injury (HI) equation, term by term"
+date: 2026-05-07
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Question
+
+How do I read the HI equation in `ms.qmd:168` (`@eq-hi`)?
+
+$$
+HI(t) \;=\; 100 \int_0^t 10^{\,(T(i) - CT_{max_{1\text{hr}}})/z} \, di
+$$
+
+## Short answer
+
+The equation is a **metronome** that ticks faster as temperature climbs above $CT_{max_{1\text{hr}}}$ and slower as it cools. $HI(t)$ counts the cumulative ticks. When the count reaches 100, the population has accumulated enough dose-equivalent to be at the $LT_{50}$ threshold — i.e. 50% mortality is predicted.
+
+## Term-by-term breakdown
+
+### 1. $T(i) - CT_{max_{1\text{hr}}}$ — *how stressful is now?*
+
+The temperature the organism experiences at time $i$, measured **relative to its 1-hour critical limit**.
+
+- Positive when $T(i) > CT_{max_{1\text{hr}}}$ → above the lethal-zone threshold.
+- Negative when $T(i) < CT_{max_{1\text{hr}}}$ → in the sub-lethal range.
+- Zero exactly at the 1-hour critical limit.
+
+### 2. Divide by $z$ — *count in "$z$-widths."*
+
+$z$ is the temperature change required for a 10-fold change in survival time. So $(T - CT_{max_{1\text{hr}}})/z$ asks: "how many $z$-widths above the 1-hour critical limit is the organism?"
+
+- At $T = CT_{max_{1\text{hr}}} + z$: value is $+1$.
+- At $T = CT_{max_{1\text{hr}}} + 2z$: value is $+2$.
+- At $T = CT_{max_{1\text{hr}}} - z$: value is $-1$.
+
+### 3. $10^{\,(T(i) - CT_{max_{1\text{hr}}})/z}$ — *the instantaneous injury-rate dial*
+
+Each $z$-width above $CT_{max_{1\text{hr}}}$ multiplies the injury rate by 10. The exponential is the *rate* at which a fraction of one $LT_{50}$-dose is being accumulated, per hour:
+
+| Temperature | Integrand | Interpretation |
+|---|---|---|
+| $CT_{max_{1\text{hr}}} - z$ | $10^{-1} = 0.1$ | accumulating $0.1$ dose per hour → death in 10 h |
+| $CT_{max_{1\text{hr}}}$ | $10^{0} = 1$ | accumulating $1$ dose per hour → death in 1 h (by definition) |
+| $CT_{max_{1\text{hr}}} + z$ | $10^{1} = 10$ | accumulating $10$ doses per hour → death in 6 min |
+| $CT_{max_{1\text{hr}}} + 2z$ | $10^{2} = 100$ | death in 36 s |
+
+This is what "extreme thermal sensitivity" means quantitatively, and is consistent with `@jorgensen_nature_2022`'s meta-analytical median $Q_{10} > 1{,}500$ for ectotherm heat-failure rates.
+
+### 4. $\int_0^t \ldots \, di$ — *integrate the rate over time*
+
+Sum the (rate × time) contributions from time 0 to time $t$. Hot intervals contribute heavily; cool intervals contribute little. Below the critical temperature $T_c$ (in the manuscript's prose, the temperature at which damage is repaired as fast as it accrues), the integrand is treated as zero — these intervals are repair time, not injury time.
+
+### 5. Multiply by 100 — *put it on a 0–100% scale*
+
+Converts "fraction of one $LT_{50}$ dose accumulated" into a percentage:
+
+- $HI(t) = 0\%$: nothing accumulated yet.
+- $HI(t) = 50\%$: organism halfway to the $LT_{50}$ threshold.
+- $HI(t) = 100\%$: the cumulative dose equals one $LT_{50}$, predicting 50% mortality.
+- $HI(t) > 100\%$: already past the threshold; mortality is rising further.
+
+## Sanity checks (the equation must satisfy these by design)
+
+Every one of these reduces the integral to numerical values you can verify by hand.
+
+1. **Static at $CT_{max_{1\text{hr}}}$ for 1 hour.** Integrand $= 1$ throughout; integral $= 1 \cdot 1 = 1$; $HI = 100\%$. ✓ (Definitionally, $CT_{max_{1\text{hr}}}$ is the temperature that kills 50% in 1 hour.)
+2. **Static at $CT_{max_{1\text{hr}}} - z$ for 10 hours.** Integrand $= 10^{-1} = 0.1$; integral $= 0.1 \cdot 10 = 1$; $HI = 100\%$. ✓ (At $z$ °C cooler, you survive 10× longer.)
+3. **Static at $CT_{max_{1\text{hr}}} + z$ for 6 min ($= 0.1$ h).** Integrand $= 10$; integral $= 10 \cdot 0.1 = 1$; $HI = 100\%$. ✓ (At $z$ °C hotter, you survive 10× shorter.)
+4. **A diurnal cycle below $T_c$ all night, then rising above $CT_{max_{1\text{hr}}}$ at midday.** Night contributes nothing. Daytime hot interval accumulates substantial $HI$. Daily totals depend on intensity and duration of the hot peak. (See `@orsted_suzukii_2024` Fig. 4 for a worked field example.)
+
+## Worked diurnal example
+
+Suppose $CT_{max_{1\text{hr}}} = 40$ °C, $z = 4$ °C, $T_c = 30$ °C. A single afternoon temperature trajectory:
+
+| Time of day | $T$ | Integrand | Notes |
+|---|---|---|---|
+| Night, 25 °C | 25 | — | below $T_c$; integrand set to 0 |
+| Morning warming, 31 °C | 31 | $10^{(31-40)/4} = 10^{-2.25} \approx 0.0056$ | barely accumulating |
+| Late morning, 35 °C | 35 | $10^{-1.25} \approx 0.056$ | still slow — about 1/18 dose per hour |
+| Midday, 38 °C | 38 | $10^{-0.5} \approx 0.32$ | noticeable — about 1/3 dose per hour |
+| Hot peak, 40 °C | 40 | $10^{0} = 1$ | "killing pace" |
+| Heatwave peak, 42 °C | 42 | $10^{0.5} \approx 3.2$ | accumulating 3.2× faster than at $CT_{max_{1\text{hr}}}$ |
+
+A single hour spent at 40 °C contributes 100% $HI$ on its own. A single hour at 38 °C contributes 32%. A single hour at 35 °C contributes 5.6%. A whole afternoon spent below 31 °C contributes essentially nothing.
+
+This is the asymmetric, intensity-dominated structure that makes $CT_{max}$ point estimates misleading: short bursts at the hot peak are much more dangerous than long stints at moderately stressful temperatures, but the cumulative $HI$ depends on both.
+
+## Big-picture intuition
+
+- The integrand is the **instantaneous risk meter** — how fast the organism is "spending" its lethal dose budget right now.
+- The integral is the **cumulative bill**, totalled over the exposure history.
+- The $\times 100$ scaling sets "you're broke" at $HI = 100\%$.
+- $z$ controls how rapidly the meter speeds up with temperature — small $z$ means the organism is highly thermally sensitive (each 1 °C is large in $z$-widths).
+- $CT_{max_{1\text{hr}}}$ sets the calibration point — the temperature at which the meter ticks at exactly "1 dose per hour."
+
+Under the joint Bayesian 4PL, $z$ and $CT_{max_{1\text{hr}}}$ are obtained per posterior draw, so $HI(t)$ inherits the full posterior uncertainty: every prediction is a posterior distribution, not a point estimate.
+
+## Verification status
+
+This note is built from the equation as it appears in `ms.qmd:168` (post-2026-05-07 simplification). All sanity checks are verifiable by direct substitution and consistent with the published treatments in `@jorgensen_unifying_2021`, `@orsted_suzukii_2024`, and `@li2023` — all of which describe the same integrand structure (rate $\propto 10^{\text{slope}\,T + \text{intercept}}$, integrated over the exposure trajectory). The diurnal example uses round numbers chosen for clarity; replace with your actual fitted $z$ and $CT_{max_{1\text{hr}}}$ for any specific dataset.
