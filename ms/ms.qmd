@@ -221,29 +221,7 @@ Together, @eq-likelihood–@eq-linpred define the hierarchical Bayesian 4PL fit 
 
 
 
-## Priors
 
-## Random-effects structure
-
-## Censoring, boundary observations, and overdispersion
-
-# Equivalence with the classical pipeline
-
-<!--
-Algebraic statement: solving p(t; T) = 0.5 for t gives a closed-form
-log10 LT50(T) that is linear in T with slope = beta1, and the classical
-TDT slope, z, and CTmax fall out as one-line posterior summaries.
-
-Refer to §10 of tdt_problems.qmd for the full derivation; reproduce the
-key identities in the manuscript and put the rest in the supplement.
-
-Helpers extract_tdt_params(), LT50_T_curve(), heat_injury(),
-time_to_mortality() should be cited and listed in the supplement.
--->
-
-## Closed-form mapping from 4PL parameters to z and CTmax
-
-## Heat-injury integral as a posterior quantity
 
 ## What the 4PL delivers that the two-step cannot
 
