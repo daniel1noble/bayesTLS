@@ -1,0 +1,90 @@
+---
+title: "Beyond the canonical HI integral: using the full 4PL survival surface"
+date: 2026-05-07
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Question
+
+Can we use the full Bayesian 4PL dose-response model to help compute heat injury (HI), rather than only its derived $(z, CT_{max_{1\text{hr}}})$ feeding into the canonical `@eq-hi`?
+
+## Short answer
+
+**Yes — and this is one of the strongest "outputs the two-step pipeline cannot provide" arguments for the manuscript.** The two-stage pipeline reduces each temperature's mortality data to a single $LT_{50}$ point, then collapses across temperatures to a 2-parameter line $(\alpha, z)$ or equivalently $(z, CT_{max_{1\text{hr}}})$. Everything downstream of @eq-hi inherits this 2-parameter compression. The joint Bayesian 4PL keeps the entire survival surface $S(T, \tau)$, which supports three richer HI computations.
+
+## Three ways to use the full 4PL for HI
+
+### 1. Any $LT_x$, not just $LT_{50}$
+
+The canonical HI integral anchors on the median lethal time $LT_{50}$. Replacing $LT_{50}(T)$ with $LT_x(T)$ in the HI integrand yields a percentile-specific HI:
+
+$$
+HI_x(t) \;=\; 100 \int_0^t \frac{di}{LT_x\!\big(T(i)\big)},
+$$
+
+with $HI_x(t) = 100\%$ corresponding to the cumulative dose equal to one $LT_x$. This is useful when:
+
+- $x = 10$: detecting onset of measurable damage. Useful for *sublethal* fitness predictions where 10% population loss already constitutes a population-dynamics consequence.
+- $x = 90$: catastrophic-loss thresholds. When a population that loses 90% will not recover demographically.
+- $x$ matched to a regulatory or management threshold (e.g. fish stocking, agricultural pest tolerance, conservation triggers).
+
+**Both pipelines can compute $HI_x$ at any $x$ in principle. The differences are mechanical and inferential, not "yes-vs-no".**
+
+| Aspect | Two-stage pipeline | Joint Bayesian 4PL |
+| --- | --- | --- |
+| Compute $LT_x$ at any $x$? | Yes — re-fit dose-response per temperature for the new $x$, then re-do OLS on $\log_{10} LT_x$ vs $T$ | Yes — apply the closed-form inversion $LT_x(T) = 10^{m(T) - (1/k)\,\log_{10}((u - x/100)/(x/100 - \ell))}$ to the existing posterior |
+| Re-fitting required? | Yes, the entire pipeline | No — algebraic transformation of existing posterior draws |
+| Slope $z$ across percentiles | Can vary if $k$ is fit per-temperature (independent DRCs); the $LT_{10}$ and $LT_{90}$ lines need not be parallel | If $k$ is shared across temperatures (typical), $LT_x$ lines are *parallel* by construction — same $z$ for every $x$, only the intercept moves |
+| Joint uncertainty across percentiles | Each re-fit gives its own posterior, with no shared uncertainty structure | A single posterior draw of $(\ell, u, k, m(T))$ defines a coherent set of $LT_x$ values for every $x$ — credible intervals at $x = 10, 50, 90$ are guaranteed to be jointly consistent |
+
+**The substantive 4PL advantages** are therefore *not* "the two-stage can't do it" — they are:
+
+1. **No re-fitting.** Switching from $HI_{50}$ to $HI_{10}$ is a one-line algebraic change on existing posterior samples. The two-stage equivalent requires re-running every dose-response fit and the regression.
+2. **Coherent $z$ across percentiles** (when $k$ is shared, which is the parsimonious default). The two-stage with per-temperature DRC fits can produce different slopes at different percentiles — sometimes a feature (real shape variation), sometimes an artefact (noise in $k$ at small samples).
+3. **Joint posterior over all percentiles.** A "what's the credible interval over the difference between $LT_{10}$ and $LT_{50}$ at $T = 38\,°\text{C}$" question is a one-liner with the joint Bayesian fit; with the two-stage it requires fitting both percentiles end-to-end with bootstrap/delta-method propagation that doesn't preserve their correlation.
+
+### 2. Survival-surface simulation (Rezende 2020 / Jørgensen 2021 style)
+
+Instead of accumulating a scalar HI summary, simulate the evolution of population-level survival probability $S(t)$ under the variable temperature trajectory $T(t)$. The Rezende 2020 / Jørgensen 2021 update formula uses the *full* survival probability function at each time step:
+
+$$
+S(t + \Delta i) \;\approx\; S(t) \;+\; \left.\frac{\partial S(\tau)}{\partial \tau}\right|_{\,T(i),\,\tau_{\text{eff}}(i)}\,\Delta i,
+$$
+
+where $\tau_{\text{eff}}(i)$ is the cumulative *dose-equivalent* exposure time at instant $i$, mapped to the temperature $T(i)$ via the survival-probability shift relation $S_{T_1}(\tau) = S_{T_2}(10^{(T_2-T_1)/z}\tau)$. Under the joint Bayesian 4PL, $S(\tau)$ is parametrised directly by $(\ell, u, k, m(T))$, so the partial derivative is analytical and the simulation is a per-posterior-draw evaluation.
+
+What this gives you that the canonical HI does not:
+
+- **Posterior survival curves**, not just a single "when does HI hit 100%" number. At any field time $t$, you have a posterior distribution over the fraction of population still alive.
+- **Asymmetric mortality information**. The HI integral compresses the mortality history into a single threshold-crossing; the survival simulation tells you whether the population is at 80% survival vs 20% survival, both of which give $HI(t) > 100\%$ at some prior time.
+- **Direct interpretability for population dynamics modellers**, who often care about $S(t)$ or $1 - S(t)$ rather than HI itself.
+
+### 3. Endpoint-specific HI
+
+The 4PL fits whatever endpoint you measure: mortality, sterility, fertility loss, heat coma, growth arrest. Each endpoint can have its own $(\ell, u, k, m(T))$ — and therefore its own $z$, $CT_{max_{1\text{hr}}}$, and HI integral. Per `@orsted_suzukii_2024`, productivity in *D. suzukii* has a *higher* thermal sensitivity (lower $z$) and a *lower* $CT_{max_{1\text{hr}}}$ (lower critical limit) than mortality — so reproductive HI is the binding constraint in field-realistic exposures, not lethal HI.
+
+With the joint 4PL, you fit each endpoint with its own dose-response surface and compute HI separately. Sublethal HI for fertility, lethal HI for mortality, coma HI for behavioural failure — each as its own posterior distribution, all derived from the same generative framework.
+
+The two-stage pipeline can do this in principle (separate Stage-1/Stage-2 fits per endpoint) but cannot share information across endpoints (e.g. correlated random effects across batches, partial pooling of slopes across closely-related species). The joint Bayesian 4PL can build endpoint-specific survival surfaces that share hierarchical structure where appropriate.
+
+## Implications for the manuscript
+
+- **Keep `@eq-hi` as the canonical HI definition** — it's the form readers will recognise from the literature.
+- **Add a Discussion paragraph (or short section)** noting that the joint 4PL supports three richer extensions: percentile-specific HI ($HI_{10}$, $HI_{90}$), full-surface survival simulation, and endpoint-specific HI.
+- **Worked example for the Discussion** (or supplement): show $HI_{10}$, $HI_{50}$, $HI_{90}$ on a common temperature trace, with their posterior credible intervals overlaid. This visually demonstrates "the framework supports more than just LT50" without rewriting the methods.
+- **Cite `@orsted_suzukii_2024` for endpoint-specific** support — they explicitly demonstrate that productivity HI is more constraining than mortality HI in *D. suzukii*. Our framework can recover the same insight from a single joint fit, with proper uncertainty propagation.
+
+## Verification status
+
+- **Conceptual correctness verified** against `@rezende_drosophila_mortality_2020` (Eq. 2–3 — the survival-probability shift), `@jorgensen_unifying_2021` (the damage-integral framework), and `@orsted_suzukii_2024` (endpoint-specific HI for productivity vs mortality).
+- **Mathematical claims** about percentile-specific $LT_x(T)$ from the 4PL: standard inversion of the 4PL — $LT_x(T) = 10^{m(T) - (1/k)\,\log_{10}((u-x/100)/(x/100-\ell))}$ for any percentile $x \in (\ell, u)$ on the response scale.
+- **Not yet implemented as code in this note.** A worked simulation comparing canonical $HI_{50}$ to $HI_{10}$ and $HI_{90}$ on a sample trajectory would be the natural next note. Flagged for a future session.
+- **Manuscript framing**: this aligns with the abstract's claim that the joint 4PL "unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions)" — point 3 is exactly endpoint-specific HI; point 2 is exactly $HI_x$.
