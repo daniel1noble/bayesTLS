@@ -1,7 +1,0 @@
----
-title: "Preface"
----
-
-# Preface {.unnumbered}
-
-This book bundles the main manuscript and supplementary information for *A flexible modelling framework for estimating thermal sensitivity across life*. The manuscript follows in the next chapter; supplementary material — including the simulation tutorials, equivalence demonstrations, and worked examples — comes after.

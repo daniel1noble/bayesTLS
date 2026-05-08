@@ -57,22 +57,28 @@ rsconnect/
 
 /.quarto/
 
-# ---- Quarto book outputs --------------------------------------------------
-# The book renders to _book/. We ignore all the rendered assets (HTML,
-# bootstrap libs, search index, JS/CSS, etc.) and keep only:
-#   - _book/<book>.docx (Word output for collaborators)
-#   - _book/<book>.pdf  (if PDF rendering is added later)
-# Sources (qmd, lua, _quarto.yml, Makefile) are tracked normally.
-_book/*
-!_book/*.docx
-!_book/*.pdf
+# ---- Render outputs --------------------------------------------------------
+# Final deliverables go to _output/ via `make ms`, `make supp`, `make ms-supp`,
+# `make all`. Track the artefacts so collaborators can grab them without
+# rendering; ignore intermediate per-source build artefacts.
+_output/*
+!_output/*.pdf
+!_output/*.docx
+!_output/*.html
 
-# Per-chapter standalone outputs (when running `make ms` / `make supplement`)
-# and any other rendered HTML/DOCX from individual qmd files.
+# Per-source intermediates inside ms/: rendered output before move to _output/,
+# knitr cache, figure dirs, .quarto scratch.
 ms/*.html
 ms/*.docx
+ms/*.pdf
+ms/.quarto/
 *_files/
 
 # Quarto build caches
 *_cache/
 bib/tdt_problems.bib.before-bbt-migration.20260507
+index.log
+.gitignore
+ms/ms.log
+ms/supplement.tex
+ms/ms_supp.tex
