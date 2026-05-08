@@ -1,0 +1,16 @@
+# Metadata applied only when rendering supplement.qmd as a standalone
+# document (supp.{html,docx,pdf}). Keeping these settings here — instead of
+# in supplement.qmd's own YAML — prevents them from leaking into the
+# combined ms_supp.qmd render via Quarto's `{{< include >}}` shortcode,
+# which can pull in metadata from included files.
+#
+# For the combined document, supplement-section figures/tables/equations
+# get their "S" prefix via a Lua filter (see `_extensions/supp-labels/`)
+# scoped to a `:::{.supp-section}` div.
+crossref:
+  fig-prefix: "Figure S"
+  tbl-prefix: "Table S"
+  eq-prefix: "Equation S"
+  fig-title: "Figure S"
+  tbl-title: "Table S"
+  space-before-numbering: false
