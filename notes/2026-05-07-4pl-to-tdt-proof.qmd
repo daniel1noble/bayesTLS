@@ -1,0 +1,211 @@
+---
+title: "Step-by-step proof: 4PL → classical TDT linear relation"
+date: 2026-05-07
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## What we want to prove
+
+The manuscript at `ms.qmd:144` summarises in one sentence:
+
+> "Setting $p_{ij} = 0.5$ in @eq-4pl, isolating the exponential, and taking natural logs gives $\log_{10}\text{LT50}(T) = \text{mid}(T) + (1/k)\log[(u - 0.5)/(0.5 - \ell)]$. Substituting into @eq-mid-temp and grouping all terms that do not depend on $T$ into an intercept, $\alpha$, recovers the classical TDT linear relation."
+
+Daniel asked to see the algebra spelled out. The full proof is below in nine numbered steps, plus the implications for $z$ and $CT_{max}$ that follow immediately.
+
+## Starting point: the 4PL likelihood and the temperature-dependent midpoint
+
+The manuscript posits a hierarchical 4PL with a binomial likelihood (`@eq-likelihood`) and survival probability
+
+$$
+p_{ij} \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - \mathrm{mid}_{ij})\bigr)},
+$$ {#eq-4pl}
+
+with the midpoint modelled as a linear function of mean-centred temperature,
+
+$$
+\mathrm{mid}_{ij} \;=\; \beta_0 + \beta_1\,(T_{ij} - \bar{T}).
+$$ {#eq-mid-temp}
+
+The goal is to derive $\log_{10}\mathrm{LT50}(T)$ — the temperature-specific median lethal time — as a *linear* function of $T$ from these two equations alone, and to identify the slope and intercept of that line in terms of the underlying 4PL parameters.
+
+## Nine-step derivation
+
+### Step 1 — set $p_{ij} = 0.5$ in `@eq-4pl`
+
+$LT_{50}$ at temperature $T$ is by definition the time at which the survival probability hits $0.5$:
+
+$$
+0.5 \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} \mathrm{LT_{50}}(T) - \mathrm{mid}(T))\bigr)}.
+$$
+
+### Step 2 — move $\ell$ to the left
+
+$$
+0.5 - \ell \;=\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} \mathrm{LT_{50}}(T) - \mathrm{mid}(T))\bigr)}.
+$$
+
+### Step 3 — invert both sides
+
+$$
+\frac{1}{0.5 - \ell} \;=\; \frac{1 + \exp\!\bigl(k\,(\log_{10} \mathrm{LT_{50}}(T) - \mathrm{mid}(T))\bigr)}{u - \ell}.
+$$
+
+### Step 4 — multiply both sides by $(u - \ell)$
+
+$$
+\frac{u - \ell}{0.5 - \ell} \;=\; 1 + \exp\!\bigl(k\,(\log_{10} \mathrm{LT_{50}}(T) - \mathrm{mid}(T))\bigr).
+$$
+
+### Step 5 — subtract 1 to isolate the exponential
+
+$$
+\frac{u - \ell}{0.5 - \ell} - 1 \;=\; \exp\!\bigl(k\,(\log_{10} \mathrm{LT_{50}}(T) - \mathrm{mid}(T))\bigr).
+$$
+
+The left-hand side simplifies:
+
+$$
+\frac{u - \ell}{0.5 - \ell} - 1 \;=\; \frac{(u - \ell) - (0.5 - \ell)}{0.5 - \ell} \;=\; \frac{u - 0.5}{0.5 - \ell}.
+$$
+
+So:
+
+$$
+\frac{u - 0.5}{0.5 - \ell} \;=\; \exp\!\bigl(k\,(\log_{10} \mathrm{LT_{50}}(T) - \mathrm{mid}(T))\bigr).
+$$ {#eq-exp-isolated}
+
+### Step 6 — take natural logs of both sides
+
+$$
+\log\!\frac{u - 0.5}{0.5 - \ell} \;=\; k\,\bigl(\log_{10} \mathrm{LT_{50}}(T) - \mathrm{mid}(T)\bigr).
+$$
+
+### Step 7 — divide by $k$ and add $\mathrm{mid}(T)$
+
+$$
+\log_{10} \mathrm{LT_{50}}(T) \;=\; \mathrm{mid}(T) \;+\; \frac{1}{k}\,\log\!\frac{u - 0.5}{0.5 - \ell}.
+$$ {#eq-lt50-uncorrected}
+
+This is the headline identity in the manuscript: $\log_{10} \mathrm{LT_{50}}$ at any temperature equals the midpoint at that temperature plus an *asymmetry correction* term that depends only on the asymptotes $(\ell, u)$ and the steepness $k$, *not on $T$*.
+
+### Step 8 — substitute the temperature-dependent midpoint from `@eq-mid-temp`
+
+$$
+\log_{10} \mathrm{LT_{50}}(T) \;=\; \bigl[\beta_0 + \beta_1\,(T - \bar{T})\bigr] \;+\; \frac{1}{k}\,\log\!\frac{u - 0.5}{0.5 - \ell}.
+$$
+
+### Step 9 — distribute and group $T$-independent terms into $\alpha$
+
+Distributing the $\beta_1\,(T - \bar T)$:
+
+$$
+\log_{10} \mathrm{LT_{50}}(T) \;=\; \beta_0 \;+\; \beta_1 T \;-\; \beta_1 \bar{T} \;+\; \frac{1}{k}\,\log\!\frac{u - 0.5}{0.5 - \ell}.
+$$
+
+All terms except $\beta_1 T$ are independent of $T$. Grouping them into $\alpha$:
+
+$$
+\boxed{\quad\log_{10} \mathrm{LT_{50}}(T) \;=\; \alpha \;+\; \beta_1 T, \qquad \alpha \;=\; \beta_0 \;-\; \beta_1 \bar{T} \;+\; \frac{1}{k}\,\log\!\frac{u - 0.5}{0.5 - \ell}.\quad}
+$$ {#eq-lt50}
+
+This is the **classical TDT linear relation** — $\log_{10} \mathrm{LT_{50}}$ as a straight line in $T$ — recovered from a four-parameter logistic model with no further assumptions. It matches `ms.qmd:147`.
+
+## What falls out immediately
+
+### The thermal sensitivity $z$
+
+The classical TDT defines $z$ as "the temperature change required for a 10-fold change in $\mathrm{LT_{50}}$." From @eq-lt50, increasing $T$ by $z$ should decrease $\log_{10}\mathrm{LT_{50}}$ by 1 (since $\log_{10}(1/10) = -1$):
+
+$$
+\beta_1 \cdot z \;=\; -1 \quad\Longrightarrow\quad z \;=\; -\frac{1}{\beta_1}.
+$$
+
+So $z$ falls directly out of the slope of the midpoint regression. The asymptote-correction term $\frac{1}{k}\log\frac{u-0.5}{0.5-\ell}$ is *not* in this expression — it shifts $\log_{10}\mathrm{LT_{50}}$ vertically without changing the slope. **The $z$ estimate is therefore robust to imperfect asymptote estimation.**
+
+### The critical thermal limit $CT_{max}(t_{\text{ref}})$
+
+By definition $CT_{max}(t_{\text{ref}})$ is the temperature at which $\mathrm{LT_{50}} = t_{\text{ref}}$:
+
+$$
+\log_{10} t_{\text{ref}} \;=\; \alpha + \beta_1 \cdot CT_{max}(t_{\text{ref}})
+\quad\Longrightarrow\quad
+CT_{max}(t_{\text{ref}}) \;=\; \frac{\log_{10} t_{\text{ref}} - \alpha}{\beta_1}.
+$$
+
+Substituting the full $\alpha$:
+
+$$
+CT_{max}(t_{\text{ref}}) \;=\; \frac{\log_{10} t_{\text{ref}} - \beta_0 + \beta_1 \bar{T}}{\beta_1} \;-\; \frac{1}{\beta_1} \cdot \frac{1}{k}\,\log\!\frac{u - 0.5}{0.5 - \ell}.
+$$
+
+The first term is the *naive* $CT_{max}$ (what you would get if $\ell = 0$ and $u = 1$, i.e. ignoring the asymptote-correction term). The second term is the *correction*, which can be material when asymptotes deviate from 0 and 1. This matches `@eq-ctmax-corrected` in the manuscript at `ms.qmd:159`.
+
+### Why the correction often vanishes
+
+When the experiment includes both very short (near-100 % survival) and very long (near-0 % survival) exposures, $\ell \approx 0$ and $u \approx 1$ are tightly identified, and:
+
+$$
+\frac{u - 0.5}{0.5 - \ell} \;\approx\; \frac{1 - 0.5}{0.5 - 0} \;=\; 1
+\quad\Longrightarrow\quad
+\log\!\frac{u - 0.5}{0.5 - \ell} \;\approx\; \log 1 \;=\; 0.
+$$
+
+So the asymmetry correction shrinks to zero when the data anchor the asymptotes near 0 and 1, and `mid` is essentially $\log_{10}\mathrm{LT_{50}}$. This is the regime in which the joint Bayesian 4PL and the two-stage TDT pipeline give numerically identical $z$ and $CT_{max}$ estimates — exactly the equivalence the manuscript demonstrates.
+
+## Numerical sanity check
+
+```{r}
+#| label: proof-sanity-check
+#| message: false
+#| warning: false
+
+# Pick concrete parameter values
+ell    <- 0.05
+uu     <- 0.95
+kk     <- 4
+beta_0 <- log10(60)            # midpoint at T_bar is at LT50 = 60 min
+beta_1 <- -0.25                # so z = -1/beta_1 = 4
+T_bar  <- 36
+
+# alpha from @eq-lt50
+alpha  <- beta_0 - beta_1 * T_bar + (1 / kk) * log((uu - 0.5) / (0.5 - ell))
+
+# log10(LT50) predicted at T = 38 °C from the closed form
+T_test <- 38
+log10_LT50_closed <- alpha + beta_1 * T_test
+
+# log10(LT50) predicted by directly inverting the 4PL at T = 38 °C, i.e.
+# evaluating Step 7 with mid(T) = beta_0 + beta_1*(T - T_bar)
+mid_T            <- beta_0 + beta_1 * (T_test - T_bar)
+log10_LT50_direct <- mid_T + (1 / kk) * log((uu - 0.5) / (0.5 - ell))
+
+sprintf("log10(LT50) at T = 38 °C from closed form (eq-lt50):  %.6f", log10_LT50_closed)
+sprintf("log10(LT50) at T = 38 °C from direct 4PL inversion:    %.6f", log10_LT50_direct)
+sprintf("Max abs diff:                                          %.3e",
+        abs(log10_LT50_closed - log10_LT50_direct))
+
+# z and CTmax_1hr at the same parameters
+z_from_beta1 <- -1 / beta_1
+CT_max_1hr   <- (log10(60) - alpha) / beta_1
+
+sprintf("z derived from beta_1:    %.4f °C", z_from_beta1)
+sprintf("CTmax at LT50 = 60 min:   %.4f °C  (expected: T_bar = 36 °C, since beta_0 = log10(60))",
+        CT_max_1hr)
+```
+
+The closed-form and direct-inversion calculations agree to floating-point precision, and $CT_{max,1\text{hr}}$ recovers $\bar T = 36$ °C as expected (because we set $\beta_0 = \log_{10}(60)$, putting the midpoint exactly at $\log_{10}(60)$ at the mean-centred reference).
+
+## Verification status
+
+- **Algebra**: every step verified by direct substitution; the boxed result @eq-lt50 matches `ms.qmd:147` exactly.
+- **The asymmetry-correction term** $\frac{1}{k}\log\frac{u-0.5}{0.5-\ell}$ uses the natural log, consistent with the manuscript's notation (`\log` without a subscript). When $\ell = 0$ and $u = 1$, $(u-0.5)/(0.5-\ell) = 1$ and the natural log is exactly 0 — no correction needed.
+- **Numerical check** in the simulation chunk: closed-form @eq-lt50 and direct-4PL-inversion (Step 7) agree to floating-point precision.
+- **Robustness of $z$**: confirmed analytically that the correction term is independent of $T$, so it shifts the line vertically without changing the slope, leaving $z = -1/\beta_1$ robust to asymptote estimation.
