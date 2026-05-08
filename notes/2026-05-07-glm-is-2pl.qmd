@@ -1,0 +1,175 @@
+---
+title: "Standard binomial logistic regression is a 2PL — `mid` is implicit, not free"
+date: 2026-05-07
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Question
+
+A standard binomial regression (logistic model) `glm(cbind(dead, alive) ~ log10(time), family = binomial)` only fits a slope and intercept. So is that a 2PL? And if so, where does the curve midpoint `mid` live, given it's not estimated as a separate parameter?
+
+## Short answer
+
+**Yes — a binomial GLM with logit link and one continuous predictor is a 2PL** (2-parameter logistic). The asymptotes $\ell=0$ and $u=1$ are pinned by the link function, leaving only the steepness $k$ and midpoint $\text{mid}$ free. They are encoded in the slope and intercept of the linear predictor as
+
+$$
+k \;=\; -\beta_1, \qquad \mathrm{mid} \;=\; -\beta_0 / \beta_1.
+$$ {#eq-2pl-mapping}
+
+So `mid` is *not* a separate free parameter in the GLM — it's the ratio of intercept to negative slope, hiding in the same fit.
+
+## Algebra: 4PL ↔ logit GLM
+
+Start with the 4PL with asymptotes pinned at $(\ell, u) = (0, 1)$:
+
+$$
+S(\tau) \;=\; \frac{1}{1 + \exp\!\big(k\,(\log_{10}\tau - \mathrm{mid})\big)}.
+$$
+
+Apply the logit transformation:
+
+$$
+\mathrm{logit}(S) \;=\; \log\!\frac{S}{1 - S} \;=\; -k\,(\log_{10}\tau - \mathrm{mid}) \;=\; k\,\mathrm{mid} \;-\; k\,\log_{10}\tau.
+$$
+
+This is linear in $\log_{10}\tau$. Matching to a logit-binomial GLM,
+
+$$
+\mathrm{logit}(S) \;=\; \beta_0 \;+\; \beta_1 \log_{10}\tau,
+$$
+
+gives the 2PL ↔ GLM mapping:
+
+$$
+\beta_0 \;=\; k\,\mathrm{mid}, \qquad \beta_1 \;=\; -k.
+$$
+
+Inverting:
+
+$$
+k \;=\; -\beta_1, \qquad \mathrm{mid} \;=\; -\beta_0/\beta_1.
+$$
+
+The midpoint $\mathrm{mid}$ — i.e. $\log_{10}(LT_{50})$ — falls out as the *intercept-to-slope ratio*, with a sign flip. Setting $S = 0.5$ confirms this directly: $\mathrm{logit}(0.5) = 0$, so $0 = \beta_0 + \beta_1 \cdot \mathrm{mid}$, giving $\mathrm{mid} = -\beta_0/\beta_1$.
+
+## Why GLM users don't usually think of `mid` as a parameter
+
+A GLM is fit on the linear-predictor scale: you estimate $(\beta_0, \beta_1)$, those are what `summary(fit)` reports, and `mid` doesn't appear in the output. But the curve's midpoint is fully determined the moment $(\beta_0, \beta_1)$ are estimated — it's just a derived quantity. To get $LT_{50}$ from a GLM:
+
+```r
+fit  <- glm(cbind(dead, alive) ~ log10(time), family = binomial(link = "logit"))
+b0   <- coef(fit)[1]
+b1   <- coef(fit)[2]
+mid  <- -b0 / b1                # log10(LT50)
+LT50 <- 10 ^ mid                # back to the time scale
+```
+
+Equivalently, the `MASS::dose.p()` function in R computes $LT_{50}$ (or any $LT_x$) from a binomial GLM fit by exactly this inversion.
+
+## When the 2PL is enough vs when you actually need the 4PL
+
+Use the **2PL (logit-binomial GLM)** when:
+
+- Baseline mortality is effectively zero — i.e. essentially every organism is alive at very short exposures.
+- No irreducible-survivor plateau — i.e. essentially all organisms eventually die under prolonged extreme heat in the assay.
+- Data span enough of the dose-response that asymptote behaviour is well-pinned by the data (you're not extrapolating into uncovered regions).
+
+Use the **full 4PL** when:
+
+- Some baseline mortality exists (handling stress, controls aren't perfect) → $u < 1$.
+- A fraction of the population is irreducibly resistant or the assay can't kill everyone in a tractable timeframe → $\ell > 0$.
+- Data are sparse near the asymptotes and the asymptote values matter for downstream quantities like $LT_{50}$ and $z$.
+
+In the manuscript's joint Bayesian 4PL, $\ell$ and $u$ are estimated parameters with priors that constrain them away from the disjoint intervals $[0, 0.49]$ and $[0.51, 1]$ respectively (`@eq-reparam`), so the model fits the asymptotes rather than pinning them. This handles real-world data where the GLM logit-binomial assumption ($\ell=0, u=1$) is too strong.
+
+## Worked simulation: GLM and 4PL recover the same $k$ and `mid`
+
+```{r}
+#| label: glm-vs-4pl-setup
+#| message: false
+#| warning: false
+
+library(ggplot2)
+library(dplyr)
+
+set.seed(20260507)
+
+# True 4PL parameters (with asymptotes 0 and 1 so the GLM is well-specified)
+ell_true <- 0
+u_true   <- 1
+k_true   <- 4
+mid_true <- log10(60)
+
+# Generate binomial data at a range of times
+time_min <- c(5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360)
+n_per    <- 50
+S_true   <- ell_true + (u_true - ell_true) / (1 + exp(k_true * (log10(time_min) - mid_true)))
+dead     <- rbinom(length(time_min), size = n_per, prob = 1 - S_true)
+alive    <- n_per - dead
+
+# Standard binomial GLM (the 2PL fit)
+fit_glm <- glm(cbind(alive, dead) ~ log10(time_min), family = binomial(link = "logit"))
+b0      <- coef(fit_glm)[1]
+b1      <- coef(fit_glm)[2]
+k_hat   <- -b1
+mid_hat <- -b0 / b1
+
+sprintf("True parameters:    k = %.3f, mid = %.3f (LT50 = %.1f min)",
+        k_true, mid_true, 10^mid_true)
+sprintf("GLM-recovered:      k = %.3f, mid = %.3f (LT50 = %.1f min)",
+        k_hat, mid_hat, 10^mid_hat)
+sprintf("β0 = %.3f, β1 = %.3f", b0, b1)
+```
+
+```{r}
+#| label: fig-glm-vs-truth
+#| fig-cap: "Simulated binomial-survival data (points) at 12 time points, with the true 4PL curve (solid) and the GLM 2PL fit (dashed). The two curves are visually indistinguishable when the asymptotes are 0 and 1 — confirming the 2PL is the GLM with $\\ell, u$ pinned, and `mid` recoverable from $-\\beta_0/\\beta_1$."
+#| fig-height: 3.0
+
+t_grid <- 10 ^ seq(log10(2), log10(500), length.out = 200)
+S_truth <- ell_true + (u_true - ell_true) / (1 + exp(k_true * (log10(t_grid) - mid_true)))
+S_glm   <- 1 / (1 + exp(-(b0 + b1 * log10(t_grid))))
+
+df_curves <- tibble(
+  time_min = rep(t_grid, 2),
+  S        = c(S_truth, S_glm),
+  Curve    = rep(c("Truth (4PL with l=0, u=1)", "GLM 2PL fit"), each = length(t_grid))
+)
+df_data <- tibble(time_min = time_min,
+                  S = alive / (alive + dead))
+
+ggplot() +
+  geom_line(data = df_curves,
+            aes(time_min, S, colour = Curve, linetype = Curve),
+            linewidth = 1.2, alpha = 0.7) +
+  geom_point(data = df_data, aes(time_min, S),
+             colour = "black", size = 2) +
+  scale_x_log10() +
+  scale_linetype_manual(values = c("dashed", "solid")) +
+  labs(x = "Time (min, log scale)", y = "Survival fraction") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+The simulation confirms the algebraic mapping: the 2PL GLM recovers the true $k$ and `mid` (and hence $LT_{50}$) of a 4PL with $\ell=0, u=1$ to within sampling noise.
+
+## Implications for the manuscript
+
+- The two-stage TDT pipeline as practised in the literature [@rezende_landscapes_2014; @jorgensen_drosophila_2019] typically uses a 2PL (logit binomial GLM) at Stage 1 to extract $LT_{50}$ at each temperature, then OLS regresses $\log_{10}(LT_{50})$ on $T$ at Stage 2 to extract $z$ and $CT_{max}$. The 2PL is hardcoded into Stage 1 — there's no asymptote estimation; the model assumes $\ell = 0, u = 1$.
+- The joint Bayesian 4PL relaxes this assumption by estimating $\ell$ and $u$ as parameters with informative priors. When the data are consistent with $\ell \approx 0, u \approx 1$, the 4PL collapses to a 2PL and the two methods give identical $k$, `mid`, $LT_{50}$. When the data show baseline mortality or irreducible survivors, the 4PL captures it; the 2PL would force the curve to pass through 0 and 1 and produce biased $LT_{50}$ estimates.
+- This is one specific instance of the general "the joint Bayesian 4PL collapses to the two-stage approach in benign data, but adds robustness in non-benign data" framing that runs through the manuscript.
+
+## Verification status
+
+- **Algebra (`@eq-2pl-mapping`)**: standard derivation, verified by direct substitution in both directions.
+- **Simulation**: built fresh in this note; recovers true parameters within sampling noise. Reproducible from the code chunk.
+- **`MASS::dose.p()` claim**: standard R function for $LT_x$ extraction from a binomial GLM; widely documented (e.g. Venables & Ripley *Modern Applied Statistics with S*).
+- **Manuscript framing**: the two-stage Stage 1 typically uses the 2PL or a Probit equivalent — not formally cited yet here, but the framing is consistent with @jorgensen_drosophila_2019's description of their Stage 1 fits and standard practice in the TDT literature.
