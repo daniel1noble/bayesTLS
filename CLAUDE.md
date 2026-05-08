@@ -83,11 +83,34 @@ You are a biostatistician and biologist with strong mathematical and coding skil
 - Write `ms.qmd` and `supplement.qmd` alongside the analysis, not at the end.
 - Every number, table, and figure in the text is produced by code — none typed by hand:
   - Inline numbers use `` `r object$field` `` with clearly labelled objects. No magic numbers.
-  - Tables: `flextable` by default.
+  - Tables: `tinytable` by default (works across HTML/DOCX/PDF without nested-float issues).
   - Figures: `ggplot2` with a consistent project theme; export at journal-ready DPI and dimensions.
 - Code chunks in the manuscript should be short and clearly labelled. If a chunk is doing real work, it belongs as a function in `R/` and is called here.
 - All citations resolve to entries in `bib/`. No raw DOIs or URLs in body text.
 - Render to `.docx` using the template in `bib/templates/` when sharing drafts with collaborators.
+
+### 8a. Render architecture (no book project)
+
+Three deliverables, each in HTML, DOCX, and PDF, produced via `make`:
+
+| `make` target  | Source                             | Output                      |
+|----------------|------------------------------------|-----------------------------|
+| `make ms`      | `ms/ms.qmd`                        | `_output/ms.{html,docx,pdf}`|
+| `make supp`    | `ms/supplement.qmd`                | `_output/supp.{html,docx,pdf}` |
+| `make ms-supp` | `ms/ms_supp.qmd` (wrapper)         | `_output/ms_supp.{html,docx,pdf}` |
+| `make all`     | all of the above                   | nine outputs                |
+
+`ms/ms_supp.qmd` is a thin wrapper that uses Quarto `{{< include >}}` to combine `ms.qmd` and `supplement.qmd`. The supplement include is wrapped in `:::{.supp-section}` so the local Lua filter `ms/_extensions/supp-labels/` can apply "S" prefixes to figures/tables/equations in the supplement section only.
+
+There is **no project-level `_quarto.yml`** — each `.qmd` carries its complete YAML so renders are independent. This avoids the TOC pollution and format conflicts that book mode caused.
+
+**"S" labels for the supplement.** Standalone supp.{html,docx,pdf} get "Figure S1, Table S1, Equation S1, …" via crossref prefix overrides applied at the command line through `--metadata-file ms/_supp-overrides.yml`. The override is NOT in `supplement.qmd`'s YAML on purpose — Quarto's `{{< include >}}` shortcode leaks YAML metadata into the parent document, which would corrupt the combined `ms_supp` render. The combined PDF gets the supplement section's S labels via the Lua filter (LaTeX counter renaming). Combined HTML/DOCX use continuous numbering throughout, on the grounds that the formal "S" deliverable is the PDF.
+
+**Cross-document references.** Use plain text for cross-doc refs in standalone documents — e.g., `Equation 7 of the manuscript` rather than `@eq-S-pred`. Quarto `@`-style refs are reserved for within-document use. The combined `ms_supp` resolves cross-refs natively because both files share one render context.
+
+**Title pages.** Authors and affiliations come from YAML and are rendered via `authblk` LaTeX (set up in each .qmd's `format.pdf.include-in-header`). `ms.pdf` and `ms_supp.pdf` show title + authors+affiliations + abstract; `supp.pdf` shows title + authors+affiliations only (no abstract/keywords).
+
+**Build artefacts inside Dropbox.** This project lives in Dropbox. Build dirs (`ms/*_cache/`, `ms/*_files/`, etc.) are marked Dropbox-ignored via `xattr -w com.dropbox.ignored 1`. Run `make dropbox-ignore` once after cloning. `_output/` is intentionally NOT ignored — final artefacts should sync.
 
 ## 9. Data and ethics
 
