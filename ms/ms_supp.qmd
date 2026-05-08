@@ -1,0 +1,126 @@
+---
+title: "A flexible modelling framework for estimating thermal sensitivity across life"
+shorttitle: "Bayesian models of thermal tolerance"
+authors:
+  - name: "Daniel W.A. Noble"
+    email: daniel.noble@anu.edu.au
+    corresponding: true
+    affiliations:
+      - ref: anu
+  - name: "Pieter A. Arnold"
+    affiliations:
+      - ref: anu
+  - name: "Patrice Pottier"
+    email: patrice.pottier@bioenv.gu.se
+    affiliations:
+      - ref: gu
+affiliations:
+  - id: anu
+    name: Division of Ecology and Evolution, Research School of Biology, Australian National University
+    city: Canberra
+    country: Australia
+  - id: gu
+    name: Department of Biological and Environmental Sciences, University of Gothenburg
+    city: Gothenburg
+    country: Sweden
+abstract: |
+  1.  The thermal load sensitivity (TLS) framework is the gold standard for estimating and predicting thermal tolerance in nature, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of $\log_{10}\text{LT50}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
+
+  2. We describe a flexible Bayesian, single-stage four-parameter logistic (4PL) model for modelling the impact of temperature and time on survival and fertility. We demonstrate how such an approach can recover all the classical TDT output typical of a two-stage modelling framework — including thermal sensitivity ($z$, slopes), critical thermal limit ($CT_{max_{1hr}}$) and the heat-injury (HI) integral, which allows for one to predict thermal injury in nature under realistic exposure temperatures. Given its fully Bayesian implementation, it allows for error propagation to account for uncertainty at all stages of modelling as well as improved inferences.
+
+  3. We applied our new modelling framework to data from brown shrimp (*Crangon crangon*) and XX to demonstrate the equivalencies and benefits of such an approach.
+
+  4. We show that the classical and Bayesian frameworks are equivalent, but that the hierarchical 4PL delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, , and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.
+keywords:
+  - thermal death time
+  - tolerance landscape
+  - hierarchical Bayesian model
+  - 4-parameter logistic
+  - heat injury
+  - CTmax
+  - ectotherm
+date: today
+output-file: ms_supp
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    number-sections: true
+    embed-resources: true
+    fig-cap-location: bottom
+  docx:
+    reference-doc: ../bib/templates/template.docx
+    toc: false
+    number-sections: true
+  pdf:
+    documentclass: scrartcl
+    top-level-division: section
+    keep-tex: true
+    geometry:
+      - margin=1in
+    fontsize: 11pt
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    fig-pos: "H"
+    colorlinks: true
+    link-citations: true
+    include-in-header:
+      text: |
+        \usepackage{tabularray}
+        \usepackage{float}
+        \usepackage{graphicx}
+        \usepackage{codehigh}
+        \usepackage[normalem]{ulem}
+        \UseTblrLibrary{booktabs}
+        \UseTblrLibrary{siunitx}
+        \newcommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
+        \newcommand{\tinytableTabularrayStrikeout}[1]{\sout{#1}}
+        \NewTableCommand{\tinytableDefineColor}[3]{\definecolor{#1}{#2}{#3}}
+        % Author block: Quarto's default \author{names \and …} gives
+        % names only. We override with authblk to pin affiliations from
+        % YAML to the title page.
+        \usepackage[affil-it]{authblk}
+        \renewcommand\Authsep{, }
+        \renewcommand\Authand{, }
+        \renewcommand\Authands{, }
+        \renewcommand\Affilfont{\itshape\small}
+        \let\OldAuthor\author
+        \renewcommand{\author}[1]{}
+        \AtBeginDocument{%
+          \OldAuthor[1]{Daniel W.A. Noble\thanks{Corresponding author: \texttt{daniel.noble@anu.edu.au}}}%
+          \OldAuthor[1]{Pieter A. Arnold}%
+          \OldAuthor[2]{Patrice Pottier}%
+          \affil[1]{Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia}%
+          \affil[2]{Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden}%
+        }
+filters:
+  - supp-labels
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+crossref:
+  fig-prefix: "Figure"
+  tbl-prefix: "Table"
+  eq-prefix: "Equation"
+  fig-title: "Figure"
+  tbl-title: "Table"
+editor_options:
+  chunk_output_type: console
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: true
+---
+
+{{< include ms.qmd >}}
+
+\newpage
+
+::: {.supp-section}
+
+{{< include supplement.qmd >}}
+
+:::
