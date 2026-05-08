@@ -50,6 +50,46 @@ format:
     reference-doc: ../bib/templates/template.docx
     toc: false
     number-sections: false
+  pdf:
+    documentclass: article
+    geometry:
+      - margin=1in
+    fontsize: 11pt
+    toc: false
+    number-sections: false
+    fig-pos: "H"
+    colorlinks: true
+    link-citations: true
+    keep-tex: true
+    include-in-header:
+      text: |
+        \usepackage{tabularray}
+        \usepackage{float}
+        \usepackage{graphicx}
+        \usepackage{codehigh}
+        \usepackage[normalem]{ulem}
+        \UseTblrLibrary{booktabs}
+        \UseTblrLibrary{siunitx}
+        \newcommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
+        \newcommand{\tinytableTabularrayStrikeout}[1]{\sout{#1}}
+        \NewTableCommand{\tinytableDefineColor}[3]{\definecolor{#1}{#2}{#3}}
+        % Author block: Quarto's default \author{names \and …} gives
+        % names only. We override with authblk to pin affiliations from
+        % YAML to the title page.
+        \usepackage[affil-it]{authblk}
+        \renewcommand\Authsep{, }
+        \renewcommand\Authand{, }
+        \renewcommand\Authands{, }
+        \renewcommand\Affilfont{\itshape\small}
+        \let\OldAuthor\author
+        \renewcommand{\author}[1]{}
+        \AtBeginDocument{%
+          \OldAuthor[1]{Daniel W.A. Noble\thanks{Corresponding author: \texttt{daniel.noble@anu.edu.au}}}%
+          \OldAuthor[1]{Pieter A. Arnold}%
+          \OldAuthor[2]{Patrice Pottier}%
+          \affil[1]{Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia}%
+          \affil[2]{Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden}%
+        }
 bibliography: ../bib/tdt_problems.bib
 csl: ../bib/ecology-letters.csl
 link-citations: true
@@ -75,7 +115,7 @@ library(purrr)
 library(ggplot2)
 library(brms)
 library(posterior)
-library(flextable)
+library(tinytable)
 
 set.seed(123)
 
@@ -101,15 +141,9 @@ Thermal load sensitivity modelling, while powerful, traditionally involves a two
 
 While the two-step approach to modelling thermal sensitivity is intuitive and simple in practice it has numerous practical and statistical limitations. First, the two-step pipeline propagates uncertainty incorrectly. The $LT_{50}$ estimates are estimates with non-negligible sampling variance. Treating them as fixed inputs to the regression discards that variance which can lead to miscalibrated standard errors on the slope ($z$) and intercept ($CT_{max}$) – a known issue in the statistical literature [@carroll_measurement_2006; @burke_ipd_2017]. Second, group comparisons (between species, sexes, or life stages) inherit the miscalibrated uncertainty of the first stage. As such, differences in $z$ between groups cannot be attributed to differences in the upper asymptote, lower asymptote, or curve steepness of the dose-response curve, because all three are collapsed into a single $LT_{50}$ before the comparison is made. Third, the $LT_{50}$-extraction step collapses the within-replicate count, foreclosing hierarchical decomposition of variance across replicates, plates, populations, sexes, and life stages that could affect parameters of dose-response curves [@harrison_olre_2014; @harrison_mixed_2018; @nakagawa_santos_2012]. Fourth, the intrinsically hierarchical structure of (e.g., animals within batches and assay days) is generally ignored which can lead to pseudoreplicaton, resulting in anticonservative standard errors that affect inference. Finally, propagating uncertainty from a two-step fit into downstream predictions — such as cumulative heat injury — is rarely attempted in practice understating the credible range of extreme heat impacts in nature. 
 
-Here, we introduce a well known dose-response model, the four-parameter logistic function [@ritz_drc_2015], and discuss how it can be used to overcome many of the existing challenges of the two-step thermal load sensitivity models. We show how all the classical thermal load sensitivity parameters (*z*, $CT_{max}$) can be derived from this model, while also easily allowing for predictions of heat injury accumulation.  We develop these models within a Bayesian framework which allows for better uncertainty calibration and error propagation with complex hierarchical data structures.
+Here, we present an alternative to the two-step pipeline: a single hierarchical four-parameter logistic (4PL) model fit jointly to all temperature by duration data.  The 4PL is a flexible sigmoidal form that pairs with different sampling distributions — binomial for counts of dead or infertile individuals, time-to-event for latencies (e.g., time to knockdown), Beta for continuous proportions, or Gaussian for continuous performance measures [@ritz_drc_2015; @ritz_ecotox_2010; @nielsen_nlmm_2004; @rudemo_random_1989; @ritz_streibig_2008]. We focus on binomial outcomes for clarity, since these dominate the TLS literature [@orsted_finding_2022; @rezende_drosophila_mortality_2020; @orsted_suzukii_2024], but the derivations below apply unchanged when the likelihood is swapped. Additionally, while we use the four-parameter log-logistic form throughout for its flexibility other monotonic sigmoidal families (e.g., Weibull, log-normal) and simpler nested versions of the log-logistic (3PL, with one asymptote fixed; 2PL, with both fixed at 0 and 1) can be used within this framework [@ritz_drc_2015; @ritz_streibig_2008]. We show how all the classical thermal load sensitivity parameters (*z*, $CT_{max}$) can be derived from this single model, while also easily allowing for predictions of heat injury accumulation and survival.  We develop these models within a Bayesian framework which allows for better uncertainty calibration and error propagation with complex hierarchical data structures.
 
 # A non-linear Bayesian hierarchical model for characterizing thermal load sensitivity
-
-Here, we present an alternative to the two-step pipeline: a single hierarchical four-parameter logistic (4PL) model fit jointly to all temperature by duration data.  The 4PL is a flexible sigmoidal form that pairs with different sampling distributions — binomial for counts of dead or infertile individuals, time-to-event for latencies (e.g., time to knockdown), Beta for continuous proportions, or Gaussian for continuous performance measures [@ritz_drc_2015; @ritz_ecotox_2010; @nielsen_nlmm_2004; @rudemo_random_1989; @ritz_streibig_2008]. 
-
-We focus on binomial outcomes for clarity, since these dominate the TLS literature [@orsted_finding_2022; @rezende_drosophila_mortality_2020; @orsted_suzukii_2024], but the derivations below apply unchanged when the likelihood is swapped. Although we use the four-parameter log-logistic form throughout for its flexibility — it accommodates curves that do not saturate at 0% or 100% survival/mortality — other monotonic sigmoidal families (e.g., Weibull, log-normal) and simpler nested versions of the log-logistic (3PL, with one asymptote fixed; 2PL, with both fixed at 0 and 1) can be used within this framework [@ritz_drc_2015; @ritz_streibig_2008]; the simpler nested versions in particular simplify or eliminate the asymmetry correction derived below.
-
-Below, we describe the 4PL model, discuss the flexibility in estimating different parameters, derive the classical TLS quantities, show how the model can be used to estimate heat injury, and apply the framework to two case studies that demonstrate equivalence with the classical pipeline as well as outputs only the joint fit provides. In our case studies we highlight the power of Bayesian approaches in carrying uncertainty through to predictions and derived quantities. 
 
 ## Model specification
 
@@ -147,7 +181,7 @@ $$
 \log_{10} \text{LT50}(T) \;=\; \underbrace{\left[\beta_0 + \tfrac{1}{k}\log\!\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}\right]}_{\alpha} \;+\; \beta_1\,T,
 $$ {#eq-lt50}
 
-Note that @eq-lt50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. Without this subtraction, the intercept would estimate $\log_{10}\text{LT50}$ at the average temperature ($\bar{T}$); with it, the intercept estimates $\log_{10}\text{LT50}$ at $T = 0$°C. From @eq-lt50, the classical TLS quantities fall out directly. Thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\ell$, $u$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
+Note that @eq-lt50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. With this subtraction, the intercept estimates $\log_{10}\text{LT50}$ at the average temperature ($\bar{T}$); without it, the intercept estimates $\log_{10}\text{LT50}$ at $T = 0$°C. From @eq-lt50, the classical TLS quantities fall out directly. Thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\ell$, $u$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
 
 Importantly, the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell}$ does not depend on $T$. Instead, it shifts $\log_{10}\text{LT50}$ vertically without changing the slope. In contrast, threshold summaries are not robust in this way; when partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, the asymmetry correction must be retained — added to the naive $\log_{10}\text{LT50}$ (@eq-lt50-corrected) and subtracted, after division by the slope (to convert the vertical shift in $\log_{10}\text{LT50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
 
@@ -163,35 +197,36 @@ In practice, however, these corrections may not be needed so long as the experim
 
 # Predicting heat injury and survival under dynamic thermal environments
 
-A particularly powerful aspect of TLS models are their ability to translate dynamic temperature times series' from nature to predict heat injury (HI) accumulation [@jorgensen_unifying_2021; @orsted_suzukii_2024; @li2023; @orsted_finding_2022; @rezende_drosophila_mortality_2020]. Heat injury accumulates as the time spent at a given temperature divided by the median lethal time at that temperature, integrated across the temperature trajectory $T(i)$ as follows:
+A particularly powerful aspect of TLS models are their ability to translate dynamic temperature times series' from nature to predict heat injury (HI) accumulation and thus population survival probability [@jorgensen_unifying_2021; @orsted_suzukii_2024; @li2023; @orsted_finding_2022; @rezende_drosophila_mortality_2020]. Heat injury accumulates as the time spent at a given temperature divided by the median lethal time at that temperature, integrated across the temperature trajectory $T(i)$ as follows:
 
 $$
 HI(t) \;=\; 100 \int_0^t 10^{\,\big(T(i)\,-\,CT_{max_{1\text{hr}}}\big)/z} \,di,
 $$ {#eq-hi}
 
-where $z$ is the thermal sensitivity and $CT_{max_{1\text{hr}}}$ is the static temperature at which 50% of the population reaches the assayed endpoint after one hour of exposure. When $HI(t) = 100\%$, the cumulative dose equals one $LT_{50}$ at the 1-hour reference, predicting 50% mortality (or 50% loss of the assayed sublethal endpoint, e.g.\ fertility; @orsted_suzukii_2024). Injury accumulates only when $T(i)$ exceeds a critical temperature $T_c$ below which damage is repaired as fast as it accrues [@jorgensen_unifying_2021; @orsted_finding_2022]. Field temperature records are typically available at hourly resolution; @eq-hi is then evaluated by summing $100 \cdot 10^{(T_i - CT_{max_{1\text{hr}}})/z}$ across each hourly interval whose temperature $T_i$ exceeds $T_c$, following the implementations in @jorgensen_unifying_2021, @orsted_suzukii_2024, and @li2023. The key parameters, $*$z$ and $CT_{max_{1\text{hr}}}$, calculated from our Bayesian dose-response model can be used to calculate $HI(t)$ through time by substituting samples from the posterior distribution for each parameter into @eq-hi — propagating parameter uncertainty directly into the resulting $HI$ predictions. 
+where $z$ is the thermal sensitivity and $CT_{max_{1\text{hr}}}$ is the static temperature at which 50% of the population reaches the assayed endpoint after one hour of exposure. When $HI(t) = 100\%$, the cumulative dose equals one $LT_{50}$ at the 1-hour reference, predicting 50% mortality (or 50% loss of the assayed sublethal endpoint, e.g.\ fertility; @orsted_suzukii_2024). Injury accumulates only when $T(i)$ exceeds a critical temperature $T_c$ below which damage is repaired as fast as it accrues [@jorgensen_unifying_2021; @orsted_finding_2022]. Field temperature records are typically available at hourly resolution. @eq-hi can then be evaluated by summing $100 \cdot 10^{(T_i - CT_{max_{1\text{hr}}})/z}$ across each hourly interval whose temperature $T_i$ exceeds $T_c$, following the implementations in @jorgensen_unifying_2021, @orsted_suzukii_2024, and @li2023. To propagate uncertainty, $z$ and $CT_{max_{1\text{hr}}}$, calculated from our Bayesian dose-response model can be used to calculate $HI(t)$ through time by substituting samples from the posterior distribution for each parameter into @eq-hi. 
 
-Importantly, the Bayesian dose-response model can also be used directly to calculate survival and / or $HI$ at any survival threshold that is of interest [@rezende_drosophila_mortality_2020; @jorgensen_unifying_2021]. For example, the same posterior draws of $(\ell, u, k, m(T))$ give access to any percentile $LT_x$ (the time at which $x\%$ of the population reaches the assayed endpoint) as follows:
-
-$$
-\log_{10} LT_x(T) \;=\; m(T) \;-\; \frac{1}{k}\,\ln\!\frac{u - x/100}{x/100 - \ell},
-$$ {#eq-LTx}
-
-Substituting $LT_x(T)$ for $LT_{50}(T)$ in the HI equation returns $HI_x$ anchored at any survival threshold of interest — $LT_{10}$ for the onset of mortality (useful for sublethal early-warning predictions) or $LT_{90}$ for catastrophic loss (useful for population-collapse thresholds), with the same posterior uncertainty propagation as @eq-hi. 
-
-A more natural prediction to make would be instead to predict population-level survival probability over time through accumulated damage. This has the advantage of allowing for a more natural connection to population dynamical modelling [@noble2026]. Concretely, given any temperature trajectory $T(i)$, we accumulate the *effective exposure time* at a chosen reference temperature $T_{\text{ref}}$ — adding more effective time at hot temperatures and less at cool ones, in proportion to the TDT scaling factor $10^{(T(i) - T_{\text{ref}})/z}$,
+A more natural prediction to make may instead be the population-level survival probability over time. This has the advantage of allowing for a direct connection to population dynamical models which typically use survival, growth and fecundity as vital rates for population-level predictions [@noble2026]. To predict survival, we can calculate the *effective exposure time* at a chosen reference temperature $T_{\text{ref}}$. More effective time is accumulated at hot temperatures and less at cool ones, in proportion to the scaling factor $10^{(T(i) - T_{\text{ref}})/z}$,
 
 $$
 \tau_{\text{eff}}(t) \;=\; \int_0^t 10^{\,(T(i) - T_{\text{ref}})/z}\,di,
 $$ {#eq-tau-eff}
 
-and evaluate the 4PL surface once at the cumulative effective exposure to obtain the predicted population-level survival fraction at every point in the trajectory:
+We can then evaluate the 4PL surface once at the cumulative effective exposure to obtain the predicted population-level survival fraction at every point in the trajectory:
 
 $$
 S_{\text{pred}}(t) \;=\; S\!\big(T_{\text{ref}},\, \tau_{\text{eff}}(t)\big).
 $$ {#eq-S-pred}
 
-Here $S(T, \tau)$ is the 4PL survival surface fitted by the dose-response model, so $S_{\text{pred}}(t)$ is the survival probability for an organism held at *constant* $T_{\text{ref}}$ after exposure duration $\tau_{\text{eff}}(t)$. The per-time posterior survival can be fed directly into demographic and population-dynamical models, where per-period mortality enters as a hazard term [@noble2026].
+Here $S(T, \tau)$ is the survival surface fitted by the dose-response model, so $S_{\text{pred}}(t)$ is the survival probability for an organism held at *constant* $T_{\text{ref}}$ after exposure duration $\tau_{\text{eff}}(t)$. 
+
+If calculating $HI$, it is important to realise that the Bayesian dose-response model can also be used directly to calculate $HI$ at any survival threshold that is of interest [@rezende_drosophila_mortality_2020; @jorgensen_unifying_2021]. For example, the same posterior samples of $(\ell, u, k, m(T))$ give access to any percentile $LT_x$ (the time at which $x\%$ of the population reaches the assayed endpoint) as follows:
+
+$$
+\log_{10} LT_x(T) \;=\; m(T) \;-\; \frac{1}{k}\,\ln\!\frac{u - x/100}{x/100 - \ell},
+$$ {#eq-LTx}
+
+Substituting $LT_x(T)$ for $LT_{50}(T)$ in the HI equation returns $HI_x$ for any survival threshold of interest. For example, relaxing x with 0.10 (i.e., $LT_{10}$) can be used to calculate the onset of early levels of mortality which maybe good for risk management or $LT_{90}$ which might be more useful for understanding population-collapse thresholds. In each case, uncertainty in any predictions can always be presented alongside population-level averages or medians. 
+
 
 # Application of Bayesian dose-response models to the TLS framework
 We used a four-parameter logistic function to model the impact of temperature and duration (hours/minutes) on survival probability thermal sensitivity, estimate $CT_{max1h}$
