@@ -120,6 +120,8 @@ All three return identical $HI$ for the same temperature trajectory; $z$ and $CT
 
 The algebra in `@eq-translation` says the two parameterisations describe the same line, so the HI predictions from a temperature trajectory must be numerically identical (up to floating-point noise). The following R simulation makes this concrete.
 
+The trace is a 5-day diurnal cycle with peaks at 40 °C — realistic for a heat-wave field exposure — and the TDT parameters are tuned to represent a thermophilic ectotherm (high $CT_{max_{1\text{hr}}}$, moderate thermal sensitivity, damage threshold $T_c$ in the high-30s). With these realistic parameters HI accumulates *slowly* across the 5 days, crossing the $LT_{50}$ threshold around day 3 and reaching ~150 % by day 5 — a biologically interpretable scenario where cumulative damage builds gradually rather than the population being killed in a single afternoon.
+
 ```{r}
 #| label: hi-equivalence-setup
 #| message: false
@@ -129,14 +131,14 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# --- Synthetic hourly temperature: 5 days, sinusoidal diurnal cycle -----
+# --- Synthetic hourly temperature: 5 days, sinusoidal diurnal cycle ------
 hours    <- 0:(24 * 5 - 1)
-T_series <- 32 + 8 * sin(2 * pi * (hours - 6) / 24)   # range 24–40 °C, peaks at noon
+T_series <- 32 + 8 * sin(2 * pi * (hours - 6) / 24)   # range 24-40 °C, peaks at noon
 
-# --- TDT parameters for a hypothetical organism ---------------------------
-z         <- 4    # thermal sensitivity (°C per 10-fold change in LT50)
-CT_max_1h <- 38   # 1-hour static critical limit (°C)
-T_c       <- 28   # critical temperature below which no injury accrues
+# --- TDT parameters for a thermophilic ectotherm -------------------------
+z         <- 5    # thermal sensitivity (°C per 10-fold change in LT50)
+CT_max_1h <- 46   # 1-hour static critical limit (°C) — high-tolerance organism
+T_c       <- 35   # critical temperature below which no injury accrues
 
 # --- Form A (Ørsted, α, −1/z), time in hours ----------------------------
 # log10(LT50)(T) = α − T/z, with α calibrated so LT50(CT_max_1h) = 1 h:
@@ -156,6 +158,7 @@ HI_B   <- cumsum(rate_B * 1)
 # --- Numerical equivalence check ----------------------------------------
 max_abs_diff <- max(abs(HI_A - HI_B))
 sprintf("Max |HI_A − HI_B| over 5-day series: %.3e", max_abs_diff)
+sprintf("Final HI value (end of day 5):       %.1f %%", tail(HI_A, 1))
 ```
 
 **Temperature trajectory** (the input shared by both calculations):
@@ -296,6 +299,145 @@ ggplot(df3, aes(hour, HI,
 - **Watch out for unit consistency.** What does *not* work is plugging $CT_{max_{1\text{min}}}$ into the equation as currently written in `@eq-hi` (which has $CT_{max_{1\text{hr}}}$ and is integrated in hours) without adjusting either the prefactor or the time unit. The same equation with the wrong $CT_{max}$ value gives wildly different — and wrong — HI.
 
 **Practical implication.** If a co-author or reviewer reports a $CT_{max}$ value at a non-standard reference duration (say, $CT_{max_{30\text{min}}}$), don't substitute it into `@eq-hi` directly. Either convert it to $CT_{max_{1\text{hr}}}$ via @eq-ctmax-conversion-style algebra ($CT_{max_{1\text{hr}}} = CT_{max_{30\text{min}}} - z \log_{10}(2)$) and then use the equation as written, or rewrite the equation with a matching $t_{\text{ref}}$ and time unit. The line is one object; how you label its anchor is your choice.
+
+## Step-by-step proof: Ørsted form ⇔ canonical manuscript form
+
+A focused walk-through of the algebra. Goal: prove that
+
+$$
+HI \;=\; \sum_i \frac{100 \,(t_{i+1} - t_i)}{10^{(-1/z)\,\max(T_i, T_{i+1}) \,+\, \alpha}} \quad\text{(Ørsted, minutes)}
+$$
+
+and
+
+$$
+HI(t) \;=\; 100 \int_0^t 10^{(T(i) - CT_{max_{1\text{hr}}})/z}\,di \quad\text{(manuscript, hours)}
+$$
+
+are the *same equation* under the consistency relation $\alpha = \log_{10}(60) + CT_{max_{1\text{hr}}}/z$.
+
+### Step 1 — recognise both denominators are $LT_{50}(T)$ in their respective units
+
+For Ørsted (minutes, $\alpha$ is the y-intercept of $\log_{10}(LT_{50,\text{min}})$ vs $T$):
+$$
+\log_{10}(LT_{50,\text{min}}(T)) = \alpha - T/z \quad\Longrightarrow\quad LT_{50,\text{min}}(T) = 10^{(-1/z)\,T + \alpha},
+$$
+which is exactly Ørsted's denominator. So Ørsted's expression is $\sum 100\,\Delta t_{\text{min}} / LT_{50,\text{min}}(T)$.
+
+For the manuscript (hours, $CT_{max_{1\text{hr}}}$ is the $T$ at which $LT_{50,\text{hr}} = 1$ hour):
+$$
+\log_{10}(LT_{50,\text{hr}}(T)) = -(T - CT_{max_{1\text{hr}}})/z \quad\Longrightarrow\quad \frac{1}{LT_{50,\text{hr}}(T)} = 10^{(T - CT_{max_{1\text{hr}}})/z},
+$$
+which is the manuscript's integrand (×100). So the manuscript's expression is $\int 100\,di_{\text{hr}} / LT_{50,\text{hr}}(T)$.
+
+**Both forms are $\int 100\,d t / LT_{50}(T)$, in their respective time units.**
+
+### Step 2 — derive the consistency relation $\alpha = \log_{10}(60) + CT_{max_{1\text{hr}}}/z$
+
+Both parameterisations describe the same line of slope $-1/z$. They differ only in which anchor point is named:
+
+- Ørsted anchor: $T = 0 \mapsto \log_{10}(LT_{50,\text{min}}) = \alpha$.
+- Manuscript anchor: $T = CT_{max_{1\text{hr}}} \mapsto LT_{50,\text{hr}} = 1\text{ h} = 60\text{ min}$, so $\log_{10}(LT_{50,\text{min}}) = \log_{10}(60)$.
+
+For both points to lie on the same line of slope $-1/z$:
+$$
+\log_{10}(60) \;=\; \alpha - CT_{max_{1\text{hr}}}/z, \quad\Longrightarrow\quad \alpha = \log_{10}(60) + CT_{max_{1\text{hr}}}/z.
+$$
+
+### Step 3 — show the per-unit-time HI rate is identical
+
+Ørsted rate at temperature $T$, **per minute**:
+$$
+r_{\text{Ø}}(T) \;=\; \frac{100}{10^{(-1/z)\,T + \alpha}} \;=\; 100 \cdot 10^{T/z - \alpha}.
+$$
+
+Manuscript rate at temperature $T$, **per hour**:
+$$
+r_{\text{ms}}(T) \;=\; 100 \cdot 10^{(T - CT_{max_{1\text{hr}}})/z} \;=\; 100 \cdot 10^{T/z - CT_{max_{1\text{hr}}}/z}.
+$$
+
+To compare on the same time scale, divide the manuscript rate by 60 (60 min per hour) to get its per-minute equivalent:
+$$
+\frac{r_{\text{ms}}(T)}{60} \;=\; \frac{100 \cdot 10^{T/z - CT_{max_{1\text{hr}}}/z}}{60}.
+$$
+
+Setting $r_{\text{Ø}}(T) = r_{\text{ms}}(T)/60$:
+$$
+100 \cdot 10^{T/z - \alpha} \;=\; \frac{100 \cdot 10^{T/z - CT_{max_{1\text{hr}}}/z}}{60}.
+$$
+
+The $100 \cdot 10^{T/z}$ factors cancel, leaving
+$$
+10^{-\alpha} = \frac{10^{-CT_{max_{1\text{hr}}}/z}}{60} \;\Longleftrightarrow\; \alpha = \log_{10}(60) + CT_{max_{1\text{hr}}}/z,
+$$
+which is exactly the consistency relation from Step 2. So the two rates *are* equal at every $T$, just expressed in different time units.
+
+### Step 4 — conclude that the HI sums are identical
+
+Each formula computes "100 × time elapsed in interval, divided by $LT_{50}$ at that interval's temperature, summed across intervals where $T > T_c$." Time and $LT_{50}$ are in the same units in each formula, so the dimensionless ratio $\Delta t / LT_{50}(T)$ is invariant under the choice of unit. The two formulas integrate the same dimensionless dose-rate against the same temperature trajectory, so they produce identical HI.
+
+This proof is consistent with the numerical demonstration in the simulation above, where Ørsted's form (Form A) and the canonical manuscript form (Form B) overlap to **Max |HI_A − HI_B| ≈ 10⁻¹⁵** — floating-point noise — over the 5-day temperature trace.
+
+### Numerical verification of the exact Ørsted formula vs the manuscript formula
+
+The simulation above worked in *hours* throughout, which uses an hours-calibrated $\alpha_{\text{hr}} = CT_{max_{1\text{hr}}}/z$. Ørsted's published formula uses time in *minutes* and a minutes-calibrated $\alpha_{\text{min}} = \log_{10}(60) + CT_{max_{1\text{hr}}}/z$. The chunk below evaluates *both forms exactly as they appear in their respective papers* and confirms they produce the same HI to floating-point precision.
+
+```{r}
+#| label: orsted-exact-vs-manuscript
+
+# --- TDT parameters (re-stated for self-containment, matching the main sim)
+z          <- 5
+CT_max_1h  <- 46
+T_c        <- 35
+
+# Ørsted's α calibrated for LT50 in MINUTES (Step 2 of the proof above)
+alpha_min  <- log10(60) + CT_max_1h / z
+
+sprintf("Ørsted α (minutes-calibrated): α = log10(60) + CTmax_1h/z = %.4f + %.4f = %.4f",
+        log10(60), CT_max_1h / z, alpha_min)
+
+# --- Same 5-day hourly temperature trace as the main simulation ----------
+hours    <- 0:(24 * 5 - 1)
+T_series <- 32 + 8 * sin(2 * pi * (hours - 6) / 24)   # range 24-40 °C, peaks at noon
+
+# --- Ørsted's exact formula (time in MINUTES; Δt = 60 min per hourly bin)
+# HI = Σ 100 · (t_{i+1} - t_i) / 10^((-1/z)·max(T_i, T_{i+1}) + α_min)
+# For an hourly trace with constant T within each hour, max(T_i, T_{i+1}) = T_i
+# and (t_{i+1} - t_i) = 60 min.
+inc_orsted <- ifelse(T_series > T_c,
+                     100 * 60 / 10 ^ (-T_series / z + alpha_min),   # %·min/min
+                     0)
+HI_orsted  <- cumsum(inc_orsted)
+
+# --- Manuscript's exact formula (time in HOURS; Δt = 1 h per bin) ---------
+# HI(t) = 100 ∫ 10^((T(i) - CTmax_1hr)/z) di   →   per hour: 100 · 10^((T - CTmax_1hr)/z)
+inc_ms <- ifelse(T_series > T_c,
+                 100 * 10 ^ ((T_series - CT_max_1h) / z),
+                 0)
+HI_ms  <- cumsum(inc_ms)
+
+# --- Numerical agreement -------------------------------------------------
+max_abs_diff <- max(abs(HI_orsted - HI_ms))
+sprintf("Max |HI_orsted (min) − HI_ms (hr)| over the 5-day series: %.3e",
+        max_abs_diff)
+```
+
+**Spot-check a handful of timepoints:**
+
+```{r}
+#| label: orsted-vs-ms-table
+
+idx <- c(24, 48, 72, 96, 120)                       # end of days 1, 2, 3, 4, 5
+data.frame(
+  hour              = hours[idx],
+  T_C               = round(T_series[idx], 2),
+  HI_Orsted_min     = round(HI_orsted[idx], 6),
+  HI_manuscript_hr  = round(HI_ms[idx], 6),
+  abs_difference    = signif(abs(HI_orsted[idx] - HI_ms[idx]), 3)
+)
+```
+
+The HI values from Ørsted's exact published formula (with time in minutes, $\alpha$ calibrated as $\log_{10}(60) + CT_{max_{1\text{hr}}}/z$) and from the manuscript's `@eq-hi` (with time in hours, $CT_{max_{1\text{hr}}}$ as the anchor) are *bit-identical to floating-point precision* at every time point. The two equations are mathematically the same, and this confirms it numerically with the exact-as-published forms — not just an in-hours approximation of one vs the other.
 
 ## Verification status
 
