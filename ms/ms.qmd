@@ -113,7 +113,7 @@ Below, we describe the 4PL model, discuss the flexibility in estimating differen
 
 ## Model specification
 
-Let $y_{ij}$ denote the number of survivors out of $n_{ij}$ individuals in trial $j$ exposed for time $t_{ij}$ (minutes) at assay temperature $T_{ij}$ (°C). We model the counts directly with a binomial likelihood (but a beta-binomial likelihood function can also be used and controls for overdispersion):
+Assuming we have mortality data for different times and temperatures, let $y_{ij}$ denote the number of survivors out of $n_{ij}$ individuals in trial $j$ exposed for time $t_{ij}$ (e.g., minutes) at assay temperature $T_{ij}$ (°C). We can model the counts directly with a binomial likelihood (but a beta-binomial likelihood function can also be used and controls for overdispersion):
 
 $$
 y_{ij} \mid n_{ij}, p_{ij} \;\sim\; \text{Binomial}(n_{ij},\, p_{ij}),
@@ -131,7 +131,7 @@ The key parameters of @eq-4pl (i.e., $\ell$,$u$, $k$, $mid_{ij}$), can be fit as
 
 # Deriving key thermal load sensitivity parameters 
 
-The TLS framework is elegant in that it derives metrics with clear biological interpretation that can be compared across populations and species (e.g., *z*, $CT_{max_{1hr}}$). Here, we show that we can derived these same metrics directly from our logistic function. 
+The TLS framework is elegant in that it derives metrics with clear biological interpretation that can be compared across populations and species (e.g., *z*, $CT_{max_{1hr}}$). Here, we show that we can derived these same metrics directly from @eq-4pl. 
 
 As indicated above, parameters can be fit to model changes in the mean of any of the four parameters in @eq-4pl. We can easily derive thermal sensitivity (*z*) and $CT_{max_{1hr}}$ by modelling the effect of temperature on midpoints as follows:
 
@@ -147,7 +147,7 @@ $$
 \log_{10} \text{LT50}(T) \;=\; \underbrace{\left[\beta_0 + \tfrac{1}{k}\log\!\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}\right]}_{\alpha} \;+\; \beta_1\,T,
 $$ {#eq-lt50}
 
-Note that @eq-lt50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. Without this subtraction, the intercept would estimate $\log_{10}\text{LT50}$ at the average temperature ($\bar{T}$); with it, the intercept estimates $\log_{10}\text{LT50}$ at $T = 0$°C, matching the uncentred parameterisation used in classical TLS regressions. From @eq-lt50, the classical TLS quantities fall out directly: thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\ell$, $u$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
+Note that @eq-lt50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. Without this subtraction, the intercept would estimate $\log_{10}\text{LT50}$ at the average temperature ($\bar{T}$); with it, the intercept estimates $\log_{10}\text{LT50}$ at $T = 0$°C. From @eq-lt50, the classical TLS quantities fall out directly. Thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\ell$, $u$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
 
 Importantly, the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell}$ does not depend on $T$. Instead, it shifts $\log_{10}\text{LT50}$ vertically without changing the slope. In contrast, threshold summaries are not robust in this way; when partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, the asymmetry correction must be retained — added to the naive $\log_{10}\text{LT50}$ (@eq-lt50-corrected) and subtracted, after division by the slope (to convert the vertical shift in $\log_{10}\text{LT50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
 
@@ -159,7 +159,7 @@ $$
 CT_{max}(t_\text{ref}) \;=\; \underbrace{\frac{\log_{10}t_\text{ref} - \beta_0 + \beta_1\bar{T}}{\beta_1}}_{\text{naive estimate}} \;-\; \underbrace{\tfrac{1}{\beta_1}\cdot\tfrac{1}{k}\log\!\tfrac{u - 0.5}{0.5 - \ell}}_{\text{correction}}.
 $$ {#eq-ctmax-corrected}
 
-In practice, however, these corrections may not often be needed so long as the experimental design includes treatments that span the full mortality range — some producing near-100% survival and others near-0% — which anchors $\ell$ and $u$ tightly near 1 and 0 and makes the correction term effectively zero. When this is the case, $\log_{10}\text{LT50}$ and $CT_{max}$ can be read directly from the naive forms in @eq-lt50-corrected and @eq-ctmax-corrected. Computing both the naive and corrected estimates and comparing them is a useful sensitivity check for whether the correction is needed in any given dataset.
+In practice, however, these corrections may not be needed so long as the experimental design includes treatments that span the full mortality range which anchors $\ell$ and $u$ tightly near 1 and 0 and makes the correction term effectively zero. When this is the case, $\log_{10}\text{LT50}$ and $CT_{max}$ can be read directly from the naive forms in @eq-lt50-corrected and @eq-ctmax-corrected. Regardless, we recommend using the correction factor as a safeguard. However, computing both the naive and corrected estimates and comparing them is a useful sensitivity check for whether the correction is needed in any given dataset.
 
 # Predicting heat injury and survival under dynamic thermal environments
 
@@ -191,7 +191,7 @@ $$
 S_{\text{pred}}(t) \;=\; S\!\big(T_{\text{ref}},\, \tau_{\text{eff}}(t)\big).
 $$ {#eq-S-pred}
 
-Here $S(T, \tau)$ is the 4PL survival surface fitted by the dose-response model, so $S_{\text{pred}}(t)$ is the survival probability for an organism held at *constant* $T_{\text{ref}}$ after exposure duration $\tau_{\text{eff}}(t)$. The per-time posterior survival is the quantity that feeds directly into demographic and population-dynamical models, where per-period mortality enters as a hazard term [@noble2026].
+Here $S(T, \tau)$ is the 4PL survival surface fitted by the dose-response model, so $S_{\text{pred}}(t)$ is the survival probability for an organism held at *constant* $T_{\text{ref}}$ after exposure duration $\tau_{\text{eff}}(t)$. The per-time posterior survival can be fed directly into demographic and population-dynamical models, where per-period mortality enters as a hazard term [@noble2026].
 
 # Application of Bayesian dose-response models to the TLS framework
 We used a four-parameter logistic function to model the impact of temperature and duration (hours/minutes) on survival probability thermal sensitivity, estimate $CT_{max1h}$

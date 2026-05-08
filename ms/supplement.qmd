@@ -1226,9 +1226,179 @@ adjusted_z_ext |>
 
 Compared to the simple-model $z = `r round(true_z, 2)`$ °C (where shape parameters did not vary with temperature), this adjusted $z$ is `r round(median(adjusted_z_ext$z_mean), 2)` °C with 95% credible interval [`r round(quantile(adjusted_z_ext$z_mean, 0.025), 2)`, `r round(quantile(adjusted_z_ext$z_mean, 0.975), 2)`] °C — slightly lower in point estimate, with the simple-model value sitting near the upper end of the credible interval. With stronger T-dependence in $k$ and $u$, the bent $\log_{10}\text{LT50}(T)$ curve would have more variation across temperatures and the two summaries would diverge more.
 
-### Heat injury accumulation
+### Heat injury accumulation and survival under a realistic field trace
 
-A particularly powerful aspect of TLS models are their ability to translate dynamic temperature times series' from nature and predict how such temperature leads to heat injury (HI) accumlation towards a threshold (e.g., $LT_{50}$) [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. Heat Injury is calculated as:
+A particularly powerful aspect of TLS models is their ability to translate dynamic temperature time-series from nature and predict how such temperatures lead to heat injury (HI) accumulation towards a threshold (e.g., $LT_{50}$) [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint Bayesian 4PL fit gives us not just point estimates of $z$ and $CT_{max_{1hr}}$ but their full joint posterior, which we can push through the HI integral to obtain a posterior distribution over the predicted HI trajectory. We can also go a step further and use the *full* 4PL surface to predict the cumulative survival fraction $S_{\text{pred}}(t)$ across the trajectory — the second-step prediction discussed in the manuscript at @eq-S-pred.
+
+Below we apply both calculations to a realistic 5-day field temperature trace using the posterior of `fit_bb` derived in @sec-joint-derive.
+
+#### A simulated temperature profile across 5 days
+
+To mimic conditions a moderately heat-tolerant ectotherm might experience over a temperate-zone late-spring period, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12°C overnight to a midday peak of 24°C. The critical temperature $T_c$ — below which damage is repaired as fast as it accrues and so there is no net damage increase [@orsted_finding_2022; @jorgensen_unifying_2021] — is set to 20°C. Injury accumulates only during the warmer part of each day. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C and $z \approx `r round(true_z, 1)`$°C (from `true_params` in @sec-sim-step1), so the daily peak at 24°C remains 8°C below the 1-hour critical limit — moderate, sub-lethal heat stress that builds cumulatively across days.
+
+```{r hi-trace}
+#| label: hi-trace
+#| echo: true
+
+# Hourly temperature trace: 5 days, sinusoidal diurnal cycle
+hi_hours  <- 0:(24 * 5 - 1)
+hi_T_traj <- 18 + 6 * sin(2 * pi * (hi_hours - 6) / 24)   # range 12-24 °C
+hi_T_c    <- 20                                            # damage threshold (°C)
+```
+
+::: {#suppfig-hi-trace}
+
+```{r hi-trace-plot}
+#| label: plot-hi-trace
+#| fig-width: 7
+#| fig-height: 2.5
+
+ggplot2::ggplot(tibble::tibble(hour = hi_hours, T = hi_T_traj),
+                ggplot2::aes(hour, T)) + ylim(10, 45) +
+  ggplot2::geom_line(colour = "darkred", linewidth = 0.6) +
+  ggplot2::geom_hline(yintercept = hi_T_c, linetype = "dashed", colour = "grey40") +
+  ggplot2::geom_hline(yintercept = true_CTmax, linetype = "dotted", colour = "grey40") +
+  ggplot2::annotate("text", x = max(hi_hours), y = hi_T_c, label = "T_c",
+                    hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
+  ggplot2::annotate("text", x = max(hi_hours), y = true_CTmax, label = "CTmax_1hr",
+                    hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
+  ggplot2::labs(x = "Hour", y = "Temperature (°C)") +
+  ggplot2::theme_classic()
+```
+
+5-day diurnal temperature trace used for the heat-injury and survival predictions. The dashed line is the damage-accumulation threshold $T_c = 20$ °C; the dotted line is the simulated organism's $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C — well above the daily peaks, so accumulation is sub-lethal and gradual.
+:::
+
+#### HI accumulation with full posterior uncertainty
+
+For each posterior sample of $(z, CT_{max_{1hr}})$, we evaluate the HI integral (@eq-hi) across the temperature trace. Each sample produces one possible HI($t$) trajectory. The posterior median and 95% credible interval at every hour will then summarise the prediction with full parameter uncertainty.
+
+```{r hi-posterior}
+#| label: hi-posterior
+#| echo: true
+
+# Subsample 500 posterior draws from the beta-binomial fit for speed.
+set.seed(20260507)
+hi_draws <- posterior::as_draws_df(fit_bb) |>
+  dplyr::mutate(
+    z         = -1 / b_mid_T_c,
+    alpha     = b_mid_Intercept +
+                  (1 / b_k_Intercept) *
+                  log((b_u_Intercept - 0.5) / (0.5 - b_ell_Intercept)) -
+                  b_mid_T_c * true_params$T_bar,
+    CTmax_1hr = (log10(60) - alpha) / b_mid_T_c
+  ) |>
+  dplyr::slice_sample(n = 500)
+
+# Build the (n_hours × n_draws) rate matrix and cumsum down each column.
+n_h <- length(hi_T_traj)
+n_d <- nrow(hi_draws)
+
+T_mat  <- matrix(hi_T_traj, n_h, n_d)
+CT_mat <- matrix(hi_draws$CTmax_1hr, n_h, n_d, byrow = TRUE)
+z_mat  <- matrix(hi_draws$z, n_h, n_d, byrow = TRUE)
+
+# Calculate the rates of HI accumulation from our posterior samples of z and CTmax for the given temperature time series
+rates              <- 100 * 10 ^ ((T_mat - CT_mat) / z_mat)
+rates[T_mat <= hi_T_c] <- 0
+HI_traj            <- apply(rates, 2, cumsum)
+HI_traj[HI_traj > 200] <- 200 # Cap at 200% because survival can't go beyond that.
+
+# Create a summary table that takes the median and 95% CI across the posterior samples for each hour. 
+hi_summary <- tibble::tibble(
+  hour   = hi_hours,
+  median = apply(HI_traj, 1, median),
+  lower  = apply(HI_traj, 1, quantile, probs = 0.025),
+  upper  = apply(HI_traj, 1, quantile, probs = 0.975)
+)
+```
+
+::: {#suppfig-hi-accumulation}
+
+```{r hi-accumulation-plot}
+#| label: plot-hi-accumulation
+#| fig-width: 7
+#| fig-height: 3.5
+
+ggplot2::ggplot(hi_summary, ggplot2::aes(hour, median)) +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper),
+                       alpha = 0.2, fill = "darkred") +
+  ggplot2::geom_line(linewidth = 0.8, colour = "darkred") +
+  ggplot2::geom_hline(yintercept = 100, linetype = "dashed", colour = "grey40") +
+  ggplot2::annotate("text", x = max(hi_hours), y = 100,
+                    label = "LT50 threshold (HI = 100%)",
+                    hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
+  ggplot2::labs(x = "Hour", y = "Cumulative HI (%)") +
+  ggplot2::theme_classic()
+```
+
+Posterior cumulative heat-injury trajectory under the 5-day field trace. Solid line is the posterior median across 500 draws of $(z, CT_{max_{1hr}})$ from `fit_bb`; shaded band is the 95% credible interval. The dashed line marks the $LT_{50}$ threshold ($HI = 100\%$), which the population is predicted to cross by day `r ceiling(min(which(hi_summary$median >= 100))/24)`.
+:::
+
+By the end of day 5 the posterior median HI is `r round(tail(hi_summary$median, 1), 0)`% (95% CI: `r round(tail(hi_summary$lower, 1), 0)`% to `r round(tail(hi_summary$upper, 1), 0)`%) — i.e., the population has accumulated roughly `r round(tail(hi_summary$median, 1)/100, 1)` $\times$ the lethal dose under this exposure.
+
+#### Predicting survival from the full 4PL surface
+
+The HI integral compresses the trajectory into a single threshold-crossing summary. The joint Bayesian 4PL fit also lets us predict the *full* survival fraction $S_{\text{pred}}(t)$ at every time point along the trace, by accumulating effective exposure time at a reference temperature and reading survival off the dose-response surface at the cumulative effective time (@eq-S-pred). We use $T_{\text{ref}} = \bar T = `r true_params$T_bar`$ °C — the grand-mean temperature of the original assays — so the surface is evaluated at the most data-rich part of the dose-response.
+
+```{r s-pred-posterior}
+#| label: s-pred-posterior
+#| echo: true
+
+T_ref <- true_params$T_bar
+
+# For each draw, accumulate effective minutes at T_ref, then evaluate the 4PL.
+S_traj <- matrix(0, n_h, n_d)
+for (d in seq_len(n_d)) {
+  z_d     <- hi_draws$z[d]
+  ell_d   <- hi_draws$b_ell_Intercept[d]
+  u_d     <- hi_draws$b_u_Intercept[d]
+  k_d     <- hi_draws$b_k_Intercept[d]
+  beta0_d <- hi_draws$b_mid_Intercept[d]   # midpoint at T_bar (in log10-min)
+
+  # Effective-time increment in MINUTES per hourly bin at T_ref = T_bar.
+  inc_min     <- ifelse(hi_T_traj > hi_T_c,
+                        60 * 10 ^ ((hi_T_traj - T_ref) / z_d),
+                        0)
+  tau_eff_min <- cumsum(inc_min)
+
+  # 4PL surface evaluated at (T_ref, tau_eff). Note that tau_eff_min can be 0, and log10(0)is infinity so we used .Machine$double.eps to identify and replace any zeros with a very small number 2.22x10^-16 to avoid conversion problems
+  log10_tau   <- log10(pmax(tau_eff_min, .Machine$double.eps))
+  S_traj[, d] <- ell_d + (u_d - ell_d) /
+                  (1 + exp(k_d * (log10_tau - beta0_d)))
+}
+
+S_summary <- tibble::tibble(
+  hour   = hi_hours,
+  median = apply(S_traj, 1, median),
+  lower  = apply(S_traj, 1, quantile, probs = 0.025),
+  upper  = apply(S_traj, 1, quantile, probs = 0.975)
+)
+```
+
+::: {#suppfig-survival-pred}
+
+```{r s-pred-plot}
+#| label: plot-s-pred
+#| fig-width: 7
+#| fig-height: 3.5
+
+ggplot2::ggplot(S_summary, ggplot2::aes(hour, median)) +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper),
+                       alpha = 0.2, fill = "steelblue") +
+  ggplot2::geom_line(linewidth = 0.8, colour = "steelblue") +
+  ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
+  ggplot2::annotate("text", x = max(hi_hours), y = 0.5,
+                    label = "LT50 (S = 0.5)",
+                    hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
+  ggplot2::labs(x = "Hour", y = "Predicted survival fraction") +
+  ggplot2::theme_classic()
+```
+
+Posterior predicted population-level survival fraction under the 5-day field trace, computed from the model (@eq-S-pred). Solid line is the posterior median across 500 draws of $(\ell, u, k, \beta_0, \beta_1)$ from `fit_bb`; shaded band is the 95% credible interval. The dashed line marks 50% survival, the threshold the HI integral compresses into a single crossing time.
+:::
+
+By the end of day 5 the posterior median predicted survival is `r round(tail(S_summary$median, 1), 2)` (95% CI: `r round(tail(S_summary$lower, 1), 2)` to `r round(tail(S_summary$upper, 1), 2)`). The two predictions tell consistent stories: $S_{\text{pred}}(t)$ falls through 0.5 at the same time that $HI(t)$ rises through 100 %, but $S_{\text{pred}}(t)$ provides the entire cumulative survival curve. Survival can then be used directly for population-dynamical models, which has been suggsted by @noble2026.
 
 
 
