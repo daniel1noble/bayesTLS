@@ -6,46 +6,67 @@
 #   supp     ms/supplement.qmd  → _output/supp.{html,docx,pdf}    (supplement only)
 #   ms-supp  ms/ms_supp.qmd     → _output/ms_supp.{html,docx,pdf} (combined ms + supp)
 #
-# `ms_supp.qmd` is a thin wrapper that uses Quarto `{{< include >}}` to pull in
+# `ms_supp.qmd` is a thin wrapper that uses Quarto `{{< include >}}` to combine
 # the manuscript and the supplement. The supplement section is wrapped in
 # `:::{.supp-section}` so the local Lua filter `ms/_extensions/supp-labels/`
-# applies "S" prefixes to figure/table/equation numbering in that section only.
+# applies "S" prefixes to figure/table/equation numbers in that section only.
 #
 # There is intentionally NO project-level `_quarto.yml`. Each .qmd carries its
 # own complete YAML, so renders are fully independent.
 #
-# Dropbox: this project lives inside Dropbox. To avoid sync conflicts during
-# rendering, intermediate output goes to `$(TMPDIR)`, which is marked
-# `com.dropbox.ignored=1`. Final outputs are then moved to `$(OUTDIR)/`,
-# which IS synced. Run `make dropbox-ignore` once after cloning to apply
-# the xattr to all build dirs.
+# ---------------------------------------------------------------------------
+# Dropbox: this project lives inside a Dropbox-synced directory. Quarto's
+# render produces several intermediate files (`*.tex`, `*.log`, `*_files/`,
+# `*_cache/`, the .pdf itself) alongside the source. When Dropbox syncs
+# those files mid-render, it produces "conflicted copy" duplicates.
+#
+# To prevent that entirely, the render is done OUTSIDE Dropbox in
+# $(BUILDROOT) (default: ~/Library/Caches/tls-render). Sources are rsync'd
+# in, `bib/` is symlinked, and only the final output is copied back into
+# the Dropbox-synced project's `_output/`. Build caches persist in
+# $(BUILDROOT) across renders — a clean of the project does not invalidate
+# them. Run `make build-clean` to wipe build caches.
+# ---------------------------------------------------------------------------
 
-OUTDIR := _output
-TMPDIR := _tmp
+OUTDIR    := _output
+BUILDROOT := $(HOME)/Library/Caches/tls-render
+BUILD_MS  := $(BUILDROOT)/ms
 
-.PHONY: all clean dropbox-ignore \
+.PHONY: all clean build-clean \
         ms supp ms-supp \
         ms-html ms-docx ms-pdf \
         supp-html supp-docx supp-pdf \
-        ms-supp-html ms-supp-docx ms-supp-pdf
+        ms-supp-html ms-supp-docx ms-supp-pdf \
+        sync-sources
 
 all: ms supp ms-supp
 
-# Render <source.qmd> to <format> with output filename <basename.ext>,
-# directing Quarto's intermediate write to $(TMPDIR) (Dropbox-ignored), then
-# move to $(OUTDIR)/.
+# Sync sources to BUILDROOT (excluding outputs and caches that are
+# specific to the build dir). The `bib/` directory is symlinked so that
+# qmd files using relative paths like `../bib/tdt_problems.bib` resolve
+# correctly. Output and intermediate files (.pdf, .tex, .log, *_files,
+# *_cache) inside ms/ are NOT copied — those are produced anew (or read
+# from the build dir's own caches).
+sync-sources:
+	@mkdir -p $(BUILD_MS) $(OUTDIR)
+	rsync -a --delete \
+	  --exclude '*.pdf' --exclude '*.html' --exclude '*.docx' \
+	  --exclude '*.tex' --exclude '*.log' \
+	  --exclude '*_files/' --exclude '*_cache/' --exclude '.quarto/' \
+	  ms/ $(BUILD_MS)/
+	@ln -sfn $(abspath bib) $(BUILDROOT)/bib
+
+# Render <source.qmd> to <format> with output filename <basename.ext>.
+# All work happens in $(BUILD_MS); only the final artefact is copied to
+# the project's $(OUTDIR).
 # Explicit --output is needed for ms_supp.qmd because supplement.qmd's
 # `output-file: supp` YAML leaks through the {{< include >}} shortcode and
 # would otherwise name the combined doc "supp".
 # $(4) is an optional --metadata-file argument for supp targets only.
 define RENDER
-	mkdir -p $(OUTDIR) $(TMPDIR)
-	@xattr -w com.dropbox.ignored 1 $(TMPDIR) 2>/dev/null || true
-	quarto render $(1) --to $(2) --output $(3) --output-dir $(abspath $(TMPDIR)) $(4)
-	mv $(TMPDIR)/$(3) $(OUTDIR)/$(3)
-	@if [ -d $(TMPDIR)/$(basename $(notdir $(3)))_files ]; then \
-	  rm -rf $(TMPDIR)/$(basename $(notdir $(3)))_files; \
-	fi
+	$(MAKE) sync-sources
+	cd $(BUILD_MS) && quarto render $(notdir $(1)) --to $(2) --output $(3) $(4)
+	cp $(BUILD_MS)/$(3) $(OUTDIR)/$(3)
 endef
 
 # Standalone supp targets need crossref prefix overrides for HTML/DOCX/PDF
@@ -72,17 +93,15 @@ ms-supp-docx: ; $(call RENDER,ms/ms_supp.qmd,docx,ms_supp.docx)
 ms-supp-pdf:  ; $(call RENDER,ms/ms_supp.qmd,pdf,ms_supp.pdf)
 
 # ---- maintenance ----------------------------------------------------------
-clean:
-	rm -rf $(OUTDIR) $(TMPDIR) ms/*_files ms/*_cache ms/.quarto ms/*.tex ms/*.log
 
-# Tell Dropbox to skip syncing build artefacts. Run once after cloning.
-# `_output/` is intentionally NOT included — final outputs should sync.
-dropbox-ignore:
-	@mkdir -p $(TMPDIR)
-	@for d in $(TMPDIR) ms/ms_cache ms/supplement_cache ms/ms_supp_cache \
-	         ms/ms_files ms/supplement_files ms/ms_supp_files \
-	         ms/.quarto; do \
-	  if [ -e "$$d" ]; then \
-	    xattr -w com.dropbox.ignored 1 "$$d" && echo "ignored: $$d"; \
-	  fi; \
-	done
+# Clean project-side outputs only. Build caches in $(BUILDROOT) are kept
+# so the next render can reuse them.
+clean:
+	rm -rf $(OUTDIR)
+	@find ms -maxdepth 1 \( -name '*.pdf' -o -name '*.html' -o -name '*.docx' \
+	  -o -name '*.tex' -o -name '*.log' \) -delete 2>/dev/null || true
+	@find . -maxdepth 2 -name "*conflicted copy*" -delete 2>/dev/null || true
+
+# Wipe the entire out-of-tree build directory (caches and intermediates).
+build-clean:
+	rm -rf $(BUILDROOT)
