@@ -63,19 +63,11 @@ format:
     keep-tex: true
     include-in-header:
       text: |
-        \usepackage{tabularray}
-        \usepackage{float}
-        \usepackage{graphicx}
-        \usepackage{codehigh}
-        \usepackage[normalem]{ulem}
-        \UseTblrLibrary{booktabs}
-        \UseTblrLibrary{siunitx}
-        \newcommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
-        \newcommand{\tinytableTabularrayStrikeout}[1]{\sout{#1}}
-        \NewTableCommand{\tinytableDefineColor}[3]{\definecolor{#1}{#2}{#3}}
         % Author block: Quarto's default \author{names \and …} gives
         % names only. We override with authblk to pin affiliations from
-        % YAML to the title page.
+        % YAML to the title page. (tinytable injects its own LaTeX
+        % preamble automatically when chunks execute, so we don't repeat
+        % its packages here.)
         \usepackage[affil-it]{authblk}
         \renewcommand\Authsep{, }
         \renewcommand\Authand{, }
