@@ -1,0 +1,11 @@
+# Metadata applied only when rendering supplement.qmd to PDF. The
+# supp-labels Lua filter (in `_extensions/supp-labels/`) renames LaTeX
+# counters so figure/table/equation NUMBERS print as "S1, S2, …", and
+# we leave the crossref prefix at the LaTeX default ("Figure",
+# "Table", "Equation") — the result is captions like "Figure S1" with
+# a single non-breaking space (visually a normal space).
+#
+# We can't combine this with `fig-prefix: "Figure S"` (as in the HTML
+# override file) because that would produce "Figure S S1" — a double S.
+filters:
+  - supp-labels

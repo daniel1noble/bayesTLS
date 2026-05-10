@@ -1,16 +1,19 @@
-# Metadata applied only when rendering supplement.qmd as a standalone
-# document (supp.{html,docx,pdf}). Keeping these settings here — instead of
-# in supplement.qmd's own YAML — prevents them from leaking into the
-# combined ms_supp.qmd render via Quarto's `{{< include >}}` shortcode,
-# which can pull in metadata from included files.
+# Metadata applied via --metadata-file when rendering supplement.qmd to
+# HTML or DOCX. Gives figures/tables/equations "S" prefixes via Quarto's
+# native crossref overrides.
 #
-# For the combined document, supplement-section figures/tables/equations
-# get their "S" prefix via a Lua filter (see `_extensions/supp-labels/`)
-# scoped to a `:::{.supp-section}` div.
+# Quarto inserts a non-breaking space between the prefix and the number
+# ("Figure S<nbsp>1"); the Makefile's `strip-supp-nbsp-html` step
+# post-processes the rendered HTML to remove that nbsp. The DOCX render
+# still has the nbsp, but it visually reads as a normal space.
+#
+# The PDF render uses a different file (`_supp-pdf-overrides.yml`) which
+# leaves the prefix at "Figure" and uses the supp-labels Lua filter to
+# rename LaTeX counters so the number itself becomes "S1, S2, …",
+# yielding "Figure S1" naturally.
 crossref:
   fig-prefix: "Figure S"
   tbl-prefix: "Table S"
   eq-prefix: "Equation S"
   fig-title: "Figure S"
   tbl-title: "Table S"
-  space-before-numbering: false

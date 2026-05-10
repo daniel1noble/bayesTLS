@@ -65,11 +65,13 @@ define RENDER
 endef
 
 # Standalone supp targets need "S" labels for figures/tables/equations
-# (Figure S1, Table S1, …). The crossref overrides live in
-# `ms/_supp-overrides.yml` and are loaded via --metadata-file. Keeping
-# them out of supplement.qmd's own YAML keeps them from polluting the
-# manuscript render.
-SUPP_META := --metadata-file _supp-overrides.yml
+# (Figure S1, Table S1, …). HTML/DOCX use crossref prefix overrides in
+# `_supp-overrides.yml`; PDF instead uses the supp-labels Lua filter
+# (`_supp-pdf-overrides.yml`) which renames LaTeX counters so numbers
+# render as "S1, S2, …". Keeping these out of supplement.qmd's own YAML
+# keeps them from polluting any other render that includes its content.
+SUPP_META_HTMLDOCX := --metadata-file _supp-overrides.yml
+SUPP_META_PDF      := --metadata-file _supp-pdf-overrides.yml
 
 # DOCX-specific (ms only): Quarto auto-renders the YAML `abstract:` right
 # after the title, putting it BEFORE the body content. To get the order
@@ -86,9 +88,38 @@ ms-pdf:  ; $(call RENDER,ms/ms.qmd,pdf,ms.pdf)
 
 # ---- supplement.qmd (supplement) ------------------------------------------
 supp: supp-html supp-docx supp-pdf
-supp-html: ; $(call RENDER,ms/supplement.qmd,html,supp.html,$(SUPP_META))
-supp-docx: ; $(call RENDER,ms/supplement.qmd,docx,supp.docx,$(SUPP_META))
-supp-pdf:  ; $(call RENDER,ms/supplement.qmd,pdf,supp.pdf,$(SUPP_META))
+
+supp-html:
+	$(call RENDER,ms/supplement.qmd,html,supp.html,$(SUPP_META_HTMLDOCX))
+	$(call STRIP_SUPP_NBSP_HTML,$(OUTDIR)/supp.html)
+
+supp-docx:
+	$(call RENDER,ms/supplement.qmd,docx,supp.docx,$(SUPP_META_HTMLDOCX))
+	$(call STRIP_SUPP_NBSP_DOCX,$(OUTDIR)/supp.docx)
+
+supp-pdf:
+	$(call RENDER,ms/supplement.qmd,pdf,supp.pdf,$(SUPP_META_PDF))
+
+# Strip the non-breaking space (U+00A0, UTF-8 0xc2 0xa0) Quarto inserts
+# between the "Figure S" / "Table S" / "Equation S" prefix and the
+# number that follows. Pandoc's HTML writer hardcodes this nbsp; there's
+# no Quarto option to suppress it for the standard fig/tbl/eq crossref
+# types. We strip it post-render so the supplement reads "Figure S1"
+# (the standard journal supplement format), not "Figure S 1".
+define STRIP_SUPP_NBSP_HTML
+	@perl -i -pe 'BEGIN{binmode STDIN,":raw";binmode STDOUT,":raw"} \
+	  s/(Figure S)\xc2\xa0/$$1/g; \
+	  s/(Table S)\xc2\xa0/$$1/g; \
+	  s/(Equation S)\xc2\xa0/$$1/g' $(1)
+endef
+
+# DOCX is a zip; the relevant text lives in `word/document.xml`. The
+# helper script extracts, strips nbsp between "Figure S"/"Table S"/
+# "Equation S" and the digit that follows, then repackages the archive
+# in place.
+define STRIP_SUPP_NBSP_DOCX
+	@python3 scripts/strip-docx-nbsp.py $(1)
+endef
 
 # ---- maintenance ----------------------------------------------------------
 
