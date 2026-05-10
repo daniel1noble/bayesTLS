@@ -91,26 +91,25 @@ You are a biostatistician and biologist with strong mathematical and coding skil
 
 ### 8a. Render architecture (no book project)
 
-Three deliverables, each in HTML, DOCX, and PDF, produced via `make`:
+Two deliverables, each in HTML, DOCX, and PDF, produced via `make`:
 
-| `make` target  | Source                             | Output                      |
-|----------------|------------------------------------|-----------------------------|
-| `make ms`      | `ms/ms.qmd`                        | `_output/ms.{html,docx,pdf}`|
-| `make supp`    | `ms/supplement.qmd`                | `_output/supp.{html,docx,pdf}` |
-| `make ms-supp` | `ms/ms_supp.qmd` (wrapper)         | `_output/ms_supp.{html,docx,pdf}` |
-| `make all`     | all of the above                   | nine outputs                |
+| `make` target | Source              | Output                          |
+|---------------|---------------------|---------------------------------|
+| `make ms`     | `ms/ms.qmd`         | `_output/ms.{html,docx,pdf}`    |
+| `make supp`   | `ms/supplement.qmd` | `_output/supp.{html,docx,pdf}`  |
+| `make all`    | both                | six outputs                     |
 
-`ms/ms_supp.qmd` is a thin wrapper that uses Quarto `{{< include >}}` to combine `ms.qmd` and `supplement.qmd`. The supplement include is wrapped in `:::{.supp-section}` so the local Lua filter `ms/_extensions/supp-labels/` can apply "S" prefixes to figures/tables/equations in the supplement section only.
+There is **no project-level `_quarto.yml`** — each `.qmd` carries its complete YAML so renders are fully independent. This avoids the TOC pollution and format conflicts that book mode caused.
 
-There is **no project-level `_quarto.yml`** — each `.qmd` carries its complete YAML so renders are independent. This avoids the TOC pollution and format conflicts that book mode caused.
+**"S" labels for the supplement.** `supp.{html,docx,pdf}` get "Figure S1, Table S1, Equation S1, …" via crossref prefix overrides applied at the command line through `--metadata-file ms/_supp-overrides.yml`. Keeping the override out of `supplement.qmd`'s own YAML means it can't pollute future renders that pull in supplement content as content (e.g. via `{{< include >}}`).
 
-**"S" labels for the supplement.** Standalone supp.{html,docx,pdf} get "Figure S1, Table S1, Equation S1, …" via crossref prefix overrides applied at the command line through `--metadata-file ms/_supp-overrides.yml`. The override is NOT in `supplement.qmd`'s YAML on purpose — Quarto's `{{< include >}}` shortcode leaks YAML metadata into the parent document, which would corrupt the combined `ms_supp` render. The combined PDF gets the supplement section's S labels via the Lua filter (LaTeX counter renaming). Combined HTML/DOCX use continuous numbering throughout, on the grounds that the formal "S" deliverable is the PDF.
+**Cross-document references.** Use plain text for refs across the two documents — e.g., `Equation 7 of the manuscript` in supplement.qmd, or `Figure S2` in ms.qmd. Quarto `@`-style refs are reserved for within-document use only.
 
-**Cross-document references.** Use plain text for cross-doc refs in standalone documents — e.g., `Equation 7 of the manuscript` rather than `@eq-S-pred`. Quarto `@`-style refs are reserved for within-document use. The combined `ms_supp` resolves cross-refs natively because both files share one render context.
+**Title pages.** Authors and affiliations come from YAML and are rendered via `authblk` LaTeX (set up in each .qmd's `format.pdf.include-in-header`). `ms.pdf` shows title + authors+affiliations + abstract + keywords; `supp.pdf` shows title + authors+affiliations only.
 
-**Title pages.** Authors and affiliations come from YAML and are rendered via `authblk` LaTeX (set up in each .qmd's `format.pdf.include-in-header`). `ms.pdf` and `ms_supp.pdf` show title + authors+affiliations + abstract; `supp.pdf` shows title + authors+affiliations only (no abstract/keywords).
+**DOCX layout.** Quarto auto-renders the YAML `abstract:` between the title and the body content, which puts it before the author block in DOCX. To get the order title → authors+affiliations → abstract → keywords (matching the PDF), the Makefile's `ms-docx` target passes `--metadata abstract=""` `--metadata abstract-title=""` to suppress Quarto's auto-rendered abstract; the abstract content is provided instead inside a `:::{.content-visible when-format="docx"}` block in `ms.qmd`'s body.
 
-**Build artefacts inside Dropbox.** This project lives in Dropbox. Build dirs (`ms/*_cache/`, `ms/*_files/`, etc.) are marked Dropbox-ignored via `xattr -w com.dropbox.ignored 1`. Run `make dropbox-ignore` once after cloning. `_output/` is intentionally NOT ignored — final artefacts should sync.
+**Out-of-tree builds.** This project lives in Dropbox. Quarto's render produces intermediate files (`*.tex`, `*.log`, `*_files/`, `*_cache/`, the .pdf itself) alongside the source — when Dropbox syncs them mid-render it produces "conflicted copy" duplicates. To prevent that, the Makefile rsyncs sources to `~/Library/Caches/tls-render/` (outside Dropbox) and renders there; only the final artefacts are copied back into `_output/`. Build caches persist across renders. `bib/` and `output/` are symlinked into the build dir so relative-path references and brms's `file_refit = "on_change"` cache work correctly.
 
 ## 9. Data and ethics
 

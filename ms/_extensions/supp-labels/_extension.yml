@@ -1,7 +1,0 @@
-title: Supp Labels
-author: Daniel Noble
-version: 1.0.0
-quarto-required: ">=1.4.0"
-contributes:
-  filters:
-    - supp-prefix.lua
