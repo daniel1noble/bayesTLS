@@ -42,11 +42,13 @@ BUILD_MS  := $(BUILDROOT)/ms
 all: ms supp ms-supp
 
 # Sync sources to BUILDROOT (excluding outputs and caches that are
-# specific to the build dir). The `bib/` directory is symlinked so that
-# qmd files using relative paths like `../bib/tdt_problems.bib` resolve
-# correctly. Output and intermediate files (.pdf, .tex, .log, *_files,
-# *_cache) inside ms/ are NOT copied — those are produced anew (or read
-# from the build dir's own caches).
+# specific to the build dir). `bib/` and `output/` are symlinked from the
+# project so that:
+#   - qmd files using `../bib/...` paths resolve correctly
+#   - `here::here("output", "models")` resolves to the project's
+#     `output/models/` directory, where brms-cached .rds fits live —
+#     otherwise brms re-fits the models every render because it can't
+#     find them in the build dir.
 sync-sources:
 	@mkdir -p $(BUILD_MS) $(OUTDIR)
 	rsync -a --delete \
@@ -55,6 +57,7 @@ sync-sources:
 	  --exclude '*_files/' --exclude '*_cache/' --exclude '.quarto/' \
 	  ms/ $(BUILD_MS)/
 	@ln -sfn $(abspath bib) $(BUILDROOT)/bib
+	@ln -sfn $(abspath output) $(BUILDROOT)/output
 
 # Render <source.qmd> to <format> with output filename <basename.ext>.
 # All work happens in $(BUILD_MS); only the final artefact is copied to
@@ -69,15 +72,33 @@ define RENDER
 	cp $(BUILD_MS)/$(3) $(OUTDIR)/$(3)
 endef
 
-# Standalone supp targets need crossref prefix overrides for HTML/DOCX/PDF
-# native S labels. Keeping them in a separate YAML (instead of supplement.qmd's
-# own YAML) prevents them from leaking into the combined ms_supp render.
+# Standalone supp targets need "S" labels for figures/tables/equations.
+# All three formats (HTML/DOCX/PDF) get them via crossref prefix overrides
+# in `_supp-overrides.yml`. The Lua filter `supp-labels` is reserved for
+# the combined ms_supp render only (where the supp section needs S labels
+# but the manuscript section must not). The override is kept out of
+# supplement.qmd's own YAML to prevent it leaking into the combined doc
+# via the `{{< include >}}` shortcode.
 SUPP_META := --metadata-file _supp-overrides.yml
+
+# DOCX-specific: Quarto auto-renders the YAML `abstract:` right after the
+# title, putting it BEFORE the body content (where our authors+affiliations
+# block lives). To get the order title → authors+affil → abstract → keywords
+# (matching the PDF), we suppress the YAML abstract for DOCX with
+# `--metadata abstract=""` and provide the abstract inside our content-visible
+# block in the body. PDF and HTML still use the YAML abstract.
+DOCX_META := --metadata abstract="" --metadata abstract-title=""
+
+# For the combined ms_supp doc: supplement.qmd's `title:` and `subtitle:`
+# leak into the wrapper's metadata via `{{< include >}}`. Override at the
+# command line so the combined doc shows the manuscript title.
+COMBINED_TITLE := A flexible modelling framework for estimating thermal sensitivity across life
+COMBINED_META  := --metadata title="$(COMBINED_TITLE)" --metadata subtitle=""
 
 # ---- ms.qmd (manuscript only) ---------------------------------------------
 ms: ms-html ms-docx ms-pdf
 ms-html: ; $(call RENDER,ms/ms.qmd,html,ms.html)
-ms-docx: ; $(call RENDER,ms/ms.qmd,docx,ms.docx)
+ms-docx: ; $(call RENDER,ms/ms.qmd,docx,ms.docx,$(DOCX_META))
 ms-pdf:  ; $(call RENDER,ms/ms.qmd,pdf,ms.pdf)
 
 # ---- supplement.qmd (supplement only) -------------------------------------
@@ -88,9 +109,9 @@ supp-pdf:  ; $(call RENDER,ms/supplement.qmd,pdf,supp.pdf,$(SUPP_META))
 
 # ---- ms_supp.qmd (combined) -----------------------------------------------
 ms-supp: ms-supp-html ms-supp-docx ms-supp-pdf
-ms-supp-html: ; $(call RENDER,ms/ms_supp.qmd,html,ms_supp.html)
-ms-supp-docx: ; $(call RENDER,ms/ms_supp.qmd,docx,ms_supp.docx)
-ms-supp-pdf:  ; $(call RENDER,ms/ms_supp.qmd,pdf,ms_supp.pdf)
+ms-supp-html: ; $(call RENDER,ms/ms_supp.qmd,html,ms_supp.html,$(COMBINED_META))
+ms-supp-docx: ; $(call RENDER,ms/ms_supp.qmd,docx,ms_supp.docx,$(DOCX_META) $(COMBINED_META))
+ms-supp-pdf:  ; $(call RENDER,ms/ms_supp.qmd,pdf,ms_supp.pdf,$(COMBINED_META))
 
 # ---- maintenance ----------------------------------------------------------
 
