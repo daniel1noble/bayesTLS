@@ -41,8 +41,9 @@ keywords:
   - ectotherm
 format:
   html:
-    toc: false
-    toc-depth: 3
+    toc: true
+    toc-depth: 4
+    toc-location: left
     number-sections: false
     embed-resources: true
     fig-cap-location: bottom
@@ -63,11 +64,16 @@ format:
     keep-tex: true
     include-in-header:
       text: |
+        % tinytable LaTeX dependencies. See supplement.qmd for rationale.
+        \usepackage{tabularray}
+        \usepackage{float}
+        \usepackage{graphicx}
+        \usepackage[normalem]{ulem}
+        \providecommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
+        \providecommand{\tinytableTabularrayStrikeout}[1]{\sout{#1}}
         % Author block: Quarto's default \author{names \and …} gives
         % names only. We override with authblk to pin affiliations from
-        % YAML to the title page. (tinytable injects its own LaTeX
-        % preamble automatically when chunks execute, so we don't repeat
-        % its packages here.)
+        % YAML to the title page.
         \usepackage[affil-it]{authblk}
         \renewcommand\Authsep{, }
         \renewcommand\Authand{, }
@@ -94,8 +100,29 @@ execute:
   cache: true
 ---
 
+::: {.content-visible when-format="docx"}
+**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Patrice Pottier**^2^
+
+^1^Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia.
+^2^Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden.
+^\*^Corresponding author: daniel.noble@anu.edu.au
+
+**Abstract**
+
+1. The thermal load sensitivity (TLS) framework is the gold standard for estimating and predicting thermal tolerance in nature, but its standard two-step pipeline — point-estimate LT50 extraction at each assay temperature followed by ordinary least squares regression of $\log_{10}\text{LT50}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
+
+2. We describe a flexible Bayesian, single-stage four-parameter logistic (4PL) model for modelling the impact of temperature and time on survival and fertility. We demonstrate how such an approach can recover all the classical TDT output typical of a two-stage modelling framework — including thermal sensitivity ($z$, slopes), critical thermal limit ($CT_{max_{1hr}}$) and the heat-injury (HI) integral, which allows for one to predict thermal injury in nature under realistic exposure temperatures. Given its fully Bayesian implementation, it allows for error propagation to account for uncertainty at all stages of modelling as well as improved inferences.
+
+3. We applied our new modelling framework to data from brown shrimp (*Crangon crangon*) and XX to demonstrate the equivalencies and benefits of such an approach.
+
+4. We show that the classical and Bayesian frameworks are equivalent, but that the hierarchical 4PL delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts, dynamic-regime predictions). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new TDT data.
+
+**Keywords:** thermal death time; tolerance landscape; hierarchical Bayesian model; 4-parameter logistic; heat injury; CTmax; ectotherm
+:::
+
 ```{r setup}
 #| label: setup
+#| cache: false
 
 # Project-wide objects loaded for inline reporting throughout the manuscript.
 # Every number, table, and figure is produced from code — no magic numbers.
@@ -108,6 +135,10 @@ library(ggplot2)
 library(brms)
 library(posterior)
 library(tinytable)
+
+# Force tinytable to register its LaTeX preamble dependencies on every
+# render. See supplement.qmd setup-supp for explanation.
+invisible(tinytable::tt(data.frame(x = 1)))
 
 set.seed(123)
 

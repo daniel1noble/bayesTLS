@@ -68,11 +68,16 @@ format:
     link-citations: true
     include-in-header:
       text: |
+        % tinytable LaTeX dependencies. See supplement.qmd for rationale.
+        \usepackage{tabularray}
+        \usepackage{float}
+        \usepackage{graphicx}
+        \usepackage[normalem]{ulem}
+        \providecommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
+        \providecommand{\tinytableTabularrayStrikeout}[1]{\sout{#1}}
         % Author block: Quarto's default \author{names \and …} gives
         % names only. We override with authblk to pin affiliations from
-        % YAML to the title page. (tinytable injects its own LaTeX
-        % preamble automatically when chunks execute, so we don't repeat
-        % its packages here.)
+        % YAML to the title page.
         \usepackage[affil-it]{authblk}
         \renewcommand\Authsep{, }
         \renewcommand\Authand{, }

@@ -53,11 +53,23 @@ format:
     link-citations: true
     include-in-header:
       text: |
+        % tinytable LaTeX dependencies. tinytable normally injects these
+        % via knitr::knit_meta_add() when its tt() chunks execute, but
+        % cache-hit renders skip that injection and the build fails with
+        % "Environment tblr undefined". Including the (idempotent)
+        % packages here makes the preamble correct in either case.
+        % `\UseTblrLibrary{siunitx}` is intentionally omitted — including
+        % it manually conflicts with tinytable's auto-inject when chunks
+        % run fresh, and our tables don't use S-aligned columns.
+        \usepackage{tabularray}
+        \usepackage{float}
+        \usepackage{graphicx}
+        \usepackage[normalem]{ulem}
+        \providecommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
+        \providecommand{\tinytableTabularrayStrikeout}[1]{\sout{#1}}
         % Author block: Quarto's default \author{names \and …} gives
         % names only. We override with authblk to pin affiliations from
-        % YAML to the title page. (tinytable injects its own LaTeX
-        % preamble automatically when chunks execute, so we don't repeat
-        % its packages here.)
+        % YAML to the title page.
         \usepackage[affil-it]{authblk}
         \renewcommand\Authsep{, }
         \renewcommand\Authand{, }
@@ -75,8 +87,6 @@ format:
 bibliography: ../bib/tdt_problems.bib
 csl: ../bib/ecology-letters.csl
 link-citations: true
-filters:
-  - supp-labels
 editor_options:
   chunk_output_type: console
 execute:
@@ -86,7 +96,13 @@ execute:
   cache: true
 ---
 
-::: {.supp-section}
+::: {.content-visible when-format="docx"}
+**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Patrice Pottier**^2^
+
+^1^Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia.
+^2^Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden.
+^\*^Corresponding author: daniel.noble@anu.edu.au
+:::
 
 ```{r setup}
 #| label: setup-supp
@@ -96,6 +112,14 @@ execute:
 # effects on subsequent renders, so library() calls in pacman::p_load() never
 # run and downstream chunks fail with "could not find function ...".
 pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, pander)
+
+# Force tinytable to register its LaTeX preamble dependencies (tabularray,
+# siunitx, etc.) on every render. Tinytable injects these via
+# knit_meta_add() when tt() is called, but if all tt() chunks are cached,
+# the side-effect doesn't fire and PDF builds fail with "Environment tblr
+# undefined". Calling tt() here (in this cache: false chunk) guarantees
+# the dependencies are always registered.
+invisible(tinytable::tt(data.frame(x = 1)))
 
 set.seed(123)
 
@@ -1448,5 +1472,3 @@ By the end of day 5 the posterior median predicted survival is `r round(tail(S_s
 
 pander::pander(sessionInfo())
 ```
-
-:::
