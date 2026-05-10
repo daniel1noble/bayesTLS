@@ -2297,9 +2297,50 @@ window.Quarto = {
 
 <body class="quarto-light">
 
-<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
-<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="ms.html"><i class="bi bi-file-word"></i>MS Word</a></li><li><a href="ms.html"><i class="bi bi-file-pdf"></i>PDF</a></li></ul></div></div>
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article toc-left">
+<div id="quarto-sidebar-toc-left" class="sidebar toc-left">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction">Introduction</a></li>
+  <li><a href="#a-non-linear-bayesian-hierarchical-model-for-characterizing-thermal-load-sensitivity" id="toc-a-non-linear-bayesian-hierarchical-model-for-characterizing-thermal-load-sensitivity" class="nav-link" data-scroll-target="#a-non-linear-bayesian-hierarchical-model-for-characterizing-thermal-load-sensitivity">A non-linear Bayesian hierarchical model for characterizing thermal load sensitivity</a>
+  <ul>
+  <li><a href="#model-specification" id="toc-model-specification" class="nav-link" data-scroll-target="#model-specification">Model specification</a></li>
+  </ul></li>
+  <li><a href="#deriving-key-thermal-load-sensitivity-parameters" id="toc-deriving-key-thermal-load-sensitivity-parameters" class="nav-link" data-scroll-target="#deriving-key-thermal-load-sensitivity-parameters">Deriving key thermal load sensitivity parameters</a></li>
+  <li><a href="#predicting-heat-injury-and-survival-under-dynamic-thermal-environments" id="toc-predicting-heat-injury-and-survival-under-dynamic-thermal-environments" class="nav-link" data-scroll-target="#predicting-heat-injury-and-survival-under-dynamic-thermal-environments">Predicting heat injury and survival under dynamic thermal environments</a></li>
+  <li><a href="#application-of-bayesian-dose-response-models-to-the-tls-framework" id="toc-application-of-bayesian-dose-response-models-to-the-tls-framework" class="nav-link" data-scroll-target="#application-of-bayesian-dose-response-models-to-the-tls-framework">Application of Bayesian dose-response models to the TLS framework</a></li>
+  <li><a href="#case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp" id="toc-case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp" class="nav-link" data-scroll-target="#case-study-1-thermal-sensitivity-estimation-across-life-stages-in-shrimp">Case Study 1: Thermal sensitivity estimation across life stages in shrimp</a>
+  <ul>
+  <li><a href="#what-the-4pl-delivers-that-the-two-step-cannot" id="toc-what-the-4pl-delivers-that-the-two-step-cannot" class="nav-link" data-scroll-target="#what-the-4pl-delivers-that-the-two-step-cannot">What the 4PL delivers that the two-step cannot</a></li>
+  </ul></li>
+  <li><a href="#worked-example-brown-shrimp-thermal-tolerance" id="toc-worked-example-brown-shrimp-thermal-tolerance" class="nav-link" data-scroll-target="#worked-example-brown-shrimp-thermal-tolerance">Worked example: brown shrimp thermal tolerance</a>
+  <ul>
+  <li><a href="#data-and-experimental-design" id="toc-data-and-experimental-design" class="nav-link" data-scroll-target="#data-and-experimental-design">Data and experimental design</a></li>
+  <li><a href="#lethal-tdt-hierarchical-4pl-on-counts" id="toc-lethal-tdt-hierarchical-4pl-on-counts" class="nav-link" data-scroll-target="#lethal-tdt-hierarchical-4pl-on-counts">Lethal TDT — hierarchical 4PL on counts</a></li>
+  <li><a href="#sublethal-time-to-death" id="toc-sublethal-time-to-death" class="nav-link" data-scroll-target="#sublethal-time-to-death">Sublethal time-to-death</a></li>
+  <li><a href="#dynamic-ctmax-across-ramping-rates" id="toc-dynamic-ctmax-across-ramping-rates" class="nav-link" data-scroll-target="#dynamic-ctmax-across-ramping-rates">Dynamic CTmax across ramping rates</a></li>
+  <li><a href="#reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation" id="toc-reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation" class="nav-link" data-scroll-target="#reconciling-the-three-endpoints-via-the-jørgensen-ramping-equation">Reconciling the three endpoints via the Jørgensen ramping equation</a></li>
+  <li><a href="#field-temperature-heat-injury-projections-under-warming-scenarios" id="toc-field-temperature-heat-injury-projections-under-warming-scenarios" class="nav-link" data-scroll-target="#field-temperature-heat-injury-projections-under-warming-scenarios">Field-temperature heat-injury projections under warming scenarios</a></li>
+  </ul></li>
+  <li><a href="#discussion" id="toc-discussion" class="nav-link" data-scroll-target="#discussion">Discussion</a>
+  <ul>
+  <li><a href="#what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default" id="toc-what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default" class="nav-link" data-scroll-target="#what-changes-for-the-field-if-the-hierarchical-4pl-becomes-the-default">What changes for the field if the hierarchical 4PL becomes the default</a></li>
+  <li><a href="#limits-of-the-present-analysis" id="toc-limits-of-the-present-analysis" class="nav-link" data-scroll-target="#limits-of-the-present-analysis">Limits of the present analysis</a></li>
+  <li><a href="#recommendations-for-primary-studies-and-meta-analyses" id="toc-recommendations-for-primary-studies-and-meta-analyses" class="nav-link" data-scroll-target="#recommendations-for-primary-studies-and-meta-analyses">Recommendations for primary studies and meta-analyses</a></li>
+  </ul></li>
+  <li><a href="#conclusions" id="toc-conclusions" class="nav-link" data-scroll-target="#conclusions">Conclusions</a></li>
+  <li><a href="#acknowledgements" id="toc-acknowledgements" class="nav-link" data-scroll-target="#acknowledgements">Acknowledgements</a></li>
+  <li><a href="#author-contributions" id="toc-author-contributions" class="nav-link" data-scroll-target="#author-contributions">Author contributions</a></li>
+  <li><a href="#data-and-code-availability" id="toc-data-and-code-availability" class="nav-link" data-scroll-target="#data-and-code-availability">Data and code availability</a></li>
+  <li><a href="#conflict-of-interest" id="toc-conflict-of-interest" class="nav-link" data-scroll-target="#conflict-of-interest">Conflict of interest</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">References</a></li>
+  </ul>
+<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="ms.html"><i class="bi bi-file-word"></i>MS Word</a></li><li><a href="ms.html"><i class="bi bi-file-pdf"></i>PDF</a></li></ul></div></nav>
+</div>
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
+</div>
 <main class="content" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">

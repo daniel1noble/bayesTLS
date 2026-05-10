@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-05-09">
+<meta name="dcterms.date" content="2026-05-10">
 
 <title>Supplementary Information</title>
 <style>
@@ -2334,8 +2334,52 @@ window.Quarto = {
 
 <div id="quarto-content" class="page-columns page-rows-contents page-layout-article toc-left">
 <div id="quarto-sidebar-toc-left" class="sidebar toc-left">
-  
-<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="supp.html"><i class="bi bi-file-word"></i>MS Word</a></li><li><a href="supp.html"><i class="bi bi-file-pdf"></i>PDF</a></li></ul></div></div>
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#a-tutorial-with-simulations" id="toc-a-tutorial-with-simulations" class="nav-link active" data-scroll-target="#a-tutorial-with-simulations"><span class="header-section-number">1</span> <strong>A Tutorial with Simulations</strong></a>
+  <ul>
+  <li><a href="#simulating-data" id="toc-simulating-data" class="nav-link" data-scroll-target="#simulating-data"><span class="header-section-number">1.0.1</span> <em>Simulating Data</em></a>
+  <ul class="collapse">
+  <li><a href="#sec-sim-step1" id="toc-sec-sim-step1" class="nav-link" data-scroll-target="#sec-sim-step1"><span class="header-section-number">1.0.1.1</span> Step 1 — Setting up parameters</a></li>
+  <li><a href="#sec-sim-step2" id="toc-sec-sim-step2" class="nav-link" data-scroll-target="#sec-sim-step2"><span class="header-section-number">1.0.1.2</span> Step 2 — Simulated study design</a></li>
+  <li><a href="#sec-sim-step3" id="toc-sec-sim-step3" class="nav-link" data-scroll-target="#sec-sim-step3"><span class="header-section-number">1.0.1.3</span> Step 3 — Look at the truth before simulating</a></li>
+  <li><a href="#sec-sim-step4" id="toc-sec-sim-step4" class="nav-link" data-scroll-target="#sec-sim-step4"><span class="header-section-number">1.0.1.4</span> Step 4 — Generate noisy data: binomial and beta-binomial</a></li>
+  </ul></li>
+  <li><a href="#sec-twostage" id="toc-sec-twostage" class="nav-link" data-scroll-target="#sec-twostage"><span class="header-section-number">1.0.2</span> <em>The classical two-stage TDT pipeline</em></a>
+  <ul class="collapse">
+  <li><a href="#sec-twostage-step1" id="toc-sec-twostage-step1" class="nav-link" data-scroll-target="#sec-twostage-step1"><span class="header-section-number">1.0.2.1</span> Stage 1 — Dose-response curves at each temperature</a></li>
+  <li><a href="#sec-twostage-step2" id="toc-sec-twostage-step2" class="nav-link" data-scroll-target="#sec-twostage-step2"><span class="header-section-number">1.0.2.2</span> Stage 2 — log-linear TDT regression</a></li>
+  </ul></li>
+  <li><a href="#sec-joint" id="toc-sec-joint" class="nav-link" data-scroll-target="#sec-joint"><span class="header-section-number">1.0.3</span> <em>A joint Bayesian 4PL</em></a>
+  <ul class="collapse">
+  <li><a href="#sec-joint-spec" id="toc-sec-joint-spec" class="nav-link" data-scroll-target="#sec-joint-spec"><span class="header-section-number">1.0.3.1</span> Specifying the 4PL in <code>brms</code></a></li>
+  <li><a href="#sec-joint-fit" id="toc-sec-joint-fit" class="nav-link" data-scroll-target="#sec-joint-fit"><span class="header-section-number">1.0.3.2</span> Fitting the model</a></li>
+  <li><a href="#sec-joint-recovery" id="toc-sec-joint-recovery" class="nav-link" data-scroll-target="#sec-joint-recovery"><span class="header-section-number">1.0.3.3</span> Checking parameter recovery</a></li>
+  </ul></li>
+  <li><a href="#sec-joint-derive" id="toc-sec-joint-derive" class="nav-link" data-scroll-target="#sec-joint-derive"><span class="header-section-number">1.0.4</span> <em>Deriving <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span> from the posterior</em></a></li>
+  <li><a href="#sec-compare" id="toc-sec-compare" class="nav-link" data-scroll-target="#sec-compare"><span class="header-section-number">1.0.5</span> <em>Comparing the two pipelines</em></a>
+  <ul class="collapse">
+  <li><a href="#sec-compare-table" id="toc-sec-compare-table" class="nav-link" data-scroll-target="#sec-compare-table"><span class="header-section-number">1.0.5.1</span> Point-estimate agreement on the same data</a></li>
+  </ul></li>
+  <li><a href="#sec-joint-extend" id="toc-sec-joint-extend" class="nav-link" data-scroll-target="#sec-joint-extend"><span class="header-section-number">1.0.6</span> <em>Extending the model: temperature-varying shape parameters</em></a>
+  <ul class="collapse">
+  <li><a href="#sec-joint-extend-recipe" id="toc-sec-joint-extend-recipe" class="nav-link" data-scroll-target="#sec-joint-extend-recipe"><span class="header-section-number">1.0.6.1</span> A numerical recipe for <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max}\)</span></a></li>
+  <li><a href="#sec-joint-extend-example" id="toc-sec-joint-extend-example" class="nav-link" data-scroll-target="#sec-joint-extend-example"><span class="header-section-number">1.0.6.2</span> Demonstrating changes with temperature-varying shape parameters</a></li>
+  </ul></li>
+  <li><a href="#heat-injury-accumulation-and-survival-under-a-realistic-field-trace" id="toc-heat-injury-accumulation-and-survival-under-a-realistic-field-trace" class="nav-link" data-scroll-target="#heat-injury-accumulation-and-survival-under-a-realistic-field-trace"><span class="header-section-number">1.0.7</span> Heat injury accumulation and survival under a realistic field trace</a>
+  <ul class="collapse">
+  <li><a href="#a-simulated-temperature-profile-across-5-days" id="toc-a-simulated-temperature-profile-across-5-days" class="nav-link" data-scroll-target="#a-simulated-temperature-profile-across-5-days"><span class="header-section-number">1.0.7.1</span> A simulated temperature profile across 5 days</a></li>
+  <li><a href="#hi-accumulation-with-full-posterior-uncertainty" id="toc-hi-accumulation-with-full-posterior-uncertainty" class="nav-link" data-scroll-target="#hi-accumulation-with-full-posterior-uncertainty"><span class="header-section-number">1.0.7.2</span> HI accumulation with full posterior uncertainty</a></li>
+  <li><a href="#predicting-survival-from-the-full-4pl-surface" id="toc-predicting-survival-from-the-full-4pl-surface" class="nav-link" data-scroll-target="#predicting-survival-from-the-full-4pl-surface"><span class="header-section-number">1.0.7.3</span> Predicting survival from the full 4PL surface</a></li>
+  </ul></li>
+  </ul></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references"><span class="header-section-number">2</span> <strong>References</strong></a></li>
+  <li><a href="#session-information" id="toc-session-information" class="nav-link" data-scroll-target="#session-information"><span class="header-section-number">3</span> <strong>Session Information</strong></a></li>
+  </ul>
+<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="supp.html"><i class="bi bi-file-word"></i>MS Word</a></li><li><a href="supp.html"><i class="bi bi-file-pdf"></i>PDF</a></li></ul></div></nav>
+</div>
 <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
 </div>
 <main class="content" id="quarto-document-content">
@@ -2383,7 +2427,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">May 9, 2026</p>
+      <p class="date">May 10, 2026</p>
     </div>
   </div>
   
@@ -2395,7 +2439,6 @@ window.Quarto = {
 </header>
 
 
-<div class="supp-section">
 <section id="a-tutorial-with-simulations" class="level1" data-number="1">
 <h1 data-number="1"><span class="header-section-number">1</span> <strong>A Tutorial with Simulations</strong></h1>
 <p>This section is a guided tutorial using simulated data. We show, step by step, how the Bayesian hierarchical 4PL — under both binomial sampling and the more realistic beta-binomial (overdispersed) case – can recover thermal sensitivity (<span class="math inline">\(z\)</span>) and <span class="math inline">\(CT_{max_{1hr}}\)</span> from the single joint model, yet provide substantial downstream benefits in terms of propagating uncertainty and giving more flexibility. We then complement the simulation with a few case studies which walk through real data that is presented within the main manuscript in other sections.</p>
@@ -3166,19 +3209,16 @@ Important
 <span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="fu">file.path</span>(models_dir, <span class="st">&quot;sim_4pl_betabinomial&quot;</span>),</span>
 <span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">file_refit =</span> <span class="st">&quot;on_change&quot;</span></span>
 <span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>: </code></pre>
-</div>
 </div>
 <p>We can also get an idea of how much variation our model explains that considers all sources of relevant variation.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Obtain the Bayes R2 for each model</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>brms<span class="sc">::</span><span class="fu">bayes_R2</span>(fit_bin)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Obtain the Bayes R2 for each model</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>brms<span class="sc">::</span><span class="fu">bayes_R2</span>(fit_bin)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>    Estimate    Est.Error     Q2.5     Q97.5
 R2 0.9875292 0.0001264011 0.987227 0.9877159</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>brms<span class="sc">::</span><span class="fu">bayes_R2</span>(fit_bb)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>brms<span class="sc">::</span><span class="fu">bayes_R2</span>(fit_bb)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>    Estimate  Est.Error      Q2.5     Q97.5
 R2 0.9263016 0.00105021 0.9238746 0.9280369</code></pre>
@@ -4331,50 +4371,50 @@ Figure S 4: Posterior distributions for thermal sensitivity (<span class="math 
 <p>The two derived quantities recover their simulation truth in both fits (<a href="#tbl-tls-recovery" class="quarto-xref">Table S 3</a>, <a href="#fig-tls-recovery" class="quarto-xref">Figure S 4</a>), with credible intervals that reflect joint uncertainty in all four 4PL parameters and the temperature slope. Crucially, <strong>we did not run a second regression</strong> to get <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span>. They are properties of the same posterior we already have. This is the key practical advantage of the joint approach over the two-step pipeline: every classical TLS quantity is one transformation away from the fit we have already run, and every quantity inherits the same calibrated uncertainty.</p>
 <p>Given that we have the full distribution of <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span>, we can now report on uncertainty in their values <em>very</em> easily. All we need to do is take the standard deviation of this distribution for the standard error or we can even summaise with quantiles as follows:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>summarise_draws <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  q <span class="ot">&lt;-</span> <span class="fu">quantile</span>(x, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">mean   =</span> <span class="fu">mean</span>(x),</span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">sd     =</span> <span class="fu">sd</span>(x),</span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">median =</span> q[<span class="dv">2</span>],</span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">lower  =</span> q[<span class="dv">1</span>],</span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">upper  =</span> q[<span class="dv">3</span>]</span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>uncert_summary <span class="ot">&lt;-</span> dplyr<span class="sc">::</span><span class="fu">bind_rows</span>(</span>
-<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bin_d<span class="sc">$</span>z)         <span class="sc">|&gt;</span></span>
-<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;z (°C)&quot;</span>,             <span class="at">likelihood =</span> <span class="st">&quot;Binomial&quot;</span>),</span>
-<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bin_d<span class="sc">$</span>CTmax_1hr) <span class="sc">|&gt;</span></span>
-<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;CTmax at 1 hr (°C)&quot;</span>, <span class="at">likelihood =</span> <span class="st">&quot;Binomial&quot;</span>),</span>
-<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bb_d<span class="sc">$</span>z)          <span class="sc">|&gt;</span></span>
-<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;z (°C)&quot;</span>,             <span class="at">likelihood =</span> <span class="st">&quot;Beta-binomial&quot;</span>),</span>
-<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bb_d<span class="sc">$</span>CTmax_1hr)  <span class="sc">|&gt;</span></span>
-<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;CTmax at 1 hr (°C)&quot;</span>, <span class="at">likelihood =</span> <span class="st">&quot;Beta-binomial&quot;</span>)</span>
-<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(quantity, likelihood, mean, sd, median, lower, upper)</span>
-<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Scalars for inline reporting in the next paragraph.</span></span>
-<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>sd_z_bin  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bin_d<span class="sc">$</span>z), <span class="dv">2</span>)</span>
-<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>sd_z_bb   <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bb_d<span class="sc">$</span>z), <span class="dv">2</span>)</span>
-<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>sd_ct_bin <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bin_d<span class="sc">$</span>CTmax_1hr), <span class="dv">2</span>)</span>
-<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a>sd_ct_bb  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bb_d<span class="sc">$</span>CTmax_1hr), <span class="dv">2</span>)</span>
-<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a>ci_z_bin  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bin_d<span class="sc">$</span>z, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
-<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a>ci_z_bb   <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bb_d<span class="sc">$</span>z, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
-<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a>ci_ct_bin <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bin_d<span class="sc">$</span>CTmax_1hr, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
-<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a>ci_ct_bb  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bb_d<span class="sc">$</span>CTmax_1hr, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
-<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a>uncert_summary <span class="sc">|&gt;</span></span>
-<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">rename</span>(</span>
-<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a>    <span class="at">Quantity   =</span> quantity,</span>
-<span id="cb14-37"><a href="#cb14-37" aria-hidden="true" tabindex="-1"></a>    <span class="at">Likelihood =</span> likelihood,</span>
-<span id="cb14-38"><a href="#cb14-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">Mean       =</span> mean,</span>
-<span id="cb14-39"><a href="#cb14-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">SD         =</span> sd,</span>
-<span id="cb14-40"><a href="#cb14-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">Median     =</span> median,</span>
-<span id="cb14-41"><a href="#cb14-41" aria-hidden="true" tabindex="-1"></a>    <span class="at">Lower      =</span> lower,</span>
-<span id="cb14-42"><a href="#cb14-42" aria-hidden="true" tabindex="-1"></a>    <span class="at">Upper      =</span> upper</span>
-<span id="cb14-43"><a href="#cb14-43" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
-<span id="cb14-44"><a href="#cb14-44" aria-hidden="true" tabindex="-1"></a>  tinytable<span class="sc">::</span><span class="fu">tt</span>(<span class="at">digits =</span> <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>summarise_draws <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  q <span class="ot">&lt;-</span> <span class="fu">quantile</span>(x, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">mean   =</span> <span class="fu">mean</span>(x),</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">sd     =</span> <span class="fu">sd</span>(x),</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">median =</span> q[<span class="dv">2</span>],</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">lower  =</span> q[<span class="dv">1</span>],</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">upper  =</span> q[<span class="dv">3</span>]</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>uncert_summary <span class="ot">&lt;-</span> dplyr<span class="sc">::</span><span class="fu">bind_rows</span>(</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bin_d<span class="sc">$</span>z)         <span class="sc">|&gt;</span></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;z (°C)&quot;</span>,             <span class="at">likelihood =</span> <span class="st">&quot;Binomial&quot;</span>),</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bin_d<span class="sc">$</span>CTmax_1hr) <span class="sc">|&gt;</span></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;CTmax at 1 hr (°C)&quot;</span>, <span class="at">likelihood =</span> <span class="st">&quot;Binomial&quot;</span>),</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bb_d<span class="sc">$</span>z)          <span class="sc">|&gt;</span></span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;z (°C)&quot;</span>,             <span class="at">likelihood =</span> <span class="st">&quot;Beta-binomial&quot;</span>),</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise_draws</span>(draws_bb_d<span class="sc">$</span>CTmax_1hr)  <span class="sc">|&gt;</span></span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">quantity =</span> <span class="st">&quot;CTmax at 1 hr (°C)&quot;</span>, <span class="at">likelihood =</span> <span class="st">&quot;Beta-binomial&quot;</span>)</span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(quantity, likelihood, mean, sd, median, lower, upper)</span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Scalars for inline reporting in the next paragraph.</span></span>
+<span id="cb13-25"><a href="#cb13-25" aria-hidden="true" tabindex="-1"></a>sd_z_bin  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bin_d<span class="sc">$</span>z), <span class="dv">2</span>)</span>
+<span id="cb13-26"><a href="#cb13-26" aria-hidden="true" tabindex="-1"></a>sd_z_bb   <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bb_d<span class="sc">$</span>z), <span class="dv">2</span>)</span>
+<span id="cb13-27"><a href="#cb13-27" aria-hidden="true" tabindex="-1"></a>sd_ct_bin <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bin_d<span class="sc">$</span>CTmax_1hr), <span class="dv">2</span>)</span>
+<span id="cb13-28"><a href="#cb13-28" aria-hidden="true" tabindex="-1"></a>sd_ct_bb  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">sd</span>(draws_bb_d<span class="sc">$</span>CTmax_1hr), <span class="dv">2</span>)</span>
+<span id="cb13-29"><a href="#cb13-29" aria-hidden="true" tabindex="-1"></a>ci_z_bin  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bin_d<span class="sc">$</span>z, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
+<span id="cb13-30"><a href="#cb13-30" aria-hidden="true" tabindex="-1"></a>ci_z_bb   <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bb_d<span class="sc">$</span>z, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
+<span id="cb13-31"><a href="#cb13-31" aria-hidden="true" tabindex="-1"></a>ci_ct_bin <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bin_d<span class="sc">$</span>CTmax_1hr, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
+<span id="cb13-32"><a href="#cb13-32" aria-hidden="true" tabindex="-1"></a>ci_ct_bb  <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">diff</span>(<span class="fu">quantile</span>(draws_bb_d<span class="sc">$</span>CTmax_1hr, <span class="fu">c</span>(<span class="fl">0.025</span>, <span class="fl">0.975</span>), <span class="at">names =</span> <span class="cn">FALSE</span>)), <span class="dv">2</span>)</span>
+<span id="cb13-33"><a href="#cb13-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-34"><a href="#cb13-34" aria-hidden="true" tabindex="-1"></a>uncert_summary <span class="sc">|&gt;</span></span>
+<span id="cb13-35"><a href="#cb13-35" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">rename</span>(</span>
+<span id="cb13-36"><a href="#cb13-36" aria-hidden="true" tabindex="-1"></a>    <span class="at">Quantity   =</span> quantity,</span>
+<span id="cb13-37"><a href="#cb13-37" aria-hidden="true" tabindex="-1"></a>    <span class="at">Likelihood =</span> likelihood,</span>
+<span id="cb13-38"><a href="#cb13-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">Mean       =</span> mean,</span>
+<span id="cb13-39"><a href="#cb13-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">SD         =</span> sd,</span>
+<span id="cb13-40"><a href="#cb13-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">Median     =</span> median,</span>
+<span id="cb13-41"><a href="#cb13-41" aria-hidden="true" tabindex="-1"></a>    <span class="at">Lower      =</span> lower,</span>
+<span id="cb13-42"><a href="#cb13-42" aria-hidden="true" tabindex="-1"></a>    <span class="at">Upper      =</span> upper</span>
+<span id="cb13-43"><a href="#cb13-43" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb13-44"><a href="#cb13-44" aria-hidden="true" tabindex="-1"></a>  tinytable<span class="sc">::</span><span class="fu">tt</span>(<span class="at">digits =</span> <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div id="tbl-uncert-z-ct" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-uncert-z-ct-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -5453,76 +5493,76 @@ line-height: var(--tt-line-height-footnote-tight);
 <h4 data-number="1.0.6.1" class="anchored" data-anchor-id="sec-joint-extend-recipe"><span class="header-section-number">1.0.6.1</span> A numerical recipe for <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max}\)</span></h4>
 <p>The simplest way to recover <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span> from a fitted model — whether shape parameters are constant or vary with <span class="math inline">\(T\)</span> — is to <strong>predict survival probabilities from the model</strong> on a fine <span class="math inline">\((T, t)\)</span> grid and interpolate. We can use <code>tidybayes::add_epred_draws()</code> for the prediction and base R’s <code>approx()</code> for the interpolation. The same code runs whether the fit has constant shape parameters or shape parameters that vary with <span class="math inline">\(T\)</span>.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Temperatures at which we&#39;ll evaluate z. When shape parameters depend on T,</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="co"># z is itself a function of T, so we compute it at each of the original assay</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="co"># temperatures and report the full set rather than a single number.</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>T_eval <span class="ot">&lt;-</span> temps</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>half_step <span class="ot">&lt;-</span> <span class="fl">0.5</span>  <span class="co"># half-width (°C) of the central finite difference window</span></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a (T, t) grid covering the assay window. The columns log10_t, T_c, and</span></span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="co"># n must match the variables the fitted model expects on its input side — they</span></span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="co"># are exactly the same as the columns of `design` used to fit the model.</span></span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>pred_grid <span class="ot">&lt;-</span> tidyr<span class="sc">::</span><span class="fu">expand_grid</span>(</span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">T =</span> <span class="fu">seq</span>(<span class="fu">min</span>(temps) <span class="sc">-</span> <span class="dv">1</span>, <span class="fu">max</span>(temps) <span class="sc">+</span> <span class="dv">1</span>, <span class="at">by =</span> <span class="fl">0.25</span>),</span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">t =</span> <span class="dv">10</span> <span class="sc">^</span> <span class="fu">seq</span>(<span class="fu">log10</span>(<span class="fl">0.5</span>), <span class="fu">log10</span>(<span class="dv">800</span>), <span class="at">length.out =</span> <span class="dv">200</span>)</span>
-<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
-<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_t =</span> <span class="fu">log10</span>(t),</span>
-<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">T_c     =</span> T <span class="sc">-</span> true_params<span class="sc">$</span>T_bar,</span>
-<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">n       =</span> <span class="dv">1</span></span>
-<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Now, from the fitted model, draw posterior expected survival probabilities</span></span>
-<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a><span class="co"># at every point in the (T, t) grid. `add_epred_draws()` returns a long tibble</span></span>
-<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a><span class="co"># with one row per (grid point × posterior draw); the column .epred is the</span></span>
-<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a><span class="co"># predicted survival probability under that draw. ndraws keeps it manageable.</span></span>
-<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a>epred <span class="ot">&lt;-</span> pred_grid <span class="sc">|&gt;</span></span>
-<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a>  tidybayes<span class="sc">::</span><span class="fu">add_epred_draws</span>(fit_bin, <span class="at">ndraws =</span> <span class="dv">500</span>)</span>
-<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a><span class="co"># For each (draw, T) we find the duration t at which predicted survival</span></span>
-<span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a><span class="co"># crosses 0.5 — that&#39;s log10(LT50)(T) for that draw. Linear interpolation</span></span>
-<span id="cb15-29"><a href="#cb15-29" aria-hidden="true" tabindex="-1"></a><span class="co"># through the grid via approx() avoids any need for root-finding.</span></span>
-<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a>lt50_T <span class="ot">&lt;-</span> epred <span class="sc">|&gt;</span></span>
-<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw, T) <span class="sc">|&gt;</span></span>
-<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_lt50 =</span> <span class="fu">approx</span>(.epred, log10_t, <span class="at">xout =</span> <span class="fl">0.5</span>)<span class="sc">$</span>y,</span>
-<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups    =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a><span class="co"># Per posterior draw, compute z at each evaluation temperature in T_eval via</span></span>
-<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a><span class="co"># a central finite difference on the lt50_T grid. For each T_at we approx()</span></span>
-<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a><span class="co"># log10(LT50) at T_at ± half_step and divide the difference by the full step</span></span>
-<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a><span class="co"># (2 * half_step, in °C) to get the slope; z = -1 / slope.</span></span>
-<span id="cb15-41"><a href="#cb15-41" aria-hidden="true" tabindex="-1"></a>z_per_draw <span class="ot">&lt;-</span> purrr<span class="sc">::</span><span class="fu">map_dfr</span>(T_eval, <span class="cf">function</span>(T_at) {</span>
-<span id="cb15-42"><a href="#cb15-42" aria-hidden="true" tabindex="-1"></a>  lt50_T <span class="sc">|&gt;</span></span>
-<span id="cb15-43"><a href="#cb15-43" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
-<span id="cb15-44"><a href="#cb15-44" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb15-45"><a href="#cb15-45" aria-hidden="true" tabindex="-1"></a>      <span class="at">T_at =</span> T_at,</span>
-<span id="cb15-46"><a href="#cb15-46" aria-hidden="true" tabindex="-1"></a>      <span class="at">z    =</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">/</span> ((<span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">+</span> half_step)<span class="sc">$</span>y <span class="sc">-</span></span>
-<span id="cb15-47"><a href="#cb15-47" aria-hidden="true" tabindex="-1"></a>                    <span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">-</span> half_step)<span class="sc">$</span>y) <span class="sc">/</span></span>
-<span id="cb15-48"><a href="#cb15-48" aria-hidden="true" tabindex="-1"></a>                   (<span class="dv">2</span> <span class="sc">*</span> half_step)),</span>
-<span id="cb15-49"><a href="#cb15-49" aria-hidden="true" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb15-50"><a href="#cb15-50" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb15-51"><a href="#cb15-51" aria-hidden="true" tabindex="-1"></a>})</span>
-<span id="cb15-52"><a href="#cb15-52" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-53"><a href="#cb15-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Per posterior draw, CTmax_1hr is the temperature at which log10(LT50) =</span></span>
-<span id="cb15-54"><a href="#cb15-54" aria-hidden="true" tabindex="-1"></a><span class="co"># log10(60). It is a single number per draw (does not depend on T_eval).</span></span>
-<span id="cb15-55"><a href="#cb15-55" aria-hidden="true" tabindex="-1"></a>ctmax_per_draw <span class="ot">&lt;-</span> lt50_T <span class="sc">|&gt;</span></span>
-<span id="cb15-56"><a href="#cb15-56" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
-<span id="cb15-57"><a href="#cb15-57" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb15-58"><a href="#cb15-58" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr =</span> <span class="fu">approx</span>(log10_lt50, T, <span class="at">xout =</span> <span class="fu">log10</span>(<span class="dv">60</span>))<span class="sc">$</span>y,</span>
-<span id="cb15-59"><a href="#cb15-59" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups   =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb15-60"><a href="#cb15-60" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb15-61"><a href="#cb15-61" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-62"><a href="#cb15-62" aria-hidden="true" tabindex="-1"></a><span class="co"># Posterior summary of z at each evaluation temperature: median and 95% CrI.</span></span>
-<span id="cb15-63"><a href="#cb15-63" aria-hidden="true" tabindex="-1"></a>z_per_draw <span class="sc">|&gt;</span></span>
-<span id="cb15-64"><a href="#cb15-64" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(T_at) <span class="sc">|&gt;</span></span>
-<span id="cb15-65"><a href="#cb15-65" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb15-66"><a href="#cb15-66" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_med =</span> <span class="fu">median</span>(z,         <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb15-67"><a href="#cb15-67" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_lo  =</span> <span class="fu">quantile</span>(z,         <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb15-68"><a href="#cb15-68" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_hi  =</span> <span class="fu">quantile</span>(z,         <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb15-69"><a href="#cb15-69" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb15-70"><a href="#cb15-70" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Temperatures at which we&#39;ll evaluate z. When shape parameters depend on T,</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="co"># z is itself a function of T, so we compute it at each of the original assay</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="co"># temperatures and report the full set rather than a single number.</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>T_eval <span class="ot">&lt;-</span> temps</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>half_step <span class="ot">&lt;-</span> <span class="fl">0.5</span>  <span class="co"># half-width (°C) of the central finite difference window</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a (T, t) grid covering the assay window. The columns log10_t, T_c, and</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="co"># n must match the variables the fitted model expects on its input side — they</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="co"># are exactly the same as the columns of `design` used to fit the model.</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>pred_grid <span class="ot">&lt;-</span> tidyr<span class="sc">::</span><span class="fu">expand_grid</span>(</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">T =</span> <span class="fu">seq</span>(<span class="fu">min</span>(temps) <span class="sc">-</span> <span class="dv">1</span>, <span class="fu">max</span>(temps) <span class="sc">+</span> <span class="dv">1</span>, <span class="at">by =</span> <span class="fl">0.25</span>),</span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">t =</span> <span class="dv">10</span> <span class="sc">^</span> <span class="fu">seq</span>(<span class="fu">log10</span>(<span class="fl">0.5</span>), <span class="fu">log10</span>(<span class="dv">800</span>), <span class="at">length.out =</span> <span class="dv">200</span>)</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_t =</span> <span class="fu">log10</span>(t),</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">T_c     =</span> T <span class="sc">-</span> true_params<span class="sc">$</span>T_bar,</span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">n       =</span> <span class="dv">1</span></span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Now, from the fitted model, draw posterior expected survival probabilities</span></span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a><span class="co"># at every point in the (T, t) grid. `add_epred_draws()` returns a long tibble</span></span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a><span class="co"># with one row per (grid point × posterior draw); the column .epred is the</span></span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a><span class="co"># predicted survival probability under that draw. ndraws keeps it manageable.</span></span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>epred <span class="ot">&lt;-</span> pred_grid <span class="sc">|&gt;</span></span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>  tidybayes<span class="sc">::</span><span class="fu">add_epred_draws</span>(fit_bin, <span class="at">ndraws =</span> <span class="dv">500</span>)</span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a><span class="co"># For each (draw, T) we find the duration t at which predicted survival</span></span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a><span class="co"># crosses 0.5 — that&#39;s log10(LT50)(T) for that draw. Linear interpolation</span></span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a><span class="co"># through the grid via approx() avoids any need for root-finding.</span></span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a>lt50_T <span class="ot">&lt;-</span> epred <span class="sc">|&gt;</span></span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw, T) <span class="sc">|&gt;</span></span>
+<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_lt50 =</span> <span class="fu">approx</span>(.epred, log10_t, <span class="at">xout =</span> <span class="fl">0.5</span>)<span class="sc">$</span>y,</span>
+<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups    =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-37"><a href="#cb14-37" aria-hidden="true" tabindex="-1"></a><span class="co"># Per posterior draw, compute z at each evaluation temperature in T_eval via</span></span>
+<span id="cb14-38"><a href="#cb14-38" aria-hidden="true" tabindex="-1"></a><span class="co"># a central finite difference on the lt50_T grid. For each T_at we approx()</span></span>
+<span id="cb14-39"><a href="#cb14-39" aria-hidden="true" tabindex="-1"></a><span class="co"># log10(LT50) at T_at ± half_step and divide the difference by the full step</span></span>
+<span id="cb14-40"><a href="#cb14-40" aria-hidden="true" tabindex="-1"></a><span class="co"># (2 * half_step, in °C) to get the slope; z = -1 / slope.</span></span>
+<span id="cb14-41"><a href="#cb14-41" aria-hidden="true" tabindex="-1"></a>z_per_draw <span class="ot">&lt;-</span> purrr<span class="sc">::</span><span class="fu">map_dfr</span>(T_eval, <span class="cf">function</span>(T_at) {</span>
+<span id="cb14-42"><a href="#cb14-42" aria-hidden="true" tabindex="-1"></a>  lt50_T <span class="sc">|&gt;</span></span>
+<span id="cb14-43"><a href="#cb14-43" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
+<span id="cb14-44"><a href="#cb14-44" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb14-45"><a href="#cb14-45" aria-hidden="true" tabindex="-1"></a>      <span class="at">T_at =</span> T_at,</span>
+<span id="cb14-46"><a href="#cb14-46" aria-hidden="true" tabindex="-1"></a>      <span class="at">z    =</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">/</span> ((<span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">+</span> half_step)<span class="sc">$</span>y <span class="sc">-</span></span>
+<span id="cb14-47"><a href="#cb14-47" aria-hidden="true" tabindex="-1"></a>                    <span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">-</span> half_step)<span class="sc">$</span>y) <span class="sc">/</span></span>
+<span id="cb14-48"><a href="#cb14-48" aria-hidden="true" tabindex="-1"></a>                   (<span class="dv">2</span> <span class="sc">*</span> half_step)),</span>
+<span id="cb14-49"><a href="#cb14-49" aria-hidden="true" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb14-50"><a href="#cb14-50" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb14-51"><a href="#cb14-51" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb14-52"><a href="#cb14-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-53"><a href="#cb14-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Per posterior draw, CTmax_1hr is the temperature at which log10(LT50) =</span></span>
+<span id="cb14-54"><a href="#cb14-54" aria-hidden="true" tabindex="-1"></a><span class="co"># log10(60). It is a single number per draw (does not depend on T_eval).</span></span>
+<span id="cb14-55"><a href="#cb14-55" aria-hidden="true" tabindex="-1"></a>ctmax_per_draw <span class="ot">&lt;-</span> lt50_T <span class="sc">|&gt;</span></span>
+<span id="cb14-56"><a href="#cb14-56" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
+<span id="cb14-57"><a href="#cb14-57" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb14-58"><a href="#cb14-58" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr =</span> <span class="fu">approx</span>(log10_lt50, T, <span class="at">xout =</span> <span class="fu">log10</span>(<span class="dv">60</span>))<span class="sc">$</span>y,</span>
+<span id="cb14-59"><a href="#cb14-59" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups   =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb14-60"><a href="#cb14-60" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb14-61"><a href="#cb14-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-62"><a href="#cb14-62" aria-hidden="true" tabindex="-1"></a><span class="co"># Posterior summary of z at each evaluation temperature: median and 95% CrI.</span></span>
+<span id="cb14-63"><a href="#cb14-63" aria-hidden="true" tabindex="-1"></a>z_per_draw <span class="sc">|&gt;</span></span>
+<span id="cb14-64"><a href="#cb14-64" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(T_at) <span class="sc">|&gt;</span></span>
+<span id="cb14-65"><a href="#cb14-65" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb14-66"><a href="#cb14-66" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_med =</span> <span class="fu">median</span>(z,         <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb14-67"><a href="#cb14-67" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_lo  =</span> <span class="fu">quantile</span>(z,         <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb14-68"><a href="#cb14-68" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_hi  =</span> <span class="fu">quantile</span>(z,         <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb14-69"><a href="#cb14-69" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb14-70"><a href="#cb14-70" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 5 × 4
    T_at z_med  z_lo  z_hi
@@ -5533,13 +5573,13 @@ line-height: var(--tt-line-height-footnote-tight);
 4    36  6.66  6.55  6.80
 5    38  6.66  6.55  6.80</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Posterior summary of CTmax_1hr.</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>ctmax_per_draw <span class="sc">|&gt;</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_med =</span> <span class="fu">median</span>(CTmax_1hr, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_lo  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_hi  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Posterior summary of CTmax_1hr.</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>ctmax_per_draw <span class="sc">|&gt;</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_med =</span> <span class="fu">median</span>(CTmax_1hr, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_lo  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_hi  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 1 × 3
   CTmax_1hr_med CTmax_1hr_lo CTmax_1hr_hi
@@ -5553,56 +5593,56 @@ line-height: var(--tt-line-height-footnote-tight);
 <h4 data-number="1.0.6.2" class="anchored" data-anchor-id="sec-joint-extend-example"><span class="header-section-number">1.0.6.2</span> Demonstrating changes with temperature-varying shape parameters</h4>
 <p>To make the points above concrete, we re-simulate beta-binomial data on the same factorial design as the simple case, but now both the dose-response steepness <span class="math inline">\(k\)</span> and the upper asymptote <span class="math inline">\(u\)</span> vary linearly with assay temperature. We then fit the joint Bayesian 4PL with the corresponding <code>bf()</code> formula and apply the same predict-and-interpolate recipe.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># (Re-defined here so this chunk can be run independently of the earlier</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="co"># simulation. Same values as the original `sim-design` chunk in @sec-sim-step2.)</span></span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>temps     <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">30</span>, <span class="dv">32</span>, <span class="dv">34</span>, <span class="dv">36</span>, <span class="dv">38</span>)             <span class="co"># assay temperatures (°C)</span></span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>durations <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">5</span>, <span class="dv">15</span>, <span class="dv">45</span>, <span class="dv">135</span>, <span class="dv">405</span>)         <span class="co"># exposure durations (min)</span></span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>n_rep     <span class="ot">&lt;-</span> <span class="dv">30</span></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>n_per_rep <span class="ot">&lt;-</span> <span class="dv">30</span></span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>phi       <span class="ot">&lt;-</span> <span class="dv">5</span>                                  <span class="co"># beta-binomial dispersion</span></span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>design <span class="ot">&lt;-</span> tidyr<span class="sc">::</span><span class="fu">expand_grid</span>(</span>
-<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">T   =</span> temps,</span>
-<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">t   =</span> durations,</span>
-<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">rep =</span> <span class="fu">seq_len</span>(n_rep)</span>
-<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
-<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_t =</span> <span class="fu">log10</span>(t),</span>
-<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">T_c     =</span> T <span class="sc">-</span> <span class="dv">34</span>,                            <span class="co"># mean-centred T (T_bar = 34)</span></span>
-<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">n       =</span> n_per_rep</span>
-<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Truth is defined on a constrained raw scale. This keeps ell in [0, 0.49],</span></span>
-<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a><span class="co"># u in [0.51, 1], and k positive at every assay temperature. Those constraints</span></span>
-<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a><span class="co"># avoid the label-switching and invalid-curve geometry that make identity-scale</span></span>
-<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a><span class="co"># 4PL fits mix poorly when u and k vary with temperature.</span></span>
-<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a>true_params_ext <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">ell_raw  =</span> <span class="fu">qlogis</span>(<span class="fl">0.05</span> <span class="sc">/</span> <span class="fl">0.49</span>),          <span class="co"># ell = 0.05</span></span>
-<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">u_raw_0  =</span> <span class="fu">qlogis</span>((<span class="fl">0.92</span> <span class="sc">-</span> <span class="fl">0.51</span>) <span class="sc">/</span> <span class="fl">0.49</span>), <span class="co"># u = 0.92 at T_bar</span></span>
-<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">u_raw_T  =</span> <span class="sc">-</span><span class="fl">0.20</span>,                        <span class="co"># u declines as T rises</span></span>
-<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">log_k_0  =</span> <span class="fu">log</span>(<span class="dv">8</span>),                       <span class="co"># k = 8 at T_bar</span></span>
-<span id="cb19-29"><a href="#cb19-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">log_k_T  =</span> <span class="fl">0.10</span>,                         <span class="co"># k rises as T rises</span></span>
-<span id="cb19-30"><a href="#cb19-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">m_beta0  =</span> <span class="fl">1.5</span>,</span>
-<span id="cb19-31"><a href="#cb19-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">m_beta1  =</span> <span class="sc">-</span><span class="fl">0.15</span>,</span>
-<span id="cb19-32"><a href="#cb19-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">T_bar    =</span> <span class="dv">34</span></span>
-<span id="cb19-33"><a href="#cb19-33" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb19-34"><a href="#cb19-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-35"><a href="#cb19-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Build per-cell true survival probabilities and draw beta-binomial counts.</span></span>
-<span id="cb19-36"><a href="#cb19-36" aria-hidden="true" tabindex="-1"></a><span class="co"># (mutate keeps all columns of `design`; mid and p_true from the original</span></span>
-<span id="cb19-37"><a href="#cb19-37" aria-hidden="true" tabindex="-1"></a><span class="co"># sim are overwritten in place with the new T-varying values.)</span></span>
-<span id="cb19-38"><a href="#cb19-38" aria-hidden="true" tabindex="-1"></a>sim_bb_ext <span class="ot">&lt;-</span> design <span class="sc">|&gt;</span></span>
-<span id="cb19-39"><a href="#cb19-39" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
-<span id="cb19-40"><a href="#cb19-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">ell    =</span> <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">plogis</span>(true_params_ext<span class="sc">$</span>ell_raw),           </span>
-<span id="cb19-41"><a href="#cb19-41" aria-hidden="true" tabindex="-1"></a>    <span class="at">u      =</span> <span class="fl">0.51</span> <span class="sc">+</span> <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">plogis</span>(true_params_ext<span class="sc">$</span>u_raw_0 <span class="sc">+</span></span>
-<span id="cb19-42"><a href="#cb19-42" aria-hidden="true" tabindex="-1"></a>                                  true_params_ext<span class="sc">$</span>u_raw_T <span class="sc">*</span> T_c),</span>
-<span id="cb19-43"><a href="#cb19-43" aria-hidden="true" tabindex="-1"></a>    <span class="at">k      =</span> <span class="fu">exp</span>(true_params_ext<span class="sc">$</span>log_k_0 <span class="sc">+</span> true_params_ext<span class="sc">$</span>log_k_T <span class="sc">*</span> T_c),</span>
-<span id="cb19-44"><a href="#cb19-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">mid    =</span> true_params_ext<span class="sc">$</span>m_beta0 <span class="sc">+</span> true_params_ext<span class="sc">$</span>m_beta1 <span class="sc">*</span> T_c,</span>
-<span id="cb19-45"><a href="#cb19-45" aria-hidden="true" tabindex="-1"></a>    <span class="at">p_true =</span> ell <span class="sc">+</span></span>
-<span id="cb19-46"><a href="#cb19-46" aria-hidden="true" tabindex="-1"></a>             (u <span class="sc">-</span> ell) <span class="sc">/</span></span>
-<span id="cb19-47"><a href="#cb19-47" aria-hidden="true" tabindex="-1"></a>             (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(k <span class="sc">*</span> (log10_t <span class="sc">-</span> mid))),</span>
-<span id="cb19-48"><a href="#cb19-48" aria-hidden="true" tabindex="-1"></a>    <span class="at">p_draw =</span> <span class="fu">rbeta</span>(dplyr<span class="sc">::</span><span class="fu">n</span>(), p_true <span class="sc">*</span> phi, (<span class="dv">1</span> <span class="sc">-</span> p_true) <span class="sc">*</span> phi),</span>
-<span id="cb19-49"><a href="#cb19-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">y      =</span> <span class="fu">rbinom</span>(dplyr<span class="sc">::</span><span class="fu">n</span>(), <span class="at">size =</span> n, <span class="at">prob =</span> p_draw)</span>
-<span id="cb19-50"><a href="#cb19-50" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># (Re-defined here so this chunk can be run independently of the earlier</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="co"># simulation. Same values as the original `sim-design` chunk in @sec-sim-step2.)</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>temps     <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">30</span>, <span class="dv">32</span>, <span class="dv">34</span>, <span class="dv">36</span>, <span class="dv">38</span>)             <span class="co"># assay temperatures (°C)</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>durations <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">5</span>, <span class="dv">15</span>, <span class="dv">45</span>, <span class="dv">135</span>, <span class="dv">405</span>)         <span class="co"># exposure durations (min)</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>n_rep     <span class="ot">&lt;-</span> <span class="dv">30</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>n_per_rep <span class="ot">&lt;-</span> <span class="dv">30</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>phi       <span class="ot">&lt;-</span> <span class="dv">5</span>                                  <span class="co"># beta-binomial dispersion</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>design <span class="ot">&lt;-</span> tidyr<span class="sc">::</span><span class="fu">expand_grid</span>(</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">T   =</span> temps,</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">t   =</span> durations,</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">rep =</span> <span class="fu">seq_len</span>(n_rep)</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_t =</span> <span class="fu">log10</span>(t),</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">T_c     =</span> T <span class="sc">-</span> <span class="dv">34</span>,                            <span class="co"># mean-centred T (T_bar = 34)</span></span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">n       =</span> n_per_rep</span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Truth is defined on a constrained raw scale. This keeps ell in [0, 0.49],</span></span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a><span class="co"># u in [0.51, 1], and k positive at every assay temperature. Those constraints</span></span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a><span class="co"># avoid the label-switching and invalid-curve geometry that make identity-scale</span></span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a><span class="co"># 4PL fits mix poorly when u and k vary with temperature.</span></span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a>true_params_ext <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">ell_raw  =</span> <span class="fu">qlogis</span>(<span class="fl">0.05</span> <span class="sc">/</span> <span class="fl">0.49</span>),          <span class="co"># ell = 0.05</span></span>
+<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">u_raw_0  =</span> <span class="fu">qlogis</span>((<span class="fl">0.92</span> <span class="sc">-</span> <span class="fl">0.51</span>) <span class="sc">/</span> <span class="fl">0.49</span>), <span class="co"># u = 0.92 at T_bar</span></span>
+<span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">u_raw_T  =</span> <span class="sc">-</span><span class="fl">0.20</span>,                        <span class="co"># u declines as T rises</span></span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">log_k_0  =</span> <span class="fu">log</span>(<span class="dv">8</span>),                       <span class="co"># k = 8 at T_bar</span></span>
+<span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">log_k_T  =</span> <span class="fl">0.10</span>,                         <span class="co"># k rises as T rises</span></span>
+<span id="cb18-30"><a href="#cb18-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">m_beta0  =</span> <span class="fl">1.5</span>,</span>
+<span id="cb18-31"><a href="#cb18-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">m_beta1  =</span> <span class="sc">-</span><span class="fl">0.15</span>,</span>
+<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">T_bar    =</span> <span class="dv">34</span></span>
+<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-34"><a href="#cb18-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-35"><a href="#cb18-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Build per-cell true survival probabilities and draw beta-binomial counts.</span></span>
+<span id="cb18-36"><a href="#cb18-36" aria-hidden="true" tabindex="-1"></a><span class="co"># (mutate keeps all columns of `design`; mid and p_true from the original</span></span>
+<span id="cb18-37"><a href="#cb18-37" aria-hidden="true" tabindex="-1"></a><span class="co"># sim are overwritten in place with the new T-varying values.)</span></span>
+<span id="cb18-38"><a href="#cb18-38" aria-hidden="true" tabindex="-1"></a>sim_bb_ext <span class="ot">&lt;-</span> design <span class="sc">|&gt;</span></span>
+<span id="cb18-39"><a href="#cb18-39" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb18-40"><a href="#cb18-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">ell    =</span> <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">plogis</span>(true_params_ext<span class="sc">$</span>ell_raw),           </span>
+<span id="cb18-41"><a href="#cb18-41" aria-hidden="true" tabindex="-1"></a>    <span class="at">u      =</span> <span class="fl">0.51</span> <span class="sc">+</span> <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">plogis</span>(true_params_ext<span class="sc">$</span>u_raw_0 <span class="sc">+</span></span>
+<span id="cb18-42"><a href="#cb18-42" aria-hidden="true" tabindex="-1"></a>                                  true_params_ext<span class="sc">$</span>u_raw_T <span class="sc">*</span> T_c),</span>
+<span id="cb18-43"><a href="#cb18-43" aria-hidden="true" tabindex="-1"></a>    <span class="at">k      =</span> <span class="fu">exp</span>(true_params_ext<span class="sc">$</span>log_k_0 <span class="sc">+</span> true_params_ext<span class="sc">$</span>log_k_T <span class="sc">*</span> T_c),</span>
+<span id="cb18-44"><a href="#cb18-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">mid    =</span> true_params_ext<span class="sc">$</span>m_beta0 <span class="sc">+</span> true_params_ext<span class="sc">$</span>m_beta1 <span class="sc">*</span> T_c,</span>
+<span id="cb18-45"><a href="#cb18-45" aria-hidden="true" tabindex="-1"></a>    <span class="at">p_true =</span> ell <span class="sc">+</span></span>
+<span id="cb18-46"><a href="#cb18-46" aria-hidden="true" tabindex="-1"></a>             (u <span class="sc">-</span> ell) <span class="sc">/</span></span>
+<span id="cb18-47"><a href="#cb18-47" aria-hidden="true" tabindex="-1"></a>             (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(k <span class="sc">*</span> (log10_t <span class="sc">-</span> mid))),</span>
+<span id="cb18-48"><a href="#cb18-48" aria-hidden="true" tabindex="-1"></a>    <span class="at">p_draw =</span> <span class="fu">rbeta</span>(dplyr<span class="sc">::</span><span class="fu">n</span>(), p_true <span class="sc">*</span> phi, (<span class="dv">1</span> <span class="sc">-</span> p_true) <span class="sc">*</span> phi),</span>
+<span id="cb18-49"><a href="#cb18-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">y      =</span> <span class="fu">rbinom</span>(dplyr<span class="sc">::</span><span class="fu">n</span>(), <span class="at">size =</span> n, <span class="at">prob =</span> p_draw)</span>
+<span id="cb18-50"><a href="#cb18-50" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Lets have a look at the data along with truth (<a href="#fig-true-surface-ext" class="quarto-xref">Figure S 5</a>):</p>
 <div id="fig-true-surface-ext" class="quarto-float quarto-figure quarto-figure-center anchored">
@@ -5663,69 +5703,69 @@ Figure S 5: True 4PL dose-response surface (solid lines) for the extended simul
 <p>The asymptotes use the <strong>disjoint</strong> intervals <span class="math inline">\([0, 0.49]\)</span> and <span class="math inline">\([0.51, 1]\)</span> (rather than each covering all of <span class="math inline">\([0, 1]\)</span>) to prevent MCMC sampling issues where upper and lower asymptotes flip during MCMC sampling which can cause convergence issues — to help here we constrain them and estimate on the logit scale. The 0.02 gap at <span class="math inline">\(p = 0.5\)</span> guarantees <span class="math inline">\(u &gt; \ell\)</span> always, so the chains can’t oscillate — which matters here because <span class="math inline">\(u\)</span> and <span class="math inline">\(\ell\)</span> can vary across temperatures. The cost is hard-bounding the asymptotes a few percentage points away from 0.5 — fine for survival data where genuine <span class="math inline">\(LT_{50}\)</span> assays don’t sit at the boundary anyway. We also constrain <code>k</code> to be positive, but on a log scale via <code>exp(logk)</code>. Because <span class="math inline">\(u\)</span>, <span class="math inline">\(\ell\)</span> and <code>k</code> have different transformations and meanings, we apply each transformation per parameter inside the formula before they are combined — as opposed to a single link function on the linear predictor as is typical in GLMMs.</p>
 <p>We just need to remember in our fits that these values are transformed so we need to back-transform to make sense of the coefficients.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Disable Quarto chunk caching here so brms&#39;s own `file = ...` /</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="co"># `file_refit = &quot;on_change&quot;` mechanism is the sole source of truth for whether</span></span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="co"># to refit. Without this, the project default `cache: true` can hold an old</span></span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="co"># fit object even after the formula or priors change.</span></span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Same 4PL likelihood as before, but with constrained transformations:</span></span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   ell = 0.49 * inv_logit(ellraw)</span></span>
-<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a><span class="co">#   u   = 0.51 + 0.49 * inv_logit(uraw)</span></span>
-<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   k   = exp(logk)</span></span>
-<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a><span class="co"># This guarantees ell &lt; 0.5, u &gt; 0.5, u &gt; ell, and k &gt; 0.</span></span>
-<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>bform_ext <span class="ot">&lt;-</span> <span class="fu">bf</span>(</span>
-<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>  y <span class="sc">|</span> <span class="fu">trials</span>(n) <span class="sc">~</span></span>
-<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>    <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">inv_logit</span>(ellraw) <span class="sc">+</span></span>
-<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>      ((<span class="fl">0.51</span> <span class="sc">+</span> <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">inv_logit</span>(uraw)) <span class="sc">-</span></span>
-<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>         <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">inv_logit</span>(ellraw)) <span class="sc">/</span></span>
-<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(<span class="fu">exp</span>(logk) <span class="sc">*</span> (log10_t <span class="sc">-</span> mid))),</span>
-<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>  ellraw <span class="sc">~</span> <span class="dv">1</span>,</span>
-<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>  uraw   <span class="sc">~</span> T_c,</span>
-<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>  logk   <span class="sc">~</span> T_c,</span>
-<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a>  mid <span class="sc">~</span> T_c,</span>
-<span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">nl =</span> <span class="cn">TRUE</span>,</span>
-<span id="cb20-22"><a href="#cb20-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">beta_binomial</span>(<span class="at">link =</span> <span class="st">&quot;identity&quot;</span>)</span>
-<span id="cb20-23"><a href="#cb20-23" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb20-24"><a href="#cb20-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-25"><a href="#cb20-25" aria-hidden="true" tabindex="-1"></a>priors_ext <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
-<span id="cb20-26"><a href="#cb20-26" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
-<span id="cb20-27"><a href="#cb20-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.50)&quot;</span>, true_params_ext<span class="sc">$</span>ell_raw),</span>
-<span id="cb20-28"><a href="#cb20-28" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;ellraw&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span></span>
-<span id="cb20-29"><a href="#cb20-29" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb20-30"><a href="#cb20-30" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
-<span id="cb20-31"><a href="#cb20-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.50)&quot;</span>, true_params_ext<span class="sc">$</span>u_raw_0),</span>
-<span id="cb20-32"><a href="#cb20-32" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;uraw&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span></span>
-<span id="cb20-33"><a href="#cb20-33" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb20-34"><a href="#cb20-34" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
-<span id="cb20-35"><a href="#cb20-35" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.10)&quot;</span>, true_params_ext<span class="sc">$</span>u_raw_T),</span>
-<span id="cb20-36"><a href="#cb20-36" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;uraw&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;T_c&quot;</span></span>
-<span id="cb20-37"><a href="#cb20-37" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb20-38"><a href="#cb20-38" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
-<span id="cb20-39"><a href="#cb20-39" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.35)&quot;</span>, true_params_ext<span class="sc">$</span>log_k_0),</span>
-<span id="cb20-40"><a href="#cb20-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;logk&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span></span>
-<span id="cb20-41"><a href="#cb20-41" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb20-42"><a href="#cb20-42" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
-<span id="cb20-43"><a href="#cb20-43" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.05)&quot;</span>, true_params_ext<span class="sc">$</span>log_k_T),</span>
-<span id="cb20-44"><a href="#cb20-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;logk&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;T_c&quot;</span></span>
-<span id="cb20-45"><a href="#cb20-45" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb20-46"><a href="#cb20-46" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">1.5</span>, <span class="fl">0.40</span>), <span class="at">nlpar =</span> <span class="st">&quot;mid&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span>),</span>
-<span id="cb20-47"><a href="#cb20-47" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="sc">-</span><span class="fl">0.15</span>, <span class="fl">0.04</span>), <span class="at">nlpar =</span> <span class="st">&quot;mid&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;T_c&quot;</span>)</span>
-<span id="cb20-48"><a href="#cb20-48" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb20-49"><a href="#cb20-49" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-50"><a href="#cb20-50" aria-hidden="true" tabindex="-1"></a>fit_bb_ext <span class="ot">&lt;-</span> <span class="fu">brm</span>(</span>
-<span id="cb20-51"><a href="#cb20-51" aria-hidden="true" tabindex="-1"></a>  bform_ext, <span class="at">data =</span> sim_bb_ext, <span class="at">prior =</span> priors_ext,</span>
-<span id="cb20-52"><a href="#cb20-52" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, <span class="at">iter =</span> <span class="dv">2000</span>, <span class="at">cores =</span> <span class="dv">4</span>, <span class="at">seed =</span> <span class="dv">123</span>,</span>
-<span id="cb20-53"><a href="#cb20-53" aria-hidden="true" tabindex="-1"></a>  <span class="at">control =</span> <span class="fu">list</span>(<span class="at">adapt_delta =</span> <span class="fl">0.95</span>, <span class="at">max_treedepth =</span> <span class="dv">12</span>),</span>
-<span id="cb20-54"><a href="#cb20-54" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="fu">file.path</span>(models_dir, <span class="st">&quot;sim_4pl_ext_betabinomial_reparam&quot;</span>),</span>
-<span id="cb20-55"><a href="#cb20-55" aria-hidden="true" tabindex="-1"></a>  <span class="at">file_refit =</span> <span class="st">&quot;on_change&quot;</span></span>
-<span id="cb20-56"><a href="#cb20-56" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Disable Quarto chunk caching here so brms&#39;s own `file = ...` /</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="co"># `file_refit = &quot;on_change&quot;` mechanism is the sole source of truth for whether</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="co"># to refit. Without this, the project default `cache: true` can hold an old</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="co"># fit object even after the formula or priors change.</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Same 4PL likelihood as before, but with constrained transformations:</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   ell = 0.49 * inv_logit(ellraw)</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a><span class="co">#   u   = 0.51 + 0.49 * inv_logit(uraw)</span></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   k   = exp(logk)</span></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a><span class="co"># This guarantees ell &lt; 0.5, u &gt; 0.5, u &gt; ell, and k &gt; 0.</span></span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>bform_ext <span class="ot">&lt;-</span> <span class="fu">bf</span>(</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>  y <span class="sc">|</span> <span class="fu">trials</span>(n) <span class="sc">~</span></span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>    <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">inv_logit</span>(ellraw) <span class="sc">+</span></span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>      ((<span class="fl">0.51</span> <span class="sc">+</span> <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">inv_logit</span>(uraw)) <span class="sc">-</span></span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>         <span class="fl">0.49</span> <span class="sc">*</span> <span class="fu">inv_logit</span>(ellraw)) <span class="sc">/</span></span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(<span class="fu">exp</span>(logk) <span class="sc">*</span> (log10_t <span class="sc">-</span> mid))),</span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>  ellraw <span class="sc">~</span> <span class="dv">1</span>,</span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>  uraw   <span class="sc">~</span> T_c,</span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>  logk   <span class="sc">~</span> T_c,</span>
+<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>  mid <span class="sc">~</span> T_c,</span>
+<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">nl =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">beta_binomial</span>(<span class="at">link =</span> <span class="st">&quot;identity&quot;</span>)</span>
+<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a>priors_ext <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
+<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.50)&quot;</span>, true_params_ext<span class="sc">$</span>ell_raw),</span>
+<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;ellraw&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span></span>
+<span id="cb19-29"><a href="#cb19-29" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb19-30"><a href="#cb19-30" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
+<span id="cb19-31"><a href="#cb19-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.50)&quot;</span>, true_params_ext<span class="sc">$</span>u_raw_0),</span>
+<span id="cb19-32"><a href="#cb19-32" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;uraw&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span></span>
+<span id="cb19-33"><a href="#cb19-33" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb19-34"><a href="#cb19-34" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
+<span id="cb19-35"><a href="#cb19-35" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.10)&quot;</span>, true_params_ext<span class="sc">$</span>u_raw_T),</span>
+<span id="cb19-36"><a href="#cb19-36" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;uraw&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;T_c&quot;</span></span>
+<span id="cb19-37"><a href="#cb19-37" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb19-38"><a href="#cb19-38" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
+<span id="cb19-39"><a href="#cb19-39" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.35)&quot;</span>, true_params_ext<span class="sc">$</span>log_k_0),</span>
+<span id="cb19-40"><a href="#cb19-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;logk&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span></span>
+<span id="cb19-41"><a href="#cb19-41" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb19-42"><a href="#cb19-42" aria-hidden="true" tabindex="-1"></a>  brms<span class="sc">::</span><span class="fu">prior_string</span>(</span>
+<span id="cb19-43"><a href="#cb19-43" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">&quot;normal(%f, 0.05)&quot;</span>, true_params_ext<span class="sc">$</span>log_k_T),</span>
+<span id="cb19-44"><a href="#cb19-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">nlpar =</span> <span class="st">&quot;logk&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;T_c&quot;</span></span>
+<span id="cb19-45"><a href="#cb19-45" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb19-46"><a href="#cb19-46" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fl">1.5</span>, <span class="fl">0.40</span>), <span class="at">nlpar =</span> <span class="st">&quot;mid&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;Intercept&quot;</span>),</span>
+<span id="cb19-47"><a href="#cb19-47" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="sc">-</span><span class="fl">0.15</span>, <span class="fl">0.04</span>), <span class="at">nlpar =</span> <span class="st">&quot;mid&quot;</span>, <span class="at">coef =</span> <span class="st">&quot;T_c&quot;</span>)</span>
+<span id="cb19-48"><a href="#cb19-48" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb19-49"><a href="#cb19-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-50"><a href="#cb19-50" aria-hidden="true" tabindex="-1"></a>fit_bb_ext <span class="ot">&lt;-</span> <span class="fu">brm</span>(</span>
+<span id="cb19-51"><a href="#cb19-51" aria-hidden="true" tabindex="-1"></a>  bform_ext, <span class="at">data =</span> sim_bb_ext, <span class="at">prior =</span> priors_ext,</span>
+<span id="cb19-52"><a href="#cb19-52" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, <span class="at">iter =</span> <span class="dv">2000</span>, <span class="at">cores =</span> <span class="dv">4</span>, <span class="at">seed =</span> <span class="dv">123</span>,</span>
+<span id="cb19-53"><a href="#cb19-53" aria-hidden="true" tabindex="-1"></a>  <span class="at">control =</span> <span class="fu">list</span>(<span class="at">adapt_delta =</span> <span class="fl">0.95</span>, <span class="at">max_treedepth =</span> <span class="dv">12</span>),</span>
+<span id="cb19-54"><a href="#cb19-54" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="fu">file.path</span>(models_dir, <span class="st">&quot;sim_4pl_ext_betabinomial_reparam&quot;</span>),</span>
+<span id="cb19-55"><a href="#cb19-55" aria-hidden="true" tabindex="-1"></a>  <span class="at">file_refit =</span> <span class="st">&quot;on_change&quot;</span></span>
+<span id="cb19-56"><a href="#cb19-56" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>The printed model summary is now mainly a convergence check because the coefficients live on raw transformed scales. We still want Rhat near 1 and reasonable effective sample sizes, but recovery is easier to inspect after transforming the posterior draws back to natural 4PL parameters.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Force this chunk to re-run on every render so the printed summary always</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="co"># reflects the current `fit_bb_ext` object (the project default `cache: true`</span></span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="co"># would otherwise hold onto a stale snapshot when the model is refit upstream).</span></span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>fit_bb_ext</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Force this chunk to re-run on every render so the printed summary always</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="co"># reflects the current `fit_bb_ext` object (the project default `cache: true`</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="co"># would otherwise hold onto a stale snapshot when the model is refit upstream).</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>fit_bb_ext</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code> Family: beta_binomial 
   Links: mu = identity 
@@ -6417,65 +6457,65 @@ line-height: var(--tt-line-height-footnote-tight);
 </div>
 <p>Now we can check the changes in <em>z</em> and <span class="math inline">\(CT_{max_{1hr}}\)</span> from having temperature impact on multiple parameters of the 4PL using our workflow in the previous section.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Predict-and-interpolate recipe applied to the extended fit. The code is</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="co"># identical to @sec-joint-extend-recipe — only the fit changes.</span></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>pred_grid_ext <span class="ot">&lt;-</span> tidyr<span class="sc">::</span><span class="fu">expand_grid</span>(</span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">T =</span> <span class="fu">seq</span>(<span class="fu">min</span>(temps) <span class="sc">-</span> <span class="dv">1</span>, <span class="fu">max</span>(temps) <span class="sc">+</span> <span class="dv">1</span>, <span class="at">by =</span> <span class="fl">0.25</span>),</span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">t =</span> <span class="dv">10</span> <span class="sc">^</span> <span class="fu">seq</span>(<span class="fu">log10</span>(<span class="fl">0.5</span>), <span class="fu">log10</span>(<span class="dv">800</span>), <span class="at">length.out =</span> <span class="dv">200</span>)</span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_t =</span> <span class="fu">log10</span>(t),</span>
-<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">T_c     =</span> T <span class="sc">-</span> true_params_ext<span class="sc">$</span>T_bar,</span>
-<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">n       =</span> <span class="dv">1</span></span>
-<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>epred_ext <span class="ot">&lt;-</span> pred_grid_ext <span class="sc">|&gt;</span></span>
-<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>  tidybayes<span class="sc">::</span><span class="fu">add_epred_draws</span>(fit_bb_ext, <span class="at">ndraws =</span> <span class="dv">500</span>)</span>
-<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>lt50_T_ext <span class="ot">&lt;-</span> epred_ext <span class="sc">|&gt;</span></span>
-<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw, T) <span class="sc">|&gt;</span></span>
-<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_lt50 =</span> <span class="fu">approx</span>(.epred, log10_t, <span class="at">xout =</span> <span class="fl">0.5</span>)<span class="sc">$</span>y,</span>
-<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups    =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>z_per_draw_ext <span class="ot">&lt;-</span> purrr<span class="sc">::</span><span class="fu">map_dfr</span>(T_eval, <span class="cf">function</span>(T_at) {</span>
-<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>  lt50_T_ext <span class="sc">|&gt;</span></span>
-<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
-<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>      <span class="at">T_at =</span> T_at,</span>
-<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>      <span class="at">z    =</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">/</span> ((<span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">+</span> half_step)<span class="sc">$</span>y <span class="sc">-</span></span>
-<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>                    <span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">-</span> half_step)<span class="sc">$</span>y) <span class="sc">/</span></span>
-<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>                   (<span class="dv">2</span> <span class="sc">*</span> half_step)),</span>
-<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a>})</span>
-<span id="cb23-34"><a href="#cb23-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-35"><a href="#cb23-35" aria-hidden="true" tabindex="-1"></a>ctmax_per_draw_ext <span class="ot">&lt;-</span> lt50_T_ext <span class="sc">|&gt;</span></span>
-<span id="cb23-36"><a href="#cb23-36" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
-<span id="cb23-37"><a href="#cb23-37" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb23-38"><a href="#cb23-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr =</span> <span class="fu">approx</span>(log10_lt50, T, <span class="at">xout =</span> <span class="fu">log10</span>(<span class="dv">60</span>))<span class="sc">$</span>y,</span>
-<span id="cb23-39"><a href="#cb23-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups   =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb23-40"><a href="#cb23-40" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb23-41"><a href="#cb23-41" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-42"><a href="#cb23-42" aria-hidden="true" tabindex="-1"></a><span class="co"># Posterior summaries: z at each assay temperature, and CTmax_1hr.</span></span>
-<span id="cb23-43"><a href="#cb23-43" aria-hidden="true" tabindex="-1"></a>z_summary_ext <span class="ot">&lt;-</span> z_per_draw_ext <span class="sc">|&gt;</span></span>
-<span id="cb23-44"><a href="#cb23-44" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(T_at) <span class="sc">|&gt;</span></span>
-<span id="cb23-45"><a href="#cb23-45" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb23-46"><a href="#cb23-46" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_med =</span> <span class="fu">median</span>(z, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb23-47"><a href="#cb23-47" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_lo  =</span> <span class="fu">quantile</span>(z, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb23-48"><a href="#cb23-48" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_hi  =</span> <span class="fu">quantile</span>(z, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb23-49"><a href="#cb23-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb23-50"><a href="#cb23-50" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb23-51"><a href="#cb23-51" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-52"><a href="#cb23-52" aria-hidden="true" tabindex="-1"></a>ctmax_summary_ext <span class="ot">&lt;-</span> ctmax_per_draw_ext <span class="sc">|&gt;</span></span>
-<span id="cb23-53"><a href="#cb23-53" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb23-54"><a href="#cb23-54" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_med =</span> <span class="fu">median</span>(CTmax_1hr, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb23-55"><a href="#cb23-55" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_lo  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb23-56"><a href="#cb23-56" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_hi  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb23-57"><a href="#cb23-57" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb23-58"><a href="#cb23-58" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-59"><a href="#cb23-59" aria-hidden="true" tabindex="-1"></a>z_summary_ext</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Predict-and-interpolate recipe applied to the extended fit. The code is</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="co"># identical to @sec-joint-extend-recipe — only the fit changes.</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>pred_grid_ext <span class="ot">&lt;-</span> tidyr<span class="sc">::</span><span class="fu">expand_grid</span>(</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">T =</span> <span class="fu">seq</span>(<span class="fu">min</span>(temps) <span class="sc">-</span> <span class="dv">1</span>, <span class="fu">max</span>(temps) <span class="sc">+</span> <span class="dv">1</span>, <span class="at">by =</span> <span class="fl">0.25</span>),</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">t =</span> <span class="dv">10</span> <span class="sc">^</span> <span class="fu">seq</span>(<span class="fu">log10</span>(<span class="fl">0.5</span>), <span class="fu">log10</span>(<span class="dv">800</span>), <span class="at">length.out =</span> <span class="dv">200</span>)</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_t =</span> <span class="fu">log10</span>(t),</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">T_c     =</span> T <span class="sc">-</span> true_params_ext<span class="sc">$</span>T_bar,</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">n       =</span> <span class="dv">1</span></span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>epred_ext <span class="ot">&lt;-</span> pred_grid_ext <span class="sc">|&gt;</span></span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>  tidybayes<span class="sc">::</span><span class="fu">add_epred_draws</span>(fit_bb_ext, <span class="at">ndraws =</span> <span class="dv">500</span>)</span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>lt50_T_ext <span class="ot">&lt;-</span> epred_ext <span class="sc">|&gt;</span></span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw, T) <span class="sc">|&gt;</span></span>
+<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">log10_lt50 =</span> <span class="fu">approx</span>(.epred, log10_t, <span class="at">xout =</span> <span class="fl">0.5</span>)<span class="sc">$</span>y,</span>
+<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups    =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-23"><a href="#cb22-23" aria-hidden="true" tabindex="-1"></a>z_per_draw_ext <span class="ot">&lt;-</span> purrr<span class="sc">::</span><span class="fu">map_dfr</span>(T_eval, <span class="cf">function</span>(T_at) {</span>
+<span id="cb22-24"><a href="#cb22-24" aria-hidden="true" tabindex="-1"></a>  lt50_T_ext <span class="sc">|&gt;</span></span>
+<span id="cb22-25"><a href="#cb22-25" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
+<span id="cb22-26"><a href="#cb22-26" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb22-27"><a href="#cb22-27" aria-hidden="true" tabindex="-1"></a>      <span class="at">T_at =</span> T_at,</span>
+<span id="cb22-28"><a href="#cb22-28" aria-hidden="true" tabindex="-1"></a>      <span class="at">z    =</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">/</span> ((<span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">+</span> half_step)<span class="sc">$</span>y <span class="sc">-</span></span>
+<span id="cb22-29"><a href="#cb22-29" aria-hidden="true" tabindex="-1"></a>                    <span class="fu">approx</span>(T, log10_lt50, <span class="at">xout =</span> T_at <span class="sc">-</span> half_step)<span class="sc">$</span>y) <span class="sc">/</span></span>
+<span id="cb22-30"><a href="#cb22-30" aria-hidden="true" tabindex="-1"></a>                   (<span class="dv">2</span> <span class="sc">*</span> half_step)),</span>
+<span id="cb22-31"><a href="#cb22-31" aria-hidden="true" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb22-32"><a href="#cb22-32" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb22-33"><a href="#cb22-33" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb22-34"><a href="#cb22-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-35"><a href="#cb22-35" aria-hidden="true" tabindex="-1"></a>ctmax_per_draw_ext <span class="ot">&lt;-</span> lt50_T_ext <span class="sc">|&gt;</span></span>
+<span id="cb22-36"><a href="#cb22-36" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
+<span id="cb22-37"><a href="#cb22-37" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb22-38"><a href="#cb22-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr =</span> <span class="fu">approx</span>(log10_lt50, T, <span class="at">xout =</span> <span class="fu">log10</span>(<span class="dv">60</span>))<span class="sc">$</span>y,</span>
+<span id="cb22-39"><a href="#cb22-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups   =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb22-40"><a href="#cb22-40" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb22-41"><a href="#cb22-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-42"><a href="#cb22-42" aria-hidden="true" tabindex="-1"></a><span class="co"># Posterior summaries: z at each assay temperature, and CTmax_1hr.</span></span>
+<span id="cb22-43"><a href="#cb22-43" aria-hidden="true" tabindex="-1"></a>z_summary_ext <span class="ot">&lt;-</span> z_per_draw_ext <span class="sc">|&gt;</span></span>
+<span id="cb22-44"><a href="#cb22-44" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(T_at) <span class="sc">|&gt;</span></span>
+<span id="cb22-45"><a href="#cb22-45" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb22-46"><a href="#cb22-46" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_med =</span> <span class="fu">median</span>(z, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb22-47"><a href="#cb22-47" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_lo  =</span> <span class="fu">quantile</span>(z, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb22-48"><a href="#cb22-48" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_hi  =</span> <span class="fu">quantile</span>(z, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb22-49"><a href="#cb22-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb22-50"><a href="#cb22-50" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb22-51"><a href="#cb22-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-52"><a href="#cb22-52" aria-hidden="true" tabindex="-1"></a>ctmax_summary_ext <span class="ot">&lt;-</span> ctmax_per_draw_ext <span class="sc">|&gt;</span></span>
+<span id="cb22-53"><a href="#cb22-53" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb22-54"><a href="#cb22-54" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_med =</span> <span class="fu">median</span>(CTmax_1hr, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb22-55"><a href="#cb22-55" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_lo  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb22-56"><a href="#cb22-56" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr_hi  =</span> <span class="fu">quantile</span>(CTmax_1hr, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb22-57"><a href="#cb22-57" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb22-58"><a href="#cb22-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-59"><a href="#cb22-59" aria-hidden="true" tabindex="-1"></a>z_summary_ext</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 5 × 4
    T_at z_med  z_lo  z_hi
@@ -6486,7 +6526,7 @@ line-height: var(--tt-line-height-footnote-tight);
 4    36  6.65  6.27  7.06
 5    38  6.66  6.29  7.07</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>ctmax_summary_ext</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>ctmax_summary_ext</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 1 × 3
   CTmax_1hr_med CTmax_1hr_lo CTmax_1hr_hi
@@ -6498,18 +6538,18 @@ line-height: var(--tt-line-height-footnote-tight);
 <p>In contrast, <span class="math inline">\(CT_{max_{1hr}}\)</span> remains a single number per posterior draw, and in this simulation it actually lands very close to the simple-model value (~32 °C): the asymmetry correction is near zero at the temperature where the LT50 curve crosses 1 hour, so <span class="math inline">\(CT_{max_{1hr}}\)</span> is locally almost insensitive to the T-varying shape parameters. With more pronounced T-dependence in <span class="math inline">\(k\)</span> and <span class="math inline">\(u\)</span>, or with shape parameters further from the symmetric (<span class="math inline">\(\ell + u \approx 1\)</span>) regime, <span class="math inline">\(CT_{max_{1hr}}\)</span> would shift more visibly.</p>
 <p>If we now want to get an adjusted <em>z</em> that averages across these temperatures we can do that as follows:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For each posterior draw, average the five local z(T_eval) values into</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="co"># a single adjusted z; then summarise across draws.</span></span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>adjusted_z_ext <span class="ot">&lt;-</span> z_per_draw_ext <span class="sc">|&gt;</span></span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(<span class="at">z_mean =</span> <span class="fu">mean</span>(z, <span class="at">na.rm =</span> <span class="cn">TRUE</span>), <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span>)</span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>adjusted_z_ext <span class="sc">|&gt;</span></span>
-<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
-<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_med =</span> <span class="fu">median</span>(z_mean,   <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_lo  =</span> <span class="fu">quantile</span>(z_mean, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_hi  =</span> <span class="fu">quantile</span>(z_mean, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For each posterior draw, average the five local z(T_eval) values into</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="co"># a single adjusted z; then summarise across draws.</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>adjusted_z_ext <span class="ot">&lt;-</span> z_per_draw_ext <span class="sc">|&gt;</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(.draw) <span class="sc">|&gt;</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(<span class="at">z_mean =</span> <span class="fu">mean</span>(z, <span class="at">na.rm =</span> <span class="cn">TRUE</span>), <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span>)</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>adjusted_z_ext <span class="sc">|&gt;</span></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_med =</span> <span class="fu">median</span>(z_mean,   <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_lo  =</span> <span class="fu">quantile</span>(z_mean, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">z_hi  =</span> <span class="fu">quantile</span>(z_mean, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 1 × 3
   z_med  z_lo  z_hi
@@ -6528,10 +6568,10 @@ line-height: var(--tt-line-height-footnote-tight);
 <h4 data-number="1.0.7.1" class="anchored" data-anchor-id="a-simulated-temperature-profile-across-5-days"><span class="header-section-number">1.0.7.1</span> A simulated temperature profile across 5 days</h4>
 <p>To mimic conditions a moderately heat-tolerant ectotherm might experience over a temperate-zone late-spring period, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12°C overnight to a midday peak of 24°C. The critical temperature <span class="math inline">\(T_c\)</span> — below which damage is repaired as fast as it accrues and so there is no net damage increase <span class="citation" data-cites="orsted_finding_2022 jorgensen_unifying_2021">(<a href="#ref-jorgensen_unifying_2021" role="doc-biblioref">Jørgensen <em>et al.</em> 2021</a>; <a href="#ref-orsted_finding_2022" role="doc-biblioref">Ørsted <em>et al.</em> 2022</a>)</span> — is set to 20°C. Injury accumulates only during the warmer part of each day. The simulated organism has <span class="math inline">\(CT_{max_{1hr}} \approx 32.1\)</span>°C and <span class="math inline">\(z \approx 6.7\)</span>°C (from <code>true_params</code> in <a href="#sec-sim-step1" class="quarto-xref">Section 1.0.1.1</a>), so the daily peak at 24°C remains 8°C below the 1-hour critical limit — moderate, sub-lethal heat stress that builds cumulatively across days.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hourly temperature trace: 5 days, sinusoidal diurnal cycle</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>hi_hours  <span class="ot">&lt;-</span> <span class="dv">0</span><span class="sc">:</span>(<span class="dv">24</span> <span class="sc">*</span> <span class="dv">5</span> <span class="sc">-</span> <span class="dv">1</span>)</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>hi_T_traj <span class="ot">&lt;-</span> <span class="dv">18</span> <span class="sc">+</span> <span class="dv">6</span> <span class="sc">*</span> <span class="fu">sin</span>(<span class="dv">2</span> <span class="sc">*</span> pi <span class="sc">*</span> (hi_hours <span class="sc">-</span> <span class="dv">6</span>) <span class="sc">/</span> <span class="dv">24</span>)   <span class="co"># range 12-24 °C</span></span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>hi_T_c    <span class="ot">&lt;-</span> <span class="dv">20</span>                                            <span class="co"># damage threshold (°C)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hourly temperature trace: 5 days, sinusoidal diurnal cycle</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>hi_hours  <span class="ot">&lt;-</span> <span class="dv">0</span><span class="sc">:</span>(<span class="dv">24</span> <span class="sc">*</span> <span class="dv">5</span> <span class="sc">-</span> <span class="dv">1</span>)</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>hi_T_traj <span class="ot">&lt;-</span> <span class="dv">18</span> <span class="sc">+</span> <span class="dv">6</span> <span class="sc">*</span> <span class="fu">sin</span>(<span class="dv">2</span> <span class="sc">*</span> pi <span class="sc">*</span> (hi_hours <span class="sc">-</span> <span class="dv">6</span>) <span class="sc">/</span> <span class="dv">24</span>)   <span class="co"># range 12-24 °C</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>hi_T_c    <span class="ot">&lt;-</span> <span class="dv">20</span>                                            <span class="co"># damage threshold (°C)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="fig-hi-trace" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
@@ -6556,40 +6596,40 @@ Figure S 6: 5-day diurnal temperature trace used for the heat-injury and surviv
 <h4 data-number="1.0.7.2" class="anchored" data-anchor-id="hi-accumulation-with-full-posterior-uncertainty"><span class="header-section-number">1.0.7.2</span> HI accumulation with full posterior uncertainty</h4>
 <p>For each posterior sample of <span class="math inline">\((z, CT_{max_{1hr}})\)</span>, we evaluate the HI integral (Equation 7 of the manuscript) across the temperature trace. Each sample produces one possible HI(<span class="math inline">\(t\)</span>) trajectory. The posterior median and 95% credible interval at every hour will then summarise the prediction with full parameter uncertainty.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Subsample 500 posterior draws from the beta-binomial fit for speed.</span></span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">20260507</span>)</span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>hi_draws <span class="ot">&lt;-</span> posterior<span class="sc">::</span><span class="fu">as_draws_df</span>(fit_bb) <span class="sc">|&gt;</span></span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">z         =</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">/</span> b_mid_T_c,</span>
-<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">alpha     =</span> b_mid_Intercept <span class="sc">+</span></span>
-<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>                  (<span class="dv">1</span> <span class="sc">/</span> b_k_Intercept) <span class="sc">*</span></span>
-<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>                  <span class="fu">log</span>((b_u_Intercept <span class="sc">-</span> <span class="fl">0.5</span>) <span class="sc">/</span> (<span class="fl">0.5</span> <span class="sc">-</span> b_ell_Intercept)) <span class="sc">-</span></span>
-<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>                  b_mid_T_c <span class="sc">*</span> true_params<span class="sc">$</span>T_bar,</span>
-<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr =</span> (<span class="fu">log10</span>(<span class="dv">60</span>) <span class="sc">-</span> alpha) <span class="sc">/</span> b_mid_T_c</span>
-<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
-<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">slice_sample</span>(<span class="at">n =</span> <span class="dv">500</span>)</span>
-<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Build the (n_hours × n_draws) rate matrix and cumsum down each column.</span></span>
-<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a>n_h <span class="ot">&lt;-</span> <span class="fu">length</span>(hi_T_traj)</span>
-<span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a>n_d <span class="ot">&lt;-</span> <span class="fu">nrow</span>(hi_draws)</span>
-<span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a>T_mat  <span class="ot">&lt;-</span> <span class="fu">matrix</span>(hi_T_traj, n_h, n_d)</span>
-<span id="cb30-19"><a href="#cb30-19" aria-hidden="true" tabindex="-1"></a>CT_mat <span class="ot">&lt;-</span> <span class="fu">matrix</span>(hi_draws<span class="sc">$</span>CTmax_1hr, n_h, n_d, <span class="at">byrow =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb30-20"><a href="#cb30-20" aria-hidden="true" tabindex="-1"></a>z_mat  <span class="ot">&lt;-</span> <span class="fu">matrix</span>(hi_draws<span class="sc">$</span>z, n_h, n_d, <span class="at">byrow =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb30-21"><a href="#cb30-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-22"><a href="#cb30-22" aria-hidden="true" tabindex="-1"></a><span class="co"># Calculate the rates of HI accumulation from our posterior samples of z and CTmax for the given temperature time series</span></span>
-<span id="cb30-23"><a href="#cb30-23" aria-hidden="true" tabindex="-1"></a>rates              <span class="ot">&lt;-</span> <span class="dv">100</span> <span class="sc">*</span> <span class="dv">10</span> <span class="sc">^</span> ((T_mat <span class="sc">-</span> CT_mat) <span class="sc">/</span> z_mat)</span>
-<span id="cb30-24"><a href="#cb30-24" aria-hidden="true" tabindex="-1"></a>rates[T_mat <span class="sc">&lt;=</span> hi_T_c] <span class="ot">&lt;-</span> <span class="dv">0</span></span>
-<span id="cb30-25"><a href="#cb30-25" aria-hidden="true" tabindex="-1"></a>HI_traj            <span class="ot">&lt;-</span> <span class="fu">apply</span>(rates, <span class="dv">2</span>, cumsum)</span>
-<span id="cb30-26"><a href="#cb30-26" aria-hidden="true" tabindex="-1"></a>HI_traj[HI_traj <span class="sc">&gt;</span> <span class="dv">200</span>] <span class="ot">&lt;-</span> <span class="dv">200</span> <span class="co"># Cap at 200% because survival can&#39;t go beyond that.</span></span>
-<span id="cb30-27"><a href="#cb30-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-28"><a href="#cb30-28" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a summary table that takes the median and 95% CI across the posterior samples for each hour. </span></span>
-<span id="cb30-29"><a href="#cb30-29" aria-hidden="true" tabindex="-1"></a>hi_summary <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb30-30"><a href="#cb30-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">hour   =</span> hi_hours,</span>
-<span id="cb30-31"><a href="#cb30-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">median =</span> <span class="fu">apply</span>(HI_traj, <span class="dv">1</span>, median),</span>
-<span id="cb30-32"><a href="#cb30-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">lower  =</span> <span class="fu">apply</span>(HI_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.025</span>),</span>
-<span id="cb30-33"><a href="#cb30-33" aria-hidden="true" tabindex="-1"></a>  <span class="at">upper  =</span> <span class="fu">apply</span>(HI_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.975</span>)</span>
-<span id="cb30-34"><a href="#cb30-34" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Subsample 500 posterior draws from the beta-binomial fit for speed.</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">20260507</span>)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>hi_draws <span class="ot">&lt;-</span> posterior<span class="sc">::</span><span class="fu">as_draws_df</span>(fit_bb) <span class="sc">|&gt;</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">z         =</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">/</span> b_mid_T_c,</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">alpha     =</span> b_mid_Intercept <span class="sc">+</span></span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>                  (<span class="dv">1</span> <span class="sc">/</span> b_k_Intercept) <span class="sc">*</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>                  <span class="fu">log</span>((b_u_Intercept <span class="sc">-</span> <span class="fl">0.5</span>) <span class="sc">/</span> (<span class="fl">0.5</span> <span class="sc">-</span> b_ell_Intercept)) <span class="sc">-</span></span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>                  b_mid_T_c <span class="sc">*</span> true_params<span class="sc">$</span>T_bar,</span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">CTmax_1hr =</span> (<span class="fu">log10</span>(<span class="dv">60</span>) <span class="sc">-</span> alpha) <span class="sc">/</span> b_mid_T_c</span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">slice_sample</span>(<span class="at">n =</span> <span class="dv">500</span>)</span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Build the (n_hours × n_draws) rate matrix and cumsum down each column.</span></span>
+<span id="cb29-15"><a href="#cb29-15" aria-hidden="true" tabindex="-1"></a>n_h <span class="ot">&lt;-</span> <span class="fu">length</span>(hi_T_traj)</span>
+<span id="cb29-16"><a href="#cb29-16" aria-hidden="true" tabindex="-1"></a>n_d <span class="ot">&lt;-</span> <span class="fu">nrow</span>(hi_draws)</span>
+<span id="cb29-17"><a href="#cb29-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-18"><a href="#cb29-18" aria-hidden="true" tabindex="-1"></a>T_mat  <span class="ot">&lt;-</span> <span class="fu">matrix</span>(hi_T_traj, n_h, n_d)</span>
+<span id="cb29-19"><a href="#cb29-19" aria-hidden="true" tabindex="-1"></a>CT_mat <span class="ot">&lt;-</span> <span class="fu">matrix</span>(hi_draws<span class="sc">$</span>CTmax_1hr, n_h, n_d, <span class="at">byrow =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb29-20"><a href="#cb29-20" aria-hidden="true" tabindex="-1"></a>z_mat  <span class="ot">&lt;-</span> <span class="fu">matrix</span>(hi_draws<span class="sc">$</span>z, n_h, n_d, <span class="at">byrow =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb29-21"><a href="#cb29-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-22"><a href="#cb29-22" aria-hidden="true" tabindex="-1"></a><span class="co"># Calculate the rates of HI accumulation from our posterior samples of z and CTmax for the given temperature time series</span></span>
+<span id="cb29-23"><a href="#cb29-23" aria-hidden="true" tabindex="-1"></a>rates              <span class="ot">&lt;-</span> <span class="dv">100</span> <span class="sc">*</span> <span class="dv">10</span> <span class="sc">^</span> ((T_mat <span class="sc">-</span> CT_mat) <span class="sc">/</span> z_mat)</span>
+<span id="cb29-24"><a href="#cb29-24" aria-hidden="true" tabindex="-1"></a>rates[T_mat <span class="sc">&lt;=</span> hi_T_c] <span class="ot">&lt;-</span> <span class="dv">0</span></span>
+<span id="cb29-25"><a href="#cb29-25" aria-hidden="true" tabindex="-1"></a>HI_traj            <span class="ot">&lt;-</span> <span class="fu">apply</span>(rates, <span class="dv">2</span>, cumsum)</span>
+<span id="cb29-26"><a href="#cb29-26" aria-hidden="true" tabindex="-1"></a>HI_traj[HI_traj <span class="sc">&gt;</span> <span class="dv">200</span>] <span class="ot">&lt;-</span> <span class="dv">200</span> <span class="co"># Cap at 200% because survival can&#39;t go beyond that.</span></span>
+<span id="cb29-27"><a href="#cb29-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-28"><a href="#cb29-28" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a summary table that takes the median and 95% CI across the posterior samples for each hour. </span></span>
+<span id="cb29-29"><a href="#cb29-29" aria-hidden="true" tabindex="-1"></a>hi_summary <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
+<span id="cb29-30"><a href="#cb29-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">hour   =</span> hi_hours,</span>
+<span id="cb29-31"><a href="#cb29-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">median =</span> <span class="fu">apply</span>(HI_traj, <span class="dv">1</span>, median),</span>
+<span id="cb29-32"><a href="#cb29-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">lower  =</span> <span class="fu">apply</span>(HI_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.025</span>),</span>
+<span id="cb29-33"><a href="#cb29-33" aria-hidden="true" tabindex="-1"></a>  <span class="at">upper  =</span> <span class="fu">apply</span>(HI_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.975</span>)</span>
+<span id="cb29-34"><a href="#cb29-34" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="fig-hi-accumulation" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
@@ -6615,35 +6655,35 @@ Figure S 7: Posterior cumulative heat-injury trajectory under the 5-day field t
 <h4 data-number="1.0.7.3" class="anchored" data-anchor-id="predicting-survival-from-the-full-4pl-surface"><span class="header-section-number">1.0.7.3</span> Predicting survival from the full 4PL surface</h4>
 <p>The HI integral compresses the trajectory into a single threshold-crossing summary. The joint Bayesian 4PL fit also lets us predict the <em>full</em> survival fraction <span class="math inline">\(S_{\text{pred}}(t)\)</span> at every time point along the trace, by accumulating effective exposure time at a reference temperature and reading survival off the dose-response surface at the cumulative effective time (Equation 9 of the manuscript). We use <span class="math inline">\(T_{\text{ref}} = \bar T = 34\)</span> °C — the grand-mean temperature of the original assays — so the surface is evaluated at the most data-rich part of the dose-response.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>T_ref <span class="ot">&lt;-</span> true_params<span class="sc">$</span>T_bar</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="co"># For each draw, accumulate effective minutes at T_ref, then evaluate the 4PL.</span></span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>S_traj <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, n_h, n_d)</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (d <span class="cf">in</span> <span class="fu">seq_len</span>(n_d)) {</span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>  z_d     <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>z[d]</span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>  ell_d   <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_ell_Intercept[d]</span>
-<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>  u_d     <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_u_Intercept[d]</span>
-<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>  k_d     <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_k_Intercept[d]</span>
-<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>  beta0_d <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_mid_Intercept[d]   <span class="co"># midpoint at T_bar (in log10-min)</span></span>
-<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Effective-time increment in MINUTES per hourly bin at T_ref = T_bar.</span></span>
-<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>  inc_min     <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(hi_T_traj <span class="sc">&gt;</span> hi_T_c,</span>
-<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a>                        <span class="dv">60</span> <span class="sc">*</span> <span class="dv">10</span> <span class="sc">^</span> ((hi_T_traj <span class="sc">-</span> T_ref) <span class="sc">/</span> z_d),</span>
-<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a>                        <span class="dv">0</span>)</span>
-<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a>  tau_eff_min <span class="ot">&lt;-</span> <span class="fu">cumsum</span>(inc_min)</span>
-<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-18"><a href="#cb31-18" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 4PL surface evaluated at (T_ref, tau_eff). Note that tau_eff_min can be 0, and log10(0)is infinity so we used .Machine$double.eps to identify and replace any zeros with a very small number 2.22x10^-16 to avoid conversion problems</span></span>
-<span id="cb31-19"><a href="#cb31-19" aria-hidden="true" tabindex="-1"></a>  log10_tau   <span class="ot">&lt;-</span> <span class="fu">log10</span>(<span class="fu">pmax</span>(tau_eff_min, .Machine<span class="sc">$</span>double.eps))</span>
-<span id="cb31-20"><a href="#cb31-20" aria-hidden="true" tabindex="-1"></a>  S_traj[, d] <span class="ot">&lt;-</span> ell_d <span class="sc">+</span> (u_d <span class="sc">-</span> ell_d) <span class="sc">/</span></span>
-<span id="cb31-21"><a href="#cb31-21" aria-hidden="true" tabindex="-1"></a>                  (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(k_d <span class="sc">*</span> (log10_tau <span class="sc">-</span> beta0_d)))</span>
-<span id="cb31-22"><a href="#cb31-22" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb31-23"><a href="#cb31-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-24"><a href="#cb31-24" aria-hidden="true" tabindex="-1"></a>S_summary <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb31-25"><a href="#cb31-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">hour   =</span> hi_hours,</span>
-<span id="cb31-26"><a href="#cb31-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">median =</span> <span class="fu">apply</span>(S_traj, <span class="dv">1</span>, median),</span>
-<span id="cb31-27"><a href="#cb31-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">lower  =</span> <span class="fu">apply</span>(S_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.025</span>),</span>
-<span id="cb31-28"><a href="#cb31-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">upper  =</span> <span class="fu">apply</span>(S_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.975</span>)</span>
-<span id="cb31-29"><a href="#cb31-29" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>T_ref <span class="ot">&lt;-</span> true_params<span class="sc">$</span>T_bar</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="co"># For each draw, accumulate effective minutes at T_ref, then evaluate the 4PL.</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>S_traj <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, n_h, n_d)</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (d <span class="cf">in</span> <span class="fu">seq_len</span>(n_d)) {</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>  z_d     <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>z[d]</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>  ell_d   <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_ell_Intercept[d]</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>  u_d     <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_u_Intercept[d]</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>  k_d     <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_k_Intercept[d]</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>  beta0_d <span class="ot">&lt;-</span> hi_draws<span class="sc">$</span>b_mid_Intercept[d]   <span class="co"># midpoint at T_bar (in log10-min)</span></span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Effective-time increment in MINUTES per hourly bin at T_ref = T_bar.</span></span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>  inc_min     <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(hi_T_traj <span class="sc">&gt;</span> hi_T_c,</span>
+<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>                        <span class="dv">60</span> <span class="sc">*</span> <span class="dv">10</span> <span class="sc">^</span> ((hi_T_traj <span class="sc">-</span> T_ref) <span class="sc">/</span> z_d),</span>
+<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a>                        <span class="dv">0</span>)</span>
+<span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a>  tau_eff_min <span class="ot">&lt;-</span> <span class="fu">cumsum</span>(inc_min)</span>
+<span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 4PL surface evaluated at (T_ref, tau_eff). Note that tau_eff_min can be 0, and log10(0)is infinity so we used .Machine$double.eps to identify and replace any zeros with a very small number 2.22x10^-16 to avoid conversion problems</span></span>
+<span id="cb30-19"><a href="#cb30-19" aria-hidden="true" tabindex="-1"></a>  log10_tau   <span class="ot">&lt;-</span> <span class="fu">log10</span>(<span class="fu">pmax</span>(tau_eff_min, .Machine<span class="sc">$</span>double.eps))</span>
+<span id="cb30-20"><a href="#cb30-20" aria-hidden="true" tabindex="-1"></a>  S_traj[, d] <span class="ot">&lt;-</span> ell_d <span class="sc">+</span> (u_d <span class="sc">-</span> ell_d) <span class="sc">/</span></span>
+<span id="cb30-21"><a href="#cb30-21" aria-hidden="true" tabindex="-1"></a>                  (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(k_d <span class="sc">*</span> (log10_tau <span class="sc">-</span> beta0_d)))</span>
+<span id="cb30-22"><a href="#cb30-22" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb30-23"><a href="#cb30-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-24"><a href="#cb30-24" aria-hidden="true" tabindex="-1"></a>S_summary <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
+<span id="cb30-25"><a href="#cb30-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">hour   =</span> hi_hours,</span>
+<span id="cb30-26"><a href="#cb30-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">median =</span> <span class="fu">apply</span>(S_traj, <span class="dv">1</span>, median),</span>
+<span id="cb30-27"><a href="#cb30-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">lower  =</span> <span class="fu">apply</span>(S_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.025</span>),</span>
+<span id="cb30-28"><a href="#cb30-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">upper  =</span> <span class="fu">apply</span>(S_traj, <span class="dv">1</span>, quantile, <span class="at">probs =</span> <span class="fl">0.975</span>)</span>
+<span id="cb30-29"><a href="#cb30-29" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="fig-survival-pred" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
@@ -6702,7 +6742,6 @@ Rezende, E.L., Castañeda, L.E. &amp; Santos, M. (2014). <a href="https://doi.or
 <p><strong>other attached packages:</strong> <em>pander(v.0.6.6)</em>, <em>tinytable(v.0.16.0)</em>, <em>tidybayes(v.3.0.7)</em>, <em>posterior(v.1.6.1)</em>, <em>brms(v.2.23.0)</em>, <em>Rcpp(v.1.1.1-1.1)</em>, <em>ggplot2(v.4.0.3)</em>, <em>purrr(v.1.2.2)</em>, <em>tibble(v.3.3.1)</em>, <em>tidyr(v.1.3.2)</em>, <em>dplyr(v.1.2.1)</em> and <em>here(v.1.0.1)</em></p>
 <p><strong>loaded via a namespace (and not attached):</strong> <em>svUnit(v.1.0.8)</em>, <em>tidyselect(v.1.2.1)</em>, <em>farver(v.2.1.2)</em>, <em>loo(v.2.9.0)</em>, <em>S7(v.0.2.2)</em>, <em>fastmap(v.1.2.0)</em>, <em>TH.data(v.1.1-3)</em>, <em>tensorA(v.0.36.2.1)</em>, <em>pacman(v.0.5.1)</em>, <em>digest(v.0.6.39)</em>, <em>estimability(v.1.5.1)</em>, <em>lifecycle(v.1.0.5)</em>, <em>StanHeaders(v.2.32.10)</em>, <em>processx(v.3.9.0)</em>, <em>survival(v.3.8-6)</em>, <em>magrittr(v.2.0.5)</em>, <em>compiler(v.4.5.3)</em>, <em>rlang(v.1.2.0)</em>, <em>tools(v.4.5.3)</em>, <em>yaml(v.2.3.12)</em>, <em>knitr(v.1.51)</em>, <em>labeling(v.0.4.3)</em>, <em>bridgesampling(v.1.2-1)</em>, <em>htmlwidgets(v.1.6.4)</em>, <em>curl(v.7.1.0)</em>, <em>pkgbuild(v.1.4.8)</em>, <em>plyr(v.1.8.9)</em>, <em>RColorBrewer(v.1.1-3)</em>, <em>multcomp(v.1.4-28)</em>, <em>abind(v.1.4-8)</em>, <em>withr(v.3.0.2)</em>, <em>grid(v.4.5.3)</em>, <em>stats4(v.4.5.3)</em>, <em>colorspace(v.2.1-1)</em>, <em>xtable(v.1.8-8)</em>, <em>inline(v.0.3.21)</em>, <em>emmeans(v.2.0.3)</em>, <em>scales(v.1.4.0)</em>, <em>MASS(v.7.3-65)</em>, <em>cli(v.3.6.6)</em>, <em>mvtnorm(v.1.3-7)</em>, <em>rmarkdown(v.2.31)</em>, <em>generics(v.0.1.4)</em>, <em>otel(v.0.2.0)</em>, <em>RcppParallel(v.5.1.11-2)</em>, <em>reshape2(v.1.4.5)</em>, <em>rstan(v.2.32.7)</em>, <em>stringr(v.1.6.0)</em>, <em>splines(v.4.5.3)</em>, <em>bayesplot(v.1.15.0)</em>, <em>parallel(v.4.5.3)</em>, <em>matrixStats(v.1.5.0)</em>, <em>vctrs(v.0.7.3)</em>, <em>V8(v.6.0.4)</em>, <em>Matrix(v.1.7-4)</em>, <em>sandwich(v.3.1-1)</em>, <em>jsonlite(v.2.0.0)</em>, <em>callr(v.3.7.6)</em>, <em>litedown(v.0.7)</em>, <em>arrayhelpers(v.1.1-0)</em>, <em>ggdist(v.3.3.3)</em>, <em>glue(v.1.8.1)</em>, <em>codetools(v.0.2-20)</em>, <em>distributional(v.0.6.0)</em>, <em>stringi(v.1.8.7)</em>, <em>gtable(v.0.3.6)</em>, <em>QuickJSR(v.1.9.0)</em>, <em>pillar(v.1.11.1)</em>, <em>htmltools(v.0.5.9)</em>, <em>Brobdingnag(v.1.2-9)</em>, <em>R6(v.2.6.1)</em>, <em>rprojroot(v.2.1.1)</em>, <em>evaluate(v.1.0.5)</em>, <em>lattice(v.0.22-9)</em>, <em>backports(v.1.5.1)</em>, <em>rstantools(v.2.6.0)</em>, <em>coda(v.0.19-4.1)</em>, <em>gridExtra(v.2.3)</em>, <em>nlme(v.3.1-168)</em>, <em>checkmate(v.2.3.4)</em>, <em>mgcv(v.1.9-4)</em>, <em>xfun(v.0.57)</em>, <em>zoo(v.1.8-14)</em> and <em>pkgconfig(v.2.0.3)</em></p>
 </section>
-</div>
 
 </main>
 <!-- /main column -->
