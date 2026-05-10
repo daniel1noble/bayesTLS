@@ -206,6 +206,15 @@ $$ {#eq-lt50}
 
 Note that @eq-lt50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. With this subtraction, the intercept estimates $\log_{10}\text{LT50}$ at the average temperature ($\bar{T}$); without it, the intercept estimates $\log_{10}\text{LT50}$ at $T = 0$°C. From @eq-lt50, the classical TLS quantities fall out directly. Thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\ell$, $u$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
 
+
+The same derivation generalises beyond the median: the Bayesian dose-response fit gives access to *any* mortality percentile, not just $LT_{50}$ [@rezende_drosophila_mortality_2020; @jorgensen_unifying_2021]. Setting $p_{ij} = x/100$ in @eq-4pl and following the same algebra used for $LT_{50}$, the posterior samples of $(\ell, u, k, m(T))$ deliver the time at which $x\%$ of the population reaches the assayed endpoint:
+
+$$
+\log_{10} LT_x(T) \;=\; m(T) \;-\; \frac{1}{k}\,\ln\!\frac{u - x/100}{x/100 - \ell},
+$$ {#eq-LTx}
+
+Varying $x$ in @eq-LTx then yields any threshold of interest. For instance, $LT_{10}$ marks the onset of early mortality — useful for risk management — while $LT_{90}$ is closer to a population-collapse threshold. As with $LT_{50}$, every prediction inherits the joint posterior, so uncertainty bands can be reported alongside the population-level median.
+
 Importantly, the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell}$ does not depend on $T$. Instead, it shifts $\log_{10}\text{LT50}$ vertically without changing the slope. In contrast, threshold summaries are not robust in this way; when partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, the asymmetry correction must be retained — added to the naive $\log_{10}\text{LT50}$ (@eq-lt50-corrected) and subtracted, after division by the slope (to convert the vertical shift in $\log_{10}\text{LT50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
 
 $$
@@ -217,14 +226,6 @@ CT_{max}(t_\text{ref}) \;=\; \underbrace{\frac{\log_{10}t_\text{ref} - \beta_0 +
 $$ {#eq-ctmax-corrected}
 
 In practice, however, these corrections may not be needed so long as the experimental design includes treatments that span the full mortality range which anchors $\ell$ and $u$ tightly near 1 and 0 and makes the correction term effectively zero. When this is the case, $\log_{10}\text{LT50}$ and $CT_{max}$ can be read directly from the naive forms in @eq-lt50-corrected and @eq-ctmax-corrected. Regardless, we recommend using the correction factor as a safeguard. However, computing both the naive and corrected estimates and comparing them is a useful sensitivity check for whether the correction is needed in any given dataset.
-
-The same derivation generalises beyond the median: the Bayesian dose-response fit gives access to *any* mortality percentile, not just $LT_{50}$ [@rezende_drosophila_mortality_2020; @jorgensen_unifying_2021]. Setting $p_{ij} = x/100$ in @eq-4pl and following the same algebra used for $LT_{50}$, the posterior samples of $(\ell, u, k, m(T))$ deliver the time at which $x\%$ of the population reaches the assayed endpoint:
-
-$$
-\log_{10} LT_x(T) \;=\; m(T) \;-\; \frac{1}{k}\,\ln\!\frac{u - x/100}{x/100 - \ell},
-$$ {#eq-LTx}
-
-Varying $x$ in @eq-LTx then yields any threshold of interest. For instance, $LT_{10}$ marks the onset of early mortality — useful for risk management — while $LT_{90}$ is closer to a population-collapse threshold. As with $LT_{50}$, every prediction inherits the joint posterior, so uncertainty bands can be reported alongside the population-level median.
 
 # Predicting heat injury and survival under dynamic thermal environments
 
