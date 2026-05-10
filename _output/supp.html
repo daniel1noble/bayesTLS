@@ -2495,7 +2495,7 @@ window.Quarto = {
 </section>
 <section id="sec-sim-step3" class="level4" data-number="1.0.1.3">
 <h4 data-number="1.0.1.3" class="anchored" data-anchor-id="sec-sim-step3"><span class="header-section-number">1.0.1.3</span> Step 3 — Look at the truth before simulating</h4>
-<p>Before generating noisy data, let’s plot the <em>true</em> survival surface (<a href="#fig-true-surface" class="quarto-xref">Figure S 1</a>) so we know what the model is being asked to recover. Each line is the 4PL at one assay temperature, plotted against <span class="math inline">\(\log_{10}\)</span> exposure time.</p>
+<p>Before generating noisy data, let’s plot the <em>true</em> survival surface (<a href="#fig-true-surface" class="quarto-xref">Figure S1</a>) so we know what the model is being asked to recover. Each line is the 4PL at one assay temperature, plotted against <span class="math inline">\(\log_{10}\)</span> exposure time.</p>
 <div id="fig-true-surface" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-true-surface-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -2510,7 +2510,7 @@ window.Quarto = {
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-true-surface-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 1: The known 4PL dose-response surface used to generate the simulated data, evaluated on a dense time grid at each of the five assay temperatures. The horizontal line marks 50% survival; where each curve crosses it gives the true LT50 at that temperature.
+Figure S1: The known 4PL dose-response surface used to generate the simulated data, evaluated on a dense time grid at each of the five assay temperatures. The horizontal line marks 50% survival; where each curve crosses it gives the true LT50 at that temperature.
 </figcaption>
 </figure>
 </div>
@@ -2563,7 +2563,7 @@ Figure S 1: The known 4PL dose-response surface used to generate the simulated 
 <div id="tbl-stage1-lt50" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-stage1-lt50-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table S 1: Per-temperature Stage-1 estimates of <span class="math inline">\(\log_{10}\text{LT50}\)</span> from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with <span class="math inline">\(\log_{10}\text{LT50}\)</span> here because the simulation asymptotes are near 0 and 1).
+Table S1: Per-temperature Stage-1 estimates of <span class="math inline">\(\log_{10}\text{LT50}\)</span> from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with <span class="math inline">\(\log_{10}\text{LT50}\)</span> here because the simulation asymptotes are near 0 and 1).
 </figcaption>
 <div aria-describedby="tbl-stage1-lt50-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -3097,7 +3097,7 @@ line-height: var(--tt-line-height-footnote-tight);
 <span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>ts_bin <span class="ot">&lt;-</span> <span class="fu">fit_stage2</span>(stage1_bin)</span>
 <span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>ts_bb  <span class="ot">&lt;-</span> <span class="fu">fit_stage2</span>(stage1_bb)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p><a href="#fig-stage2-regression" class="quarto-xref">Figure S 2</a> visualises the Stage-2 fit. Each point is one Stage-1 <span class="math inline">\(\log_{10}\text{LT50}\)</span> estimate from <a href="#tbl-stage1-lt50" class="quarto-xref">Table S 1</a>; the solid line is the OLS regression through them. The slope is <span class="math inline">\(\beta_1\)</span>, from which <span class="math inline">\(z = -1/\beta_1\)</span> — i.e., the temperature increase that causes LT50 to change by a factor of 10. The line’s height at <span class="math inline">\(\log_{10} 60 \approx 1.78\)</span> (1 hour) is at the temperature equal to <span class="math inline">\(CT_{max_{1hr}}\)</span> — the vertical dotted line drops from this intersection straight to the temperature axis to mark it. The dashed grey line is the simulation truth.</p>
+<p><a href="#fig-stage2-regression" class="quarto-xref">Figure S2</a> visualises the Stage-2 fit. Each point is one Stage-1 <span class="math inline">\(\log_{10}\text{LT50}\)</span> estimate from <a href="#tbl-stage1-lt50" class="quarto-xref">Table S1</a>; the solid line is the OLS regression through them. The slope is <span class="math inline">\(\beta_1\)</span>, from which <span class="math inline">\(z = -1/\beta_1\)</span> — i.e., the temperature increase that causes LT50 to change by a factor of 10. The line’s height at <span class="math inline">\(\log_{10} 60 \approx 1.78\)</span> (1 hour) is at the temperature equal to <span class="math inline">\(CT_{max_{1hr}}\)</span> — the vertical dotted line drops from this intersection straight to the temperature axis to mark it. The dashed grey line is the simulation truth.</p>
 <div id="fig-stage2-regression" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-stage2-regression-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -3112,7 +3112,7 @@ line-height: var(--tt-line-height-footnote-tight);
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-stage2-regression-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 2: Stage-2 OLS regression of <span class="math inline">\(\log_{10}\text{LT50}\)</span> on assay temperature, fit separately to the binomial and beta-binomial simulated datasets. Points are the Stage-1 per-temperature LT50 estimates; solid coloured lines are the OLS fits; the dashed grey line is the simulation truth. The slope of each line equals <span class="math inline">\(\beta_1\)</span>, from which <span class="math inline">\(z = -1/\beta_1\)</span>. The horizontal dotted line marks <span class="math inline">\(\log_{10} 60\)</span> (1 hour); the vertical dotted line drops from where the truth crosses 1 hour straight down to the temperature axis, marking <span class="math inline">\(CT_{max_{1hr}}\)</span> visually.
+Figure S2: Stage-2 OLS regression of <span class="math inline">\(\log_{10}\text{LT50}\)</span> on assay temperature, fit separately to the binomial and beta-binomial simulated datasets. Points are the Stage-1 per-temperature LT50 estimates; solid coloured lines are the OLS fits; the dashed grey line is the simulation truth. The slope of each line equals <span class="math inline">\(\beta_1\)</span>, from which <span class="math inline">\(z = -1/\beta_1\)</span>. The horizontal dotted line marks <span class="math inline">\(\log_{10} 60\)</span> (1 hour); the vertical dotted line drops from where the truth crosses 1 hour straight down to the temperature axis, marking <span class="math inline">\(CT_{max_{1hr}}\)</span> visually.
 </figcaption>
 </figure>
 </div>
@@ -3173,7 +3173,7 @@ p_{ij} \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - \
 <span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">beta_binomial</span>(<span class="at">link =</span> <span class="st">&quot;identity&quot;</span>)</span>
 <span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>The first line in <code>bf()</code> is <a href="#eq-supp-4pl" class="quarto-xref">Equation S 1</a>. The next four lines say (i) the asymptotes and slope are simply scalars and we estimate an overall intercept for each (<code>ell ~ 1</code>, <code>u ~ 1</code>, <code>k ~ 1</code>) and (ii) the midpoint depends linearly on mean-centred temperature (<code>mid ~ T_c</code>), recovering <a href="#eq-supp-mid-temp" class="quarto-xref">Equation S 2</a>. This is the entire model.</p>
+<p>The first line in <code>bf()</code> is <a href="#eq-supp-4pl" class="quarto-xref">Equation S1</a>. The next four lines say (i) the asymptotes and slope are simply scalars and we estimate an overall intercept for each (<code>ell ~ 1</code>, <code>u ~ 1</code>, <code>k ~ 1</code>) and (ii) the midpoint depends linearly on mean-centred temperature (<code>mid ~ T_c</code>), recovering <a href="#eq-supp-mid-temp" class="quarto-xref">Equation S2</a>. This is the entire model.</p>
 <div class="callout callout-style-default callout-important callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -3227,12 +3227,12 @@ R2 0.9263016 0.00105021 0.9238746 0.9280369</code></pre>
 </section>
 <section id="sec-joint-recovery" class="level4" data-number="1.0.3.3">
 <h4 data-number="1.0.3.3" class="anchored" data-anchor-id="sec-joint-recovery"><span class="header-section-number">1.0.3.3</span> Checking parameter recovery</h4>
-<p>We can now check how well our fitted model recovered the true parameters that generated the data. The most direct check is to compare posterior medians (with 95% credible intervals) to the known truth (<a href="#tbl-recovery" class="quarto-xref">Table S 2</a>). We have big sample sizes here so our values should be pretty close to our true values.</p>
+<p>We can now check how well our fitted model recovered the true parameters that generated the data. The most direct check is to compare posterior medians (with 95% credible intervals) to the known truth (<a href="#tbl-recovery" class="quarto-xref">Table S2</a>). We have big sample sizes here so our values should be pretty close to our true values.</p>
 <div class="cell">
 <div id="tbl-recovery" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-recovery-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table S 2: Posterior medians and 95% credible intervals for the four 4PL parameters and the temperature slope, compared to the known truth used to generate the simulated data. Recovery is judged successful when the credible interval covers the truth.
+Table S2: Posterior medians and 95% credible intervals for the four 4PL parameters and the temperature slope, compared to the known truth used to generate the simulated data. Recovery is judged successful when the credible interval covers the truth.
 </figcaption>
 <div aria-describedby="tbl-recovery-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -3770,7 +3770,7 @@ line-height: var(--tt-line-height-footnote-tight);
 </figure>
 </div>
 </div>
-<p>We can also overlay the posterior fitted curves on the simulated data (<a href="#fig-recovery-fit" class="quarto-xref">Figure S 3</a>). If the model has recovered the true surface, the fitted lines should track the simulated proportions at every assay temperature.</p>
+<p>We can also overlay the posterior fitted curves on the simulated data (<a href="#fig-recovery-fit" class="quarto-xref">Figure S3</a>). If the model has recovered the true surface, the fitted lines should track the simulated proportions at every assay temperature.</p>
 <div id="fig-recovery-fit" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-recovery-fit-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -3785,7 +3785,7 @@ line-height: var(--tt-line-height-footnote-tight);
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-recovery-fit-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 3: Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overlaid on the simulated binomial data (points). One panel-coloured line per assay temperature. Where the fitted curves track the simulated proportions across all five temperatures, the model has recovered the underlying dose-response surface.
+Figure S3: Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overlaid on the simulated binomial data (points). One panel-coloured line per assay temperature. Where the fitted curves track the simulated proportions across all five temperatures, the model has recovered the underlying dose-response surface.
 </figcaption>
 </figure>
 </div>
@@ -3842,7 +3842,7 @@ Figure S 3: Posterior fitted 4PL curves (solid lines, with shaded 95% credible 
 <div id="tbl-tls-recovery" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-tls-recovery-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table S 3: Posterior medians and 95% credible intervals for thermal sensitivity (<span class="math inline">\(z\)</span>) and the critical thermal limit at a 1-hour reference duration (<span class="math inline">\(CT_{max_{1hr}}\)</span>), derived directly from the joint Bayesian 4PL fit. Both quantities recover the simulation truth under both binomial and beta-binomial likelihoods.
+Table S3: Posterior medians and 95% credible intervals for thermal sensitivity (<span class="math inline">\(z\)</span>) and the critical thermal limit at a 1-hour reference duration (<span class="math inline">\(CT_{max_{1hr}}\)</span>), derived directly from the joint Bayesian 4PL fit. Both quantities recover the simulation truth under both binomial and beta-binomial likelihoods.
 </figcaption>
 <div aria-describedby="tbl-tls-recovery-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -4364,11 +4364,11 @@ line-height: var(--tt-line-height-footnote-tight);
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-tls-recovery-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 4: Posterior distributions for thermal sensitivity (<span class="math inline">\(z\)</span>) and <span class="math inline">\(CT_{max_{1hr}}\)</span> from the binomial fit (blue) and beta-binomial fit (orange). Vertical dashed lines mark the simulation truth. Both posteriors are tightly concentrated around the truth, illustrating that the joint Bayesian fit recovers the classical TLS quantities with calibrated uncertainty without any additional regression step.
+Figure S4: Posterior distributions for thermal sensitivity (<span class="math inline">\(z\)</span>) and <span class="math inline">\(CT_{max_{1hr}}\)</span> from the binomial fit (blue) and beta-binomial fit (orange). Vertical dashed lines mark the simulation truth. Both posteriors are tightly concentrated around the truth, illustrating that the joint Bayesian fit recovers the classical TLS quantities with calibrated uncertainty without any additional regression step.
 </figcaption>
 </figure>
 </div>
-<p>The two derived quantities recover their simulation truth in both fits (<a href="#tbl-tls-recovery" class="quarto-xref">Table S 3</a>, <a href="#fig-tls-recovery" class="quarto-xref">Figure S 4</a>), with credible intervals that reflect joint uncertainty in all four 4PL parameters and the temperature slope. Crucially, <strong>we did not run a second regression</strong> to get <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span>. They are properties of the same posterior we already have. This is the key practical advantage of the joint approach over the two-step pipeline: every classical TLS quantity is one transformation away from the fit we have already run, and every quantity inherits the same calibrated uncertainty.</p>
+<p>The two derived quantities recover their simulation truth in both fits (<a href="#tbl-tls-recovery" class="quarto-xref">Table S3</a>, <a href="#fig-tls-recovery" class="quarto-xref">Figure S4</a>), with credible intervals that reflect joint uncertainty in all four 4PL parameters and the temperature slope. Crucially, <strong>we did not run a second regression</strong> to get <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span>. They are properties of the same posterior we already have. This is the key practical advantage of the joint approach over the two-step pipeline: every classical TLS quantity is one transformation away from the fit we have already run, and every quantity inherits the same calibrated uncertainty.</p>
 <p>Given that we have the full distribution of <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span>, we can now report on uncertainty in their values <em>very</em> easily. All we need to do is take the standard deviation of this distribution for the standard error or we can even summaise with quantiles as follows:</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>summarise_draws <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
@@ -4418,7 +4418,7 @@ Figure S 4: Posterior distributions for thermal sensitivity (<span class="math 
 <div id="tbl-uncert-z-ct" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-uncert-z-ct-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table S 4: Posterior summaries of <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span> from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval (2.5% and 97.5% quantiles), reported separately for the binomial and beta-binomial fits.
+Table S4: Posterior summaries of <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{max_{1hr}}\)</span> from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval (2.5% and 97.5% quantiles), reported separately for the binomial and beta-binomial fits.
 </figcaption>
 <div aria-describedby="tbl-uncert-z-ct-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -4962,12 +4962,12 @@ Important
 <h3 data-number="1.0.5" class="anchored" data-anchor-id="sec-compare"><span class="header-section-number">1.0.5</span> <em>Comparing the two pipelines</em></h3>
 <section id="sec-compare-table" class="level4" data-number="1.0.5.1">
 <h4 data-number="1.0.5.1" class="anchored" data-anchor-id="sec-compare-table"><span class="header-section-number">1.0.5.1</span> Point-estimate agreement on the same data</h4>
-<p><a href="#tbl-twostage-compare" class="quarto-xref">Table S 5</a> puts the two-stage point estimates next to the joint Bayesian posterior medians for both simulated datasets.</p>
+<p><a href="#tbl-twostage-compare" class="quarto-xref">Table S5</a> puts the two-stage point estimates next to the joint Bayesian posterior medians for both simulated datasets.</p>
 <div class="cell">
 <div id="tbl-twostage-compare" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-twostage-compare-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table S 5: Point estimates (two-stage) and posterior medians (joint Bayesian) for thermal sensitivity (<span class="math inline">\(z\)</span>) and <span class="math inline">\(CT_{max_{1hr}}\)</span>, recovered by each of four estimator–dataset combinations from the same simulated datasets. Truth values are the simulation parameters.
+Table S5: Point estimates (two-stage) and posterior medians (joint Bayesian) for thermal sensitivity (<span class="math inline">\(z\)</span>) and <span class="math inline">\(CT_{max_{1hr}}\)</span>, recovered by each of four estimator–dataset combinations from the same simulated datasets. Truth values are the simulation parameters.
 </figcaption>
 <div aria-describedby="tbl-twostage-compare-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -5644,7 +5644,7 @@ line-height: var(--tt-line-height-footnote-tight);
 <span id="cb18-49"><a href="#cb18-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">y      =</span> <span class="fu">rbinom</span>(dplyr<span class="sc">::</span><span class="fu">n</span>(), <span class="at">size =</span> n, <span class="at">prob =</span> p_draw)</span>
 <span id="cb18-50"><a href="#cb18-50" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Lets have a look at the data along with truth (<a href="#fig-true-surface-ext" class="quarto-xref">Figure S 5</a>):</p>
+<p>Lets have a look at the data along with truth (<a href="#fig-true-surface-ext" class="quarto-xref">Figure S5</a>):</p>
 <div id="fig-true-surface-ext" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-true-surface-ext-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -5659,7 +5659,7 @@ line-height: var(--tt-line-height-footnote-tight);
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-true-surface-ext-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 5: True 4PL dose-response surface (solid lines) for the extended simulation, where <span class="math inline">\(k\)</span> rises and <span class="math inline">\(u\)</span> falls linearly with assay temperature, overlaid on the simulated beta-binomial counts (points). One coloured curve and a corresponding cloud of points per assay temperature; the horizontal dashed line marks 50% survival.
+Figure S5: True 4PL dose-response surface (solid lines) for the extended simulation, where <span class="math inline">\(k\)</span> rises and <span class="math inline">\(u\)</span> falls linearly with assay temperature, overlaid on the simulated beta-binomial counts (points). One coloured curve and a corresponding cloud of points per assay temperature; the horizontal dashed line marks 50% survival.
 </figcaption>
 </figure>
 </div>
@@ -5801,7 +5801,7 @@ scale reduction factor on split chains (at convergence, Rhat = 1).</code></pre>
 <div id="tbl-ext-recovery" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-ext-recovery-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table S 6: Natural-scale parameter recovery from the constrained temperature-varying 4PL. The posterior is transformed from the raw <code>ellraw</code>, <code>uraw</code>, and <code>logk</code> coefficients back to the biologically interpretable asymptotes, steepness, and midpoint at each assay temperature; <span class="math inline">\(\phi\)</span> is the beta-binomial precision parameter used to generate the overdispersed counts.
+Table S6: Natural-scale parameter recovery from the constrained temperature-varying 4PL. The posterior is transformed from the raw <code>ellraw</code>, <code>uraw</code>, and <code>logk</code> coefficients back to the biologically interpretable asymptotes, steepness, and midpoint at each assay temperature; <span class="math inline">\(\phi\)</span> is the beta-binomial precision parameter used to generate the overdispersed counts.
 </figcaption>
 <div aria-describedby="tbl-ext-recovery-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -6587,7 +6587,7 @@ line-height: var(--tt-line-height-footnote-tight);
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-hi-trace-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 6: 5-day diurnal temperature trace used for the heat-injury and survival predictions. The dashed line is the damage-accumulation threshold <span class="math inline">\(T_c = 20\)</span> °C; the dotted line is the simulated organism’s <span class="math inline">\(CT_{max_{1hr}} \approx 32.1\)</span>°C — well above the daily peaks, so accumulation is sub-lethal and gradual.
+Figure S6: 5-day diurnal temperature trace used for the heat-injury and survival predictions. The dashed line is the damage-accumulation threshold <span class="math inline">\(T_c = 20\)</span> °C; the dotted line is the simulated organism’s <span class="math inline">\(CT_{max_{1hr}} \approx 32.1\)</span>°C — well above the daily peaks, so accumulation is sub-lethal and gradual.
 </figcaption>
 </figure>
 </div>
@@ -6645,7 +6645,7 @@ Figure S 6: 5-day diurnal temperature trace used for the heat-injury and surviv
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-hi-accumulation-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 7: Posterior cumulative heat-injury trajectory under the 5-day field trace. Solid line is the posterior median across 500 draws of <span class="math inline">\((z, CT_{max_{1hr}})\)</span> from <code>fit_bb</code>; shaded band is the 95% credible interval. The dashed line marks the <span class="math inline">\(LT_{50}\)</span> threshold (<span class="math inline">\(HI = 100\%\)</span>), which the population is predicted to cross by day 3.
+Figure S7: Posterior cumulative heat-injury trajectory under the 5-day field trace. Solid line is the posterior median across 500 draws of <span class="math inline">\((z, CT_{max_{1hr}})\)</span> from <code>fit_bb</code>; shaded band is the 95% credible interval. The dashed line marks the <span class="math inline">\(LT_{50}\)</span> threshold (<span class="math inline">\(HI = 100\%\)</span>), which the population is predicted to cross by day 3.
 </figcaption>
 </figure>
 </div>
@@ -6699,7 +6699,7 @@ Figure S 7: Posterior cumulative heat-injury trajectory under the 5-day field t
 </div>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-survival-pred-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure S 8: Posterior predicted population-level survival fraction under the 5-day field trace, computed from the model (Equation 9 of the manuscript). Solid line is the posterior median across 500 draws of <span class="math inline">\((\ell, u, k, \beta_0, \beta_1)\)</span> from <code>fit_bb</code>; shaded band is the 95% credible interval. The dashed line marks 50% survival, the threshold the HI integral compresses into a single crossing time.
+Figure S8: Posterior predicted population-level survival fraction under the 5-day field trace, computed from the model (Equation 9 of the manuscript). Solid line is the posterior median across 500 draws of <span class="math inline">\((\ell, u, k, \beta_0, \beta_1)\)</span> from <code>fit_bb</code>; shaded band is the 95% credible interval. The dashed line marks 50% survival, the threshold the HI integral compresses into a single crossing time.
 </figcaption>
 </figure>
 </div>
