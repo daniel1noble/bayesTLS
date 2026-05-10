@@ -22,6 +22,39 @@ Planned per [CLAUDE.md](CLAUDE.md) but not yet present: `data/`, documented and 
 
 To be written once the compendium scaffold is in place. The current prototype in [R/bayesian_4pl.R](R/bayesian_4pl.R) expects `data/data_zebrafish_TDT.xlsx` (sheet `LETHAL_TDT`), which is not yet in the repo, and it references plotting helpers (`base_theme`, `life_stage_cols`, …) that have not yet been extracted into `R/`.
 
+## Rendering the manuscript and supplement
+
+Two source documents, each rendered to HTML, DOCX, and PDF:
+
+- `ms/ms.qmd` — manuscript
+- `ms/supplement.qmd` — supplement
+
+To produce all six outputs:
+
+```sh
+make all
+```
+
+Or one document at a time:
+
+```sh
+make ms     # manuscript only — _output/ms.{html,docx,pdf}
+make supp   # supplement only — _output/supp.{html,docx,pdf}
+```
+
+Or one format at a time:
+
+```sh
+make ms-pdf      make ms-html      make ms-docx
+make supp-pdf    make supp-html    make supp-docx
+```
+
+Final outputs land in `_output/`. The first render takes a few minutes (LaTeX, knitr cache); later renders reuse caches and are faster. Run `make clean` to remove `_output/`, or `make build-clean` to also wipe the out-of-tree build cache at `~/Library/Caches/tls-render/`.
+
+**Cross-references.** Within a document, use Quarto's `@`-refs as normal (`@fig-X`, `@tbl-X`, `@eq-X`, `@sec-X`). Between the two documents, use plain text — e.g. write *"Equation 7 of the manuscript"* in the supplement, or *"Figure S2 in the supplement"* in the manuscript. The supplement labels figures/tables/equations with an "S" prefix automatically.
+
+See [CLAUDE.md §8a](CLAUDE.md) for the full render architecture (out-of-tree builds, "S" label mechanism, brms cache via `output/models/`, Dropbox xattr setup).
+
 ## Data
 
 See `data/README.md` (to be added) for column-by-column documentation of each raw data file, along with source, license, ethics, and sharing restrictions.
