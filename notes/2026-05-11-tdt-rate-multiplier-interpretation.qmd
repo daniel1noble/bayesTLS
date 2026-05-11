@@ -1,0 +1,242 @@
+---
+title: "Reading `10 ^ ((T - T_ref) / z)`: what the rate multiplier means and what the leading constants do"
+date: 2026-05-11
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Question
+
+In `supplement.qmd`, two chunks both use the expression `10 ^ ((T - T_ref) / z)`:
+
+- **L1359** (`hi-posterior` chunk, HI accumulation):
+  ```r
+  rates <- 100 * 10 ^ ((T_mat - CT_mat) / z_mat)
+  ```
+  where `CT_mat` is $CT_{max,1hr}$.
+
+- **L1418** (`s-pred-posterior` chunk, full-surface survival prediction):
+  ```r
+  inc_min <- 60 * 10 ^ ((hi_T_traj - T_ref) / z_d)
+  ```
+  where `T_ref` is $\bar T$ (the grand-mean assay temperature).
+
+What does `10 ^ ((T - T_ref) / z)` represent? Is it a proportion that the leading 100 or 60 then converts into "whatever units we want"? Why are the two reference temperatures different?
+
+## Short answer
+
+`10 ^ ((T - T_ref) / z)` is the **dimensionless TDT rate multiplier** — the ratio of the damage rate at $T$ to the damage rate at $T_{\text{ref}}$. It equals 1 when $T = T_{\text{ref}}$. That part is identical in both lines.
+
+The leading constants, however, are **not** doing the same job:
+
+| line | leading constant | meaning |
+|---|---|---|
+| L1359 | `100` | encodes both (i) "1 LT50 dose per hour at T_ref" *and* (ii) the percent convention. Depends on the choice of $T_{\text{ref}} = CT_{max,1hr}$. |
+| L1418 | `60` | a pure hours → minutes unit conversion. Independent of $T_{\text{ref}}$. |
+
+The two $T_{\text{ref}}$ choices are deliberate: HI uses $CT_{max,1hr}$ so the cumsum reads as % of LT50 dose; $S_{\text{pred}}$ uses $\bar T$ because it has to look up the 4PL surface and $\bar T$ is the data-rich centre.
+
+## Derivation of the rate multiplier
+
+The TDT line in $\log_{10}$ time is
+
+$$
+\log_{10} \tau(T) \;=\; \log_{10} \tau(T_{\text{ref}}) - (T - T_{\text{ref}})/z .
+$$
+
+Exponentiate:
+
+$$
+\tau(T) = \tau(T_{\text{ref}}) \cdot 10^{-(T - T_{\text{ref}})/z}
+\quad\Longleftrightarrow\quad
+\frac{\tau(T_{\text{ref}})}{\tau(T)} = 10^{(T - T_{\text{ref}})/z}.
+$$
+
+Since rate is $1/\tau$, the ratio of *rates* is
+
+$$
+\frac{r(T)}{r(T_{\text{ref}})} \;=\; 10^{(T - T_{\text{ref}})/z}.
+$$
+
+This is dimensionless and equals 1 at $T = T_{\text{ref}}$. Below $T_{\text{ref}}$ it is $< 1$ (damage accumulates more slowly); above, $> 1$ (faster). That's all the expression is.
+
+## Why the constants differ
+
+The rate ratio has to be multiplied by *something with units* to produce a meaningful per-time quantity. What that "something" is differs between the two chunks.
+
+### L1359 — HI accumulation (% of LT50 dose per hour)
+
+Choosing $T_{\text{ref}} = CT_{max,1hr}$ means: at $T_{\text{ref}}$, the LT50 is exactly 60 min. So:
+
+- rate at $T_{\text{ref}}$ = 1 LT50 dose / 60 min = 1 LT50 dose per hour;
+- HI is expressed as percent of LT50 dose, so rate at $T_{\text{ref}}$ = **100 % per hour**.
+
+Therefore at any $T$,
+
+$$
+\text{HI rate}(T) \;=\; 100 \cdot 10^{(T - CT_{max,1hr})/z}\ \%/\text{hr},
+$$
+
+and `cumsum` over hourly bins gives % cumulative HI. The 100 is **not arbitrary** — if we chose $T_{\text{ref}} = CT_{max,30min}$ instead, then 1 hour at $T_{\text{ref}}$ would be 2 LT50 doses and the prefactor would be 200.
+
+In general the prefactor is $\frac{60\ \text{min/hr}}{\tau(T_{\text{ref}})\ \text{min}} \times 100\,\%$.
+
+### L1418 — Effective time accumulation for $S_{\text{pred}}$ (equiv-minutes at $T_{\text{ref}}$ per hour)
+
+The 4PL surface's time axis is $\log_{10}(\text{min})$. The trace is hourly. We need to convert each hourly bin into the *equivalent number of minutes at $T_{\text{ref}} = \bar T$* that would deliver the same damage, then cumsum and look up survival on the surface.
+
+$$
+\text{inc}(T) \;=\; \underbrace{60\ \text{min/hr}}_{\text{units}} \;\cdot\; \underbrace{10^{(T - \bar T)/z}}_{\text{rate ratio}} \;=\; \text{equiv-min at }\bar T\ /\ \text{hr}.
+$$
+
+The 60 here really is just hr → min. It would be the same whatever $T_{\text{ref}}$ we picked, because it is a units factor on the *real time axis*, not on the dose-response axis.
+
+## Why the two $T_{\text{ref}}$ choices are different
+
+| quantity | $T_{\text{ref}}$ | reason |
+|---|---|---|
+| HI (L1359) | $CT_{max,1hr}$ | makes the cumsum interpretable: "HI = 100%" ↔ one full lethal dose. No surface lookup. |
+| $S_{\text{pred}}$ (L1418) | $\bar T$ | the 4PL surface must be evaluated; $\bar T$ is the data-rich centre where $(\ell, u, k, \beta_0, \beta_1)$ are most precisely estimated. Minimises extrapolation. |
+
+Both are valid because the TDT line gives the same scaling everywhere — $T_{\text{ref}}$ is a parameterisation convenience for downstream interpretation, not a parameter of the model.
+
+## Numerical sanity check
+
+```{r sanity}
+#| message: false
+#| warning: false
+
+z       <- 4
+T_ref_1 <- 40        # pretend CTmax_1hr
+T_ref_2 <- 30        # pretend T_bar
+T_seq   <- seq(25, 45, by = 5)
+
+# 1) Rate multiplier (dimensionless), evaluated at both T_refs.
+mult_1 <- 10 ^ ((T_seq - T_ref_1) / z)   # rate at T relative to rate at T_ref_1
+mult_2 <- 10 ^ ((T_seq - T_ref_2) / z)
+
+# 2) At T = T_ref the multiplier must be exactly 1.
+stopifnot(isTRUE(all.equal(mult_1[T_seq == T_ref_1], 1)))
+stopifnot(isTRUE(all.equal(mult_2[T_seq == T_ref_2], 1)))
+
+# 3) The two multipliers differ by a constant factor — the rate at T_ref_2
+#    relative to T_ref_1, evaluated at any single T:
+ratio <- mult_2 / mult_1
+stopifnot(isTRUE(all.equal(diff(ratio), rep(0, length(ratio) - 1))))
+cat("Constant ratio mult_2 / mult_1 =", unique(round(ratio, 6)), "\n")
+cat("Expected 10^((T_ref_1 - T_ref_2)/z) =",
+    round(10 ^ ((T_ref_1 - T_ref_2) / z), 6), "\n")
+
+# 4) L1359 prefactor check: at T = CTmax_1hr, HI rate must be 100 %/hr.
+HI_rate_at_ref <- 100 * 10 ^ ((T_ref_1 - T_ref_1) / z)
+stopifnot(isTRUE(all.equal(HI_rate_at_ref, 100)))
+
+# 5) L1359 prefactor would change if T_ref were CTmax_30min instead.
+#    At CTmax_30min, 1 hr = 2 LT50 doses → prefactor would be 200.
+#    Confirm by reasoning: if z stays fixed and we shift T_ref so that
+#    LT50(T_ref) = 30 min, then T_ref drops by z*log10(2):
+T_ref_30min <- T_ref_1 - z * log10(2)
+implied_prefactor <- 100 * 10 ^ ((T_ref_1 - T_ref_30min) / z)
+cat("Implied prefactor if T_ref = CTmax_30min:", implied_prefactor, "\n")  # 200
+stopifnot(isTRUE(all.equal(implied_prefactor, 200)))
+
+# 6) L1418 prefactor check: at T = T_ref, 60 * 1 = 60 equiv-min / hr — i.e.
+#    no scaling, an hour really is 60 minutes at the reference temperature.
+inc_at_ref <- 60 * 10 ^ ((T_ref_2 - T_ref_2) / z)
+stopifnot(isTRUE(all.equal(inc_at_ref, 60)))
+```
+
+## Take-home
+
+- `10 ^ ((T - T_ref) / z)` is a **dimensionless rate ratio**; the same quantity in both chunks.
+- The leading 100 and 60 are **not interchangeable unit toggles**. The 100 in HI carries both percent-of-LT50 *and* the implicit choice $T_{\text{ref}} = CT_{max,1hr}$; change $T_{\text{ref}}$ and that constant changes. The 60 in $S_{\text{pred}}$ is a pure hr → min conversion and is independent of $T_{\text{ref}}$.
+- The two $T_{\text{ref}}$ choices reflect what each metric is for: HI wants a self-contained interpretable cumulative dose; $S_{\text{pred}}$ wants a numerically stable lookup on the 4PL surface.
+
+## Follow-up: a tempting (but wrong) mental model for `S_pred`
+
+A natural-sounding picture of L1418 is:
+
+> "For each hour, the 4PL gives a probability of survival at that temperature over 60 min. The rate multiplier $10^{(T-T_{\text{ref}})/z}$ then tells us how much that probability changes in the next time step."
+
+This is wrong in two related ways, and getting them straight is important for interpreting `S_pred`.
+
+### What "numerically stable lookup" really means
+
+It is *not* about avoiding floating-point overflow (that's the separate `pmax(τ_eff, .Machine$double.eps)` guard for $\log_{10}(0)$). It is about **posterior uncertainty**.
+
+The 4PL midpoint surface is parameterised as $\beta_0 + \beta_1 (T - \bar T)$. Evaluating the surface at $T = \bar T$ collapses the slope contribution and uses $\beta_0$ directly — the single most precisely estimated parameter, since assay data is densest near $\bar T$. Evaluating at any $T \ne \bar T$ adds a $\beta_1 (T - \bar T)$ extrapolation whose uncertainty propagates into wider credible intervals on $S_{\text{pred}}$.
+
+L1418 *never* evaluates the 4PL surface at the trace's hourly $T$. The hourly $T$ enters only through the time-axis translation $10^{(T-\bar T)/z}$; the surface lookup itself is always at $\bar T$.
+
+### Cumulative dose, not multiplicative per-hour survival
+
+The deeper error in the tempting picture is treating survival as a quantity that updates *per hour*. The 4PL surface is a **cumulative dose-response**: it returns the survival fraction of the population given the *total* equivalent exposure to date. It is not a per-step hazard.
+
+If you instead computed $S(T_h, 60\,\text{min})$ for each hour and combined them — implicitly $\prod_h S_h$ — you would be assuming memoryless exponential decay, which the 4PL is not (finite lower asymptote $\ell$, sigmoidal shape in $\log_{10}$ time).
+
+The correct decomposition:
+
+1. Each hour at $T_h$ contributes $60 \cdot 10^{(T_h - \bar T)/z}$ **equivalent minutes at $\bar T$**.
+2. Cumsum gives total accumulated dose: $\tau_{\text{eff}}(t)$ equiv-minutes at $\bar T$.
+3. One surface lookup at $(\bar T, \log_{10}\tau_{\text{eff}}(t))$ returns the cumulative survival fraction.
+
+The rate multiplier moves the **dose clock**, not the survival probability.
+
+### Simulation: cumulative ≠ per-hour multiplied
+
+```{r cumulative-vs-multiplicative}
+#| message: false
+#| warning: false
+
+# Plausible 4PL parameters (log10-min time axis, T_bar reference).
+ell    <- 0.05    # lower asymptote
+u      <- 0.98    # upper asymptote
+k      <- -3.5    # slope on log10 time (negative — survival drops with dose)
+beta0  <- log10(60)   # midpoint at T_bar: LT50 ≈ 60 min at T_bar
+z      <- 4
+T_bar  <- 30
+T_hot  <- 34      # constant hot temperature; 1 hr at T_hot delivers more dose than 1 hr at T_bar
+
+S4pl <- function(log10_t) ell + (u - ell) / (1 + exp(k * (log10_t - beta0)))
+
+# Method A — the L1418 approach. Cumulative equiv-minutes at T_bar.
+hours       <- 1:5
+inc_min     <- 60 * 10 ^ ((T_hot - T_bar) / z)        # constant for constant T
+tau_eff     <- cumsum(rep(inc_min, length(hours)))
+S_cumdose   <- S4pl(log10(tau_eff))
+
+# Method B — the (wrong) per-hour multiplicative shortcut.
+# "Probability of surviving one hour at T_hot, then multiply across hours."
+# That requires the per-hour probability — interpret the 4PL value at t = 60 min
+# as the surviving fraction after one isolated hour.
+S_one_hour  <- S4pl(log10(inc_min))                   # surface evaluated at one hour of equiv-min
+S_multipl   <- S_one_hour ^ hours
+
+# Method C — direct evaluation at the *true* cumulative dose, for cross-check.
+# This must match Method A (both query the surface at the same cumulative dose).
+S_direct    <- S4pl(log10(60 * hours * 10 ^ ((T_hot - T_bar) / z)))
+
+tibble::tibble(
+  hour       = hours,
+  cumdose    = round(S_cumdose, 4),
+  multiplied = round(S_multipl, 4),
+  direct     = round(S_direct,  4)
+)
+
+stopifnot(isTRUE(all.equal(S_cumdose, S_direct)))     # the L1418 logic = direct surface query
+# And the per-hour-multiplied shortcut diverges:
+stopifnot(max(abs(S_cumdose - S_multipl)) > 0.05)
+```
+
+The `cumdose` and `direct` columns are identical — Method A is just a streaming form of the direct lookup. The `multiplied` column drifts away from both, sometimes dramatically, because $S^n$ has no reason to coincide with $S(n \cdot t)$ when $S$ is a 4PL (not an exponential).
+
+### So how to phrase the intuition correctly
+
+A clean restatement: $10^{(T-\bar T)/z}$ tells you **how fast the dose clock runs at temperature $T$ relative to $\bar T$**. At $T = \bar T$ the clock runs at real speed; above, it runs fast; below, it runs slow. The hourly trace winds the clock forward; the 4PL is then read once per hour at the current clock reading. Survival doesn't *update*; it's freshly looked up against an ever-growing cumulative dose.
