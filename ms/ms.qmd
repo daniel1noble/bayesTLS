@@ -348,11 +348,11 @@ Honest discussion of:
 
 # Author contributions {.unnumbered}
 
-DN conceived the project, performed the analyses, and wrote the manuscript.
+
 
 # Data and code availability {.unnumbered}
 
-All data, analysis scripts, and the rendered manuscript are available at <https://github.com/...>. The hierarchical 4PL is implemented in [`brms`](https://paulbuerkner.com/brms/) [@burkner_brms_2017] using [`cmdstanr`](https://mc-stan.org/cmdstanr/) as the Stan backend.
+All data, analysis scripts, and the rendered manuscript and supplement are available at https://github.com/daniel1noble/tls_model_equivalence. 
 
 # Conflict of interest {.unnumbered}
 
