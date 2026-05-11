@@ -1472,3 +1472,5 @@ By the end of day 5 the posterior median predicted survival is `r round(tail(S_s
 
 pander::pander(sessionInfo())
 ```
+
+:::
