@@ -128,7 +128,7 @@ models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
 
-# Introduction
+# **Introduction**
 
 This supplement walks through the joint Bayesian 4-parameter logistic (4PL) framework described in the main manuscript. We provide a set of functions that allow you to apply the full workflow allowing the 4PL models to be fit and TLS parameters ($z$, $CT_{max_{1hr}}$, $T_{crit}$) to be extracted and also providing opportunities to integrate these TLS parameters to predict Heat Injury ($HI$) and survival fraction. These can also be combined with a repair model to allow damage (and therefore reductions in survival) to be repaired through a temperature time series. The functions are located in the `R/` directory of the project repository — there is no package to install. Sourcing the files at the top of an analysis (see below) makes every function available to call.
 
@@ -142,7 +142,7 @@ The functions are designed to be integrated together as a single pipeline:
 
 The remainder of the supplement walks the pipeline through a controlled simulation where the truth is known (§ A Tutorial with Simulations), then applies the same machinery end-to-end to a real lethal-TDT dataset on brown shrimp (§ Case Study 1: Shrimp data).
 
-## Loading the function library {#sec-load-library}
+## *Loading the function library {#sec-load-library}*
 
 The supplement assumes the project repository is the current working directory, so [`here::here()`](https://here.r-lib.org) can resolve paths to `R/`. The chunk below loads required packages and sources every file in the function library.
 
@@ -161,7 +161,7 @@ tdt_lib_files <- c(
 for (f in tdt_lib_files) source(here::here("R", f))
 ```
 
-## What each function does {#sec-function-tour}
+## *What each function does {#sec-function-tour}*
 
 @tbl-function-tour lists every exported function in the library, grouped by pipeline stage. Each function is single-purpose; the full roxygen2 documentation (with runnable `@examples`) lives in the corresponding R file.
 
@@ -190,16 +190,16 @@ tdt_function_tour <- tibble::tribble(
   "Plotting",         "plot_survival_curves()",             "Posterior curves with observed proportion overlay.",
   "Plotting",         "plot_ltx_curve()",                   "LT_x curve on a log-time axis (classical TDT view).",
   "Plotting",         "plot_tdt_landscape()",               "Survival heatmap with contour overlay.",
-  "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95% CrI bar.",
+  "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95-percent CrI bar.",
   "Plotting",         "plot_temperature_scenarios()",       "Three traces stacked vertically.",
   "Plotting",         "plot_heat_injury()",                 "HI and predicted survival trajectories with CrI bands.",
   "Plotting",         "plot_repair_rate()",                 "Sharpe-Schoolfield TPC curve."
 )
 
-tinytable::tt(tdt_function_tour)
+tinytable::tt(tdt_function_tour, escape = TRUE)
 ```
 
-## Testing {#sec-library-tested}
+## *Testing {#sec-library-tested}*
 
 Every function has matching unit tests under [tests/testthat/](../tests/testthat). Fast tests (data manipulation, formula construction, prior structure, plus the pure-math 4PL inversion and planted-dose math) run in seconds via `testthat::test_dir("tests/testthat")`. A small set of brms-fitting integration tests is gated behind `RUN_BRMS_TESTS=true`: those build a small cached fixture fit and assert that `extract_tdt()` and `predict_heat_injury()` recover known simulation truths within their credible intervals.
 
@@ -392,7 +392,7 @@ stage1_table <- dplyr::full_join(
     `Beta-binomial log10(LT50)` = bb_log10_lt50
   )
 
-tinytable::tt(stage1_table, digits = 3)
+tinytable::tt(stage1_table, digits = 3, escape = TRUE)
 ```
 
 With the simulation's true asymptotes near 0 and 1, the 2PL's forced-asymptote constraint introduces negligible bias here, so each Stage-1 estimate sits close to the simulation truth.
@@ -619,7 +619,7 @@ recovery <- truth |>
     `BB upper`       = bb_upper
   )
 
-tinytable::tt(recovery, digits = 3)
+tinytable::tt(recovery, digits = 3, escape = TRUE)
 ```
 
 We can also overlay the posterior fitted curves on the simulated data (@fig-recovery-fit). If the model has recovered the true surface, the fitted lines should track the simulated proportions at every assay temperature.
@@ -711,7 +711,7 @@ tls_recovery <- tibble::tibble(
                     row_from_summary(et_bb$T_crit$summary, "temp")[3])
 )
 
-tinytable::tt(tls_recovery, digits = 3)
+tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
 ```
 
 ::: {#fig-tls-recovery}
@@ -816,7 +816,7 @@ uncert_summary |>
     Lower      = lower,
     Upper      = upper
   ) |>
-  tinytable::tt(digits = 3)
+  tinytable::tt(digits = 3, escape = TRUE)
 ```
 
 In short, both $z$ and $CT_{max_{1hr}}$ are estimated with high precision and their credible intervals come straight from the joint posterior. If we fit this model using frequentist approaches we could do the same and use the delta-method, or bootstrapping to get uncertainty. 
@@ -859,7 +859,7 @@ compare_table |>
     `Two-stage (beta-binomial)`       = ts_bb,
     `Joint Bayesian (beta-binomial)`  = joint_bb
   ) |>
-  tinytable::tt(digits = 3)
+  tinytable::tt(digits = 3, escape = TRUE)
 ```
 
 All four estimators land on essentially the same point estimates for $z$ and $CT_{max_{1hr}}$, though we notice the two stage is biased upwards slightly, and all sit close to the simulation truth. The joint Bayesian 4PL gives the same answer the classical pipeline gives — it is *not* in disagreement with the field's existing point estimates, it reproduces them.
@@ -1239,7 +1239,7 @@ dplyr::bind_rows(ext_recovery, phi_recovery) |>
     Lower                = lower,
     Upper                = upper
   ) |>
-  tinytable::tt(digits = 3)
+  tinytable::tt(digits = 3, escape = TRUE)
 ```
 
 
@@ -1488,7 +1488,7 @@ val_table <- tibble::tibble(
 val_table$`Truth in CrI?` <- with(val_table,
                                   `Lower (%)` <= `Planted HI (%)` &
                                   `Planted HI (%)` <= `Upper (%)`)
-tinytable::tt(val_table, digits = 2)
+tinytable::tt(val_table, digits = 2, escape = TRUE)
 ```
 
 The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. This sanity-check pattern — three traces with known doses, plus the recovery check — is what each new dataset's heat-injury prediction should pass before being trusted.
@@ -1535,7 +1535,7 @@ shrimp_summary <- tibble::tibble(
   `n Dates`               = length(unique(shrimp_std$Date)),
   `n Tanks`               = length(unique(shrimp_std$Tank))
 )
-tinytable::tt(shrimp_summary, digits = 2)
+tinytable::tt(shrimp_summary, digits = 2, escape = TRUE)
 ```
 
 ## Fitting the joint Bayesian 4PL {#sec-shrimp-fit}
@@ -1562,7 +1562,7 @@ wf_shrimp <- fit_4pl(
 #| label: tbl-shrimp-diagnostics
 #| tbl-cap: "Sampling diagnostics for the shrimp 4PL fit. Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
 
-tinytable::tt(diagnose_tdt_fit(wf_shrimp), digits = 3)
+tinytable::tt(diagnose_tdt_fit(wf_shrimp), digits = 3, escape = TRUE)
 ```
 
 ### Posterior parameters on the natural scale
@@ -1571,7 +1571,7 @@ tinytable::tt(diagnose_tdt_fit(wf_shrimp), digits = 3)
 #| label: tbl-shrimp-parameters
 #| tbl-cap: "Posterior medians and 95% credible intervals for the shrimp 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in hours at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
 
-tinytable::tt(tdt_parameter_table(wf_shrimp), digits = 3)
+tinytable::tt(tdt_parameter_table(wf_shrimp), digits = 3, escape = TRUE)
 ```
 
 ## Survival curves with observed overlay {#sec-shrimp-survival-curves}
@@ -1635,12 +1635,12 @@ shrimp_extract <- tibble::tribble(
   "CTmax_1hr (°C)",                 et_shrimp$CTmax$summary$temp_median,
                                     et_shrimp$CTmax$summary$temp_lower,
                                     et_shrimp$CTmax$summary$temp_upper,
-  "T_crit (°C, r* in [0.1, 1] %/hr)",
+  "T_crit (°C, r* in [0.1, 1] per hour)",
                                     et_shrimp$T_crit$summary$temp_median,
                                     et_shrimp$T_crit$summary$temp_lower,
                                     et_shrimp$T_crit$summary$temp_upper
 )
-tinytable::tt(shrimp_extract, digits = 2)
+tinytable::tt(shrimp_extract, digits = 2, escape = TRUE)
 ```
 
 ```{r shrimp-tcrit-ctmax-plot}
@@ -1768,7 +1768,7 @@ shrimp_hi_table <- dplyr::bind_rows(
 ) |>
   dplyr::select(Scenario, Repair, dplyr::everything())
 
-tinytable::tt(shrimp_hi_table)
+tinytable::tt(shrimp_hi_table, escape = TRUE)
 ```
 
 The shrimp case study shows the complete loop: raw counts → fitted model → classical TDT quantities (with credible intervals on every one of them) → heat-injury predictions under fluctuating field traces (with and without repair). Every quantity reported here inherits the joint posterior of the single 4PL fit — there is no second-stage regression, no point-estimate-then-bootstrap, no separate ramping-rate experiment. The same machinery applies to any TDT-style proportion dataset by changing only `standardize_data()`'s column-name arguments.
