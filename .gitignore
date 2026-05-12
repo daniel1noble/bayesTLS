@@ -82,3 +82,8 @@ index.log
 ms/ms.log
 ms/supplement.tex
 ms/ms_supp.tex
+output/models/smoke_phase1b/fit_smoke1b.rds
+scripts/smoke-test-phase1a.R
+.gitignore
+scripts/smoke-test-phase1b.R
+scripts/smoke-test-phase1c.R
