@@ -24,9 +24,9 @@ This notebook turns the prototype code in `tdt_problems.qmd` and `R/bayesian_TDT
 1.  Prepare survival-count data in a standard format.
 2.  Fit a joint Bayesian 4-parameter logistic model to the raw counts.
 3.  Use a beta-binomial likelihood for overdispersion instead of an observation-level random effect.
-4.  Derive survival curves, TDT curves, classical TDT summaries, tolerance temperatures for fixed exposure durations, TDT landscapes, and heat-injury predictions from the fitted model.
+4.  Derive survival curves, TDT curves, classical TDT summaries, TDT landscapes, and heat-injury predictions from the fitted model.
 
-When a grouping variable such as species, life stage, plant line, or cell line is supplied as `category`, the model estimates `temp_c * category` by default and all derived TDT quantities are summarised separately for each category.
+Both the midpoint (`mid`) and log-steepness (`logk`) of the survival curve are linear functions of centred temperature (`temp_c`), so the curve's position and shape both shift with temperature.
 
 The fitting chunk is deliberately switched off by default through `params$fit_model`. Set it to `true` in the YAML when you want to run the beta-binomial model.
 
@@ -146,69 +146,6 @@ format_interval <- function(median, lower, upper, digits = 2) {
 ### Small Helpers
 
 ```{r}
-tdt_beta_binomial_family <- function() {
-  brms::custom_family(
-    "tdt_beta_binomial",
-    dpars = c("mu", "phi"),
-    links = c("logit", "identity"),
-    lb = c(NA, 0),
-    type = "int",
-    vars = "vint1[n]"
-  )
-}
-
-tdt_beta_binomial_stanvars <- function() {
-  brms::stanvar(
-    scode = "
-      real tdt_beta_binomial_lpmf(int y, real mu, real phi, int trials) {
-        return beta_binomial_lpmf(
-          y | trials, mu * phi, (1 - mu) * phi
-        );
-      }
-    ",
-    block = "functions"
-  )
-}
-
-tdt_dpar_by_obs <- function(x, i) {
-  if (is.null(dim(x))) {
-    return(x)
-  }
-
-  if (ncol(x) == 1L) {
-    return(x[, 1L])
-  }
-
-  x[, i]
-}
-
-posterior_predict_tdt_beta_binomial <- function(i, prep, ...) {
-  mu <- tdt_dpar_by_obs(prep$dpars$mu, i)
-  phi <- tdt_dpar_by_obs(prep$dpars$phi, i)
-  trials <- prep$data$vint1[i]
-  p_draw <- stats::rbeta(prep$ndraws, mu * phi, (1 - mu) * phi)
-
-  stats::rbinom(prep$ndraws, size = trials, prob = p_draw)
-}
-
-posterior_epred_tdt_beta_binomial <- function(prep) {
-  mu <- prep$dpars$mu
-  trials <- prep$data$vint1
-
-  sweep(mu, 2, trials, `*`)
-}
-
-log_lik_tdt_beta_binomial <- function(i, prep) {
-  mu <- tdt_dpar_by_obs(prep$dpars$mu, i)
-  phi <- tdt_dpar_by_obs(prep$dpars$phi, i)
-  trials <- prep$data$vint1[i]
-  y <- prep$data$Y[i]
-
-  lchoose(trials, y) +
-    lbeta(y + mu * phi, trials - y + (1 - mu) * phi) -
-    lbeta(mu * phi, (1 - mu) * phi)
-}
-
 tdt_num <- function(x) {
   formatC(x, digits = 16, format = "fg", flag = "#")
 }
@@ -254,16 +191,6 @@ tdt_random_effect_variables <- function(random_effects = NULL) {
     vars <- all.vars(stats::as.formula(paste("~", term)))
     vars[vars != "1"]
   })))
-}
-
-tdt_mid_covariate_variables <- function(mid_covariates = NULL) {
-  if (is.null(mid_covariates) || length(mid_covariates) == 0) {
-    return(character())
-  }
-
-  unique(all.vars(stats::as.formula(
-    paste("~", paste(mid_covariates, collapse = " + "))
-  )))
 }
 
 clock_to_minutes <- function(x) {
@@ -325,9 +252,6 @@ clock_to_minutes <- function(x) {
 #                       Converted to integer counts.
 # @param mortality      String or NULL: column of mortality proportions [0,1].
 #                       Converted to n_surv = round((1 - mortality) * n_total).
-# @param category       String or NULL: optional grouping factor column
-#                       (e.g. "species", "life_stage").  Converted to a
-#                       factor; levels are preserved for prediction grids.
 # @param random_effects Character vector or NULL: grouping variables for
 #                       random effects (e.g. c("Date", "Tank")).  These
 #                       columns are converted to factors.
@@ -341,8 +265,8 @@ clock_to_minutes <- function(x) {
 #                       datasets to the same centre.
 #
 # @return A tibble with standardised columns plus a "tdt_meta" attribute
-#         list storing temp_mean, duration_unit, category, and
-#         random_effects for use by downstream functions.
+#         list storing temp_mean, duration_unit, and random_effects for
+#         use by downstream functions.
 prepare_tdt_survival_data <- function(data,
                                       temp,
                                       duration,
@@ -351,12 +275,11 @@ prepare_tdt_survival_data <- function(data,
                                       n_dead         = NULL,
                                       survival       = NULL,
                                       mortality      = NULL,
-                                      category       = NULL,
                                       random_effects = NULL,
                                       duration_unit  = "hours",
                                       temp_mean      = NULL) {
   needed <- c(temp, duration, n_total, n_surv, n_dead, survival, mortality,
-              category, tdt_random_effect_variables(random_effects))
+              tdt_random_effect_variables(random_effects))
   tdt_check_columns(data, needed, "input columns")
 
   if (sum(!vapply(list(n_surv, n_dead, survival, mortality), is.null, logical(1))) != 1) {
@@ -410,10 +333,6 @@ prepare_tdt_survival_data <- function(data,
 
   out$temp_c <- out$assay_temp - temp_mean
 
-  if (!is.null(category)) {
-    out[[category]] <- factor(out[[category]])
-  }
-
   for (re_var in tdt_random_effect_variables(random_effects)) {
     out[[re_var]] <- factor(out[[re_var]])
   }
@@ -421,7 +340,6 @@ prepare_tdt_survival_data <- function(data,
   attr(out, "tdt_meta") <- list(
     temp_mean = temp_mean,
     duration_unit = duration_unit,
-    category = category,
     random_effects = random_effects
   )
 
@@ -437,118 +355,52 @@ The survival curve is
 p_surv = low + (up - low) / (1 + exp(k * (log10(duration) - mid)))
 ```
 
-with `k = exp(logk)`, a bounded lower asymptote, and a bounded upper asymptote. The midpoint `mid` is where temperature, covariates, and random effects enter.
-
-Unlike the prototype shrimp model, this implementation uses the built-in `brms::beta_binomial()` family and removes the observation-level random effect.
+with `k = exp(logk)`, a bounded lower asymptote, and a bounded upper asymptote. All four 4PL sub-models (`lraw`, `uraw`, `logk`, `mid`) are linear functions of `temp_c`, so the full shape of the survival curve — its asymptotes, steepness, and midpoint — can shift with temperature. The model uses `brms::beta_binomial(link = "identity")` with `trials(n_total)`, so `mu` is the survival probability directly (no logit wrapper needed).
 
 The default priors are weak and not estimated from the dataset being analysed. On the probability scale, the lower asymptote is constrained to `(0, 0.5)` and is centred near 0.02; the upper asymptote is constrained to `(0.5, 1)` and is centred near 0.98. The midpoint prior is centred on `log10(duration) = 0.5` with a broad scale, which says only that the threshold exposure is probably within a very wide range around the supplied duration unit.
 
 ```{r}
 # make_tdt_4pl_formula --------------------------------------------------------
-# Build the brms nonlinear formula object for the beta-binomial 4PL model.
-# The survival probability at a given log10(duration) and temperature is:
+# Build the brms nonlinear formula for the beta-binomial 4PL TDT model.
+# Both the midpoint (mid) and log-steepness (logk) are linear in temp_c.
 #
-#   p_surv = low + (up - low) / (1 + exp(k * (logd - mid)))
-#
-# where
-#   low  = low_bounds[1] + inv_logit(lraw) * diff(low_bounds)
-#   up   = up_bounds[1]  + inv_logit(uraw) * diff(up_bounds)
-#   k    = exp(logk)
-#   mid  = intercept + slope * temp_c + [covariates] + [random effects]
-#
-# The formula is assembled as a brms::bf() nonlinear object; `eta` is the
-# full logit-scale linear predictor fed to the beta-binomial family.
-#
-# @param category            String or NULL: grouping factor column name.
-# @param temp_by_category    Logical.  TRUE (default when category non-NULL):
-#                            mid ~ temp_c * category (group-specific slopes).
-# @param category_asymptotes Logical.  TRUE (default): separate lraw/uraw
-#                            per category level via `0 + category`.
-# @param category_k          Logical.  TRUE (default): separate logk per
-#                            category level.
-# @param random_effects      Character vector of grouping variables for random
-#                            intercepts on mid.  Bare names are wrapped in
-#                            (1 | name) automatically.
-# @param mid_covariates      Character vector of additional fixed covariates
-#                            appended to the mid sub-model right-hand side.
-# @param low_bounds          Numeric length-2 vector (min, max) for the lower
-#                            asymptote.  Default c(0.001, 0.499).
-# @param up_bounds           Numeric length-2 vector (min, max) for the upper
-#                            asymptote.  Default c(0.501, 0.999).
-#
-# @return A brmsformula object (result of brms::bf()).
-make_tdt_4pl_formula <- function(category            = NULL,
-                                 temp_by_category    = !is.null(category),
-                                 category_asymptotes = !is.null(category),
-                                 category_k          = !is.null(category),
-                                 random_effects      = NULL,
-                                 mid_covariates      = NULL,
-                                 low_bounds          = c(0.001, 0.499),
-                                 up_bounds           = c(0.501, 0.999)) {
-  low_min <- low_bounds[1]
+# @param random_effects  Character vector of grouping variables for random
+#                        intercepts on mid (e.g. c("Date", "Tank")).
+# @param low_bounds      Numeric length-2: (min, max) for lower asymptote.
+#                        Default c(0.001, 0.499).
+# @param up_bounds       Numeric length-2: (min, max) for upper asymptote.
+#                        Default c(0.501, 0.999).
+# @return A brmsformula object.
+make_tdt_4pl_formula <- function(random_effects = NULL,
+                                 low_bounds     = c(0.001, 0.499),
+                                 up_bounds      = c(0.501, 0.999)) {
+  low_min   <- low_bounds[1]
   low_width <- diff(low_bounds)
-  up_min <- up_bounds[1]
-  up_width <- diff(up_bounds)
+  up_min    <- up_bounds[1]
+  up_width  <- diff(up_bounds)
 
   low_expr <- paste0(
-    "(",
-    tdt_num(low_min),
-    " + inv_logit(lraw) * ",
-    tdt_num(low_width),
-    ")"
+    "(", tdt_num(low_min), " + inv_logit(lraw) * ", tdt_num(low_width), ")"
   )
-
   up_expr <- paste0(
-    "(",
-    tdt_num(up_min),
-    " + inv_logit(uraw) * ",
-    tdt_num(up_width),
-    ")"
+    "(", tdt_num(up_min), " + inv_logit(uraw) * ", tdt_num(up_width), ")"
   )
 
-eta_expr <- paste0(
-  "eta ~ logit(",
-  low_expr,
-  " + (",
-  up_expr,
-  " - ",
-  low_expr,
-  ") / (1 + exp(",
-  "exp(logk) * (logd - mid)",
-  ")))"
-)
+  mu_expr <- paste0(
+    "mu ~ ", low_expr,
+    " + (", up_expr, " - ", low_expr,
+    ") / (1 + exp(exp(logk) * (logd - mid)))"
+  )
 
-  lraw_rhs <- if (!is.null(category) && category_asymptotes) {
-    paste0("0 + ", category)
-  } else {
-    "1"
-  }
-
-  uraw_rhs <- lraw_rhs
-
-  logk_rhs <- if (!is.null(category) && category_k) {
-    paste0("0 + ", category)
-  } else {
-    "1"
-  }
-
-  mid_terms <- if (!is.null(category) && temp_by_category) {
-    paste0("temp_c * ", category)
-  } else if (!is.null(category)) {
-    c("temp_c", category)
-  } else {
-    "temp_c"
-  }
-
-  mid_terms <- c(mid_terms, mid_covariates, tdt_format_random_effects(random_effects))
-  mid_rhs <- paste(mid_terms, collapse = " + ")
+  mid_terms <- c("temp_c", tdt_format_random_effects(random_effects))
+  mid_rhs   <- paste(mid_terms, collapse = " + ")
 
   formula_parts <- list(
-    stats::as.formula("n_surv | trials(n_total) ~ eta"),
-    brms::nlf(stats::as.formula(eta_expr)),
-    brms::lf(stats::as.formula(paste("lraw ~", lraw_rhs))),
-    brms::lf(stats::as.formula(paste("uraw ~", uraw_rhs))),
-    brms::lf(stats::as.formula(paste("logk ~", logk_rhs))),
+    stats::as.formula("n_surv | trials(n_total) ~ mu"),
+    brms::nlf(stats::as.formula(mu_expr)),
+    brms::lf(stats::as.formula("lraw ~ temp_c")),
+    brms::lf(stats::as.formula("uraw ~ temp_c")),
+    brms::lf(stats::as.formula("logk ~ temp_c")),
     brms::lf(stats::as.formula(paste("mid ~", mid_rhs)))
   )
 
@@ -556,31 +408,15 @@ eta_expr <- paste0(
 }
 
 # make_tdt_4pl_priors ---------------------------------------------------------
-# Build the brms prior object for the beta-binomial 4PL model.  Priors are
-# weakly informative and centred on plausible biological values.  They do NOT
-# adapt to the data being analysed — that would be empirical Bayes and would
-# understate uncertainty.
+# Build weakly informative priors for the beta-binomial 4PL model.
 #
 # @param data             Prepared data frame from prepare_tdt_survival_data().
-#                         Only logd (log10 duration) is used to centre the
-#                         midpoint prior.
-# @param random_effects   Character vector of random-effect grouping variables
-#                         (same as the argument passed to fit_tdt_4pl()).
-#                         Used to add exponential SD priors for each group.
-# @param prior_random_sd  Stan prior string for random-effect standard
-#                         deviations.  Default "exponential(2)" puts most mass
-#                         below ~0.35 log10(h), a wide but regularising range.
-# @param prior_phi        Stan prior string for the beta-binomial precision
-#                         parameter phi.  Default "gamma(2, 0.1)" has mean 20
-#                         and a long right tail, accommodating overdispersion
-#                         from mild to severe.
-# @param low_bounds       Numeric length-2 vector: (min, max) for the lower
-#                         asymptote.  Must match the bounds used in the
-#                         formula.  Default c(0.001, 0.499).
-# @param up_bounds        Numeric length-2 vector: (min, max) for the upper
-#                         asymptote.  Default c(0.501, 0.999).
-#
-# @return A brms prior object (list of brmsprior rows) ready to pass to brm().
+# @param random_effects   Character vector of random-effect grouping variables.
+# @param prior_random_sd  Prior string for random-effect SDs. Default "exponential(2)".
+# @param prior_phi        Prior string for beta-binomial precision. Default "gamma(2, 0.1)".
+# @param low_bounds       Numeric length-2 for lower asymptote. Default c(0.001, 0.499).
+# @param up_bounds        Numeric length-2 for upper asymptote. Default c(0.501, 0.999).
+# @return A brms prior object.
 make_tdt_4pl_priors <- function(data,
                                 random_effects  = NULL,
                                 prior_random_sd = "exponential(2)",
@@ -589,10 +425,6 @@ make_tdt_4pl_priors <- function(data,
                                 up_bounds       = c(0.501, 0.999)) {
 
   mid_start <- median(data$logd, na.rm = TRUE)
-
-  # Compute prior centres that match the formula's inv-logit re-parameterisation:
-  #   low = low_bounds[1] + inv_logit(lraw) * diff(low_bounds) ~ 0.02
-  #   up  = up_bounds[1]  + inv_logit(uraw) * diff(up_bounds)  ~ 0.98
   lraw_mean <- qlogis((0.02 - low_bounds[1]) / diff(low_bounds))
   uraw_mean <- qlogis((0.98 - up_bounds[1])  / diff(up_bounds))
   logk_mean <- log(2)
@@ -600,14 +432,26 @@ make_tdt_4pl_priors <- function(data,
   priors <- c(
     brms::set_prior(
       paste0("normal(", tdt_num(lraw_mean), ", 1)"),
+      class = "b", nlpar = "lraw", coef = "Intercept"
+    ),
+    brms::set_prior(
+      "normal(0, 0.5)",
       class = "b", nlpar = "lraw"
     ),
     brms::set_prior(
       paste0("normal(", tdt_num(uraw_mean), ", 1)"),
+      class = "b", nlpar = "uraw", coef = "Intercept"
+    ),
+    brms::set_prior(
+      "normal(0, 0.5)",
       class = "b", nlpar = "uraw"
     ),
     brms::set_prior(
       paste0("normal(", tdt_num(logk_mean), ", 1)"),
+      class = "b", nlpar = "logk", coef = "Intercept"
+    ),
+    brms::set_prior(
+      "normal(0, 0.5)",
       class = "b", nlpar = "logk"
     ),
     brms::set_prior(
@@ -618,21 +462,13 @@ make_tdt_4pl_priors <- function(data,
       "normal(0, 0.6)",
       class = "b", nlpar = "mid"
     ),
-    brms::set_prior(
-      prior_phi,
-      class = "phi"
-    )
+    brms::set_prior(prior_phi, class = "phi")
   )
 
   for (re_var in tdt_random_effect_variables(random_effects)) {
     priors <- c(
       priors,
-      brms::set_prior(
-        prior_random_sd,
-        class = "sd",
-        nlpar = "mid",
-        group = re_var
-      )
+      brms::set_prior(prior_random_sd, class = "sd", nlpar = "mid", group = re_var)
     )
   }
 
@@ -640,60 +476,22 @@ make_tdt_4pl_priors <- function(data,
 }
 
 # make_tdt_4pl_init -----------------------------------------------------------
-# Build a per-chain initialisation closure for the beta-binomial 4PL model.
-# Good starting values prevent Stan from hitting log(0) during adaptation,
-# which occurs when the survival probability reaches exactly 0 or 1 (making
-# logit undefined) or when phi is initialised in a degenerate region.
-#
-# The three root causes of the "log probability evaluates to log(0)" error
-# that motivated this function:
-#   1. Parameter names that Stan cannot match → random fallback inits in bad
-#      territory (fixed here by using brms R-level naming conventions).
-#   2. Asymptote bounds that touch 0 or 1 → logit(p) = ±Inf (fixed in
-#      fit_tdt_4pl() by using c(0.001, 0.499) / c(0.501, 0.999) bounds).
-#   3. phi not initialised → cmdstanr draws phi randomly on unconstrained
-#      scale; very small phi values can destabilise the beta-binomial (fixed
-#      by supplying phi = 5 as a moderate starting point).
+# Build per-chain initialisation for the beta-binomial 4PL model.
+# Returns a zero-argument closure with valid starting values.
 #
 # @param data        Prepared data frame from prepare_tdt_survival_data().
-#                    Must contain columns `logd` (log10 duration) and
-#                    `survival` (proportion surviving).
-# @param category    Optional string: name of the grouping factor column.
-#                    When supplied, one lraw/uraw/logk coefficient is
-#                    generated per category level using the brms naming
-#                    pattern b_<nlpar>_<category><level>.  Default NULL
-#                    (single-group model with intercept-only lraw/uraw/logk).
-# @param low_bounds  Numeric length-2 vector (min, max) for the lower
-#                    asymptote.  Must match the bounds used in
-#                    make_tdt_4pl_formula().  Default c(0.001, 0.499).
-# @param up_bounds   Numeric length-2 vector (min, max) for the upper
-#                    asymptote.  Default c(0.501, 0.999).
-#
-# @return A zero-argument closure.  Each call returns a named list of
-#         starting values.  Names follow brms R-level conventions
-#         (e.g. b_lraw_Intercept, b_mid_temp_c) so that brms translates
-#         them correctly for both rstan and cmdstanr backends.
+# @param low_bounds  Numeric length-2 for lower asymptote. Default c(0.001, 0.499).
+# @param up_bounds   Numeric length-2 for upper asymptote. Default c(0.501, 0.999).
+# @return A zero-argument closure returning a named list of starting values.
 make_tdt_4pl_init <- function(data,
-                               category       = NULL,
-                               mid_covariates = NULL,
-                               low_bounds     = c(0.001, 0.499),
-                               up_bounds      = c(0.501, 0.999)) {
+                               low_bounds = c(0.001, 0.499),
+                               up_bounds  = c(0.501, 0.999)) {
 
-  # --- Compute init values consistent with the formula bounds -----------------
-  # The formula maps lraw -> low via:
-  #   low = low_bounds[1] + inv_logit(lraw) * diff(low_bounds)
-  # Solving for lraw when low = 0.02 gives the expression below.
-  # Analogously for uraw when up = 0.98.
   lraw_init <- qlogis((0.02 - low_bounds[1]) / diff(low_bounds))
   uraw_init <- qlogis((0.98 - up_bounds[1])  / diff(up_bounds))
-  logk_init <- log(2)   # k = 2 on natural scale: moderate initial steepness
+  logk_init <- log(2)
 
-  # --- Midpoint: anchor to data with intermediate survival --------------------
-  # Use the median log10(duration) from observations where survival is
-  # between 5% and 95%.  This places the sigmoid near the transition zone
-  # in the data rather than at an arbitrary value.  Falls back to the
-  # overall median when all observations are near floor or ceiling.
-  dat_mid  <- data %>%
+  dat_mid <- data %>%
     dplyr::filter(is.finite(survival), survival > 0.05, survival < 0.95)
 
   mid_init <- if (nrow(dat_mid) > 0) {
@@ -702,60 +500,14 @@ make_tdt_4pl_init <- function(data,
     median(data$logd, na.rm = TRUE)
   }
 
-  # --- Return the closure -----------------------------------------------------
-  # IMPORTANT: cmdstanr expects Stan-level parameter names, which differ from
-  # the R-level names used in brms posterior summaries:
-  #
-  #   Stan name   | R-level name(s)
-  #   ------------|-------------------------------------
-  #   b_lraw      | b_lraw_Intercept  (length-1 vector)
-  #   b_uraw      | b_uraw_Intercept
-  #   b_logk      | b_logk_Intercept
-  #   b_mid       | b_mid_Intercept + b_mid_temp_c  (length-2 vector)
-  #   phi         | phi
-  #
-  # Passing R-level names to cmdstanr causes a "missing init" warning and
-  # falls back to random inits, which can trigger log(0) errors.
-
-  # Number of fixed coefficients in the mid sub-model:
-  #   1 (intercept) + 1 (temp_c) + n_extra_covariates
-  # For models with category, each category level adds a main effect and
-  # a temp_c interaction, giving 2 * n_cats total coefficients.
-  n_extra   <- if (!is.null(mid_covariates)) length(mid_covariates) else 0L
-
-  if (is.null(category)) {
-
-    # Single-group model: b_mid = [intercept, temp_c, (optional covariates)]
-    n_mid_dim <- 2L + n_extra
-
-    function() {
-      list(
-        b_lraw = array(lraw_init,                          dim = 1),
-        b_uraw = array(uraw_init,                          dim = 1),
-        b_logk = array(logk_init,                          dim = 1),
-        b_mid  = array(c(mid_init, rep(0, n_mid_dim - 1L)), dim = n_mid_dim),
-        phi    = 5   # scalar: Stan declares phi as real<lower=0>, not a vector
-      )
-    }
-
-  } else {
-
-    # Multi-group model: lraw/uraw/logk have k elements (one per level).
-    # b_mid for `temp_c * category` with k levels has 2k coefficients
-    # (k intercept contrasts + k temp_c slopes, with treatment coding).
-    cats      <- levels(data[[category]])
-    n_cats    <- length(cats)
-    n_mid_dim <- 2L * n_cats + n_extra
-
-    function() {
-      list(
-        b_lraw = array(rep(lraw_init, n_cats), dim = n_cats),
-        b_uraw = array(rep(uraw_init, n_cats), dim = n_cats),
-        b_logk = array(rep(logk_init, n_cats), dim = n_cats),
-        b_mid  = array(c(mid_init, rep(0, n_mid_dim - 1L)), dim = n_mid_dim),
-        phi    = 5
-      )
-    }
+  function() {
+    list(
+      b_lraw = array(c(lraw_init, 0), dim = 2),
+      b_uraw = array(c(uraw_init, 0), dim = 2),
+      b_logk = array(c(logk_init, 0), dim = 2),
+      b_mid  = array(c(mid_init,  0), dim = 2),
+      phi    = 5
+    )
   }
 }
 
@@ -769,37 +521,14 @@ make_tdt_4pl_init <- function(data,
 #                             prepare_tdt_survival_data().  Must contain
 #                             columns n_surv, n_total, logd, temp_c, assay_temp,
 #                             duration, and survival.
-# @param category             Optional string: name of a factor column in data
-#                             for multi-group modelling (e.g. "species",
-#                             "life_stage", "cell_line").  When supplied,
-#                             mid ~ temp_c * category (by default) so each
-#                             group gets its own temperature slope.
-# @param temp_by_category     Logical.  If TRUE (default when category is
-#                             supplied), fit mid ~ temp_c * category.
-#                             Set FALSE to share the temperature slope across
-#                             groups (mid ~ temp_c + category).
-# @param category_asymptotes  Logical.  If TRUE (default when category is
-#                             supplied), fit separate lower and upper
-#                             asymptotes per category level via
-#                             lraw ~ 0 + category and uraw ~ 0 + category.
-# @param category_k           Logical.  If TRUE (default when category is
-#                             supplied), fit a separate steepness parameter k
-#                             per category via logk ~ 0 + category.
 # @param random_effects       Character vector of grouping variable names for
 #                             random intercepts on mid.  Can be bare variable
 #                             names (e.g. c("Date", "Tank")) or full
 #                             lme4-style terms (e.g. "(1 | Date)").
-# @param mid_covariates       Character vector of additional fixed covariates
-#                             to add to the mid sub-model (e.g.
-#                             c("body_mass_c", "start_min_c")).
 # @param low_bounds           Numeric length-2 vector: (min, max) for the
-#                             lower asymptote.  Must not include 0 exactly,
-#                             because logit(0) = -Inf causes Stan to report
-#                             "log probability evaluates to log(0)".
-#                             Default c(0.001, 0.499).
+#                             lower asymptote.  Default c(0.001, 0.499).
 # @param up_bounds            Numeric length-2 vector: (min, max) for the
-#                             upper asymptote.  Must not include 1 exactly.
-#                             Default c(0.501, 0.999).
+#                             upper asymptote.  Default c(0.501, 0.999).
 # @param prior                Optional brms prior object.  If NULL (default),
 #                             make_tdt_4pl_priors() builds weakly informative
 #                             priors automatically.
@@ -815,35 +544,18 @@ make_tdt_4pl_init <- function(data,
 #                             "rstan".  Default "cmdstanr".
 # @param control              List of HMC control parameters passed to brm().
 #                             Default list(adapt_delta = 0.995,
-#                             max_treedepth = 15).  Higher adapt_delta reduces
-#                             divergent transitions at the cost of slower
-#                             sampling.
+#                             max_treedepth = 15).
 # @param init                 Initial values for the sampler.  If NULL
-#                             (default), uses init = 0, which tells cmdstanr
-#                             to start every parameter at 0 on the unconstrained
-#                             scale (sd = 1, z = 0, phi = 1, b_* = 0 — all
-#                             valid starting values).  This avoids the
-#                             "log probability evaluates to log(0)" error that
-#                             arises when random-effect parameters (sd_1, z_1,
-#                             etc.) receive bad random inits.  Supply
-#                             make_tdt_4pl_init(data, ...) here if you want
-#                             data-informed starting values, but note that it
-#                             does not cover random-effect parameters and so
-#                             relies on cmdstanr's random inits for those.
+#                             (default), uses init = 0.
 # @param sample_prior         Passed to brm(); "no" (default) fits the
 #                             posterior; "only" draws from the prior
 #                             predictive distribution.
-# @param save_pars            brms save_pars() object controlling which
-#                             parameters are retained.  Default saves all,
-#                             enabling LOO-CV and reloo().
-# @param file                 Optional file path (without extension) to cache
-#                             the fitted model.  If the file exists and
-#                             overwrite = FALSE, the cached model is loaded.
+# @param save_pars            brms save_pars() object.  Default saves all.
+# @param file                 Optional file path to cache the fitted model.
 # @param overwrite            Logical.  If TRUE, re-fit even when file exists.
 #                             Default FALSE.
 # @param fit                  Logical.  If FALSE, return the workflow object
-#                             (formula + priors + data) without fitting.
-#                             Default TRUE.
+#                             without fitting.  Default TRUE.
 # @param ...                  Additional arguments passed to brm().
 #
 # @return A list of class "tdt_4pl_workflow" with elements:
@@ -851,14 +563,9 @@ make_tdt_4pl_init <- function(data,
 #   $data     the prepared data
 #   $formula  the brms formula object
 #   $prior    the prior object
-#   $meta     metadata list (temp_mean, bounds, category, random_effects, etc.)
+#   $meta     metadata list (temp_mean, bounds, random_effects, etc.)
 fit_tdt_4pl <- function(data,
-                        category            = NULL,
-                        temp_by_category    = !is.null(category),
-                        category_asymptotes = !is.null(category),
-                        category_k          = !is.null(category),
                         random_effects      = NULL,
-                        mid_covariates      = NULL,
                         low_bounds          = c(0.001, 0.499),
                         up_bounds           = c(0.501, 0.999),
                         prior               = NULL,
@@ -883,18 +590,12 @@ fit_tdt_4pl <- function(data,
     meta <- list(
       temp_mean = mean(data$assay_temp, na.rm = TRUE),
       duration_unit = "model_units",
-      category = category,
       random_effects = random_effects
     )
   }
 
   formula <- make_tdt_4pl_formula(
-    category = category,
-    temp_by_category = temp_by_category,
-    category_asymptotes = category_asymptotes,
-    category_k = category_k,
     random_effects = random_effects,
-    mid_covariates = mid_covariates,
     low_bounds = low_bounds,
     up_bounds = up_bounds
   )
@@ -916,9 +617,7 @@ fit_tdt_4pl <- function(data,
     meta = c(
       meta,
       list(
-        category = category,
         random_effects = random_effects,
-        mid_covariates = mid_covariates,
         low_bounds = low_bounds,
         up_bounds = up_bounds
       )
@@ -950,7 +649,7 @@ fit_tdt_4pl <- function(data,
   workflow$fit <- brms::brm(
     formula = formula,
     data = data,
-    family = brms::beta_binomial(),
+    family = brms::beta_binomial(link = "identity"),
     prior = prior,
     chains = chains,
     cores = cores,
@@ -987,65 +686,34 @@ tdt_has_fit <- function(workflow) {
 }
 
 # new_tdt_grid ----------------------------------------------------------------
-# Build a prediction grid (newdata) covering all combinations of temperatures,
-# durations, and (optionally) category levels.  Adds the derived columns
-# logd, temp_c, n_total that the model requires and fills random-effect and
-# covariate columns with sensible defaults (first factor level / median).
+# Build a prediction grid of temperature × duration combinations.
 #
-# @param workflow         tdt_4pl_workflow object (fitted or spec-only).
-# @param temps            Numeric vector of assay temperatures (°C).
-# @param durations        Numeric vector of exposure durations (same unit as
-#                         the training data).
-# @param categories       Character vector of category levels to include, or
-#                         NULL to include all levels from the training data.
-# @param covariate_values Named list of values to pin continuous mid-covariates
-#                         to (e.g. list(body_mass_c = 0)).  Any covariate not
-#                         in this list is set to 0 if its name ends in "_c"
-#                         (centred), otherwise to its training-data median.
-# @param n_total          Integer passed as the trials column.  If NULL
-#                         (default), uses the median of the training data.
-#
-# @return A tibble with one row per (temp, duration[, category]) combination.
+# @param workflow   tdt_4pl_workflow object.
+# @param temps      Numeric vector of assay temperatures (°C).
+# @param durations  Numeric vector of exposure durations (model units).
+# @param n_total    Integer for trials column. NULL uses training data median.
+# @return A tibble with one row per (temp, duration) combination.
 new_tdt_grid <- function(workflow,
                          temps,
                          durations,
-                         categories       = NULL,
-                         covariate_values = list(),
-                         n_total          = NULL) {
+                         n_total = NULL) {
   data <- workflow$data
   meta <- workflow$meta
-  category <- meta$category
 
   if (is.null(n_total)) {
     n_total <- as.integer(round(stats::median(data$n_total, na.rm = TRUE)))
   }
 
-  if (!is.null(category)) {
-    if (is.null(categories)) {
-      categories <- levels(data[[category]])
-    }
-
-    nd <- expand.grid(
-      assay_temp = temps,
-      duration = durations,
-      category_value = categories,
-      KEEP.OUT.ATTRS = FALSE,
-      stringsAsFactors = FALSE
-    )
-    nd[[category]] <- factor(nd$category_value, levels = levels(data[[category]]))
-    nd$category_value <- NULL
-  } else {
-    nd <- expand.grid(
-      assay_temp = temps,
-      duration = durations,
-      KEEP.OUT.ATTRS = FALSE,
-      stringsAsFactors = FALSE
-    )
-  }
+  nd <- expand.grid(
+    assay_temp = temps,
+    duration   = durations,
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
 
   nd$n_total <- n_total
-  nd$logd <- log10(nd$duration)
-  nd$temp_c <- nd$assay_temp - meta$temp_mean
+  nd$logd    <- log10(nd$duration)
+  nd$temp_c  <- nd$assay_temp - meta$temp_mean
 
   for (re_var in tdt_random_effect_variables(meta$random_effects)) {
     if (re_var %in% names(data)) {
@@ -1053,19 +721,6 @@ new_tdt_grid <- function(workflow,
         nd[[re_var]] <- factor(levels(data[[re_var]])[1], levels = levels(data[[re_var]]))
       } else {
         nd[[re_var]] <- data[[re_var]][1]
-      }
-    }
-  }
-
-  covariate_vars <- tdt_mid_covariate_variables(meta$mid_covariates)
-  for (cv in covariate_vars) {
-    if (cv %in% names(covariate_values)) {
-      nd[[cv]] <- covariate_values[[cv]]
-    } else if (cv %in% names(data) && is.numeric(data[[cv]])) {
-      if (grepl("_c$", cv)) {
-        nd[[cv]] <- 0
-      } else {
-        nd[[cv]] <- stats::median(data[[cv]], na.rm = TRUE)
       }
     }
   }
@@ -1143,9 +798,6 @@ summarise_observed_survival <- function(observed) {
 # @param durations        Numeric vector of durations or NULL.  NULL (default)
 #                         uses 250 log-spaced values spanning the training
 #                         data range.
-# @param categories       Character vector of category levels to include,
-#                         or NULL (all levels).
-# @param covariate_values Named list for pinning mid-covariates.
 # @param ndraws           Number of posterior draws.  Default 1000.
 # @param probs            Quantile probabilities for the credible interval.
 #                         Default c(0.025, 0.5, 0.975).
@@ -1155,11 +807,9 @@ summarise_observed_survival <- function(observed) {
 #         $newdata (the prediction grid).
 predict_survival_curves <- function(workflow,
                                     temps,
-                                    durations        = NULL,
-                                    categories       = NULL,
-                                    covariate_values = list(),
-                                    ndraws           = 1000,
-                                    probs            = c(0.025, 0.5, 0.975)) {
+                                    durations = NULL,
+                                    ndraws    = 1000,
+                                    probs     = c(0.025, 0.5, 0.975)) {
   if (is.null(durations)) {
     duration_range <- range(workflow$data$duration, na.rm = TRUE)
     durations <- exp(seq(log(duration_range[1]), log(duration_range[2]), length.out = 250))
@@ -1168,9 +818,7 @@ predict_survival_curves <- function(workflow,
   nd <- new_tdt_grid(
     workflow = workflow,
     temps = temps,
-    durations = durations,
-    categories = categories,
-    covariate_values = covariate_values
+    durations = durations
   )
 
   pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws, re_formula = NA)
@@ -1185,7 +833,6 @@ predict_survival_curves <- function(workflow,
 
 plot_survival_curves <- function(pred,
                                  observed = NULL,
-                                 category = NULL,
                                  observed_summary = TRUE) {
   df <- pred$summary %>%
     dplyr::mutate(temp_f = factor(assay_temp, levels = sort(unique(assay_temp))))
@@ -1258,19 +905,13 @@ plot_survival_curves <- function(pred,
     }
   }
 
-  if (!is.null(category)) {
-    p <- p +
-      aes(group = interaction(temp_f, .data[[category]])) +
-      facet_wrap(stats::as.formula(paste("~", category)))
-  }
-
   p
 }
 ```
 
 ### Threshold Extraction, TDT Curves, And Classical Summaries
 
-These functions replace the hard-coded `species` helpers in `tdt_problems.qmd`. They work by numerically inverting posterior predictions, so they also work for models with covariates, random effects, and `temp_c * category` grouping interactions. The tradeoff is that the duration grid must be broad enough to contain the threshold.
+These functions replace the hard-coded `species` helpers in `tdt_problems.qmd`. They work by numerically inverting posterior predictions, so they also work for models with random effects and temperature-varying steepness. The tradeoff is that the duration grid must be broad enough to contain the threshold.
 
 ```{r}
 threshold_x_by_draw <- function(pred_mat, x, target) {
@@ -1319,30 +960,6 @@ threshold_x_by_draw <- function(pred_mat, x, target) {
   out
 }
 
-target_for_category <- function(target_survival, category_value) {
-  if (length(target_survival) == 1 && is.null(names(target_survival))) {
-    return(as.numeric(target_survival))
-  }
-
-  if (is.null(names(target_survival))) {
-    stop(
-      "When target_survival has more than one value, it must be a named vector.",
-      call. = FALSE
-    )
-  }
-
-  key <- as.character(category_value)
-  if (!key %in% names(target_survival)) {
-    stop(
-      "No target_survival value supplied for category: ",
-      key,
-      call. = FALSE
-    )
-  }
-
-  as.numeric(target_survival[[key]])
-}
-
 # derive_ltx_curve ------------------------------------------------------------
 # Derive the time-to-X%-survival (LTx) curve as a function of temperature by
 # numerically inverting posterior survival predictions.  For each posterior
@@ -1355,14 +972,9 @@ target_for_category <- function(target_survival, category_value) {
 # @param duration_grid    Numeric vector of durations (model units) over which
 #                         to search for the threshold.  NULL (default) uses
 #                         350 log-spaced values from 1/5 × min to 5 × max of
-#                         the training durations — wide enough for most cases.
-# @param target_survival  Numeric scalar or named numeric vector.  The survival
-#                         probability whose crossing time is sought (e.g. 0.5
-#                         for LT50).  When grouped, a named vector
-#                         c(species_A = 0.5, species_B = 0.6) sets
-#                         group-specific thresholds.
-# @param categories       Character vector of category levels, or NULL.
-# @param covariate_values Named list for pinning mid-covariates.
+#                         the training durations.
+# @param target_survival  Numeric scalar: the survival probability whose
+#                         crossing time is sought (e.g. 0.5 for LT50).
 # @param ndraws           Number of posterior draws.  Default 1000.
 # @param probs            Quantile probabilities for the summary.
 #                         Default c(0.025, 0.5, 0.975).
@@ -1372,14 +984,12 @@ target_for_category <- function(target_survival, category_value) {
 # @param output_time_unit String label for the output unit.  Default "min".
 #
 # @return Named list: $draws (per-draw thresholds), $summary (quantile
-#         summary by category and temperature), $target_survival,
+#         summary by temperature), $target_survival,
 #         $time_multiplier, $output_time_unit.
 derive_ltx_curve <- function(workflow,
                              temp_grid,
                              duration_grid    = NULL,
                              target_survival  = 0.5,
-                             categories       = NULL,
-                             covariate_values = list(),
                              ndraws           = 1000,
                              probs            = c(0.025, 0.5, 0.975),
                              time_multiplier  = 60,
@@ -1396,47 +1006,30 @@ derive_ltx_curve <- function(workflow,
   nd <- new_tdt_grid(
     workflow = workflow,
     temps = temp_grid,
-    durations = duration_grid,
-    categories = categories,
-    covariate_values = covariate_values
+    durations = duration_grid
   )
 
   pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws, re_formula = NA)
-  category <- workflow$meta$category
 
-  if (is.null(category)) {
-    groups <- nd %>%
-      dplyr::distinct(assay_temp) %>%
-      dplyr::mutate(category_value = "all")
-  } else {
-    groups <- nd %>%
-      dplyr::distinct(assay_temp, category_value = .data[[category]])
-  }
+  temp_grid_unique <- sort(unique(nd$assay_temp))
+  draw_list <- vector("list", length(temp_grid_unique))
 
-  draw_list <- vector("list", nrow(groups))
-
-  for (i in seq_len(nrow(groups))) {
-    temp_i <- groups$assay_temp[i]
-    category_i <- groups$category_value[i]
-
+  for (i in seq_along(temp_grid_unique)) {
+    temp_i <- temp_grid_unique[i]
     idx <- nd$assay_temp == temp_i
-    if (!is.null(category)) {
-      idx <- idx & as.character(nd[[category]]) == as.character(category_i)
-    }
 
     threshold_duration <- threshold_x_by_draw(
       pred_mat = pred[, idx, drop = FALSE],
-      x = nd$duration[idx],
-      target = target_for_category(target_survival, category_i)
+      x        = nd$duration[idx],
+      target   = as.numeric(target_survival)
     )
 
     draw_list[[i]] <- data.frame(
-      .draw = seq_along(threshold_duration),
-      assay_temp = temp_i,
-      category = category_i,
-      target_survival = target_for_category(target_survival, category_i),
-      duration_model_units = threshold_duration,
-      duration_output_units = threshold_duration * time_multiplier
+      .draw                  = seq_along(threshold_duration),
+      assay_temp             = temp_i,
+      target_survival        = as.numeric(target_survival),
+      duration_model_units   = threshold_duration,
+      duration_output_units  = threshold_duration * time_multiplier
     )
   }
 
@@ -1444,19 +1037,19 @@ derive_ltx_curve <- function(workflow,
     dplyr::filter(is.finite(duration_model_units), duration_model_units > 0)
 
   summary <- draws %>%
-    dplyr::group_by(category, target_survival, assay_temp) %>%
+    dplyr::group_by(target_survival, assay_temp) %>%
     dplyr::summarise(
-      duration_lower = stats::quantile(duration_output_units, probs[1], na.rm = TRUE),
+      duration_lower  = stats::quantile(duration_output_units, probs[1], na.rm = TRUE),
       duration_median = stats::quantile(duration_output_units, probs[2], na.rm = TRUE),
-      duration_upper = stats::quantile(duration_output_units, probs[3], na.rm = TRUE),
+      duration_upper  = stats::quantile(duration_output_units, probs[3], na.rm = TRUE),
       .groups = "drop"
     )
 
   list(
-    draws = draws,
-    summary = summary,
-    target_survival = target_survival,
-    time_multiplier = time_multiplier,
+    draws            = draws,
+    summary          = summary,
+    target_survival  = target_survival,
+    time_multiplier  = time_multiplier,
     output_time_unit = output_time_unit
   )
 }
@@ -1502,7 +1095,7 @@ bind_ltx_curves <- function(..., output_time_unit = NULL) {
 #                    must have to be included in the regression.  Default 5.
 #
 # @return Named list: $draws (per-draw slope, z, CTmax, R2), $summary
-#         (quantile summaries by category), $t_ref.
+#         (quantile summaries by target_survival), $t_ref.
 derive_tdt_parameters <- function(ltx_curve,
                                   t_ref      = 1,
                                   min_points = 5) {
@@ -1511,7 +1104,7 @@ derive_tdt_parameters <- function(ltx_curve,
     dplyr::mutate(log10_duration = log10(duration_output_units))
 
   params <- draws %>%
-    dplyr::group_by(category, target_survival, .draw) %>%
+    dplyr::group_by(target_survival, .draw) %>%
     dplyr::filter(dplyr::n() >= min_points) %>%
     dplyr::group_modify(function(.x, .y) {
       fit <- stats::lm(log10_duration ~ assay_temp, data = .x)
@@ -1528,7 +1121,7 @@ derive_tdt_parameters <- function(ltx_curve,
     dplyr::ungroup()
 
   summary <- params %>%
-    dplyr::group_by(category, target_survival) %>%
+    dplyr::group_by(target_survival) %>%
     dplyr::summarise(
       slope_median = median(slope_T, na.rm = TRUE),
       slope_lower = stats::quantile(slope_T, 0.025, na.rm = TRUE),
@@ -1561,11 +1154,12 @@ extract_tdt_params <- function(workflow,
   derive_tdt_parameters(ltx, t_ref = t_ref_min)
 }
 
-plot_ltx_curve <- function(ltx_curve,
-                           y_log10 = TRUE,
-                           y_limits = NULL) {
+plot_ltx_curve <- function(ltx_curve, time_unit = "h") {
   df <- ltx_curve$summary %>%
     dplyr::mutate(
+      log10_duration_median = log10(duration_median),
+      log10_duration_lower  = log10(duration_lower),
+      log10_duration_upper  = log10(duration_upper),
       threshold = factor(
         paste0(round(100 * target_survival), "% survival"),
         levels = paste0(
@@ -1575,189 +1169,39 @@ plot_ltx_curve <- function(ltx_curve,
       )
     )
 
-  targets <- unique(df$target_survival)
-  y_lab <- if (length(targets) == 1) {
-    paste0(
-      "Time to ",
-      round(100 * targets),
-      "% survival (",
-      ltx_curve$output_time_unit,
-      ")"
-    )
-  } else {
-    paste0("Time to survival threshold (", ltx_curve$output_time_unit, ")")
-  }
+  colour_vals <- c(
+    "75% survival" = "#4DAC26",
+    "50% survival" = "#146C7C",
+    "25% survival" = "#C76D37"
+  )
 
-  p <- ggplot(
-    df,
-    aes(
-      x = assay_temp,
-      y = duration_median,
-      colour = threshold,
-      fill = threshold
-    )
-  ) +
-    geom_ribbon(aes(ymin = duration_lower, ymax = duration_upper),
+  base_aes <- aes(x = assay_temp, colour = threshold, fill = threshold)
+
+  p1 <- ggplot(df, base_aes) +
+    geom_ribbon(aes(y = duration_median, ymin = duration_lower, ymax = duration_upper),
                 alpha = 0.18, colour = NA) +
-    geom_line(linewidth = 1.05) +
-    scale_colour_manual(
-      values = c(
-        "75% survival" = "#4DAC26",
-        "50% survival" = "#146C7C",
-        "25% survival" = "#C76D37"
-      ),
-      drop = FALSE,
-      name = "Survival threshold"
-    ) +
-    scale_fill_manual(
-      values = c(
-        "75% survival" = "#4DAC26",
-        "50% survival" = "#146C7C",
-        "25% survival" = "#C76D37"
-      ),
-      drop = FALSE,
-      name = "Survival threshold"
-    ) +
-    labs(
-      x = "Assay temperature (°C)",
-      y = y_lab
-    ) +
+    geom_line(aes(y = duration_median), linewidth = 1.05) +
+    scale_colour_manual(values = colour_vals, drop = FALSE, name = "Survival threshold") +
+    scale_fill_manual(  values = colour_vals, drop = FALSE, name = "Survival threshold") +
+    labs(x = "Assay temperature (°C)",
+         y = paste0("Time to death (", time_unit, ")")) +
     theme_tdt +
     theme(legend.position = "right")
 
-  if (length(unique(df$category)) > 1 || unique(df$category) != "all") {
-    p <- p +
-      facet_wrap(~ category)
-  }
-
-  if (y_log10) {
-    p <- p + scale_y_log10(labels = scales::label_number())
-  }
-
-  if (!is.null(y_limits)) {
-    p <- p + coord_cartesian(ylim = y_limits)
-  }
-
-  p
-}
-```
-
-### Temperature Tolerated For A Fixed Exposure
-
-```{r}
-# derive_temperature_for_duration ---------------------------------------------
-# Find the temperature at which survival equals target_survival after a fixed
-# exposure_duration, by numerically inverting posterior predictions over a
-# temperature grid.  Equivalent to reading the TDT curve vertically rather
-# than horizontally.
-#
-# @param workflow          Fitted tdt_4pl_workflow object.
-# @param exposure_duration Numeric scalar: the fixed duration (model units).
-# @param temp_grid         Numeric vector of temperatures (°C) to search over.
-# @param target_survival   Survival probability to find the threshold for.
-#                          Default 0.5.
-# @param categories        Character vector of category levels, or NULL.
-# @param covariate_values  Named list for pinning mid-covariates.
-# @param ndraws            Number of posterior draws.  Default 1000.
-# @param probs             Quantile probabilities.  Default c(0.025, 0.5, 0.975).
-#
-# @return Named list: $draws (per-draw threshold temperatures), $summary
-#         (quantile summary by category), $exposure_duration,
-#         $target_survival.
-derive_temperature_for_duration <- function(workflow,  
-                                            exposure_duration,
-                                            temp_grid,
-                                            target_survival  = 0.5,
-                                            categories       = NULL,
-                                            covariate_values = list(),
-                                            ndraws           = 1000,
-                                            probs            = c(0.025, 0.5, 0.975)) {
-  nd <- new_tdt_grid(
-    workflow = workflow,
-    temps = temp_grid,
-    durations = exposure_duration,
-    categories = categories,
-    covariate_values = covariate_values
-  )
-
-  pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws, re_formula = NA)
-  category <- workflow$meta$category
-  category_values <- if (is.null(category)) "all" else levels(workflow$data[[category]])
-
-  draw_list <- lapply(category_values, function(category_i) {
-    idx <- rep(TRUE, nrow(nd))
-    if (!is.null(category)) {
-      idx <- as.character(nd[[category]]) == as.character(category_i)
-    }
-
-    threshold_temp <- threshold_x_by_draw(
-      pred_mat = pred[, idx, drop = FALSE],
-      x = nd$assay_temp[idx],
-      target = target_for_category(target_survival, category_i)
-    )
-
-    data.frame(
-      .draw = seq_along(threshold_temp),
-      category = category_i,
-      target_survival = target_for_category(target_survival, category_i),
-      assay_temp_threshold = threshold_temp
-    )
-  })
-
-  draws <- dplyr::bind_rows(draw_list) %>%
-    dplyr::filter(is.finite(assay_temp_threshold))
-
-  summary <- draws %>%
-    dplyr::group_by(category, target_survival) %>%
-    dplyr::summarise(
-      temp_lower = stats::quantile(assay_temp_threshold, probs[1], na.rm = TRUE),
-      temp_median = stats::quantile(assay_temp_threshold, probs[2], na.rm = TRUE),
-      temp_upper = stats::quantile(assay_temp_threshold, probs[3], na.rm = TRUE),
-      .groups = "drop"
-    )
-
-  list(
-    draws = draws,
-    summary = summary,
-    exposure_duration = exposure_duration,
-    target_survival = target_survival
-  )
-}
-
-plot_temperature_for_duration <- function(temp_threshold) {
-  df <- temp_threshold$draws %>%
-    dplyr::filter(is.finite(assay_temp_threshold))
-
-  sum_df <- temp_threshold$summary
-
-  d_dens <- density(df$assay_temp_threshold, na.rm = TRUE)
-  y_ci   <- -max(d_dens$y, na.rm = TRUE) * 0.1
-
-  ggplot(df, aes(x = assay_temp_threshold)) +
-    geom_density(fill = "steelblue", alpha = 0.35, colour = "steelblue4", linewidth = 0.5) +
-    geom_segment(
-      data = sum_df,
-      aes(x = temp_lower, xend = temp_upper, y = y_ci, yend = y_ci),
-      linewidth = 1.0,
-      colour = "#2F2F2F"
-    ) +
-    geom_point(
-      data = sum_df,
-      aes(x = temp_median, y = y_ci),
-      size = 2.8,
-      shape = 19,
-      colour = "#2F2F2F"
-    ) +
-    scale_y_continuous(
-      expand = expansion(mult = c(0.01, 0.05)),
-      limits = c(y_ci * 2, NA)
-    ) +
-    labs(
-      x = "Temperature (°C)",
-      y = "Posterior density"
-    ) +
+  p2 <- ggplot(df, base_aes) +
+    geom_ribbon(aes(y = log10_duration_median,
+                    ymin = log10_duration_lower, ymax = log10_duration_upper),
+                alpha = 0.18, colour = NA) +
+    geom_line(aes(y = log10_duration_median), linewidth = 1.05) +
+    scale_colour_manual(values = colour_vals, drop = FALSE, name = "Survival threshold") +
+    scale_fill_manual(  values = colour_vals, drop = FALSE, name = "Survival threshold") +
+    labs(x = "Assay temperature (°C)",
+         y = paste0("log₁₀ time to death (", time_unit, ")")) +
     theme_tdt +
-    theme(legend.position = "none")
+    theme(legend.position = "right")
+
+  patchwork::wrap_plots(p1, p2, ncol = 1, guides = "collect") &
+    theme(legend.position = "right")
 }
 ```
 
@@ -1767,24 +1211,19 @@ plot_temperature_for_duration <- function(temp_threshold) {
 derive_tdt_landscape <- function(workflow,
                                  temp_grid,
                                  duration_grid,
-                                 categories = NULL,
-                                 covariate_values = list(),
                                  ndraws = 1000,
                                  probs = c(0.025, 0.5, 0.975)) {
   predict_survival_curves(
     workflow = workflow,
     temps = temp_grid,
     durations = duration_grid,
-    categories = categories,
-    covariate_values = covariate_values,
     ndraws = ndraws,
     probs = probs
   )
 }
 
 plot_tdt_landscape <- function(landscape,
-                               observed = NULL,
-                               category = NULL) {
+                               observed = NULL) {
   df <- landscape$summary
 
   p <- ggplot(df, aes(x = assay_temp, y = duration, fill = survival_median)) +
@@ -1814,17 +1253,13 @@ plot_tdt_landscape <- function(landscape,
       )
   }
 
-  if (!is.null(category)) {
-    p <- p + facet_wrap(stats::as.formula(paste("~", category)))
-  }
-
   p
 }
 ```
 
 ### Standard 4PL Parameter Extraction For Dynamic Injury
 
-The functions below use the analytic 4PL-to-injury mapping from `tdt_problems.qmd` and the later shrimp dynamic section. The supported interaction is the TDT-style one: `temp_c * category` changes the midpoint temperature slope for each group, allowing separate TDT parameters for species, life stages, cell types, or other grouping factors.
+The functions below use the analytic 4PL-to-injury mapping from `tdt_problems.qmd` and the later shrimp dynamic section. Both the midpoint (`mid`) and log-steepness (`logk`) are linear functions of `temp_c`, so the steepness of the survival curve varies with temperature. The extracted parameters `logk_int` and `logk_temp` replace the single `k` used in earlier versions.
 
 ```{r}
 first_existing_column <- function(df, candidates) {
@@ -1835,35 +1270,16 @@ first_existing_column <- function(df, candidates) {
   hit[1]
 }
 
-brms_level_name_candidates <- function(prefix, variable, level) {
-  level_chr <- as.character(level)
-  c(
-    paste0("b_", prefix, "_", variable, level_chr),
-    paste0("b_", prefix, "_", variable, make.names(level_chr)),
-    paste0("b_", prefix, "_", variable, gsub("[^A-Za-z0-9_]", ".", level_chr))
-  )
-}
-
 # extract_standard_4pl_pars ---------------------------------------------------
-# Extract per-draw 4PL parameters (low, up, k, mid_int, mid_temp) from the
-# fitted model's posterior.  These are the building blocks for the dynamic
-# injury model and damage-rate curves; they express the static survival
-# curve analytically rather than evaluating it on a grid.
+# Extract per-draw 4PL parameters from the fitted model's posterior.
+# All four sub-models are linear in temp_c, so raw (lraw, uraw) and log-scale
+# (logk) intercepts and slopes are returned; low/up/k are temperature-dependent
+# and computed from these in downstream functions.
 #
-# Handles category-specific parameters by combining the reference-level
-# coefficients with the appropriate interaction terms.
-#
-# @param workflow         Fitted tdt_4pl_workflow object.
-# @param categories       Character vector of category levels to extract,
-#                         or NULL (all levels).
-# @param covariate_values Named list of covariate values to add to mid_int
-#                         (e.g. list(body_mass_c = 0) for mean body mass).
-#
-# @return A data frame with one row per (draw, category) combination and
-#         columns .draw, category, low, up, k, mid_int, mid_temp.
-extract_standard_4pl_pars <- function(workflow,
-                                      categories       = NULL,
-                                      covariate_values = list()) {
+# @param workflow  Fitted tdt_4pl_workflow object.
+# @return A data frame with columns .draw, lraw_int, lraw_temp, uraw_int,
+#         uraw_temp, logk_int, logk_temp, mid_int, mid_temp.
+extract_standard_4pl_pars <- function(workflow) {
   if (!tdt_has_fit(workflow)) {
     stop("workflow$fit is NULL. Fit or load the model first.", call. = FALSE)
   }
@@ -1872,131 +1288,61 @@ extract_standard_4pl_pars <- function(workflow,
     as.data.frame()
 
   get_par <- function(name) {
-    if (name %in% names(dr)) {
-      dr[[name]]
-    } else {
-      rep(0, nrow(dr))
-    }
+    if (name %in% names(dr)) dr[[name]] else rep(0, nrow(dr))
   }
 
-  get_first <- function(candidates) {
-    name <- first_existing_column(dr, candidates)
-    if (is.null(name)) {
-      rep(0, nrow(dr))
-    } else {
-      dr[[name]]
-    }
-  }
-
-  category <- workflow$meta$category
-  low_bounds <- workflow$meta$low_bounds
-  up_bounds <- workflow$meta$up_bounds
-
-  if (is.null(category)) {
-    categories <- "all"
-  } else if (is.null(categories)) {
-    categories <- levels(workflow$data[[category]])
-  }
-
-  dplyr::bind_rows(lapply(categories, function(category_i) {
-    is_ref <- is.null(category) || identical(category_i, levels(workflow$data[[category]])[1])
-
-    lraw <- if (is.null(category)) {
-      get_par("b_lraw_Intercept")
-    } else {
-      get_first(brms_level_name_candidates("lraw", category, category_i))
-    }
-
-    uraw <- if (is.null(category)) {
-      get_par("b_uraw_Intercept")
-    } else {
-      get_first(brms_level_name_candidates("uraw", category, category_i))
-    }
-
-    logk <- if (is.null(category)) {
-      get_par("b_logk_Intercept")
-    } else {
-      get_first(brms_level_name_candidates("logk", category, category_i))
-    }
-
-    mid_int <- get_par("b_mid_Intercept")
-    mid_temp <- get_par("b_mid_temp_c")
-
-    if (!is.null(category) && !is_ref) {
-      mid_int <- mid_int +
-        get_first(brms_level_name_candidates("mid", category, category_i))
-
-      mid_temp <- mid_temp +
-        get_first(c(
-          paste0("b_mid_temp_c:", category, category_i),
-          paste0("b_mid_", category, category_i, ":temp_c"),
-          paste0("b_mid_temp_c:", category, make.names(category_i)),
-          paste0("b_mid_", category, make.names(category_i), ":temp_c")
-        ))
-    }
-
-    for (cv in names(covariate_values)) {
-      mid_int <- mid_int + get_par(paste0("b_mid_", cv)) * covariate_values[[cv]]
-    }
-
-    data.frame(
-      .draw = seq_len(nrow(dr)),
-      category = category_i,
-      low = low_bounds[1] + plogis(lraw) * diff(low_bounds),
-      up = up_bounds[1] + plogis(uraw) * diff(up_bounds),
-      k = exp(logk),
-      mid_int = mid_int,
-      mid_temp = mid_temp
-    ) %>%
-      dplyr::filter(
-        is.finite(low),
-        is.finite(up),
-        is.finite(k),
-        is.finite(mid_int),
-        is.finite(mid_temp),
-        k > 0,
-        up > low
-      )
-  }))
+  data.frame(
+    .draw     = seq_len(nrow(dr)),
+    lraw_int  = get_par("b_lraw_Intercept"),
+    lraw_temp = get_par("b_lraw_temp_c"),
+    uraw_int  = get_par("b_uraw_Intercept"),
+    uraw_temp = get_par("b_uraw_temp_c"),
+    logk_int  = get_par("b_logk_Intercept"),
+    logk_temp = get_par("b_logk_temp_c"),
+    mid_int   = get_par("b_mid_Intercept"),
+    mid_temp  = get_par("b_mid_temp_c")
+  ) %>%
+    dplyr::filter(
+      is.finite(lraw_int), is.finite(lraw_temp),
+      is.finite(uraw_int), is.finite(uraw_temp),
+      is.finite(logk_int), is.finite(logk_temp),
+      is.finite(mid_int),  is.finite(mid_temp)
+    )
 }
 
 derive_relative_survival_targets <- function(workflow,
-                                             categories = NULL,
-                                             mortality_fraction = 0.5,
-                                             covariate_values = list()) {
+                                              mortality_fraction = 0.5) {
   if (mortality_fraction <= 0 || mortality_fraction >= 1) {
     stop("mortality_fraction must be between 0 and 1.", call. = FALSE)
   }
 
-  pars <- extract_standard_4pl_pars(
-    workflow = workflow,
-    categories = categories,
-    covariate_values = covariate_values
-  )
+  pars       <- extract_standard_4pl_pars(workflow)
+  low_bounds <- workflow$meta$low_bounds
+  up_bounds  <- workflow$meta$up_bounds
 
-  targets <- pars %>%
-    dplyr::group_by(category) %>%
-    dplyr::summarise(
-      low = median(low, na.rm = TRUE),
-      up = median(up, na.rm = TRUE),
-      target_survival = up - mortality_fraction * (up - low),
-      .groups = "drop"
-    )
-
-  out <- targets$target_survival
-  names(out) <- targets$category
-  out
+  # Evaluate asymptotes at the centering temperature (temp_c = 0)
+  low_med <- median(low_bounds[1] + plogis(pars$lraw_int) * diff(low_bounds), na.rm = TRUE)
+  up_med  <- median(up_bounds[1]  + plogis(pars$uraw_int) * diff(up_bounds),  na.rm = TRUE)
+  up_med - mortality_fraction * (up_med - low_med)
 }
 
 time_to_surv_threshold_4pl <- function(temp,
                                        survival_target,
-                                       low,
-                                       up,
-                                       k,
+                                       lraw_int,
+                                       lraw_temp,
+                                       uraw_int,
+                                       uraw_temp,
+                                       logk_int,
+                                       logk_temp,
                                        mid_int,
                                        mid_temp,
-                                       temp_mean) {
+                                       temp_mean,
+                                       low_bounds = c(0.001, 0.499),
+                                       up_bounds  = c(0.501, 0.999)) {
   temp_c <- temp - temp_mean
+  low <- low_bounds[1] + plogis(lraw_int + lraw_temp * temp_c) * diff(low_bounds)
+  up  <- up_bounds[1]  + plogis(uraw_int + uraw_temp * temp_c) * diff(up_bounds)
+  k   <- exp(logk_int + logk_temp * temp_c)
   mid <- mid_int + mid_temp * temp_c
   valid <- survival_target > low & survival_target < up
   out <- rep(NA_real_, length(temp))
@@ -2025,7 +1371,9 @@ damage_rate_curve <- function(pars,
                               temp_grid,
                               target_survival = 0.5,
                               n_draws = 1000,
-                              time_multiplier_to_minutes = 60) {
+                              time_multiplier_to_minutes = 60,
+                              low_bounds = c(0.001, 0.499),
+                              up_bounds  = c(0.501, 0.999)) {
   pars_use <- pars %>%
     dplyr::slice_sample(n = min(n_draws, nrow(pars)))
 
@@ -2033,17 +1381,21 @@ damage_rate_curve <- function(pars,
     t_target <- time_to_surv_threshold_4pl(
       temp = temp_grid,
       survival_target = target_survival,
-      low = pars_use$low[i],
-      up = pars_use$up[i],
-      k = pars_use$k[i],
-      mid_int = pars_use$mid_int[i],
-      mid_temp = pars_use$mid_temp[i],
-      temp_mean = temp_mean
+      lraw_int  = pars_use$lraw_int[i],
+      lraw_temp = pars_use$lraw_temp[i],
+      uraw_int  = pars_use$uraw_int[i],
+      uraw_temp = pars_use$uraw_temp[i],
+      logk_int  = pars_use$logk_int[i],
+      logk_temp = pars_use$logk_temp[i],
+      mid_int   = pars_use$mid_int[i],
+      mid_temp  = pars_use$mid_temp[i],
+      temp_mean = temp_mean,
+      low_bounds = low_bounds,
+      up_bounds  = up_bounds
     )
 
     data.frame(
       .draw = pars_use$.draw[i],
-      category = pars_use$category[i],
       temp = temp_grid,
       duration_model_units = t_target,
       damage_rate_per_model_unit = 1 / t_target,
@@ -2053,7 +1405,7 @@ damage_rate_curve <- function(pars,
     dplyr::filter(is.finite(damage_rate_per_model_unit))
 
   summary <- draws %>%
-    dplyr::group_by(category, temp) %>%
+    dplyr::group_by(temp) %>%
     dplyr::summarise(
       damage_rate_median = median(damage_rate_per_model_unit, na.rm = TRUE),
       damage_rate_lower = stats::quantile(damage_rate_per_model_unit, 0.025, na.rm = TRUE),
@@ -2154,8 +1506,6 @@ make_temperature_scenarios <- function(start       = as.POSIXct("2026-07-01 00:0
 #                                 extract_standard_4pl_pars().
 # @param temp_mean                Numeric: the temperature centering constant
 #                                 from the fitted model (workflow$meta$temp_mean).
-# @param category                 String: which category level to use from
-#                                 pars.  Default "all" (single-group model).
 # @param target_survival          Numeric: the survival threshold whose
 #                                 time-to-threshold defines the damage rate.
 #                                 Default 0.5.
@@ -2179,7 +1529,6 @@ make_temperature_scenarios <- function(start       = as.POSIXct("2026-07-01 00:0
 predict_survival_fluctuating <- function(temp_df,
                                          pars,
                                          temp_mean,
-                                         category                    = "all",
                                          target_survival             = 0.5,
                                          n_draws                     = 1000,
                                          repair                      = FALSE,
@@ -2187,7 +1536,9 @@ predict_survival_fluctuating <- function(temp_df,
                                          kdot_ref_pct_min            = 0,
                                          repair_scales_with_survival = TRUE,
                                          irreversible_mortality      = TRUE,
-                                         save_draws                  = FALSE) {
+                                         save_draws                  = FALSE,
+                                         low_bounds                  = c(0.001, 0.499),
+                                         up_bounds                   = c(0.501, 0.999)) {
   temp_df <- temp_df %>%
     dplyr::arrange(datetime)
 
@@ -2195,15 +1546,12 @@ predict_survival_fluctuating <- function(temp_df,
     stop("temp_df must contain at least 2 rows.", call. = FALSE)
   }
 
-  pars_pool <- pars %>%
-    dplyr::filter(.data$category == category)
-
-  if (nrow(pars_pool) == 0) {
-    stop("No posterior parameter draws found for category: ", category, call. = FALSE)
+  if (nrow(pars) == 0) {
+    stop("pars contains no rows.", call. = FALSE)
   }
 
-  pars_use <- pars_pool %>%
-    dplyr::slice_sample(n = min(n_draws, nrow(pars_pool)))
+  pars_use <- pars %>%
+    dplyr::slice_sample(n = min(n_draws, nrow(pars)))
 
   dt_h <- as.numeric(diff(temp_df$datetime), units = "hours")
   temp0 <- temp_df$temp[-nrow(temp_df)]
@@ -2212,30 +1560,40 @@ predict_survival_fluctuating <- function(temp_df,
   pred_list <- vector("list", nrow(pars_use))
 
   for (i in seq_len(nrow(pars_use))) {
-    low_i <- pars_use$low[i]
-    up_i <- pars_use$up[i]
-    k_i <- pars_use$k[i]
+    # Asymptotes at the centering temperature (temp_c = 0) for the latent dose model
+    low_ref <- low_bounds[1] + plogis(pars_use$lraw_int[i]) * diff(low_bounds)
+    up_ref  <- up_bounds[1]  + plogis(pars_use$uraw_int[i]) * diff(up_bounds)
 
     t0 <- time_to_surv_threshold_4pl(
       temp = temp0,
       survival_target = target_survival,
-      low = low_i,
-      up = up_i,
-      k = k_i,
-      mid_int = pars_use$mid_int[i],
-      mid_temp = pars_use$mid_temp[i],
-      temp_mean = temp_mean
+      lraw_int  = pars_use$lraw_int[i],
+      lraw_temp = pars_use$lraw_temp[i],
+      uraw_int  = pars_use$uraw_int[i],
+      uraw_temp = pars_use$uraw_temp[i],
+      logk_int  = pars_use$logk_int[i],
+      logk_temp = pars_use$logk_temp[i],
+      mid_int   = pars_use$mid_int[i],
+      mid_temp  = pars_use$mid_temp[i],
+      temp_mean = temp_mean,
+      low_bounds = low_bounds,
+      up_bounds  = up_bounds
     )
 
     t1 <- time_to_surv_threshold_4pl(
       temp = temp1,
       survival_target = target_survival,
-      low = low_i,
-      up = up_i,
-      k = k_i,
-      mid_int = pars_use$mid_int[i],
-      mid_temp = pars_use$mid_temp[i],
-      temp_mean = temp_mean
+      lraw_int  = pars_use$lraw_int[i],
+      lraw_temp = pars_use$lraw_temp[i],
+      uraw_int  = pars_use$uraw_int[i],
+      uraw_temp = pars_use$uraw_temp[i],
+      logk_int  = pars_use$logk_int[i],
+      logk_temp = pars_use$logk_temp[i],
+      mid_int   = pars_use$mid_int[i],
+      mid_temp  = pars_use$mid_temp[i],
+      temp_mean = temp_mean,
+      low_bounds = low_bounds,
+      up_bounds  = up_bounds
     )
 
     damage_rate0 <- 1 / t0
@@ -2281,23 +1639,24 @@ predict_survival_fluctuating <- function(temp_df,
     survival <- numeric(nrow(temp_df))
     survival_current_dose <- numeric(nrow(temp_df))
     dose[1] <- 0
-    survival[1] <- up_i
-    survival_current_dose[1] <- up_i
+    survival[1] <- up_ref
+    survival_current_dose[1] <- up_ref
 
     for (tt in seq_along(dt_h)) {
       damage_inc <- dt_h[tt] * (damage_rate0[tt] + damage_rate1[tt]) / 2
       repair_inc <- dt_h[tt] * (repair_rate0[tt] + repair_rate1[tt]) / 2
 
       if (repair_scales_with_survival) {
-        repair_inc <- repair_inc * survival[tt] / up_i
+        repair_inc <- repair_inc * survival[tt] / up_ref
       }
 
       dose_new <- max(0, dose[tt] + damage_inc - repair_inc)
+      k_ref <- exp(pars_use$logk_int[i])
       survival_new <- survival_from_latent_dose(
         dose = dose_new,
-        low = low_i,
-        up = up_i,
-        k = k_i,
+        low = low_ref,
+        up = up_ref,
+        k = k_ref,
         target_survival = target_survival
       )
 
@@ -2312,7 +1671,6 @@ predict_survival_fluctuating <- function(temp_df,
 
     pred_list[[i]] <- data.frame(
       .draw = pars_use$.draw[i],
-      category = category,
       datetime = temp_df$datetime,
       temp = temp_df$temp,
       latent_dose = dose,
@@ -2325,7 +1683,7 @@ predict_survival_fluctuating <- function(temp_df,
   draws <- dplyr::bind_rows(pred_list)
 
   summary <- draws %>%
-    dplyr::group_by(category, datetime, temp) %>%
+    dplyr::group_by(datetime, temp) %>%
     dplyr::summarise(
       latent_dose_median = median(latent_dose, na.rm = TRUE),
       latent_dose_lower = stats::quantile(latent_dose, 0.025, na.rm = TRUE),
@@ -2913,11 +2271,10 @@ loo_table <- function(model_checks) {
 
 selected_diagnostic_parameters <- function(fit) {
   wanted <- c(
-    "b_lraw_Intercept",
-    "b_uraw_Intercept",
-    "b_logk_Intercept",
-    "b_mid_Intercept",
-    "b_mid_temp_c",
+    "b_lraw_Intercept", "b_lraw_temp_c",
+    "b_uraw_Intercept", "b_uraw_temp_c",
+    "b_logk_Intercept", "b_logk_temp_c",
+    "b_mid_Intercept",  "b_mid_temp_c",
     "phi",
     "sd_Date__mid_Intercept",
     "sd_Tank__mid_Intercept"
@@ -3018,14 +2375,6 @@ shrimp_raw <- readxl::read_excel(
   sheet = "LETHAL_TDT"
 )
 
-shrimp_raw <- shrimp_raw %>%
-  dplyr::mutate(
-    start_min = clock_to_minutes(Starting_time),
-    start_min_c = start_min - mean(start_min, na.rm = TRUE),
-    body_mass_c = Total_Sample_body_mass_g -
-      mean(Total_Sample_body_mass_g, na.rm = TRUE)
-  )
-
 shrimp_tdt <- prepare_tdt_survival_data(
   data = shrimp_raw,
   temp = "Temperature_assay",
@@ -3055,7 +2404,7 @@ tdt_ft(shrimp_data_summary, digits = 2, caption = "Shrimp lethal TDT dataset use
 
 ## Build Or Load The Main Model
 
-The object below is the beta-binomial analogue of the main lethal shrimp 4PL: no observation-level random effect, random intercepts on `mid` for date and tank, and population-level temperature effect on `mid`.
+The object below is the beta-binomial analogue of the main lethal shrimp 4PL: no observation-level random effect, random intercepts on `mid` for date and tank, and population-level temperature effects on both `mid` (midpoint) and `logk` (log-steepness).
 
 ```{r}
 shrimp_workflow_spec <- fit_tdt_4pl(
@@ -3105,26 +2454,6 @@ if (file.exists(params$model_path) && !isTRUE(params$refit_model)) {
 ```{r}
 # Model summary
 summary(fit_shrimp_4pl$fit)
-```
-
-Optional sensitivity models mirror the covariate experiments in `R/bayesian_TDT_shrimp.qmd`, but keep the beta-binomial likelihood. They are specified here only as reusable model objects; they are not fitted in this report.
-
-```{r}
-# Midpoint covariate models. These use centred covariates, so the default
-# predictions are at mean body mass or mean starting time.
-shrimp_body_mass_spec <- fit_tdt_4pl(
-  data = shrimp_tdt,
-  random_effects = c("Date", "Tank"),
-  mid_covariates = "body_mass_c",
-  fit = FALSE
-)
-
-shrimp_start_time_spec <- fit_tdt_4pl(
-  data = shrimp_tdt,
-  random_effects = c("Date", "Tank"),
-  mid_covariates = "start_min_c",
-  fit = FALSE
-)
 ```
 
 ## Model Checks And Derived Outputs
@@ -3232,33 +2561,25 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
 
   shrimp_tdt_params <- derive_tdt_parameters(ltx_curve = shrimp_lt50, t_ref = 1)
   saveRDS(shrimp_tdt_params, file.path(tdt_output_dir, "shrimp_lethal_tdt_parameters.RDS"))
-
-  shrimp_lt1h <- derive_temperature_for_duration(
-    workflow          = fit_shrimp_4pl,
-    exposure_duration = 1,
-    temp_grid         = seq(29, 34, by = 0.05),
-    target_survival   = 0.5,
-    ndraws            = params$ndraws
-  )
 }
 ```
 
 ```{r}
-#| fig-cap: "**Figure 3.** Thermal death time (TDT) curves for three survival thresholds. Each line shows the posterior median time (min, log10 scale) needed to reduce survival to 75% (green), 50% (teal), or 25% (orange) at a given assay temperature; shaded ribbons are 95% credible intervals. All curves are derived by numerically inverting the posterior 4PL survival model at each temperature, and therefore fully propagate parameter uncertainty. Note that LT25 (25% survivors) requires more time than LT50 at the same temperature, as it represents greater cumulative mortality."
+#| fig-cap: "**Figure 3.** Thermal death time (TDT) curves for three survival thresholds. Upper panel: raw time (min); lower panel: log10 time (min). Lines show the posterior median time needed to reduce survival to 75% (green), 50% (teal), or 25% (orange) at a given assay temperature; shaded ribbons are 95% credible intervals. All curves are derived by numerically inverting the posterior 4PL survival model at each temperature, and therefore fully propagate parameter uncertainty."
 if (tdt_has_fit(fit_shrimp_4pl)) {
-  p_ltx_all <- plot_ltx_curve(shrimp_ltx_all, y_log10 = TRUE, y_limits = c(1, 2000))
+  p_ltx_all <- plot_ltx_curve(shrimp_ltx_all, time_unit = "min")
 
-  p_lt50 <- plot_ltx_curve(shrimp_lt50, y_log10 = TRUE, y_limits = c(1, 2000))
+  p_lt50 <- plot_ltx_curve(shrimp_lt50, time_unit = "min")
 
   ggsave(
     filename = file.path(tdt_fig_dir, "shrimp_lethal_lt50_tdt_curve.png"),
     plot = p_lt50,
-    width = 8, height = 6, dpi = 400
+    width = 8, height = 10, dpi = 400
   )
   ggsave(
     filename = file.path(tdt_fig_dir, "shrimp_lethal_lt25_lt50_lt75_tdt_curve.png"),
     plot = p_ltx_all,
-    width = 8, height = 6, dpi = 400
+    width = 8, height = 10, dpi = 400
   )
 
   p_ltx_all
@@ -3273,48 +2594,10 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
     ) %>%
     dplyr::select(`z (°C per decade)`)
 
-  tdt_params_1h <- shrimp_lt1h$summary %>%
-    dplyr::mutate(
-      `CT for 1 h @ 50% survival (°C)` = format_interval(
-        temp_median, temp_lower, temp_upper, digits = 2
-      )
-    ) %>%
-    dplyr::select(category, `CT for 1 h @ 50% survival (°C)`)
-
   tdt_ft(
-    cbind(tdt_params_table, tdt_params_1h),
-    caption = "Table 5. Classical TDT parameters derived from the posterior LT50 curve. z is the thermal tolerance range (°C per decade of time), estimated as −1/slope from per-draw log-linear regressions of log10(LT50) on temperature. CT for 1 h @ 50% survival is the temperature at which 50% of organisms survive a 1-hour exposure, derived by numerical inversion of the posterior 4PL model."
+    tdt_params_table,
+    caption = "Table 5. Classical TDT parameters derived from the posterior LT50 curve. z is the thermal tolerance range (°C per decade of time), estimated as −1/slope from per-draw log-linear regressions of log10(LT50) on temperature."
   )
-}
-```
-
-### Temperature Causing 50% Survival After One Hour
-
-```{r}
-#| fig-cap: "**Figure 4.** Posterior distribution of the temperature at which 50% of shrimp survive a 1-hour heat exposure. The density curve shows the full posterior distribution; the horizontal line below spans the 95% credible interval, with the filled circle marking the posterior median. This quantity is derived by numerically inverting the posterior 4PL survival model at a fixed exposure duration of 1 hour, and is conceptually analogous to a CTmax estimated at a standardised heating duration rather than at a fixed ramping rate."
-if (tdt_has_fit(fit_shrimp_4pl)) {
-  saveRDS(shrimp_lt1h, file.path(tdt_output_dir, "shrimp_lethal_temperature_for_1h_50_survival.RDS"))
-
-  p_temp_1h <- plot_temperature_for_duration(shrimp_lt1h)
-
-  ggsave(
-    filename = file.path(tdt_fig_dir, "shrimp_lethal_temperature_for_1h_50_survival.png"),
-    plot = p_temp_1h,
-    width = 7,
-    height = 5,
-    dpi = 400
-  )
-
-  temp_1h_table <- shrimp_lt1h$summary %>%
-    dplyr::mutate(
-      `Temperature for 50% survival after 1 h (°C)` = format_interval(
-        temp_median, temp_lower, temp_upper, digits = 2
-      )
-    ) %>%
-    dplyr::select(category, `Temperature for 50% survival after 1 h (°C)`)
-
-  tdt_ft(temp_1h_table, caption = "Table 6. Posterior median and 95% credible interval for the temperature at which 50% of organisms survive a 1-hour exposure.")
-  p_temp_1h
 }
 ```
 
@@ -3375,9 +2658,9 @@ repair_pars_shrimp <- list(
 
 repair_levels_pct_min <- c(
   none     = 0,
-  low      = 0.001,
+  low      = 0.005,
   moderate = 0.01,
-  high     = 0.1
+  high     = 0.05
 )
 
 if (tdt_has_fit(fit_shrimp_4pl)) {
@@ -3601,11 +2884,11 @@ if (tdt_has_fit(fit_shrimp_4pl)) {
 
 ## Case Study 2: XXX
 
-Placeholder for the next dataset. The reusable interface supports a grouping variable through `category`, which will fit `mid ~ temp_c * category` by default and facet downstream summaries by group.
+Placeholder for the next dataset. It will use the same `prepare_tdt_survival_data()` and `fit_tdt_4pl()` interface with random effects appropriate to that experimental design.
 
 ## Case Study 3: XXX
 
-Placeholder for the third dataset. This section can use the same `prepare_tdt_survival_data()` and `fit_tdt_4pl()` workflow once the raw columns and grouping structure are finalised.
+Placeholder for the third dataset. This section can use the same `prepare_tdt_survival_data()` and `fit_tdt_4pl()` workflow once the raw columns and design structure are finalised.
 
 ## Reflection: Methods, Decisions, and Rationale
 
@@ -3710,7 +2993,8 @@ With `low ≈ 0.25` and `up ≈ 0.75` at the zero starting point, every predicte
 |-----------|-------|-----------|
 | `b_lraw_Intercept` | Normal(logit(0.038), 1) | Centres `low` near 0.02 (2% background mortality); SD 1 spans roughly 0.5%–15% |
 | `b_uraw_Intercept` | Normal(logit(0.962), 1) | Centres `up` near 0.98 (98% max survival); SD 1 spans roughly 85%–99.5% |
-| `b_logk_Intercept` | Normal(log(2), 1) | Steepness k = 2 ± ~1 order of magnitude |
+| `b_logk_Intercept` | Normal(log(2), 1) | Steepness k = 2 at the mean temperature ± ~1 order of magnitude |
+| `b_logk_temp_c` | Normal(0, 0.5) | Allows steepness to vary moderately with temperature; regularises toward constant k |
 | `b_mid_Intercept` | Normal(median(logd), 1.5) | Data-centred; SD 1.5 spans roughly 30-fold on the duration axis |
 | `b_mid_temp_c` | Normal(0, 0.6) | Allows z-values from 1°C to >10°C; prevents implausibly steep slopes |
 | Random SDs | Exponential(2) | Weakly regularising; half the mass below 0.35 log10(h) ≈ ±2-fold variation |
@@ -3724,9 +3008,10 @@ Date and Tank are included as random intercepts on `mid`:
 
 ```
 mid ~ temp_c + (1 | Date) + (1 | Tank)
+logk ~ temp_c
 ```
 
-They affect only the *position* of the curve along the log-duration axis (not the shape, asymptotes, or temperature slope). This is the appropriate biological assumption: experimental batch effects shift how long it takes to kill organisms, but do not change the fundamental shape of the dose-response.
+The random effects affect only the *position* of the curve along the log-duration axis (not the shape, asymptotes, or temperature slopes). This is the appropriate biological assumption: experimental batch effects shift how long it takes to kill organisms, but do not change the fundamental shape of the dose-response. The temperature slope on `logk` is a population-level (fixed) effect only.
 
 Including these random effects prevents pseudoreplication: multiple tanks per date, and multiple dates in the experiment, mean observations are not exchangeable. Ignoring this would understate uncertainty in all derived quantities.
 
@@ -3768,10 +3053,9 @@ This is why `b_mid_temp_c` is the core TDT coefficient. The report still derives
 - The helper functions in `tdt_problems.qmd` are hard-coded around a `species` factor and specific coefficient names. The shrimp model has no species/life stage factor, so those helpers do not apply directly without rewriting. The functions above remove that hard-coding.
 - The old helper documentation says LT50 is in minutes, but both the zebrafish and shrimp prototypes fit `log10(duration)` where duration is in hours, then multiply derived times by 60 for plotting. This notebook makes that conversion explicit with `time_multiplier`.
 - `R/bayesian_TDT_shrimp.qmd` uses a binomial likelihood plus an observation-level random effect. The TODO list asks for beta-binomial instead, so `fit_tdt_4pl()` uses the custom `tdt_beta_binomial` brms family and omits the `obs` term.
-- The simple expression `z = -1 / b_mid_temp_c` is exact only for the standard one-group model. When `category` is supplied, each category has its own posterior temperature slope from the `temp_c * category` interaction.
+- The simple expression `z = -1 / b_mid_temp_c` is exact only when steepness is constant. With `logk ~ temp_c`, the effective steepness varies by temperature, so the LTx curve is no longer strictly log-linear. The functions derive z by regressing per-draw log10(LT50) on temperature, which remains valid regardless of whether the log-linear assumption holds exactly.
 - In `R/bayesian_TDT_shrimp.qmd`, `z_draws <- -1 / dr$b_mid_temp_c` appears before `dr <- posterior::as_draws_df(fit_4pl)` is created.
-- The starting-time model in `R/bayesian_TDT_shrimp.qmd` uses `start_min_c` in the formula but the init list names `b_mid_start_time_c`; that init value will not match the coefficient name.
-- The dynamic injury model assumes that latent dose maps to survival through a shared 4PL shape within a category. Category-specific shapes can be estimated, but the dynamic-dose interpretation should be checked carefully for each case study.
+- The dynamic injury model uses `k = exp(logk_int)` (the intercept of logk at the centering temperature) for the latent-dose-to-survival mapping. This is an approximation when logk varies with temperature; it is most accurate near the mean assay temperature.
 
 ## Methods Rationale And Critical Assessment
 
@@ -3789,15 +3073,15 @@ The likelihood is beta-binomial rather than binomial plus an observation-level r
 
 The priors are deliberately weak and not estimated from the analysed dataset. The lower asymptote is constrained below 0.5 and centred near 0.02; the upper asymptote is constrained above 0.5 and centred near 0.98. Those constraints are identifiability choices, not strong claims that every dataset has perfect baseline and terminal behaviour. The midpoint prior is broad on the `log10(hours)` scale. If a new case study has very short cell exposures or very long plant exposures, that prior should be checked with prior predictive simulation.
 
-### Grouped TDT Estimates
+### Temperature-Varying Steepness
 
-When `category` is supplied, the default formula uses `mid ~ temp_c * category`. This is the TDT-relevant interaction: it lets each species, life stage, plant line, or cell line have its own temperature dependence of the survival midpoint. The downstream functions then derive LT curves, z values, reference-time temperatures, survival curves, and landscapes separately for each category. Plots facet by category so that group-specific behaviour is not hidden in a single averaged curve.
+The model now estimates `logk ~ temp_c`, so the steepness `k = exp(logk_int + logk_temp * temp_c)` changes with temperature. This is biologically motivated: the width of the survival curve in log-time often narrows at higher temperatures, meaning thermal death becomes more abrupt. Allowing `k` to vary lets the model capture this without forcing symmetry around a single steepness value.
 
-The functions also allow category-specific asymptotes and slopes of the 4PL curve. That is useful, but it should not be automatic intellectual comfort: if one group has weak coverage of the lower survival region, its lower asymptote and LT estimates may be prior-sensitive. The diagnostic plots are there to reveal exactly that kind of weak identifiability.
+The consequence is that the LTx curve is no longer exactly log-linear in temperature (the offset term `log(...) / k` in the 4PL inversion now depends on `temp_c`). The functions derive z by fitting a log-linear regression to each draw's LT50 curve, which remains valid as an empirical approximation even when the strict log-linearity assumption does not hold.
 
 ### Thresholds For TDT Curves
 
-Classical TDT uses time to 50% survival. That is sensible when upper survival is near 1 and lower survival is near 0, but it becomes awkward when the estimated upper asymptote is, for example, 0.6. In that case, 0.5 survival is not a 50% loss from optimum survival. The function `derive_ltx_curve()` therefore accepts any target survival threshold, including a named vector with one threshold per category. The helper `derive_relative_survival_targets()` gives one pragmatic choice: define the target as a fixed proportional decline from the fitted upper asymptote toward the lower asymptote.
+Classical TDT uses time to 50% survival. That is sensible when upper survival is near 1 and lower survival is near 0, but it becomes awkward when the estimated upper asymptote is, for example, 0.6. In that case, 0.5 survival is not a 50% loss from optimum survival. The function `derive_ltx_curve()` therefore accepts any target survival threshold. The helper `derive_relative_survival_targets()` gives one pragmatic choice: define the target as a fixed proportional decline from the fitted upper asymptote toward the lower asymptote.
 
 This is conceptually cleaner than pretending that 50% survival is always the right biological threshold. The weakness is that the chosen threshold becomes a biological decision, not a purely statistical default. It should be reported.
 
