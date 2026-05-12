@@ -90,10 +90,11 @@ tdt_check_columns <- function(data, cols, arg_name = "columns") {
 #' @keywords internal
 tdt_format_random_effects <- function(random_effects = NULL) {
   if (is.null(random_effects) || length(random_effects) == 0) return(character())
-  vapply(random_effects, function(term) {
+  out <- vapply(random_effects, function(term) {
     term <- trimws(term)
     if (grepl("^\\(", term)) term else paste0("(1 | ", term, ")")
   }, character(1))
+  unname(out)
 }
 
 #' Extract variable names from random-effect terms

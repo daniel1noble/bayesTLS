@@ -68,15 +68,12 @@ extract_4pl_pars <- function(workflow) {
 time_to_surv_threshold_4pl <- function(temp, survival_target,
                                        low, up, k,
                                        mid_int, mid_temp, temp_mean) {
-  temp_c <- temp - temp_mean
-  mid    <- mid_int + mid_temp * temp_c
-  valid  <- survival_target > low & survival_target < up
-  out    <- rep(NA_real_, length(temp))
-  out[valid] <- 10 ^ (
-    mid[valid] +
-      log((up - survival_target) / (survival_target - low)) / k
-  )
-  out
+  if (survival_target <= low || survival_target >= up)
+    return(rep(NA_real_, length(temp)))
+  temp_c   <- temp - temp_mean
+  mid      <- mid_int + mid_temp * temp_c
+  log_term <- log((up - survival_target) / (survival_target - low))
+  10 ^ (mid + log_term / k)
 }
 
 #' Survival corresponding to an accumulated dose
