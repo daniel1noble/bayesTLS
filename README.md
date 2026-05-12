@@ -75,38 +75,106 @@ None yet. Any GitHub Pages tutorials or supplementary case studies will be linke
 
 Coding, writing, testing, and collaboration conventions live in [CLAUDE.md](CLAUDE.md).
 
+## Planning log
+
+### 2026-05-12 — Architecture & scope
+
+**Summary.** Co-author planning discussion. Locked the scope of this paper, sketched a decoupled function pipeline, and split the static-CTmax-to-dynamic-CTmax conversion problem out into a future companion paper.
+
+**Scope of this paper.**
+- Joint Bayesian 4PL on proportion-style TDT data (survived / dead / total counts, durations, optional random effects).
+- Sublethal / time-to-event data (knockdown time, fertility, photosystem-II failure) handled via the linear `log10(time) ~ temperature` route — z = -1/slope, CTmax_τ read off directly. These datasets often need heteroscedastic likelihoods because variance grows with temperature.
+- Heat-injury accumulation under fluctuating temperature regimes, with and without repair.
+- *Out of scope* for this paper: converting static CTmax measurements (single ramping rate, one CTmax) back to TDT parameters. That becomes Paper 3.
+
+**Three-paper roadmap.**
+1. *This paper.* TDT framework via joint Bayesian 4PL on proportion data + linear TDT for time-to-event/sublethal data + heat injury/repair.
+
+**Different Paper**
+2. Static-CTmax-to-TDT conversion. Likelihood- or simulation-based inference for the distribution of z that would have produced an observed CTmax × ramping-rate pattern, with uncertainty propagation. Empirical validation across datasets where both pipelines exist (zebrafish embryo, shrimp, our own). Demonstrates that the current literature's fixed-z assumption is unsupportable — across the 5 papers checked, z ranges ~1–7; sublethal-assay z is typically 1–2; assuming a single value silently changes conclusions.
+
+**Pipeline architecture — decoupled, step-wise functions.** Each step is a standalone function so users can stop, swap, or skip:
+
+1. `standardize_data()` — rename user columns to project-standard names (survived / dead / total / proportion, time, duration, optional random effects, optional covariates). Standardises fixed-effect naming so every downstream function reads the same object. Already partially in place; just needs polish and docs.
+2. `make_4pl_priors()` — proportion data; bounds 0–1.
+3. `make_TDT_priors()` — sublethal / unbounded data; bounds shifted to the data scale (e.g. photosystem II survives between 0.85 and 1).
+4. `fit_4pl()` — joint Bayesian fit, beta-binomial likelihood. Centred temperature by default (decorrelates intercept/slope, fits where the data is, avoids extrapolation to T = 0). Default model = temperature on all four parameters (ℓ, u, k, mid); if a parameter has no temperature effect the term shrinks to zero and the unified correction factor degrades cleanly to the simpler case. Always center/ use Tref at 60 min by default but can be overwritten if needed. **Pending check: overfitting risk on small datasets — test before adopting.** On exit, print a console message summarising the assumed model, priors, bounds, and how to override.
+5. `extract_tdt(fit, T_ref, target_surv = 0.5, TC_thresh = 0.05)` — z = -1/slope; CTmax (temperature at `target_surv` survival, default 0.5 → LT50); **T_crit** (temperature at `1 - TC_thresh` survival, default 0.05 → LD5). Same machinery for both: solve the 4PL inverse for temperature at the reference exposure time. Uses population-level estimates only; random effects irrelevant for extraction. Returns per-curve CTmax, per-curve T_crit, overall combined z, and full posterior draws for all three.
+6. `predict_survival_curves()` — posterior predictive plots for sanity-checking the fit.
+7. `predict_heat_injury(temp_series, z_post, CTmax_post, T_ref, repair = FALSE)` — accumulate damage under a temperature trace. Toggle returns heat-injury or survival. `repair = TRUE` uses Sharpe-Schoolfield with defaults estimated from where exponential damage accumulation begins (and an optimum temperature for repair sitting X°C below). Use Kelvin throughout the Arrhenius parts.
+8. `fit_linear_TDT()` + matching `extract_tdt_linear()` for the time-to-event branch. Heteroscedastic likelihood option. Outputs match `extract_tdt()` so downstream functions don't care which path produced z and CTmax.
+9. Plotting helpers for each of the above; faceting when interactions/categories are present. Plotting the TDT lines, time ~ temperature, on linear and log scale. Survival curves for plotting and then TDT landscape. 
+
+**Supplement tutorial structure.** Intro → list of all exported functions with one-line descriptions → simulation walk-through that mirrors the paper section by section → final section showing the more complex case (K varies with T, additional covariates, interactions) using the same function set.
+
+**Validation.** Heat-injury simulations: a flat trace (no injury), a single spike sized to deliver 50% mortality / 100% HI, a multi-spike trace. Cross-check `predict_heat_injury` recovers the planted dose under each.
+
+**Centred temperature is the standard.** `T_ref` is the 60 min assay temperature used to centre. All downstream interpretation (CTmax at T_ref, z, heat injury) flows from this choice — document it prominently. 
+
+### 2026-05-12 (cont'd) — `T_crit` lives in `extract_tdt()`
+
+**Decision.** `T_crit` is added as a third quantity returned by `extract_tdt()`, alongside z and CTmax. New argument `TC_thresh` (default 0.05) controls the mortality threshold that defines it.
+
+**Mechanically the same as CTmax.** CTmax is the temperature at which `target_surv = 0.5` (i.e. LT50) is reached at the reference exposure time. T_crit is the temperature at which `1 - TC_thresh = 0.95` survival is reached at the reference exposure time — i.e. the LD5 temperature. Both are the 4PL inverse solved for temperature at a fixed time; only the survival target differs. One function, one inversion routine, two outputs.
+
+**Why not in `predict_heat_injury()`.** Putting T_crit there would force users to supply a temperature trace just to read off a quantity that is intrinsic to the dose-response surface. Many users will only have the fit. `extract_tdt()` is the right home — it operates on the fit alone.
+
+**Why 5% (default).** 1% is within sampling randomness; 5% is robust and roughly matches where heat-injury accumulation visibly lifts off zero in `predict_heat_injury()` output. Threshold is exposed (`TC_thresh`) so users can tighten or loosen. Worth a visual sanity check against the heat-injury plots once the function is in place.
+
+**Repair and T_crit.** Conceptually T_crit is where damage rate equals repair rate. But the TDT surface already encodes the *net* organismal response — repair is baked in. So T_crit can be defined from the TDT fit alone; the repair function (`predict_heat_injury(..., repair = TRUE)`) is for forward predictions under fluctuating temperatures, not for defining T_crit.
+
+**Posterior T_crit — a contribution in its own right.** T_crit has historically been treated as a poorly-defined point value. Here it inherits the model's posterior — full uncertainty distribution, naturally wider at the low-mortality (small-effect, sparse-data) end. Worth emphasising in the manuscript: T_crit comes out *with* a credible interval, from the same single fit that gives z and CTmax. No back-and-forth, no separate experiment.
+
 ## TODO list
 
-**TODO list:** 
+### This paper — to do
 
-- [ ]  Make a general function to fit 4 PL model from survival data
-    - [ ]  Fix issues with priors being too strong (i.e., they are currently derived from data)
-    - [ ]  Make sure to use beta binomial implementation instead of OLRE
-    - [ ]  Add options for covariates + interactions + random effects?? Or just leave the code so people can adapt easily?
-    - [ ]  Add option for number of chains, iterations etc
-    - [ ]  Spit summary (z, R2 etc) + potential problems
+**Function infrastructure (all to live in `R/`, tested in `tests/testthat/`, documented with roxygen2):**
 
-- [ ]  Make a general function to generate survival curves and check everything is ok. 
+- [ ] `standardize_data()` — clean up the existing helper, document, test. Single source of truth for variable naming downstream.
+- [ ] `make_4pl_priors()` — proportion-data priors with sensible 0–1 bounds.
+- [ ] `make_TDT_priors()` — unbounded / sublethal priors; bounds scaled to data range.
+- [ ] `fit_4pl()` — joint Bayesian wrapper.
+  - [ ] Beta-binomial likelihood (not OLRE).
+  - [ ] Default: temperature on all four parameters; test overfitting risk before locking this in.
+  - [ ] Centred temperature by default.
+  - [ ] Console-print model assumptions, priors, bounds at exit.
+  - [ ] Expose chains / iterations / cores arguments.
+  - [ ] Return diagnostics summary (z, R², Rhat, divergences, potential problems).
+  - [ ] Decide on covariate / interaction / random-effect interface — either explicit arguments or leave the user to adapt the function.
+- [ ] `fit_linear_TDT()` — linear `log10(time) ~ temperature` for sublethal / time-to-event data with heteroscedastic option. Returns an object with the same downstream interface as `fit_4pl()`.
+- [ ] `extract_tdt(fit, T_ref, target_surv = 0.5, TC_thresh = 0.05)` — z, CTmax, T_crit, per-curve and overall.
+  - [ ] `target_surv = 0.5` (default) → CTmax via 4PL inverse at the reference exposure time.
+  - [ ] `TC_thresh = 0.05` (default) → T_crit via the same inverse routine at `1 - TC_thresh` survival. Same machinery; one inversion routine called twice with different survival targets.
+  - [ ] Extract from population-level estimates; ignore random effects.
+  - [ ] Return full posterior draws for z, CTmax, and T_crit.
+  - [ ] Sanity-check: T_crit from the fit should fall where `predict_heat_injury()` output lifts off zero on the heat-injury plot. Validate visually on the zebrafish and shrimp datasets before locking the 5% default.
+- [ ] `predict_survival_curves()` — posterior predictive curves over time × temperature.
+- [ ] `predict_heat_injury(temp_series, z_post, CTmax_post, T_ref, repair = FALSE)`.
+  - [ ] `repair = TRUE` option using Sharpe-Schoolfield.
+  - [ ] Default repair TPC estimated from where exponential damage accumulation begins; optimum repair temp X°C below.
+  - [ ] Kelvin internally for the Arrhenius portion.
+  - [ ] Toggle output between heat-injury (% LT50 dose) and survival fraction.
+- [ ] Plotting helpers — `plot_4pl_fit()`, `plot_tdt()`, `plot_heat_injury()`. Faceting when categories / interactions are present.
 
-- [ ]  Make a general function to derive TDT curve from 4PL model
-    - [ ]  Make an adjustment with different temperature targets (0.5 by default, but could be less)
-     - [ ]  If there are multiple categories (interaction), then facet_wrap
-   
-- [ ]  Make a general function to derive TDT landscape 
+**Validation & simulation:**
 
-- [ ]  Make a general function to derive temperatures tolerated for 1 hour from 4PL model
+- [ ] Heat-injury simulation harness — three temperature traces (flat / single spike / multi-spike) with known planted doses. Cross-check `predict_heat_injury` recovers the dose.
+- [ ] Overfitting check for the default `fit_4pl()` (temperature on all four parameters) — simulate from a model with no temperature effect on ℓ, u, k and confirm the full model doesn't fabricate one.
 
-- [ ]  Make a general function to predict accumulation of heat injury in fluctuating temperature regimes
-    - [ ]  Simulate temperatures with known predicted accumulation of injury. One with none; one with a single spike (e.g., predicted to result in 50% mortality or 100% injury); one with multiple spikes.
-    - [ ]  Have an option for repair = TRUE
-    - [ ]  By default, we can try to estimate the TPC for repair based on when damage starts to accumulate exponentially; and X degrees below this for the optimum temperature for repair? 
-    - [ ]  Make sure everything is in Kelvin if we are using Arrhenius equations. 
+**Manuscript & supplement:**
 
-- [ ]  Make a general function to plot predicted injury/repair at different temperatures (with uncertainty)
+- [ ] Supplement tutorial: intro → functions list → simulation walk-through → complex-case section (K varies with T, covariates, interactions).
+- [ ] Section on sublethal / linear-fit pipeline (knockdown time, fertility, PSII).
+- [ ] Section on heat injury + repair with the simulation results.
 
-- [ ]  Make a general function to predict survival/mortality rate over the time series. 
+### Deferred to companion papers
 
-- [ ]  Make a general function to derive TDT parameters from dynamic data; and dynamic data to TDT parameters.
+- Paper 2 — flow-cytometry / cell-level application of the framework.
+- Paper 3 — static-CTmax-to-TDT conversion.
+  - [ ] (later) Likelihood/simulation function to infer z-distribution from CTmax × ramping-rate data with uncertainty propagation.
+  - [ ] (later) Validation across datasets with both pipelines.
+  - [ ] (later) Show fixed-z assumption (e.g. Jørgensen 2021) is unsupportable given observed z variation.
 
 
 
