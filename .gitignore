@@ -84,7 +84,13 @@ ms/ms.log
 ms/supplement.tex
 ms/ms_supp.tex
 output/models/smoke_phase1b/fit_smoke1b.rds
+output/models/smoke_phase1d/
+output/figs/smoke_phase1d/
+output/models/link_test/
 scripts/smoke-test-phase1a.R
-.gitignore
 scripts/smoke-test-phase1b.R
 scripts/smoke-test-phase1c.R
+scripts/smoke-test-phase1d.R
+
+# testthat-built fixture (cached small brms fit; auto-rebuilds on first run)
+tests/testthat/fixtures/sim_fit_small.rds

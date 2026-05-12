@@ -191,6 +191,8 @@ threshold_x_by_draw <- function(pred_mat, x, target) {
     if (any(!is.finite(p))) return(NA_real_)
     if (target > max(p) || target < min(p)) return(NA_real_)
     ord <- order(p)
-    stats::approx(p[ord], x[ord], xout = target)$y
+    # Duplicate p values at the 4PL asymptote plateaus are mathematically
+    # harmless (y is constant there), but approx() warns on every call.
+    suppressWarnings(stats::approx(p[ord], x[ord], xout = target)$y)
   })
 }
