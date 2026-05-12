@@ -439,7 +439,7 @@ p_surv = low + (up - low) / (1 + exp(k * (log10(duration) - mid)))
 
 with `k = exp(logk)`, a bounded lower asymptote, and a bounded upper asymptote. The midpoint `mid` is where temperature, covariates, and random effects enter.
 
-Unlike the prototype shrimp model, this implementation uses a beta-binomial likelihood through a custom brms family and removes the observation-level random effect.
+Unlike the prototype shrimp model, this implementation uses the built-in `brms::beta_binomial()` family and removes the observation-level random effect.
 
 The default priors are weak and not estimated from the dataset being analysed. On the probability scale, the lower asymptote is constrained to `(0, 0.5)` and is centred near 0.02; the upper asymptote is constrained to `(0.5, 1)` and is centred near 0.98. The midpoint prior is centred on `log10(duration) = 0.5` with a broad scale, which says only that the threshold exposure is probably within a very wide range around the supplied duration unit.
 
@@ -544,7 +544,7 @@ eta_expr <- paste0(
   mid_rhs <- paste(mid_terms, collapse = " + ")
 
   formula_parts <- list(
-    stats::as.formula("n_surv | vint(n_total) ~ eta"),
+    stats::as.formula("n_surv | trials(n_total) ~ eta"),
     brms::nlf(stats::as.formula(eta_expr)),
     brms::lf(stats::as.formula(paste("lraw ~", lraw_rhs))),
     brms::lf(stats::as.formula(paste("uraw ~", uraw_rhs))),
@@ -950,9 +950,8 @@ fit_tdt_4pl <- function(data,
   workflow$fit <- brms::brm(
     formula = formula,
     data = data,
-    family = tdt_beta_binomial_family(),
+    family = brms::beta_binomial(),
     prior = prior,
-    stanvars = tdt_beta_binomial_stanvars(),
     chains = chains,
     cores = cores,
     iter = iter,
@@ -1665,7 +1664,7 @@ plot_ltx_curve <- function(ltx_curve,
 # @return Named list: $draws (per-draw threshold temperatures), $summary
 #         (quantile summary by category), $exposure_duration,
 #         $target_survival.
-derive_temperature_for_duration <- function(workflow,
+derive_temperature_for_duration <- function(workflow,  
                                             exposure_duration,
                                             temp_grid,
                                             target_survival  = 0.5,

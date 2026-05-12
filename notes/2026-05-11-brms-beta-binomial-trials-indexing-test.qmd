@@ -1,0 +1,248 @@
+---
+title: "Test: does brms::beta_binomial() + trials() work in a nonlinear model?"
+date: 2026-05-11
+format:
+  html:
+    toc: true
+    code-fold: false
+execute:
+  warning: false
+  message: false
+  eval: false
+---
+
+## Background
+
+`test_functions.qmd` uses a custom `tdt_beta_binomial` family with `vint(n_total)` to work
+around a brms 2.22.0 code-generation bug: in nonlinear models, `trials()` produced
+unindexed Stan code (`vn_total` instead of `vn_total[n]`), causing impossible likelihood
+evaluations for rows with varying denominators.
+
+This note tests whether the current brms version has fixed the bug.  If the check below
+passes we can drop the custom family.
+
+## Step 1 — Update brms
+
+Run in your R console **before rendering this note**:
+
+```{r update-brms}
+#| eval: false
+install.packages("brms")
+packageVersion("brms")  # should be >= 2.22.0; note the exact version here
+```
+
+## Step 2 — Synthetic data with intentionally varying trial counts
+
+The critical stress test is **varying `n_total` per row** — that is precisely the
+condition that triggers the indexing bug.
+
+```{r setup}
+library(brms)
+library(dplyr)
+
+set.seed(42)
+
+temps     <- c(28, 30, 32, 34, 36)
+durations <- c(0.25, 0.5, 1, 2, 4)   # hours
+temp_mean <- mean(temps)
+
+# Deliberately vary n_total (5–12) so the bug manifests if present
+sim_dat <- expand.grid(assay_temp = temps, duration = durations) |>
+  mutate(
+    n_total  = sample(5:12, n(), replace = TRUE),
+    temp_c   = assay_temp - temp_mean,
+    logd     = log10(duration),
+    # True 4PL: low=0.02, up=0.97, k=3, mid = -0.3 - 0.15*temp_c
+    mid_true = -0.3 - 0.15 * temp_c,
+    p_true   = 0.02 + (0.97 - 0.02) /
+                 (1 + exp(3 * (logd - mid_true))),
+    n_surv   = rbinom(n(), size = n_total, prob = p_true)
+  )
+
+glimpse(sim_dat)
+```
+
+## Step 3 — Inspect the generated Stan code WITHOUT fitting
+
+`sample = FALSE` tells brms to build the Stan model but not sample.  We search the
+likelihood block for `vn_total` to check whether it appears as a scalar (bug) or
+indexed (fixed).
+
+```{r inspect-stan-code}
+formula_test <- bf(
+  n_surv | trials(n_total) ~ eta,
+  nlf(eta ~ logit(
+    0.001 + inv_logit(lraw) * 0.498 +
+    (0.501 + inv_logit(uraw) * 0.498 - (0.001 + inv_logit(lraw) * 0.498)) /
+    (1 + exp(exp(logk) * (logd - mid)))
+  )),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1),
+  lf(logk ~ 1),
+  lf(mid ~ temp_c),
+  nl = TRUE
+)
+
+priors_test <- c(
+  set_prior("normal(-3, 1)",  class = "b", nlpar = "lraw"),
+  set_prior("normal(3, 1)",   class = "b", nlpar = "uraw"),
+  set_prior("normal(0.7, 1)", class = "b", nlpar = "logk"),
+  set_prior("normal(0, 1.5)", class = "b", nlpar = "mid", coef = "Intercept"),
+  set_prior("normal(0, 0.6)", class = "b", nlpar = "mid"),
+  set_prior("gamma(2, 0.1)",  class = "phi")
+)
+
+sc <- make_stancode(
+  formula  = formula_test,
+  data     = sim_dat,
+  family   = beta_binomial(),
+  prior    = priors_test
+)
+
+# --- Key check ---
+# Search for how n_total appears in the likelihood line.
+# GOOD: "vn_total[n]" — row-indexed scalar (bug is fixed)
+# BAD:  "vn_total,"   — whole vector passed (bug still present)
+lines_with_n_total <- grep("vn_total", strsplit(sc, "\n")[[1]], value = TRUE)
+cat("Lines containing 'vn_total' in the Stan likelihood:\n")
+cat(lines_with_n_total, sep = "\n")
+```
+
+**Interpret the output:**
+
+- If you see `vn_total[n]` → the bug is fixed; safe to replace the custom family.
+- If you see `vn_total` without `[n]` → bug still present; keep the custom family.
+
+## Step 4 — Fit the model (only run if Step 3 passes)
+
+```{r fit-test}
+#| eval: false
+fit_test <- brm(
+  formula   = formula_test,
+  data      = sim_dat,
+  family    = beta_binomial(),
+  prior     = priors_test,
+  chains    = 2,
+  cores     = 2,
+  iter      = 1000,
+  warmup    = 500,
+  seed      = 42,
+  init      = 0,
+  backend   = "cmdstanr"
+)
+
+summary(fit_test)
+
+# Sanity check: posterior medians should be in the right ballpark
+# mid_Intercept ~ -0.3, mid_temp_c ~ -0.15, exp(logk) ~ 3
+```
+
+## Step 5 — Repeat the Stan-code check with the real shrimp data
+
+The synthetic test (Steps 2–4) has no random effects.  This section applies the same
+model structure — following the parameterisation in ms.qmd (eq-reparam and eq-linpred)
+— to the shrimp lethal TDT data, adding random intercepts on `mid` for `Date` and
+`Tank`.  No helper functions are used.
+
+```{r shrimp-setup}
+library(brms)
+library(dplyr)
+
+shrimp_tdt <- readRDS("Rdata/shrimp_lethal_prepared_tdt.RDS")
+
+# Columns required: n_surv, n_total, logd, temp_c, Date, Tank
+# temp_c = assay_temp - grand mean temperature (already in the prepared data)
+temp_mean <- attr(shrimp_tdt, "tdt_meta")$temp_mean
+mid_start <- median(shrimp_tdt$logd, na.rm = TRUE)
+
+cat("temp_mean:", temp_mean, "\n")
+cat("mid_start (median logd):", mid_start, "\n")
+cat("n_total range:", range(shrimp_tdt$n_total), "\n")
+```
+
+```{r shrimp-stan-check}
+# Formula follows ms.qmd eq-reparam exactly:
+#   low = 0.49 * inv_logit(lraw)          -> low in [0, 0.49]
+#   up  = 0.51 + 0.49 * inv_logit(uraw)   -> up  in [0.51, 1]
+#   k   = exp(logk)
+#   mid = b0 + b1 * temp_c + (1|Date) + (1|Tank)   (eq-linpred)
+formula_shrimp <- bf(
+  n_surv | trials(n_total) ~ eta,
+  nlf(eta ~ logit(
+    0.49 * inv_logit(lraw) +
+    (0.51 + 0.49 * inv_logit(uraw) - 0.49 * inv_logit(lraw)) /
+    (1 + exp(exp(logk) * (logd - mid)))
+  )),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1),
+  lf(logk ~ 1),
+  lf(mid ~ temp_c + (1 | Date) + (1 | Tank)),
+  nl = TRUE
+)
+
+# Priors: same structure as the synthetic test in Steps 2-4, with
+# mid_start anchored to the data and random-effect SD priors added.
+# lraw/uraw centres target low ~ 0.02 and up ~ 0.98 under the ms bounds.
+priors_shrimp <- c(
+  set_prior(paste0("normal(", round(qlogis(0.02 / 0.49),   2), ", 1)"),
+            class = "b", nlpar = "lraw"),
+  set_prior(paste0("normal(", round(qlogis((0.98 - 0.51) / 0.49), 2), ", 1)"),
+            class = "b", nlpar = "uraw"),
+  set_prior(paste0("normal(", round(log(2), 2), ", 1)"),
+            class = "b", nlpar = "logk"),
+  set_prior(paste0("normal(", round(mid_start, 2), ", 1.5)"),
+            class = "b", nlpar = "mid", coef = "Intercept"),
+  set_prior("normal(0, 0.6)",  class = "b",  nlpar = "mid"),
+  set_prior("exponential(2)",  class = "sd", nlpar = "mid", group = "Date"),
+  set_prior("exponential(2)",  class = "sd", nlpar = "mid", group = "Tank"),
+  set_prior("gamma(2, 0.1)",   class = "phi")
+)
+
+# Stan code check — same key question as before
+sc_shrimp <- make_stancode(
+  formula = formula_shrimp,
+  data    = shrimp_tdt,
+  family  = beta_binomial(link = "logit"),
+  prior   = priors_shrimp
+)
+
+lines_with_n_total <- grep("vn_total", strsplit(sc_shrimp, "\n")[[1]], value = TRUE)
+cat("Lines containing 'vn_total' in the shrimp Stan code:\n")
+cat(lines_with_n_total, sep = "\n")
+```
+
+**Interpret:**
+
+- `vn_total[n]` everywhere → bug is fixed; safe to use `beta_binomial()` + `trials()`.
+- `vn_total` without `[n]` → bug still present; keep the custom family.
+
+## Step 6 — Quick shrimp fit (only if Step 5 shows `vn_total[n]`)
+
+```{r shrimp-fit-test}
+#| eval: false
+fit_shrimp_test <- brm(
+  formula  = formula_shrimp,
+  data     = shrimp_tdt,
+  family   = beta_binomial(),
+  prior    = priors_shrimp,
+  chains   = 2,
+  cores    = 2,
+  iter     = 1000,
+  warmup   = 500,
+  seed     = 123,
+  init     = 0,
+  backend  = "cmdstanr",
+  control  = list(adapt_delta = 0.995, max_treedepth = 15)
+)
+
+summary(fit_shrimp_test)
+# Expected:  b_mid_temp_c < 0,  exp(b_logk_Intercept) > 0
+```
+
+## Decision
+
+| Step 3/5 result | Step 4/6 result | Action |
+|---|---|---|
+| `vn_total[n]` (both) | Samples cleanly | Replace custom family in `test_functions.qmd` |
+| `vn_total[n]` (both) | Divergences / log(0) | Investigate init or prior, not the family |
+| `vn_total` (no `[n]`) | — | Keep custom family; note brms version |
