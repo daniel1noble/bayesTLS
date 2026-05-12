@@ -37,13 +37,17 @@ BUILD_MS  := $(BUILDROOT)/ms
 
 all: ms supp
 
-# Sync sources to BUILDROOT. `bib/` and `output/` are symlinked from the
-# project so that:
-#   - qmd files using `../bib/...` paths resolve correctly
-#   - `here::here("output", "models")` resolves to the project's
-#     `output/models/` directory, where brms-cached .rds fits live —
-#     otherwise brms re-fits the models every render because it can't
-#     find them in the build dir.
+# Sync sources to BUILDROOT. `bib/`, `output/`, and `R/` are symlinked from
+# the project so that:
+#   - qmd files using `../bib/...` YAML paths resolve to BUILDROOT/bib
+#   - `here::here("output", "models")` from chunks evaluated in BUILD_MS
+#     resolves to the project's `output/models/` (brms-cached fits)
+#   - `here::here("R", ...)` in the supplement's source_all chunk finds the
+#     function library files.
+#
+# Symlinks at BUILDROOT serve the YAML `../bib/...` style; symlinks at
+# BUILD_MS serve `here::here(...)` (which detects no project root in the
+# build dir and falls back to cwd = BUILD_MS).
 sync-sources:
 	@mkdir -p $(BUILD_MS) $(OUTDIR)
 	rsync -a --delete \
@@ -51,8 +55,12 @@ sync-sources:
 	  --exclude '*.tex' --exclude '*.log' \
 	  --exclude '*_files/' --exclude '*_cache/' --exclude '.quarto/' \
 	  ms/ $(BUILD_MS)/
-	@ln -sfn $(abspath bib) $(BUILDROOT)/bib
+	@ln -sfn $(abspath bib)    $(BUILDROOT)/bib
 	@ln -sfn $(abspath output) $(BUILDROOT)/output
+	@ln -sfn $(abspath R)      $(BUILDROOT)/R
+	@ln -sfn $(abspath bib)    $(BUILD_MS)/bib
+	@ln -sfn $(abspath output) $(BUILD_MS)/output
+	@ln -sfn $(abspath R)      $(BUILD_MS)/R
 
 # Render <source.qmd> to <format> with output filename <basename.ext>.
 # All work happens in $(BUILD_MS); only the final artefact is copied to

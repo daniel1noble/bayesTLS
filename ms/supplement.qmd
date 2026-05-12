@@ -111,7 +111,7 @@ execute:
 # Setup chunk must NOT be cached — caching skips the package-loading side
 # effects on subsequent renders, so library() calls in pacman::p_load() never
 # run and downstream chunks fail with "could not find function ...".
-pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, pander)
+pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander)
 
 # Force tinytable to register its LaTeX preamble dependencies (tabularray,
 # siunitx, etc.) on every render. Tinytable injects these via
@@ -130,9 +130,78 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 # Introduction
 
-We've made a bunch of functions that can be used to help users apply the approaches described in the main manuscript and supplement. To load the functions, copy the code chunk and run it in your R console. 
+This supplement walks through the joint Bayesian 4-parameter logistic (4PL) framework described in the main manuscript. We provide a set of functions that allow you to apply the full workflow allowing the 4PL models to be fit and TLS parameters ($z$, $CT_{max_{1hr}}$, $T_{crit}$) to be extracted and also providing opportunities to integrate these TLS parameters to predict Heat Injury ($HI$) and survival fraction. These can also be combined with a repair model to allow damage (and therefore reductions in survival) to be repaired through a temperature time series. The functions are located in the `R/` directory of the project repository — there is no package to install. Sourcing the files at the top of an analysis (see below) makes every function available to call.
 
+The functions are designed to be integrated together as a single pipeline:
 
+1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …). This function ensures that the naming of columns is consistent to make it easier for downstream processing of models.
+2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation.
+3. **Extract** the classical TDT quantities — thermal sensitivity ($z$), critical thermal limit at one hour ($CT_{max_{1hr}}$), and the critical-injury threshold temperature ($T_{crit}$) — all with full posterior uncertainty.
+4. **Predict** survival under fluctuating field temperature traces, including heat-injury accumulation with optional Sharpe-Schoolfield repair.
+5. **Plot** each step with shared theming so figures across the workflow read consistently.
+
+The remainder of the supplement walks the pipeline through a controlled simulation where the truth is known (§ A Tutorial with Simulations), then applies the same machinery end-to-end to a real lethal-TDT dataset on brown shrimp (§ Case Study 1: Shrimp data).
+
+## Loading the function library {#sec-load-library}
+
+The supplement assumes the project repository is the current working directory, so [`here::here()`](https://here.r-lib.org) can resolve paths to `R/`. The chunk below loads required packages and sources every file in the function library.
+
+```{r load-tdt-library}
+#| label: load-tdt-library
+#| echo: true
+#| cache: false
+
+# Source the project function library (12 thematic files under R/).
+tdt_lib_files <- c(
+  "utils.R", "standardize_data.R", "priors.R", "fit_4pl.R",
+  "predict_survival_curves.R", "extract_tdt.R", "tdt_landscape.R",
+  "repair.R", "temperature_scenarios.R", "predict_heat_injury.R",
+  "plotting.R", "diagnostics.R"
+)
+for (f in tdt_lib_files) source(here::here("R", f))
+```
+
+## What each function does {#sec-function-tour}
+
+@tbl-function-tour lists every exported function in the library, grouped by pipeline stage. Each function is single-purpose; the full roxygen2 documentation (with runnable `@examples`) lives in the corresponding R file.
+
+```{r function-tour-table}
+#| label: tbl-function-tour
+#| tbl-cap: "Functions exported by the TDT analysis library, grouped by pipeline stage. Each function is documented with roxygen2 in its R file; runnable examples accompany every function."
+
+tdt_function_tour <- tibble::tribble(
+  ~Stage,             ~Function,                            ~Purpose,
+  "Data",             "standardize_data()",                 "Rename raw columns to project schema; attach metadata.",
+  "Model spec",       "make_4pl_priors()",                  "Weakly informative priors for the disjoint-bounds 4PL.",
+  "Model spec",       "make_4pl_formula()",                 "brms non-linear formula; identity link, all four sub-parameters get temp_c.",
+  "Fit",              "fit_4pl()",                          "Joint Bayesian 4PL fit; returns a tdt_4pl_workflow object.",
+  "Diagnostics",      "diagnose_tdt_fit()",                 "Rhat / ESS / divergences / treedepth, with pass-fail flags.",
+  "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z).",
+  "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands.",
+  "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap.",
+  "TDT quantities",   "derive_ltx_curve()",                 "Time-to-x-survival across temperature (per-draw inversion).",
+  "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at survival = X for a fixed exposure duration.",
+  "TDT quantities",   "derive_tdt_parameters()",            "Per-draw log-linear regression of LT_x on temperature; z + CTmax.",
+  "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z, CTmax, T_crit posteriors in one call.",
+  "Heat injury",      "make_temperature_scenarios()",       "Three reference traces (flat / single spike / multi-spike).",
+  "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
+  "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace.",
+  "Heat injury",      "repair_rate_schoolfield()",          "Sharpe-Schoolfield repair TPC (Kelvin internally).",
+  "Plotting",         "plot_survival_curves()",             "Posterior curves with observed proportion overlay.",
+  "Plotting",         "plot_ltx_curve()",                   "LT_x curve on a log-time axis (classical TDT view).",
+  "Plotting",         "plot_tdt_landscape()",               "Survival heatmap with contour overlay.",
+  "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95% CrI bar.",
+  "Plotting",         "plot_temperature_scenarios()",       "Three traces stacked vertically.",
+  "Plotting",         "plot_heat_injury()",                 "HI and predicted survival trajectories with CrI bands.",
+  "Plotting",         "plot_repair_rate()",                 "Sharpe-Schoolfield TPC curve."
+)
+
+tinytable::tt(tdt_function_tour)
+```
+
+## Testing {#sec-library-tested}
+
+Every function has matching unit tests under [tests/testthat/](../tests/testthat). Fast tests (data manipulation, formula construction, prior structure, plus the pure-math 4PL inversion and planted-dose math) run in seconds via `testthat::test_dir("tests/testthat")`. A small set of brms-fitting integration tests is gated behind `RUN_BRMS_TESTS=true`: those build a small cached fixture fit and assert that `extract_tdt()` and `predict_heat_injury()` recover known simulation truths within their credible intervals.
 
 # **A Tutorial with Simulations**
 
