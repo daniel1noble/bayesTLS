@@ -1,0 +1,98 @@
+---
+title: "Reconsidering T_crit: the LD5-temperature definition is wrong; rate-multiplier is right"
+date: 2026-05-12
+author: "Daniel W.A. Noble (paper-driven re-think, with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Context
+
+Faber, Møller, Ehlers, Ørsted, & Overgaard (2023, preprint *havro_faber_2023_tcrit.pdf*) test four methods for estimating the critical temperature T_c that separates permissive from stressful temperatures in two ectotherms (*Lemna gibba*, *Drosophila suzukii*). Their working definition: T_c is the temperature at which the rate of homeostatic maintenance equals the rate of homeostatic disruption — below it, damage is fully repaired; above it, damage accumulates and survival becomes time-limited.
+
+This is exactly the T_c that appears in the HI integral (Equation 7 of our manuscript): the temperature below which the damage-rate integrand is set to zero.
+
+## What we have today
+
+`extract_tdt(workflow, t_ref = 60, TC_thresh = 0.05)` returns a quantity we currently call "T_crit", computed by inverting the fitted 4PL at survival = 0.95 at the 1-hour reference. **That is the LD5 temperature at 1 hour, not T_c.**
+
+For shrimp: T_LD5_1hr ≈ 29.8 °C with CTmax_1hr ≈ 31.6 °C — only ~1.8 °C below the LT50 temperature.
+
+## What Faber et al. find
+
+Two species, three methods agree:
+
+| Method | *D. suzukii* | *L. gibba* |
+|---|---|---|
+| Performance assay (fitness → 0) | 29–31 °C | 38 °C |
+| Constant TDT breakpoint (Q₁₀ jump) | 27.15 °C | 38 °C |
+| Alternating constant temperature | ~32 °C | 38 °C |
+
+Their T_c sits ~2–3 z **below** CTmax_1hr in both cases. This is the canonical literature meaning of T_c (Fry 1947; Jørgensen et al. 2022; @arnold_thermal_2025; @orsted_finding_2022).
+
+## Daniel's proposal: rate-multiplier-based T_crit
+
+The TDT rate multiplier is `10^((T − CTmax_1hr) / z)`. At T = CTmax_1hr it equals 1 (i.e. 1 LT50 dose per hour = 100 % HI per hour). At any lower T, the HI rate is smaller:
+
+$$
+\text{HI rate}(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z} \quad \text{(\% LT50-dose per hour)}.
+$$
+
+Pick a rate floor `r*` (% per hour) below which we declare damage "negligible." Solve for T:
+
+$$
+T_{crit}(r^*) = CT_{max,1hr} + z \cdot \log_{10}(r^* / 100).
+$$
+
+| r* (% HI / hr) | T_crit relative to CTmax_1hr | Continuous-exposure time to LT50 |
+|---:|:---:|:---:|
+| 10 | CTmax_1hr − z | 10 hours |
+| 1 | CTmax_1hr − 2z | ~100 hours (~4 days) |
+| 0.1 | CTmax_1hr − 3z | ~1000 hours (~42 days) |
+
+## Validation against Faber et al.
+
+Using approximate values read off their TDT figures:
+
+| Species | CTmax_1hr | z | T_crit(r* = 1%) | T_crit(r* = 0.1%) | Empirical T_c |
+|---|---:|---:|---:|---:|---:|
+| *D. suzukii* | ≈ 33.5 °C | ≈ 3 °C | 27.5 °C | 24.5 °C | **27.15 °C** |
+| *L. gibba* | ≈ 44 °C | ≈ 2 °C | 40 °C | 38 °C | **38 °C** |
+
+The empirical breakpoint sits at r* ≈ 0.1–1 % per hour. Both species are well covered by r* in that range. The match is good enough that the rate-multiplier definition is essentially a closed-form for what they measured empirically.
+
+## What changes in our framework
+
+1. **Rename** the current `extract_tdt(... TC_thresh = 0.05)` output. It's still useful, but it's `T_LD5_1hr`, not T_crit.
+2. **Add a new T_crit**: derived algebraically from CTmax_1hr and z + a user-supplied rate threshold. Default `r* = 1 %` HI per hour (matches the centre of Faber et al.'s observed range; corresponds to ~4-day-continuous-exposure-to-LT50 timescale, the right order of magnitude for a heatwave).
+3. **`predict_heat_injury(trace, T_c = …)`** should consume the new T_crit directly. Currently the user supplies T_c by hand (we used `T_c = 25 °C` for shrimp in the Case Study); using `extract_tdt()`'s output closes the loop.
+
+## Quantitative comparison on the shrimp fit
+
+For shrimp (CTmax_1hr = 31.6 °C, z = 2.6 °C):
+
+| Quantity | Value |
+|---|---:|
+| T_LD5_1hr (current "T_crit") | 29.8 °C |
+| T_crit(r* = 10%) | 29.0 °C |
+| T_crit(r* = 1%) | 26.4 °C |
+| T_crit(r* = 0.1%) | 23.8 °C |
+
+The 5–6 °C gap between T_LD5 and T_crit(r* = 0.1%) is biologically real and important: the temperature where "5% of the population is dead in an hour" is several degrees above the temperature where "you could be exposed continuously for weeks before reaching LT50." Both are useful summaries, but only the second is the T_c of the literature.
+
+## Open questions
+
+- **Threshold choice.** r* = 1% per hour is defensible (~4-day exposure timescale, centre of Faber et al.'s observed range). Could be lower (more conservative) or higher (more permissive). Justify in the manuscript with a sensitivity figure.
+- **Empirical breakpoint as a check.** Faber et al. detect T_c empirically by piecewise regression of log(time-to-failure) on T. We could do this per posterior draw on a fitted 4PL surface and get a posterior on the empirical T_c. If it disagrees with the rate-derived T_crit, that's a diagnostic about the TDT linearity assumption.
+- **Asymmetry correction.** When the 4PL shape parameters (low, up, k) vary with T, the TDT line bends and CTmax_1hr is no longer purely a linear extrapolation. Our `extract_tdt()` already handles this via numerical inversion. T_crit_rate uses CTmax_1hr and z from the same fit, so inherits whatever asymmetry correction is in place.
+- **Repair.** Once we have a temperature-varying repair function in `predict_heat_injury`, the *effective* T_c becomes the temperature where damage rate equals repair rate. With no repair, T_crit_rate as defined here is the right operational definition. With repair, T_crit_rate becomes a *no-repair upper bound* and the effective T_c shifts up.
+
+## Recommendation
+
+Adopt the rate-multiplier definition as the project's primary T_crit. Keep T_LD5 available as a secondary output. Update the supplement narrative to explain the distinction, and rerun the shrimp Case Study with T_crit-from-the-fit feeding `predict_heat_injury`.

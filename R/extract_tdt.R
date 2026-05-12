@@ -209,17 +209,25 @@ derive_tdt_parameters <- function(ltx_curve,
 #' - **CTmax** — temperature at which survival = 0.5 after `t_ref` exposure;
 #'   the temperature where the LT_50 curve crosses `t_ref`. Computed by
 #'   inverting the 4PL surface at fixed exposure duration.
-#' - **T_crit** — temperature at which survival = `1 - TC_thresh` after `t_ref`
-#'   exposure. Same machinery as CTmax, just at a different survival target —
-#'   so T_crit lives here, not in `predict_heat_injury()`. Default
-#'   `TC_thresh = 0.05` gives the LD5 temperature.
+#' - **T_crit** — the temperature below which the TDT-line damage rate falls
+#'   beneath an empirically motivated floor `r*` (% HI per hour). For each
+#'   posterior draw, `T_crit = CTmax + z * log10(r* / 100)`, with `r*` drawn
+#'   uniformly on the log10 scale across `TC_rate_range`. The pooled posterior
+#'   thus carries both parameter uncertainty (in CTmax and z) and operational
+#'   uncertainty in the choice of damage-rate floor. The default range
+#'   `c(0.1, 1)` % HI per hour brackets the empirical breakpoints found by
+#'   Faber et al. (2023) and Jørgensen et al. (2022) across taxa as different
+#'   as *Drosophila suzukii* and *Lemna gibba*.
 #'
 #' All three quantities inherit the same posterior — no extra fitting step.
 #'
 #' @param workflow    Fitted `tdt_4pl_workflow`.
-#' @param t_ref       Reference exposure duration for CTmax and T_crit, in the
+#' @param t_ref       Reference exposure duration for CTmax, in the
 #'                    `output_time_unit` (default `"min"`). Default 60.
-#' @param TC_thresh   Mortality threshold defining T_crit. Default 0.05.
+#' @param TC_rate_range Numeric length-2: HI-rate floor range, in % LT50-dose
+#'                    per hour, used to derive T_crit. Default `c(0.1, 1)`.
+#'                    Sampled uniformly on `log10(r/100)`, which is the natural
+#'                    scale for a rate threshold.
 #' @param temp_grid   Numeric vector of temperatures to search over. Default:
 #'                    a fine grid spanning the training-data temperature range
 #'                    extended by ±2 °C.
@@ -235,19 +243,21 @@ derive_tdt_parameters <- function(ltx_curve,
 #'   - `CTmax`: list with `draws` (per-draw temperature) and `summary`.
 #'   - `T_crit`: list with `draws` and `summary`.
 #'   - `lt50_curve`: output of [derive_ltx_curve()] (intermediate).
-#'   - `meta`: list of inputs used (`t_ref`, `TC_thresh`, `output_time_unit`).
+#'   - `meta`: list of inputs used (`t_ref`, `TC_rate_range`, `output_time_unit`).
 #' @examples
 #' \dontrun{
-#' wf <- fit_4pl(d, ...)
+#' wf  <- fit_4pl(d, ...)
 #' out <- extract_tdt(wf)
 #' out$z$summary
 #' out$CTmax$summary
 #' out$T_crit$summary
+#' # Feed the T_crit posterior median into predict_heat_injury():
+#' hi <- predict_heat_injury(trace, wf, T_c = out$T_crit$summary$temp_median)
 #' }
 #' @export
 extract_tdt <- function(workflow,
                         t_ref            = 60,
-                        TC_thresh        = 0.05,
+                        TC_rate_range    = c(0.1, 1),
                         temp_grid        = NULL,
                         duration_grid    = NULL,
                         ndraws           = 1000,
@@ -255,8 +265,12 @@ extract_tdt <- function(workflow,
                         output_time_unit = "min") {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
-  if (TC_thresh <= 0 || TC_thresh >= 0.5)
-    stop("TC_thresh must be in (0, 0.5). Got: ", TC_thresh, call. = FALSE)
+  if (length(TC_rate_range) != 2L ||
+      any(!is.finite(TC_rate_range)) ||
+      any(TC_rate_range <= 0) ||
+      TC_rate_range[1] >= TC_rate_range[2])
+    stop("TC_rate_range must be c(low, high) with 0 < low < high (% HI/hour).",
+         call. = FALSE)
 
   data <- workflow$data
   if (is.null(temp_grid)) {
@@ -288,12 +302,32 @@ extract_tdt <- function(workflow,
     ndraws            = ndraws
   )
 
-  t_crit <- derive_temperature_for_duration(
-    workflow          = workflow,
-    exposure_duration = exposure_in_model_units,
-    temp_grid         = temp_grid,
-    target_surv       = 1 - TC_thresh,
-    ndraws            = ndraws
+  # T_crit via rate-multiplier integration. For each posterior draw, sample
+  # r* uniformly on log10 across TC_rate_range, then compute
+  # T_crit = CTmax + z * log10(r*/100). Pairs z and CTmax by .draw index
+  # so the joint posterior is preserved; inner_join drops draws that didn't
+  # survive both pipelines (e.g. ill-conditioned LT50 regressions).
+  z_df     <- z_ctmax$draws   |> dplyr::select(.draw, z)
+  ctmax_df <- ctmax$draws     |> dplyr::select(.draw, CTmax_temp = temp)
+  paired   <- dplyr::inner_join(z_df, ctmax_df, by = ".draw")
+
+  log10_low  <- log10(TC_rate_range[1] / 100)
+  log10_high <- log10(TC_rate_range[2] / 100)
+  paired$log10_rate <- stats::runif(nrow(paired),
+                                     min = log10_low, max = log10_high)
+  paired$T_crit     <- paired$CTmax_temp + paired$z * paired$log10_rate
+
+  t_crit_draws <- tibble::tibble(.draw = paired$.draw,
+                                  temp = paired$T_crit,
+                                  log10_rate = paired$log10_rate)
+  q <- stats::quantile(t_crit_draws$temp,
+                       c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+  t_crit_summary <- tibble::tibble(
+    TC_rate_low  = TC_rate_range[1],
+    TC_rate_high = TC_rate_range[2],
+    temp_lower   = q[1],
+    temp_median  = q[2],
+    temp_upper   = q[3]
   )
 
   list(
@@ -302,11 +336,11 @@ extract_tdt <- function(workflow,
                         dplyr::select(z_median, z_lower, z_upper)),
     CTmax      = list(draws   = ctmax$draws,
                       summary = ctmax$summary),
-    T_crit     = list(draws   = t_crit$draws,
-                      summary = t_crit$summary),
+    T_crit     = list(draws   = t_crit_draws,
+                      summary = t_crit_summary),
     lt50_curve = lt50_curve,
     meta       = list(t_ref            = t_ref,
-                      TC_thresh        = TC_thresh,
+                      TC_rate_range    = TC_rate_range,
                       output_time_unit = output_time_unit)
   )
 }

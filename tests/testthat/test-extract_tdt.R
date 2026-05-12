@@ -7,7 +7,7 @@ test_that("extract_tdt recovers z, CTmax_1hr, and T_crit from simulated truth", 
 
   wf      <- load_fixture_workflow()
   ts      <- truth_summary()
-  out     <- extract_tdt(wf, t_ref = 60, TC_thresh = 0.05, ndraws = 500)
+  out     <- extract_tdt(wf, t_ref = 60, ndraws = 500)
 
   # Posterior medians within 1 °C of truth — tight enough to detect bugs,
   # loose enough that random MCMC noise on a small fit won't trigger false
@@ -21,9 +21,20 @@ test_that("extract_tdt recovers z, CTmax_1hr, and T_crit from simulated truth", 
   expect_lte(out$CTmax$summary$temp_lower,  ts$CTmax_1hr)
   expect_gte(out$CTmax$summary$temp_upper,  ts$CTmax_1hr)
 
-  # T_crit should always sit below CTmax_1hr (LD5 temperature is lower than
-  # LD50 temperature at the same exposure duration).
+  # T_crit (rate-multiplier-based) sits below CTmax by 2-3 z; with default
+  # TC_rate_range = c(0.1, 1) the median is at CTmax - 2.5 * z (geometric mean
+  # of the log10(rate) range). The true T_crit median should fall inside the
+  # posterior 95% CrI.
+  true_T_crit_median <- ts$CTmax_1hr - 2.5 * ts$z
   expect_lt(out$T_crit$summary$temp_median, out$CTmax$summary$temp_median)
+  expect_lte(out$T_crit$summary$temp_lower, true_T_crit_median)
+  expect_gte(out$T_crit$summary$temp_upper, true_T_crit_median)
+
+  # T_crit's 95% CrI should be approximately as wide as z (since pooling
+  # uniformly over log10(r*) ∈ [-3, -2] gives a range of 1 z, with parameter
+  # uncertainty adding a smaller component). Sanity check: width > 0.5 z.
+  ci_width <- out$T_crit$summary$temp_upper - out$T_crit$summary$temp_lower
+  expect_gt(ci_width, 0.5 * ts$z)
 })
 
 test_that("predict_heat_injury recovers analytical planted dose within CrI", {
