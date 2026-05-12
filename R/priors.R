@@ -24,7 +24,9 @@
 #' @param prior_random_sd Stan prior string for random-effect SDs. Default
 #'                        `"exponential(2)"`.
 #' @param prior_phi       Stan prior string for the beta-binomial precision
-#'                        parameter `phi`. Default `"gamma(2, 0.1)"`.
+#'                        parameter `phi`. Default `"gamma(2, 0.1)"`. Pass
+#'                        `NULL` to omit the `phi` prior — needed when fitting
+#'                        with `family = binomial()` (no overdispersion).
 #' @return A `brmsprior` object ready to pass to [fit_4pl()].
 #' @examples
 #' raw <- data.frame(
@@ -76,10 +78,12 @@ make_4pl_priors <- function(data,
     brms::set_prior(sprintf("normal(%.6f, 1.5)", mid_start),
                     class = "b", nlpar = "mid", coef = "Intercept"),
     brms::set_prior("normal(0, 0.6)",
-                    class = "b", nlpar = "mid"),
-
-    brms::set_prior(prior_phi, class = "phi")
+                    class = "b", nlpar = "mid")
   )
+
+  if (!is.null(prior_phi)) {
+    priors <- c(priors, brms::set_prior(prior_phi, class = "phi"))
+  }
 
   for (re_var in tdt_random_effect_variables(random_effects)) {
     priors <- c(priors,

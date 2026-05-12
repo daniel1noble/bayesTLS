@@ -20,15 +20,19 @@
 #' @param lower,upper    Response-scale bounds for the asymptotes. Default
 #'                       `0, 1` for proportion data; set narrower for sublethal
 #'                       data whose response sits well above `0`.
+#' @param family         brms family. Default `beta_binomial(link = "identity")`.
+#'                       Pass `binomial(link = "identity")` for the simpler
+#'                       no-overdispersion case (no `phi` parameter to estimate).
 #' @return A `brmsformula` object.
 #' @examples
 #' make_4pl_formula()
-#' make_4pl_formula(random_effects = c("Date", "Tank"))
-#' make_4pl_formula(lower = 0.85, upper = 1)   # PSII-like
+#' make_4pl_formula(family = binomial(link = "identity"))
 #' @export
 make_4pl_formula <- function(random_effects = NULL,
                              lower          = 0,
-                             upper          = 1) {
+                             upper          = 1,
+                             family         = brms::beta_binomial(
+                               link = "identity")) {
 
   b <- compute_4pl_bounds(lower, upper)
 
@@ -50,7 +54,7 @@ make_4pl_formula <- function(random_effects = NULL,
     stats::as.formula("logk   ~ temp_c"),
     stats::as.formula(paste("mid    ~", mid_rhs)),
     nl = TRUE,
-    family = brms::beta_binomial(link = "identity")
+    family = family
   )
 }
 
@@ -98,6 +102,7 @@ fit_4pl <- function(data,
                     random_effects = NULL,
                     lower          = 0,
                     upper          = 1,
+                    family         = brms::beta_binomial(link = "identity"),
                     prior          = NULL,
                     chains         = 4,
                     iter           = 4000,
@@ -120,13 +125,20 @@ fit_4pl <- function(data,
 
   formula <- make_4pl_formula(random_effects = random_effects,
                               lower          = lower,
-                              upper          = upper)
+                              upper          = upper,
+                              family         = family)
 
   if (is.null(prior)) {
+    # Skip the phi prior when family has no overdispersion parameter.
+    family_name <- if (inherits(family, "brmsfamily")) family$family
+                   else family$family
+    prior_phi   <- if (identical(family_name, "beta_binomial"))
+                     "gamma(2, 0.1)" else NULL
     prior <- make_4pl_priors(data           = data,
                              lower          = lower,
                              upper          = upper,
-                             random_effects = random_effects)
+                             random_effects = random_effects,
+                             prior_phi      = prior_phi)
   }
 
   meta_full <- utils::modifyList(meta, list(

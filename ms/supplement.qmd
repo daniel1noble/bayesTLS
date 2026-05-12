@@ -494,72 +494,58 @@ $$ {#eq-supp-mid-temp}
 
 so that $\beta_1$ encodes how fast the dose-response curve shifts on the time axis as assay temperature changes; $\bar{T}$ is the grand-mean temperature, included so that $\beta_0$ is interpretable as the midpoint at the average assay temperature.
 
-In `brms` non-linear syntax these two pieces become one formula and four sub-formulas — one for each parameter in the 4PL model:
+The function library exposes this model as a single call: `fit_4pl()` constructs the brms `bf()` formula, the default weakly-informative priors, and the sampling controls, and returns a workflow object containing the fit. Internally the formula uses the disjoint-bounds reparameterisation described in §[Loading the function library] — `low = 0.001 + \text{inv\_logit}(\text{lowraw}) \cdot 0.498` and `up = 0.501 + \text{inv\_logit}(\text{upraw}) \cdot 0.498` — so the 4PL output is guaranteed to lie in $(0, 1)$ regardless of where MCMC takes the unconstrained `lowraw`, `upraw`, and `logk` parameters. The default also puts a `temp_c` slope on every 4PL sub-parameter; when temperature has no real effect on a given parameter, the slope shrinks toward zero under the prior. We inspect the brms formula `fit_4pl()` builds with:
 
-```{r model-spec}
-#| label: model-spec
+```{r show-formula}
+#| label: show-formula
 #| echo: true
 
-# Soft constraints to keep the parameters in their natural ranges.
-# These are not informative priors — just the bounds the parameters
-# must obey to be biologically meaningful.
-priors_4pl <- c(
-  prior(beta(1, 5),    nlpar = "ell", lb = 0, ub = 1),
-  prior(beta(5, 1),    nlpar = "u",   lb = 0, ub = 1),
-  prior(normal(0, 10), nlpar = "k",   lb = 0),
-  prior(normal(0, 5),  nlpar = "mid")
-)
-
-bform_bin <- bf(
-  y | trials(n) ~ ell + (u - ell) / (1 + exp(k * (log10_t - mid))),
-  ell ~ 1, u ~ 1, k ~ 1, mid ~ T_c,
-  nl = TRUE,
-  family = binomial(link = "identity")
-)
-
-# Same model, beta-binomial likelihood for the overdispersed dataset.
-bform_bb <- bf(
-  y | trials(n) ~ ell + (u - ell) / (1 + exp(k * (log10_t - mid))),
-  ell ~ 1, u ~ 1, k ~ 1, mid ~ T_c,
-  nl = TRUE,
-  family = beta_binomial(link = "identity")
-)
+make_4pl_formula()
 ```
-
-The first line in `bf()` is @eq-supp-4pl. The next four lines say (i) the asymptotes and slope are simply scalars and we estimate an overall intercept for each (`ell ~ 1`, `u ~ 1`, `k ~ 1`) and (ii) the midpoint depends linearly on mean-centred temperature (`mid ~ T_c`), recovering @eq-supp-mid-temp. This is the entire model.
 
 ::: {.callout-important}
 
-The model we fit is rather simple — it can be extended in several ways. For example, random effects can be added to any of the four 4PL parameters; for instance, `mid ~ T_c + (1 | day)` allows the midpoint to vary across assay days or batches. Temperature can also be a predictor for the other 4PL parameters — adding `k ~ T_c`, for instance, would let the slope of the dose-response curve itself depend on temperature. Random effects in the joint fit also enable a much more detailed variance decomposition than the two-stage pipeline can deliver. We'll explore more of this in @sec-joint-extend.
+The default model puts a `temp_c` slope on all four 4PL sub-parameters and includes no random effects. Random intercepts on `mid` can be added by passing `random_effects = c("Date", "Tank", ...)` to `fit_4pl()`. The simulation here has no batch structure so we leave it off; the shrimp case study below uses `random_effects = c("Date", "Tank")`.
 
 :::
 
-#### Fitting the model {#sec-joint-fit}
+#### Standardising and fitting {#sec-joint-fit}
 
-Now that we have the model formula set up and priors we can fit the model. We pass `file = ...` and `file_refit = "on_change"` directly to `brm()`. This tells `brms` to save the fit to disk on first run and to reload it on subsequent runs unless the model or data has changed.
+The first step is to pass the simulated data through `standardize_data()` so the columns match the schema the rest of the library expects (`temp`, `duration`, `logd`, `temp_c`, `n_total`, `n_surv`).
 
-```{r fit-4pl}
-#| label: fit-4pl
+```{r standardise-sim}
+#| label: standardise-sim
+#| echo: true
+
+std_bin <- standardize_data(sim_bin,
+                            temp = "T", duration = "t",
+                            n_total = "n", n_surv = "y",
+                            duration_unit = "minutes")
+std_bb  <- standardize_data(sim_bb,
+                            temp = "T", duration = "t",
+                            n_total = "n", n_surv = "y",
+                            duration_unit = "minutes")
+```
+
+We now call `fit_4pl()` twice — once with the built-in `binomial(link = "identity")` family for the non-overdispersed simulation, and once with the default `beta_binomial(link = "identity")` for the overdispersed case. Caching is handled by brms's `file = ...` mechanism, so subsequent renders reload the cached fits unless the formula or data changes.
+
+```{r fit-4pl-tutorial}
+#| label: fit-4pl-tutorial
 #| echo: true
 #| cache: false
 
-# Disable Quarto chunk caching: brms's `file = ...` / `file_refit = "on_change"`
-# already handles refitting on formula/data changes. Quarto's own cache would
-# hold a stale fit object across renders.
+wf_bin <- fit_4pl(std_bin,
+                  family = binomial(link = "identity"),
+                  chains = 4, iter = 2000, cores = 4, seed = 123,
+                  file = file.path(models_dir, "sim_4pl_binomial_v2"))
 
-fit_bin <- brm(
-  bform_bin, data = sim_bin, prior = priors_4pl,
-  chains = 4, iter = 2000, cores = 4, seed = 123,
-  file = file.path(models_dir, "sim_4pl_binomial"),
-  file_refit = "on_change"
-)
+wf_bb  <- fit_4pl(std_bb,
+                  chains = 4, iter = 2000, cores = 4, seed = 123,
+                  file = file.path(models_dir, "sim_4pl_betabinomial_v2"))
 
-fit_bb <- brm(
-  bform_bb, data = sim_bb, prior = priors_4pl,
-  chains = 4, iter = 2000, cores = 4, seed = 123,
-  file = file.path(models_dir, "sim_4pl_betabinomial"),
-  file_refit = "on_change"
-)
+# Convenience: extract the brmsfit object for downstream brms helpers.
+fit_bin <- wf_bin$fit
+fit_bb  <- wf_bb$fit
 ```
 
 We can also get an idea of how much variation our model explains that considers all sources of relevant variation.
@@ -584,15 +570,21 @@ We can now check how well our fitted model recovered the true parameters that ge
 
 post_summary <- function(fit) {
   d <- posterior::as_draws_df(fit)
-  pars <- c(ell = "b_ell_Intercept", u = "b_u_Intercept",
-            k   = "b_k_Intercept",
-            `mid (intercept)` = "b_mid_Intercept",
-            `mid (slope)`     = "b_mid_T_c")
-  purrr::map_dfr(pars, \(p) tibble::tibble(
-    median = median(d[[p]]),
-    lower  = quantile(d[[p]], 0.025),
-    upper  = quantile(d[[p]], 0.975)
-  ), .id = "param")
+  # Transform the raw posterior columns back to the natural 4PL scale.
+  # See compute_4pl_bounds(0, 1): low ∈ (0.001, 0.499), up ∈ (0.501, 0.999).
+  draws <- tibble::tibble(
+    ell               = 0.001 + plogis(d$b_lowraw_Intercept) * 0.498,
+    u                 = 0.501 + plogis(d$b_upraw_Intercept)  * 0.498,
+    k                 = exp(d$b_logk_Intercept),
+    `mid (intercept)` = d$b_mid_Intercept,
+    `mid (slope)`     = d$b_mid_temp_c
+  )
+  purrr::map_dfr(names(draws), \(p) tibble::tibble(
+    param  = p,
+    median = stats::median(draws[[p]]),
+    lower  = stats::quantile(draws[[p]], 0.025, names = FALSE),
+    upper  = stats::quantile(draws[[p]], 0.975, names = FALSE)
+  ))
 }
 
 truth <- tibble::tibble(
@@ -631,48 +623,16 @@ We can also overlay the posterior fitted curves on the simulated data (@fig-reco
 #| fig-width: 8
 #| fig-height: 5
 
-pred_grid <- tidyr::expand_grid(
-  T = temps,
-  t = 10 ^ seq(log10(0.5), log10(800), length.out = 100),
-  n = 1
-) |>
-  dplyr::mutate(
-    log10_t = log10(t),
-    T_c     = T - true_params$T_bar
-  )
+# Use the library's predict_survival_curves() and plot_survival_curves().
+psc_bin <- predict_survival_curves(
+  wf_bin, temps = temps,
+  durations = 10 ^ seq(log10(0.5), log10(800), length.out = 100),
+  ndraws = 200
+)
 
-fit_lines <- tidybayes::add_epred_draws(pred_grid, fit_bin, ndraws = 200) |>
-  dplyr::group_by(T, t, log10_t) |>
-  dplyr::summarise(
-    p_med = median(.epred),
-    p_lo  = quantile(.epred, 0.025),
-    p_hi  = quantile(.epred, 0.975),
-    .groups = "drop"
-  )
-
-ggplot2::ggplot() +
-  ggplot2::geom_jitter(
-    data = sim_bin,
-    ggplot2::aes(x = log10_t, y = y / n, colour = factor(T)),
-    width = 0.02, height = 0, alpha = 0.25, size = 0.7
-  ) +
-  ggplot2::geom_ribbon(
-    data = fit_lines,
-    ggplot2::aes(x = log10_t, ymin = p_lo, ymax = p_hi, fill = factor(T)),
-    alpha = 0.2
-  ) +
-  ggplot2::geom_line(
-    data = fit_lines,
-    ggplot2::aes(x = log10_t, y = p_med, colour = factor(T)),
-    linewidth = 0.7
-  ) +
-  ggplot2::labs(
-    x = expression(log[10]~exposure~time~(min)),
-    y = "Survival probability",
-    colour = "Temperature (°C)",
-    fill   = "Temperature (°C)"
-  ) +
-  ggplot2::theme_classic()
+plot_survival_curves(psc_bin, observed = std_bin) +
+  ggplot2::scale_x_log10() +
+  ggplot2::labs(x = expression(exposure~time~(min)))
 ```
 
 Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overlaid on the simulated binomial data (points). One panel-coloured line per assay temperature. Where the fitted curves track the simulated proportions across all five temperatures, the model has recovered the underlying dose-response surface.
@@ -687,16 +647,20 @@ The whole point of fitting the joint Bayesian 4PL is that the classical TLS quan
 #| echo: true
 
 # Helper: push posterior draws of (ell, u, k, beta0, beta1) through the closed-
-# form derivations from the main text to get z and CTmax at 1 hour.
+# form derivations from the main text to get z and CTmax at 1 hour. The raw
+# posterior columns live on the unconstrained reparameterised scale; they are
+# transformed back to the natural 4PL scale inside the function.
 derive_z_ctmax <- function(fit) {
   posterior::as_draws_df(fit) |>                              # <1>
     dplyr::mutate(
-      z         = -1 / b_mid_T_c,                             # <2>
+      ell       = 0.001 + plogis(b_lowraw_Intercept) * 0.498,
+      u         = 0.501 + plogis(b_upraw_Intercept)  * 0.498,
+      k         = exp(b_logk_Intercept),
+      z         = -1 / b_mid_temp_c,                          # <2>
       alpha     = b_mid_Intercept +                           # <3>
-        (1 / b_k_Intercept) *
-        log((b_u_Intercept - 0.5) / (0.5 - b_ell_Intercept)) -
-        b_mid_T_c * true_params$T_bar,
-      CTmax_1hr = (log10(60) - alpha) / b_mid_T_c             # <4>
+        (1 / k) * log((u - 0.5) / (0.5 - ell)) -
+        b_mid_temp_c * true_params$T_bar,
+      CTmax_1hr = (log10(60) - alpha) / b_mid_temp_c          # <4>
     ) |>
     dplyr::select(z, CTmax_1hr)                               # <5>
 }
@@ -1358,24 +1322,23 @@ adjusted_z_ext |>
 
 Compared to the simple-model $z = `r round(true_z, 2)`$ °C (where shape parameters did not vary with temperature), this adjusted $z$ is `r round(median(adjusted_z_ext$z_mean), 2)` °C with 95% credible interval [`r round(quantile(adjusted_z_ext$z_mean, 0.025), 2)`, `r round(quantile(adjusted_z_ext$z_mean, 0.975), 2)`] °C — slightly lower in point estimate, with the simple-model value sitting near the upper end of the credible interval. With stronger T-dependence in $k$ and $u$, the bent $\log_{10}\text{LT50}(T)$ curve would have more variation across temperatures and the two summaries would diverge more.
 
-### Heat injury accumulation and survival under a realistic field trace
+### Heat injury accumulation and survival under a fluctuating trace
 
-A particularly powerful aspect of TLS models is their ability to translate dynamic temperature time-series from nature and predict how such temperatures lead to heat injury (HI) accumulation towards a threshold (e.g., $LT_{50}$) [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint Bayesian 4PL fit gives us not just point estimates of $z$ and $CT_{max_{1hr}}$ but their full joint posterior, which we can push through the HI integral to obtain a posterior distribution over the predicted HI trajectory. We can also go a step further and use the *full* 4PL surface to predict the cumulative survival fraction $S_{\text{pred}}(t)$ across the trajectory — the second-step prediction discussed in the manuscript (Equation 9 of the manuscript).
-
-Below we apply both calculations to a realistic 5-day field temperature trace using the posterior of `fit_bb` derived in @sec-joint-derive.
+A particularly powerful aspect of TLS models is their ability to translate dynamic temperature time-series from nature and predict how such temperatures lead to heat injury (HI) accumulation towards a threshold (e.g., $LT_{50}$) [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint Bayesian 4PL fit gives us not just point estimates of $z$ and $CT_{max_{1hr}}$ but their full joint posterior, which we can push through the HI integral to obtain a posterior distribution over the predicted HI trajectory. We can also use the *full* 4PL surface to predict the cumulative survival fraction $S_{\text{pred}}(t)$ across the trajectory (Equation 9 of the manuscript). The library function `predict_heat_injury()` does both calculations in a single call and returns both trajectories with full posterior uncertainty.
 
 #### A simulated temperature profile across 5 days
 
-To mimic conditions a moderately heat-tolerant ectotherm might experience over a temperate-zone late-spring period, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12°C overnight to a midday peak of 24°C. The critical temperature $T_c$ — below which damage is repaired as fast as it accrues and so there is no net damage increase [@orsted_finding_2022; @jorgensen_unifying_2021] — is set to 20°C. Injury accumulates only during the warmer part of each day. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C and $z \approx `r round(true_z, 1)`$°C (from `true_params` in @sec-sim-step1), so the daily peak at 24°C remains 8°C below the 1-hour critical limit — moderate, sub-lethal heat stress that builds cumulatively across days.
+To mimic conditions a moderately heat-tolerant ectotherm might experience, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12 °C overnight to a midday peak of 24 °C. The critical temperature $T_c$ — below which damage is repaired as fast as it accrues and so there is no net damage increase [@orsted_finding_2022; @jorgensen_unifying_2021] — is set to 20 °C. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C and $z \approx `r round(true_z, 1)`$°C, so the daily peak at 24 °C remains 8 °C below the 1-hour critical limit — moderate, sub-lethal stress that builds cumulatively.
 
 ```{r hi-trace}
 #| label: hi-trace
 #| echo: true
 
-# Hourly temperature trace: 5 days, sinusoidal diurnal cycle
-hi_hours  <- 0:(24 * 5 - 1)
-hi_T_traj <- 18 + 6 * sin(2 * pi * (hi_hours - 6) / 24)   # range 12-24 °C
-hi_T_c    <- 20                                            # damage threshold (°C)
+hi_trace <- tibble::tibble(
+  time_h = 0:(24 * 5 - 1),
+  temp   = 18 + 6 * sin(2 * pi * (0:(24 * 5 - 1) - 6) / 24)   # range 12-24 °C
+)
+hi_T_c <- 20    # damage threshold (°C)
 ```
 
 ::: {#fig-hi-trace}
@@ -1385,152 +1348,135 @@ hi_T_c    <- 20                                            # damage threshold (�
 #| fig-width: 7
 #| fig-height: 2.5
 
-ggplot2::ggplot(tibble::tibble(hour = hi_hours, T = hi_T_traj),
-                ggplot2::aes(hour, T)) + ylim(10, 45) +
+ggplot2::ggplot(hi_trace, ggplot2::aes(time_h, temp)) +
   ggplot2::geom_line(colour = "darkred", linewidth = 0.6) +
   ggplot2::geom_hline(yintercept = hi_T_c, linetype = "dashed", colour = "grey40") +
   ggplot2::geom_hline(yintercept = true_CTmax, linetype = "dotted", colour = "grey40") +
-  ggplot2::annotate("text", x = max(hi_hours), y = hi_T_c, label = "T_c",
+  ggplot2::annotate("text", x = max(hi_trace$time_h), y = hi_T_c, label = "T_c",
                     hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
-  ggplot2::annotate("text", x = max(hi_hours), y = true_CTmax, label = "CTmax_1hr",
+  ggplot2::annotate("text", x = max(hi_trace$time_h), y = true_CTmax,
+                    label = "CTmax_1hr",
                     hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
+  ggplot2::ylim(10, 45) +
   ggplot2::labs(x = "Hour", y = "Temperature (°C)") +
   ggplot2::theme_classic()
 ```
 
-5-day diurnal temperature trace used for the heat-injury and survival predictions. The dashed line is the damage-accumulation threshold $T_c = 20$ °C; the dotted line is the simulated organism's $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C — well above the daily peaks, so accumulation is sub-lethal and gradual.
+5-day diurnal temperature trace. The dashed line is the damage-accumulation threshold $T_c = 20$ °C; the dotted line is the simulated organism's $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C — well above the daily peaks, so accumulation is sub-lethal and gradual.
 :::
 
-#### HI accumulation with full posterior uncertainty
+#### Posterior HI and survival via `predict_heat_injury()`
 
-For each posterior sample of $(z, CT_{max_{1hr}})$, we evaluate the HI integral (Equation 7 of the manuscript) across the temperature trace. Each sample produces one possible HI($t$) trajectory. The posterior median and 95% credible interval at every hour will then summarise the prediction with full parameter uncertainty.
+`predict_heat_injury()` takes a temperature trace plus a fitted workflow, propagates the full posterior of $(\ell, u, k, \beta_0, \beta_1)$ through the HI integral, and returns the median and 95% credible band of cumulative HI and predicted survival at every time point. We supply `T_c` to enforce zero damage accumulation below the threshold (matching Equation 7 of the manuscript). The model time units here are minutes (because `standardize_data()` was called with `duration_unit = "minutes"`), so the trace's `time_h` is in hours and damage rates are computed accordingly internally.
 
-```{r hi-posterior}
-#| label: hi-posterior
+```{r hi-predict}
+#| label: hi-predict
 #| echo: true
 
-# Subsample 500 posterior draws from the beta-binomial fit for speed.
-set.seed(20260507)
-hi_draws <- posterior::as_draws_df(fit_bb) |>
-  dplyr::mutate(
-    z         = -1 / b_mid_T_c,
-    alpha     = b_mid_Intercept +
-                  (1 / b_k_Intercept) *
-                  log((b_u_Intercept - 0.5) / (0.5 - b_ell_Intercept)) -
-                  b_mid_T_c * true_params$T_bar,
-    CTmax_1hr = (log10(60) - alpha) / b_mid_T_c
-  ) |>
-  dplyr::slice_sample(n = 500)
+# Convert hourly trace to minutes to match the model's time units.
+hi_trace_min <- dplyr::mutate(hi_trace, time_h = time_h * 60)
 
-# Build the (n_hours × n_draws) rate matrix and cumsum down each column.
-n_h <- length(hi_T_traj)
-n_d <- nrow(hi_draws)
-
-T_mat  <- matrix(hi_T_traj, n_h, n_d)
-CT_mat <- matrix(hi_draws$CTmax_1hr, n_h, n_d, byrow = TRUE)
-z_mat  <- matrix(hi_draws$z, n_h, n_d, byrow = TRUE)
-
-# Calculate the rates of HI accumulation from our posterior samples of z and CTmax for the given temperature time series
-rates              <- 100 * 10 ^ ((T_mat - CT_mat) / z_mat)
-rates[T_mat <= hi_T_c] <- 0
-HI_traj            <- apply(rates, 2, cumsum)
-HI_traj[HI_traj > 200] <- 200 # Cap at 200% because survival can't go beyond that.
-
-# Create a summary table that takes the median and 95% CI across the posterior samples for each hour. 
-hi_summary <- tibble::tibble(
-  hour   = hi_hours,
-  median = apply(HI_traj, 1, median),
-  lower  = apply(HI_traj, 1, quantile, probs = 0.025),
-  upper  = apply(HI_traj, 1, quantile, probs = 0.975)
+hi <- predict_heat_injury(
+  trace        = hi_trace_min,
+  workflow     = wf_bb,
+  target_surv  = 0.5,
+  T_c          = hi_T_c,
+  ndraws       = 500
 )
 ```
 
-::: {#fig-hi-accumulation}
+::: {#fig-hi-trajectory}
 
-```{r hi-accumulation-plot}
-#| label: plot-hi-accumulation
+```{r hi-trajectory-plot}
+#| label: plot-hi-trajectory
 #| fig-width: 7
-#| fig-height: 3.5
+#| fig-height: 5.5
 
-ggplot2::ggplot(hi_summary, ggplot2::aes(hour, median)) +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper),
+# Convert back to hours for plotting.
+hi_plot <- dplyr::mutate(hi$summary, time_h = time_h / 60)
+
+p_hi <- ggplot2::ggplot(hi_plot, ggplot2::aes(time_h, hi_median)) +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = hi_lower, ymax = hi_upper),
                        alpha = 0.2, fill = "darkred") +
-  ggplot2::geom_line(linewidth = 0.8, colour = "darkred") +
+  ggplot2::geom_line(colour = "darkred", linewidth = 0.8) +
   ggplot2::geom_hline(yintercept = 100, linetype = "dashed", colour = "grey40") +
-  ggplot2::annotate("text", x = max(hi_hours), y = 100,
-                    label = "LT50 threshold (HI = 100%)",
-                    hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
-  ggplot2::labs(x = "Hour", y = "Cumulative HI (%)") +
+  ggplot2::labs(x = NULL, y = "Cumulative HI (%)") +
   ggplot2::theme_classic()
+
+p_surv <- ggplot2::ggplot(hi_plot, ggplot2::aes(time_h, surv_median)) +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = surv_lower, ymax = surv_upper),
+                       alpha = 0.2, fill = "steelblue") +
+  ggplot2::geom_line(colour = "steelblue", linewidth = 0.8) +
+  ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
+  ggplot2::scale_y_continuous(limits = c(0, 1)) +
+  ggplot2::labs(x = "Hour", y = "Predicted survival") +
+  ggplot2::theme_classic()
+
+patchwork::wrap_plots(p_hi, p_surv, ncol = 1)
 ```
 
-Posterior cumulative heat-injury trajectory under the 5-day field trace. Solid line is the posterior median across 500 draws of $(z, CT_{max_{1hr}})$ from `fit_bb`; shaded band is the 95% credible interval. The dashed line marks the $LT_{50}$ threshold ($HI = 100\%$), which the population is predicted to cross by day `r ceiling(min(which(hi_summary$median >= 100))/24)`.
+Posterior heat-injury accumulation (top, red) and predicted survival fraction (bottom, blue) under the 5-day field trace. Solid lines are posterior medians across 500 draws from `wf_bb`; shaded bands are 95% credible intervals. The dashed lines mark the LT50 threshold (HI = 100%) and 50% survival respectively. The two trajectories tell the same story: $S_{\text{pred}}(t)$ falls through 0.5 at the same time HI($t$) crosses 100%.
 :::
 
-By the end of day 5 the posterior median HI is `r round(tail(hi_summary$median, 1), 0)`% (95% CI: `r round(tail(hi_summary$lower, 1), 0)`% to `r round(tail(hi_summary$upper, 1), 0)`%) — i.e., the population has accumulated roughly `r round(tail(hi_summary$median, 1)/100, 1)` $\times$ the lethal dose under this exposure.
+By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_median, 1), 0)`% (95% CI: `r round(tail(hi$summary$hi_lower, 1), 0)`% to `r round(tail(hi$summary$hi_upper, 1), 0)`%), and median predicted survival is `r round(tail(hi$summary$surv_median, 1), 2)` (95% CI: `r round(tail(hi$summary$surv_lower, 1), 2)` to `r round(tail(hi$summary$surv_upper, 1), 2)`).
 
-#### Predicting survival from the full 4PL surface
+### Validation: recovering known planted doses {#sec-hi-validation}
 
-The HI integral compresses the trajectory into a single threshold-crossing summary. The joint Bayesian 4PL fit also lets us predict the *full* survival fraction $S_{\text{pred}}(t)$ at every time point along the trace, by accumulating effective exposure time at a reference temperature and reading survival off the dose-response surface at the cumulative effective time (Equation 9 of the manuscript). We use $T_{\text{ref}} = \bar T = `r true_params$T_bar`$ °C — the grand-mean temperature of the original assays — so the surface is evaluated at the most data-rich part of the dose-response.
+Before trusting `predict_heat_injury()` on real field data, we validate it against analytical truth on three reference traces with known dosing structure. `make_temperature_scenarios()` builds the traces; `planted_dose_from_trace()` implements the classical HI integral (Equation 7) directly given known `z` and `CTmax_1hr`. Posterior medians from `predict_heat_injury()` should sit near the analytical truth, and the 95% credible intervals should cover it.
 
-```{r s-pred-posterior}
-#| label: s-pred-posterior
+```{r hi-validation}
+#| label: hi-validation
 #| echo: true
 
-T_ref <- true_params$T_bar
-
-# For each draw, accumulate effective minutes at T_ref, then evaluate the 4PL.
-S_traj <- matrix(0, n_h, n_d)
-for (d in seq_len(n_d)) {
-  z_d     <- hi_draws$z[d]
-  ell_d   <- hi_draws$b_ell_Intercept[d]
-  u_d     <- hi_draws$b_u_Intercept[d]
-  k_d     <- hi_draws$b_k_Intercept[d]
-  beta0_d <- hi_draws$b_mid_Intercept[d]   # midpoint at T_bar (in log10-min)
-
-  # Effective-time increment in MINUTES per hourly bin at T_ref = T_bar.
-  inc_min     <- ifelse(hi_T_traj > hi_T_c,
-                        60 * 10 ^ ((hi_T_traj - T_ref) / z_d),
-                        0)
-  tau_eff_min <- cumsum(inc_min)
-
-  # 4PL surface evaluated at (T_ref, tau_eff). Note that tau_eff_min can be 0, and log10(0)is infinity so we used .Machine$double.eps to identify and replace any zeros with a very small number 2.22x10^-16 to avoid conversion problems
-  log10_tau   <- log10(pmax(tau_eff_min, .Machine$double.eps))
-  S_traj[, d] <- ell_d + (u_d - ell_d) /
-                  (1 + exp(k_d * (log10_tau - beta0_d)))
-}
-
-S_summary <- tibble::tibble(
-  hour   = hi_hours,
-  median = apply(S_traj, 1, median),
-  lower  = apply(S_traj, 1, quantile, probs = 0.025),
-  upper  = apply(S_traj, 1, quantile, probs = 0.975)
+# Three traces: flat baseline (zero HI), single hourly spike, three spikes.
+val_scens <- make_temperature_scenarios(
+  baseline    = 20,
+  spike_temp  = 28,
+  n_hours     = 96,
+  spike_times_single = 24,
+  spike_times_multi  = c(24, 48, 72)
 )
+val_T_c <- 24
+
+# Analytical truth, given the simulation parameters (true_z, true_CTmax).
+planted <- purrr::map(val_scens, planted_dose_from_trace,
+                      z = true_z, CTmax_1hr = true_CTmax, T_c = val_T_c)
+
+# Posterior predictions from the fitted beta-binomial workflow. The model
+# expects minutes; convert each trace's time axis.
+predicted <- purrr::map(val_scens, function(sc) {
+  predict_heat_injury(
+    trace       = dplyr::mutate(sc, time_h = time_h * 60),
+    workflow    = wf_bb,
+    target_surv = 0.5,
+    T_c         = val_T_c,
+    ndraws      = 300
+  )
+})
+
+# Final HI per scenario: analytical truth vs posterior median + CrI.
+val_table <- tibble::tibble(
+  Scenario     = c("Flat", "Single spike", "Multi spike"),
+  `Planted HI (%)` = c(tail(planted$flat$hi_cumulative,         1),
+                        tail(planted$single_spike$hi_cumulative, 1),
+                        tail(planted$multi_spike$hi_cumulative,  1)),
+  `Posterior median (%)` = c(tail(predicted$flat$summary$hi_median,        1),
+                              tail(predicted$single_spike$summary$hi_median, 1),
+                              tail(predicted$multi_spike$summary$hi_median,  1)),
+  `Lower (%)` = c(tail(predicted$flat$summary$hi_lower,        1),
+                  tail(predicted$single_spike$summary$hi_lower, 1),
+                  tail(predicted$multi_spike$summary$hi_lower,  1)),
+  `Upper (%)` = c(tail(predicted$flat$summary$hi_upper,        1),
+                  tail(predicted$single_spike$summary$hi_upper, 1),
+                  tail(predicted$multi_spike$summary$hi_upper,  1))
+)
+val_table$`Truth in CrI?` <- with(val_table,
+                                  `Lower (%)` <= `Planted HI (%)` &
+                                  `Planted HI (%)` <= `Upper (%)`)
+tinytable::tt(val_table, digits = 2)
 ```
 
-::: {#fig-survival-pred}
-
-```{r s-pred-plot}
-#| label: plot-s-pred
-#| fig-width: 7
-#| fig-height: 3.5
-
-ggplot2::ggplot(S_summary, ggplot2::aes(hour, median)) +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper),
-                       alpha = 0.2, fill = "steelblue") +
-  ggplot2::geom_line(linewidth = 0.8, colour = "steelblue") +
-  ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
-  ggplot2::annotate("text", x = max(hi_hours), y = 0.5,
-                    label = "LT50 (S = 0.5)",
-                    hjust = 1, vjust = -0.4, size = 3, colour = "grey40") +
-  ggplot2::labs(x = "Hour", y = "Predicted survival fraction") +
-  ggplot2::theme_classic()
-```
-
-Posterior predicted population-level survival fraction under the 5-day field trace, computed from the model (Equation 9 of the manuscript). Solid line is the posterior median across 500 draws of $(\ell, u, k, \beta_0, \beta_1)$ from `fit_bb`; shaded band is the 95% credible interval. The dashed line marks 50% survival, the threshold the HI integral compresses into a single crossing time.
-:::
-
-By the end of day 5 the posterior median predicted survival is `r round(tail(S_summary$median, 1), 2)` (95% CI: `r round(tail(S_summary$lower, 1), 2)` to `r round(tail(S_summary$upper, 1), 2)`). The two predictions tell consistent stories: $S_{\text{pred}}(t)$ falls through 0.5 at the same time that $HI(t)$ rises through 100 %, but $S_{\text{pred}}(t)$ provides the entire cumulative survival curve. Survival can then be used directly for population-dynamical models, which has been suggsted by @noble2026.
+The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. This sanity-check pattern — three traces with known doses, plus the recovery check — is what each new dataset's heat-injury prediction should pass before being trusted.
 
 
 
