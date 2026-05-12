@@ -58,9 +58,11 @@ sync-sources:
 	@ln -sfn $(abspath bib)    $(BUILDROOT)/bib
 	@ln -sfn $(abspath output) $(BUILDROOT)/output
 	@ln -sfn $(abspath R)      $(BUILDROOT)/R
+	@ln -sfn $(abspath data)   $(BUILDROOT)/data
 	@ln -sfn $(abspath bib)    $(BUILD_MS)/bib
 	@ln -sfn $(abspath output) $(BUILD_MS)/output
 	@ln -sfn $(abspath R)      $(BUILD_MS)/R
+	@ln -sfn $(abspath data)   $(BUILD_MS)/data
 
 # Render <source.qmd> to <format> with output filename <basename.ext>.
 # All work happens in $(BUILD_MS); only the final artefact is copied to

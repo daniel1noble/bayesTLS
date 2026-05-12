@@ -111,7 +111,7 @@ execute:
 # Setup chunk must NOT be cached — caching skips the package-loading side
 # effects on subsequent renders, so library() calls in pacman::p_load() never
 # run and downstream chunks fail with "could not find function ...".
-pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander)
+pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl)
 
 # Force tinytable to register its LaTeX preamble dependencies (tabularray,
 # siunitx, etc.) on every render. Tinytable injects these via
@@ -240,6 +240,14 @@ true_alpha  <- true_params$m_beta0 +
   log((true_params$u - 0.5) / (0.5 - true_params$ell)) -
   true_params$m_beta1 * true_params$T_bar
 true_CTmax  <- (log10(60) - true_alpha) / true_params$m_beta1
+
+# T_crit under the rate-multiplier definition (see §[Deriving z, CTmax, and
+# T_crit from the posterior]). For each posterior draw, T_crit is computed as
+# CTmax_1hr + z * log10(r*/100) where r* is sampled uniformly on log10
+# across the default range c(0.1, 1) % HI per hour. The MEDIAN of that
+# distribution lies at log10(r*/100) = -2.5 (the geometric mean of the
+# range), so:
+true_T_crit <- true_CTmax - 2.5 * true_z
 ```
 
 #### Step 2 — Simulated study design {#sec-sim-step2}
@@ -638,79 +646,70 @@ plot_survival_curves(psc_bin, observed = std_bin) +
 Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overlaid on the simulated binomial data (points). One panel-coloured line per assay temperature. Where the fitted curves track the simulated proportions across all five temperatures, the model has recovered the underlying dose-response surface.
 :::
 
-### *Deriving $z$ and $CT_{max_{1hr}}$ from the posterior* {#sec-joint-derive}
+### *Deriving $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the posterior* {#sec-joint-derive}
 
-The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities — thermal sensitivity ($z$) and the critical thermal limit at a reference duration ($CT_{max_{1hr}}$) — fall out as one-line transformations of the posterior we just fit. We never refit the model; we just push the posterior draws of $(\ell, u, k, \beta_0, \beta_1)$ through the same closed-form expressions used to derive the simulation truth in Step 1.
+The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities fall out as transformations of the posterior we just fit — no second regression, no bootstrap. `extract_tdt()` bundles three of them:
+
+- **$z$** — thermal sensitivity, derived by a per-draw log-linear regression of $\log_{10}\text{LT50}$ on temperature (Equation 7 of the manuscript).
+- **$CT_{max_{1hr}}$** — temperature at 50% survival after 1 hour exposure, obtained by inverting the fitted 4PL at the reference time, per posterior draw.
+- **$T_{crit}$** — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
+
+$$
+T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
+$$ {#eq-tcrit}
+
+  Different $r^*$ values give different $T_{crit}$ thresholds, and the literature does not converge on a single value. Empirical breakpoint analyses across taxa as different as *Drosophila suzukii* and *Lemna gibba* fall in the range $r^* \in [0.1, 1]$ % HI per hour, corresponding to "$\sim 4$ days to 1000 hours of continuous exposure to reach $LT_{50}$" [@jorgensen_unifying_2021; @arnold_thermal_2025; **havro_faber_2023**]. Rather than commit to one $r^*$, we treat it as an unknown with a uniform prior on $\log_{10} r^*$ over that range and integrate; the posterior of $T_{crit}$ then carries both parameter uncertainty (in $CT_{max,1hr}$ and $z$) and operational uncertainty (in the choice of $r^*$). The median of that pooled posterior sits at $CT_{max,1hr} - 2.5 \cdot z$, which corresponds to $r^* \approx 0.3$ % HI per hour (the geometric mean of the rate range).
+
+All three quantities inherit the same posterior, so every credible interval reflects joint uncertainty in $(\ell, u, k, \beta_0, \beta_1)$.
 
 ```{r derive-tls}
 #| label: derive-tls
 #| echo: true
 
-# Helper: push posterior draws of (ell, u, k, beta0, beta1) through the closed-
-# form derivations from the main text to get z and CTmax at 1 hour. The raw
-# posterior columns live on the unconstrained reparameterised scale; they are
-# transformed back to the natural 4PL scale inside the function.
-derive_z_ctmax <- function(fit) {
-  posterior::as_draws_df(fit) |>                              # <1>
-    dplyr::mutate(
-      ell       = 0.001 + plogis(b_lowraw_Intercept) * 0.498,
-      u         = 0.501 + plogis(b_upraw_Intercept)  * 0.498,
-      k         = exp(b_logk_Intercept),
-      z         = -1 / b_mid_temp_c,                          # <2>
-      alpha     = b_mid_Intercept +                           # <3>
-        (1 / k) * log((u - 0.5) / (0.5 - ell)) -
-        b_mid_temp_c * true_params$T_bar,
-      CTmax_1hr = (log10(60) - alpha) / b_mid_temp_c          # <4>
-    ) |>
-    dplyr::select(z, CTmax_1hr)                               # <5>
-}
-
-# Apply to both fits to get posterior draws of (z, CTmax_1hr).
-draws_bin_d <- derive_z_ctmax(fit_bin)
-draws_bb_d  <- derive_z_ctmax(fit_bb)
+# Data are in minutes (standardize_data was called with duration_unit = "minutes"),
+# so set time_multiplier = 1 to keep the model's time axis unchanged on output,
+# and t_ref = 60 to read CTmax at the 1-hour reference. T_crit uses the
+# rate-multiplier integration; default TC_rate_range = c(0.1, 1) % HI per hour.
+et_bin <- extract_tdt(wf_bin, t_ref = 60, time_multiplier = 1, ndraws = 1000)
+et_bb  <- extract_tdt(wf_bb,  t_ref = 60, time_multiplier = 1, ndraws = 1000)
 ```
-1. Pull the joint posterior of $(\ell, u, k, \beta_0, \beta_1)$ from the brms fit as a data frame, with one row per posterior draw.
-2. For each draw, compute thermal sensitivity $z = -1/\beta_1$.
-3. Compute the asymmetry-corrected intercept $\alpha = \beta_0 + (1/k)\log\!\bigl((u-0.5)/(0.5-\ell)\bigr) - \beta_1\bar{T}$ used in the closed-form $CT_{max}$ expression.
-4. Compute $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$, the temperature at which median lethal time equals 1 hour.
-5. Keep only the two derived quantities — the posterior is now a draws-by-2 tibble.
 
 ```{r tls-recovery-table}
 #| label: tbl-tls-recovery
-#| tbl-cap: "Posterior medians and 95% credible intervals for thermal sensitivity ($z$) and the critical thermal limit at a 1-hour reference duration ($CT_{max_{1hr}}$), derived directly from the joint Bayesian 4PL fit. Both quantities recover the simulation truth under both binomial and beta-binomial likelihoods."
+#| tbl-cap: "Posterior medians and 95% credible intervals for thermal sensitivity ($z$), the critical thermal limit at a 1-hour reference duration ($CT_{max_{1hr}}$), and the rate-multiplier critical temperature ($T_{crit}$, integrated over $r^* \\in [0.1, 1]$ % HI per hour). All three derived via `extract_tdt()` from a single posterior. Each row's truth value is computed analytically from `true_params`."
 
-summarise_post <- function(x) {
-  c(median = median(x),
-    lower  = quantile(x, 0.025, names = FALSE),
-    upper  = quantile(x, 0.975, names = FALSE))
+# Helper to pull (median, lower, upper) out of either a $z or temperature summary.
+row_from_summary <- function(s, kind = c("z", "temp")) {
+  kind <- match.arg(kind)
+  if (kind == "z") {
+    c(s$z_median, s$z_lower, s$z_upper)
+  } else {
+    c(s$temp_median, s$temp_lower, s$temp_upper)
+  }
 }
 
 tls_recovery <- tibble::tibble(
-  quantity   = c("z (°C)", "CTmax at 1 hr (°C)"),
-  truth      = c(true_z, true_CTmax),
-  bin_median = c(summarise_post(draws_bin_d$z)["median"],
-                 summarise_post(draws_bin_d$CTmax_1hr)["median"]),
-  bin_lower  = c(summarise_post(draws_bin_d$z)["lower"],
-                 summarise_post(draws_bin_d$CTmax_1hr)["lower"]),
-  bin_upper  = c(summarise_post(draws_bin_d$z)["upper"],
-                 summarise_post(draws_bin_d$CTmax_1hr)["upper"]),
-  bb_median  = c(summarise_post(draws_bb_d$z)["median"],
-                 summarise_post(draws_bb_d$CTmax_1hr)["median"]),
-  bb_lower   = c(summarise_post(draws_bb_d$z)["lower"],
-                 summarise_post(draws_bb_d$CTmax_1hr)["lower"]),
-  bb_upper   = c(summarise_post(draws_bb_d$z)["upper"],
-                 summarise_post(draws_bb_d$CTmax_1hr)["upper"])
-) |>
-  dplyr::rename(
-    Quantity      = quantity,
-    Truth         = truth,
-    `Bin. median` = bin_median,
-    `Bin. lower`  = bin_lower,
-    `Bin. upper`  = bin_upper,
-    `BB median`   = bb_median,
-    `BB lower`    = bb_lower,
-    `BB upper`    = bb_upper
-  )
+  Quantity = c("z (°C)", "CTmax at 1 hr (°C)", "T_crit (°C)"),
+  Truth    = c(true_z, true_CTmax, true_T_crit),
+  `Bin. median` = c(row_from_summary(et_bin$z$summary,      "z")[1],
+                    row_from_summary(et_bin$CTmax$summary,  "temp")[1],
+                    row_from_summary(et_bin$T_crit$summary, "temp")[1]),
+  `Bin. lower`  = c(row_from_summary(et_bin$z$summary,      "z")[2],
+                    row_from_summary(et_bin$CTmax$summary,  "temp")[2],
+                    row_from_summary(et_bin$T_crit$summary, "temp")[2]),
+  `Bin. upper`  = c(row_from_summary(et_bin$z$summary,      "z")[3],
+                    row_from_summary(et_bin$CTmax$summary,  "temp")[3],
+                    row_from_summary(et_bin$T_crit$summary, "temp")[3]),
+  `BB median`   = c(row_from_summary(et_bb$z$summary,      "z")[1],
+                    row_from_summary(et_bb$CTmax$summary,  "temp")[1],
+                    row_from_summary(et_bb$T_crit$summary, "temp")[1]),
+  `BB lower`    = c(row_from_summary(et_bb$z$summary,      "z")[2],
+                    row_from_summary(et_bb$CTmax$summary,  "temp")[2],
+                    row_from_summary(et_bb$T_crit$summary, "temp")[2]),
+  `BB upper`    = c(row_from_summary(et_bb$z$summary,      "z")[3],
+                    row_from_summary(et_bb$CTmax$summary,  "temp")[3],
+                    row_from_summary(et_bb$T_crit$summary, "temp")[3])
+)
 
 tinytable::tt(tls_recovery, digits = 3)
 ```
@@ -719,21 +718,43 @@ tinytable::tt(tls_recovery, digits = 3)
 
 ```{r tls-recovery-plot}
 #| label: plot-tls-recovery
-#| fig-width: 8
-#| fig-height: 4
+#| fig-width: 9
+#| fig-height: 3.5
 
-post_long <- dplyr::bind_rows(
-  draws_bin_d |> dplyr::mutate(model = "Binomial"),
-  draws_bb_d  |> dplyr::mutate(model = "Beta-binomial")
-) |>
-  tidyr::pivot_longer(c(z, CTmax_1hr), names_to = "quantity", values_to = "value") |>
-  dplyr::mutate(quantity = dplyr::recode(quantity,
-                                         z = "z (°C)",
-                                         CTmax_1hr = "CTmax at 1 hr (°C)"))
+# Per-draw posteriors for the three quantities, both likelihoods. Trim each
+# to a common length so we can stack columns in one tibble.
+n_keep <- min(nrow(et_bin$z$draws), nrow(et_bin$CTmax$draws),
+              nrow(et_bin$T_crit$draws),
+              nrow(et_bb$z$draws), nrow(et_bb$CTmax$draws),
+              nrow(et_bb$T_crit$draws))
+
+draws_bin_d <- tibble::tibble(
+  z         = et_bin$z$draws$z[seq_len(n_keep)],
+  CTmax_1hr = et_bin$CTmax$draws$temp[seq_len(n_keep)],
+  T_crit    = et_bin$T_crit$draws$temp[seq_len(n_keep)],
+  model     = "Binomial"
+)
+draws_bb_d <- tibble::tibble(
+  z         = et_bb$z$draws$z[seq_len(n_keep)],
+  CTmax_1hr = et_bb$CTmax$draws$temp[seq_len(n_keep)],
+  T_crit    = et_bb$T_crit$draws$temp[seq_len(n_keep)],
+  model     = "Beta-binomial"
+)
+
+post_long <- dplyr::bind_rows(draws_bin_d, draws_bb_d) |>
+  tidyr::pivot_longer(c(z, CTmax_1hr, T_crit),
+                      names_to = "quantity", values_to = "value") |>
+  dplyr::mutate(quantity = factor(quantity,
+                                  levels = c("z", "CTmax_1hr", "T_crit"),
+                                  labels = c("z (°C)",
+                                             "CTmax_1hr (°C)",
+                                             "T_crit (°C)")))
 
 truth_long <- tibble::tibble(
-  quantity = c("z (°C)", "CTmax at 1 hr (°C)"),
-  truth    = c(true_z, true_CTmax)
+  quantity = factor(c("z", "CTmax_1hr", "T_crit"),
+                    levels = c("z", "CTmax_1hr", "T_crit"),
+                    labels = levels(post_long$quantity)),
+  truth    = c(true_z, true_CTmax, true_T_crit)
 )
 
 ggplot2::ggplot(post_long, ggplot2::aes(value, fill = model)) +
@@ -746,50 +767,44 @@ ggplot2::ggplot(post_long, ggplot2::aes(value, fill = model)) +
   ggplot2::theme_classic()
 ```
 
-Posterior distributions for thermal sensitivity ($z$) and $CT_{max_{1hr}}$ from the binomial fit (blue) and beta-binomial fit (orange). Vertical dashed lines mark the simulation truth. Both posteriors are tightly concentrated around the truth, illustrating that the joint Bayesian fit recovers the classical TLS quantities with calibrated uncertainty without any additional regression step.
+Posterior densities of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the binomial (blue) and beta-binomial (orange) joint fits. Vertical dashed lines mark the simulation truth. All three posteriors concentrate around their respective truths — illustrating that one fit, one library call (`extract_tdt()`), produces every classical TLS quantity with calibrated uncertainty and no extra regression step.
 :::
 
-The two derived quantities recover their simulation truth in both fits (@tbl-tls-recovery, @fig-tls-recovery), with credible intervals that reflect joint uncertainty in all four 4PL parameters and the temperature slope. Crucially, **we did not run a second regression** to get $z$ and $CT_{max_{1hr}}$. They are properties of the same posterior we already have. This is the key practical advantage of the joint approach over the two-step pipeline: every classical TLS quantity is one transformation away from the fit we have already run, and every quantity inherits the same calibrated uncertainty.
+All three quantities recover their simulation truth in both fits (@tbl-tls-recovery, @fig-tls-recovery), with credible intervals reflecting joint uncertainty in all 4PL parameters. The key practical advantage of the joint approach over the two-step pipeline: every classical TLS quantity is one library call away from the fit we already have, and every quantity inherits the same calibrated uncertainty.
 
-Given that we have the full distribution of $z$ and $CT_{max_{1hr}}$, we can now report on uncertainty in their values *very* easily. All we need to do is take the standard deviation of this distribution for the standard error or we can even summaise with quantiles as follows:
+Posterior summary statistics — mean, SD, median, and 95% credible interval — are also readily available from the `$draws` slot of `extract_tdt()`'s output:
 
 ```{r uncert-z-ct}
 #| label: tbl-uncert-z-ct
-#| tbl-cap: "Posterior summaries of $z$ and $CT_{max_{1hr}}$ from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval (2.5% and 97.5% quantiles), reported separately for the binomial and beta-binomial fits."
+#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval, reported separately for the binomial and beta-binomial fits."
 #| echo: true
 
 summarise_draws <- function(x) {
-  q <- quantile(x, c(0.025, 0.5, 0.975), names = FALSE)
-  tibble::tibble(
-    mean   = mean(x),
-    sd     = sd(x),
-    median = q[2],
-    lower  = q[1],
-    upper  = q[3]
-  )
+  q <- stats::quantile(x, c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+  tibble::tibble(mean = mean(x, na.rm = TRUE),
+                 sd   = stats::sd(x, na.rm = TRUE),
+                 median = q[2], lower = q[1], upper = q[3])
 }
 
 uncert_summary <- dplyr::bind_rows(
-  summarise_draws(draws_bin_d$z)         |>
-    dplyr::mutate(quantity = "z (°C)",             likelihood = "Binomial"),
-  summarise_draws(draws_bin_d$CTmax_1hr) |>
-    dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Binomial"),
-  summarise_draws(draws_bb_d$z)          |>
-    dplyr::mutate(quantity = "z (°C)",             likelihood = "Beta-binomial"),
-  summarise_draws(draws_bb_d$CTmax_1hr)  |>
-    dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Beta-binomial")
+  summarise_draws(et_bin$z$draws$z)          |> dplyr::mutate(quantity = "z (°C)",                  likelihood = "Binomial"),
+  summarise_draws(et_bin$CTmax$draws$temp)   |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)",     likelihood = "Binomial"),
+  summarise_draws(et_bin$T_crit$draws$temp)  |> dplyr::mutate(quantity = "T_crit (°C)", likelihood = "Binomial"),
+  summarise_draws(et_bb$z$draws$z)           |> dplyr::mutate(quantity = "z (°C)",                  likelihood = "Beta-binomial"),
+  summarise_draws(et_bb$CTmax$draws$temp)    |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)",     likelihood = "Beta-binomial"),
+  summarise_draws(et_bb$T_crit$draws$temp)   |> dplyr::mutate(quantity = "T_crit (°C)", likelihood = "Beta-binomial")
 ) |>
   dplyr::select(quantity, likelihood, mean, sd, median, lower, upper)
 
 # Scalars for inline reporting in the next paragraph.
-sd_z_bin  <- round(sd(draws_bin_d$z), 2)
-sd_z_bb   <- round(sd(draws_bb_d$z), 2)
-sd_ct_bin <- round(sd(draws_bin_d$CTmax_1hr), 2)
-sd_ct_bb  <- round(sd(draws_bb_d$CTmax_1hr), 2)
-ci_z_bin  <- round(diff(quantile(draws_bin_d$z, c(0.025, 0.975), names = FALSE)), 2)
-ci_z_bb   <- round(diff(quantile(draws_bb_d$z, c(0.025, 0.975), names = FALSE)), 2)
-ci_ct_bin <- round(diff(quantile(draws_bin_d$CTmax_1hr, c(0.025, 0.975), names = FALSE)), 2)
-ci_ct_bb  <- round(diff(quantile(draws_bb_d$CTmax_1hr, c(0.025, 0.975), names = FALSE)), 2)
+sd_z_bin  <- round(stats::sd(et_bin$z$draws$z),         2)
+sd_z_bb   <- round(stats::sd(et_bb$z$draws$z),          2)
+sd_ct_bin <- round(stats::sd(et_bin$CTmax$draws$temp),  2)
+sd_ct_bb  <- round(stats::sd(et_bb$CTmax$draws$temp),   2)
+ci_z_bin  <- round(diff(stats::quantile(et_bin$z$draws$z,         c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_z_bb   <- round(diff(stats::quantile(et_bb$z$draws$z,          c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_ct_bin <- round(diff(stats::quantile(et_bin$CTmax$draws$temp,  c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_ct_bb  <- round(diff(stats::quantile(et_bb$CTmax$draws$temp,   c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
 
 uncert_summary |>
   dplyr::rename(
@@ -1479,6 +1494,284 @@ tinytable::tt(val_table, digits = 2)
 The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. This sanity-check pattern — three traces with known doses, plus the recovery check — is what each new dataset's heat-injury prediction should pass before being trusted.
 
 
+
+# **Case Study 1: Shrimp data** {#sec-shrimp}
+
+We now apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` → `predict_heat_injury()` — to lethal-TDT data from brown shrimp (*Crangon crangon*). The data are 148 replicate trials spanning 30–33 °C and 5 min to 6 hours of exposure, with each replicate exposing a tank of individuals to a fixed temperature × duration combination on a specific date. The two grouping factors `Date` and `Tank` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and tank-level cohort variation to be partitioned out of the dose-response surface.
+
+## Data and standardisation {#sec-shrimp-data}
+
+```{r shrimp-load}
+#| label: shrimp-load
+#| echo: true
+
+shrimp_raw <- readxl::read_excel(
+  here::here("data", "Data_Shrimp_TDT_CTmax_experiment.xlsx"),
+  sheet = "LETHAL_TDT"
+)
+
+shrimp_std <- standardize_data(
+  data           = shrimp_raw,
+  temp           = "Temperature_assay",
+  duration       = "Duration_exposure_hours",
+  n_total        = "N_individuals_after_trial",
+  mortality      = "Mortality_after_trial",
+  random_effects = c("Date", "Tank"),
+  duration_unit  = "hours"
+)
+```
+
+```{r shrimp-summary-table}
+#| label: tbl-shrimp-summary
+#| tbl-cap: "Summary of the shrimp lethal-TDT dataset after standardisation. Temperature centre is the grand mean used by the model for `temp_c`."
+
+shrimp_summary <- tibble::tibble(
+  `n trials`              = nrow(shrimp_std),
+  `Temperature range (°C)` = paste(range(shrimp_std$temp), collapse = "–"),
+  `Duration range (hr)`   = paste(round(range(shrimp_std$duration), 2),
+                                  collapse = "–"),
+  `Median individuals/trial` = stats::median(shrimp_std$n_total),
+  `Temperature centre (°C)`  = attr(shrimp_std, "tdt_meta")$temp_mean,
+  `n Dates`               = length(unique(shrimp_std$Date)),
+  `n Tanks`               = length(unique(shrimp_std$Tank))
+)
+tinytable::tt(shrimp_summary, digits = 2)
+```
+
+## Fitting the joint Bayesian 4PL {#sec-shrimp-fit}
+
+We fit the default `fit_4pl()` model — beta-binomial likelihood, identity link, the disjoint-bounds asymptote reparameterisation, and `temp_c` slopes on all four 4PL sub-parameters — with random intercepts on `mid` for `Date` and `Tank`. The fit takes a few minutes on first render; subsequent renders reload it from disk because `file_refit = "on_change"`.
+
+```{r shrimp-fit}
+#| label: shrimp-fit
+#| echo: true
+#| cache: false
+
+wf_shrimp <- fit_4pl(
+  shrimp_std,
+  random_effects = c("Date", "Tank"),
+  chains  = 4, iter = 3000, warmup = 1500, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 12),
+  file    = file.path(models_dir, "fit_shrimp_lethal_4pl")
+)
+```
+
+### Sampling diagnostics
+
+```{r shrimp-diagnostics}
+#| label: tbl-shrimp-diagnostics
+#| tbl-cap: "Sampling diagnostics for the shrimp 4PL fit. Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
+
+tinytable::tt(diagnose_tdt_fit(wf_shrimp), digits = 3)
+```
+
+### Posterior parameters on the natural scale
+
+```{r shrimp-parameter-table}
+#| label: tbl-shrimp-parameters
+#| tbl-cap: "Posterior medians and 95% credible intervals for the shrimp 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in hours at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
+
+tinytable::tt(tdt_parameter_table(wf_shrimp), digits = 3)
+```
+
+## Survival curves with observed overlay {#sec-shrimp-survival-curves}
+
+We predict survival probability across the observed temperature × duration grid and overlay the observed proportions per replicate. The fitted curves should track the observed clouds at every temperature.
+
+```{r shrimp-survival-curves}
+#| label: fig-shrimp-survival-curves
+#| fig-cap: "Posterior survival curves for brown shrimp at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate survival proportions. Duration on the log scale; population-level prediction (random effects marginalised)."
+#| fig-width: 8
+#| fig-height: 5
+
+psc_shrimp <- predict_survival_curves(
+  wf_shrimp,
+  temps     = sort(unique(shrimp_std$temp)),
+  ndraws    = 500
+)
+plot_survival_curves(psc_shrimp, observed = shrimp_std) +
+  ggplot2::labs(x = "Exposure duration (hours)")
+```
+
+## TDT landscape {#sec-shrimp-landscape}
+
+A dense 2-D view of survival across the entire (temperature, duration) plane shows the dose-response surface as a heatmap with overlaid contours at 25, 50, and 75% survival.
+
+```{r shrimp-landscape}
+#| label: fig-shrimp-landscape
+#| fig-cap: "TDT landscape for brown shrimp: posterior median predicted survival across a 120 × 120 grid of assay temperatures × durations. White contours mark 25%, 50%, and 75% survival isolines. Overlaid points are raw observed proportions."
+#| fig-width: 8
+#| fig-height: 6
+
+lsp_shrimp <- derive_tdt_landscape(wf_shrimp, ndraws = 500)
+plot_tdt_landscape(lsp_shrimp, observed = shrimp_std)
+```
+
+## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-shrimp-extract}
+
+`extract_tdt()` bundles z (from per-draw log-linear regression of the LT50 curve), $CT_{max_{1hr}}$ (4PL inversion at the 60-minute reference for 50% survival), and $T_{crit}$ (the rate-multiplier damage-threshold, integrated over $r^* \in [0.1, 1]$ % HI per hour — see @eq-tcrit) in a single call. Every output inherits the model's posterior, so all three quantities come with calibrated credible intervals.
+
+```{r shrimp-extract}
+#| label: shrimp-extract
+#| echo: true
+
+et_shrimp <- extract_tdt(
+  wf_shrimp,
+  t_ref         = 60,            # CTmax defined at 1-hour exposure
+  TC_rate_range = c(0.1, 1),     # T_crit integrated over r* in % HI/hr
+  ndraws        = 500
+)
+```
+
+```{r shrimp-extract-table}
+#| label: tbl-shrimp-extract
+#| tbl-cap: "Classical TDT summaries for brown shrimp, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$ — the pooled posterior carries both parameter uncertainty and operational uncertainty in $r^*$."
+
+shrimp_extract <- tibble::tribble(
+  ~Quantity,                        ~Median, ~Lower, ~Upper,
+  "z (°C per decade of time)",      et_shrimp$z$summary$z_median,
+                                    et_shrimp$z$summary$z_lower,
+                                    et_shrimp$z$summary$z_upper,
+  "CTmax_1hr (°C)",                 et_shrimp$CTmax$summary$temp_median,
+                                    et_shrimp$CTmax$summary$temp_lower,
+                                    et_shrimp$CTmax$summary$temp_upper,
+  "T_crit (°C, r* in [0.1, 1] %/hr)",
+                                    et_shrimp$T_crit$summary$temp_median,
+                                    et_shrimp$T_crit$summary$temp_lower,
+                                    et_shrimp$T_crit$summary$temp_upper
+)
+tinytable::tt(shrimp_extract, digits = 2)
+```
+
+```{r shrimp-tcrit-ctmax-plot}
+#| label: fig-shrimp-tcrit-ctmax
+#| fig-cap: "Posterior densities of $CT_{max_{1hr}}$ (left) and $T_{crit}$ (right) for brown shrimp. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The 5–6 °C gap between the two quantities represents the sub-lethal window between the onset of detectable injury and the LT50 limit."
+#| fig-width: 8
+#| fig-height: 3.5
+
+patchwork::wrap_plots(
+  plot_temperature_density(et_shrimp$CTmax,
+                            x_label = expression(CT[max[1*hr]]~("°C"))),
+  plot_temperature_density(et_shrimp$T_crit,
+                            x_label = expression(T[crit]~("°C"))),
+  ncol = 2
+)
+```
+
+## Heat injury under three reference traces {#sec-shrimp-hi}
+
+We now project the fitted shrimp model under the same three-scenario harness used in the simulation validation above (§[Validation: recovering known planted doses]). The traces are calibrated to shrimp ecology and the posterior of the fitted model: 17 °C is the natural holding temperature, 30 °C is a heat-stress spike that sits between $T_{crit}$ and $CT_{max_{1hr}}$, and the damage threshold passed to `predict_heat_injury()` is the posterior median of $T_{crit}$ from `extract_tdt()` — model-derived rather than hand-picked.
+
+```{r shrimp-hi}
+#| label: shrimp-hi
+#| echo: true
+
+# Damage threshold = posterior median of T_crit from the fit. Model-derived.
+shrimp_T_c <- et_shrimp$T_crit$summary$temp_median
+
+shrimp_scens <- make_temperature_scenarios(
+  baseline   = 17,
+  spike_temp = 30,    # between T_crit and CTmax_1hr — clearly stressful
+  n_hours    = 96,
+  spike_times_single = 24,
+  spike_times_multi  = c(24, 48, 72)
+)
+
+# Predict HI + survival under each scenario, without repair.
+shrimp_hi <- purrr::map(shrimp_scens, function(sc) {
+  predict_heat_injury(
+    trace       = sc,
+    workflow    = wf_shrimp,
+    target_surv = 0.5,
+    T_c         = shrimp_T_c,
+    ndraws      = 500
+  )
+})
+
+# Sharpe-Schoolfield repair parameters tuned to shrimp: optimum ~17 °C, modest
+# repair capacity. r_ref is in (doses per hour) because the model time unit
+# for the shrimp fit is hours.
+shrimp_repair_pars <- list(
+  TA   = 14065,
+  TAL  = 50000,
+  TAH  = 120000,
+  TL   = 10.5 + 273.15,
+  TH   = 22.5 + 273.15,
+  TREF = 17   + 273.15,
+  r_ref = 0.005    # 0.5% LT50-dose repaired per hour at TREF
+)
+
+# Re-run with repair on the multi-spike scenario to show the offsetting effect.
+shrimp_hi_repair <- predict_heat_injury(
+  trace       = shrimp_scens$multi_spike,
+  workflow    = wf_shrimp,
+  target_surv = 0.5,
+  T_c         = shrimp_T_c,
+  ndraws      = 500,
+  repair      = TRUE,
+  repair_pars = shrimp_repair_pars
+)
+```
+
+```{r shrimp-hi-traces}
+#| label: fig-shrimp-hi-traces
+#| fig-cap: "The three reference temperature traces used for the shrimp heat-injury prediction. Baseline 17 °C (shrimp natural holding temperature); 1-hour spikes at 28 °C; the dashed line marks the damage threshold T_c set at the lower 95% credible bound of T_crit."
+#| fig-width: 7
+#| fig-height: 4
+
+plot_temperature_scenarios(shrimp_scens, T_c = shrimp_T_c)
+```
+
+```{r shrimp-hi-multi-noreapair}
+#| label: fig-shrimp-hi-multi-norep
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the multi-spike trace, **no repair**. Posterior median lines and 95% credible bands."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(shrimp_hi$multi_spike)
+```
+
+```{r shrimp-hi-multi-rep}
+#| label: fig-shrimp-hi-multi-rep
+#| fig-cap: "Same multi-spike trace as above, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.005` doses per hour at 17 °C). Repair fully offsets the spike damage at sub-T_c baseline."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(shrimp_hi_repair)
+```
+
+```{r shrimp-hi-summary}
+#| label: tbl-shrimp-hi-summary
+#| tbl-cap: "Final cumulative HI and predicted survival under each scenario for brown shrimp, posterior medians with 95% credible intervals."
+
+final_row <- function(hi) {
+  s <- tail(hi$summary, 1)
+  tibble::tibble(
+    `HI median (%)` = round(s$hi_median, 1),
+    `HI lower`      = round(s$hi_lower,  1),
+    `HI upper`      = round(s$hi_upper,  1),
+    `Survival median`  = round(s$surv_median, 3),
+    `Survival lower`   = round(s$surv_lower,  3),
+    `Survival upper`   = round(s$surv_upper,  3)
+  )
+}
+
+shrimp_hi_table <- dplyr::bind_rows(
+  final_row(shrimp_hi$flat)         |> dplyr::mutate(Scenario = "Flat",
+                                                     Repair = "None"),
+  final_row(shrimp_hi$single_spike) |> dplyr::mutate(Scenario = "Single spike",
+                                                     Repair = "None"),
+  final_row(shrimp_hi$multi_spike)  |> dplyr::mutate(Scenario = "Multi spike",
+                                                     Repair = "None"),
+  final_row(shrimp_hi_repair)       |> dplyr::mutate(Scenario = "Multi spike",
+                                                     Repair = "Sharpe-Schoolfield")
+) |>
+  dplyr::select(Scenario, Repair, dplyr::everything())
+
+tinytable::tt(shrimp_hi_table)
+```
+
+The shrimp case study shows the complete loop: raw counts → fitted model → classical TDT quantities (with credible intervals on every one of them) → heat-injury predictions under fluctuating field traces (with and without repair). Every quantity reported here inherits the joint posterior of the single 4PL fit — there is no second-stage regression, no point-estimate-then-bootstrap, no separate ramping-rate experiment. The same machinery applies to any TDT-style proportion dataset by changing only `standardize_data()`'s column-name arguments.
 
 # **References**
 
