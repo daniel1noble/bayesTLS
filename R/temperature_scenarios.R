@@ -1,0 +1,106 @@
+# Three-trace heat-injury validation harness:
+#
+#   - flat:         constant baseline, no damage accumulation expected.
+#   - single_spike: one short pulse, analytical dose computable from z + CTmax.
+#   - multi_spike:  several short pulses, dose = sum of individual contributions.
+#
+# Use planted_dose_from_trace() to compute the analytical truth given any trace
+# and any (z, CTmax_1hr, T_c) triple.
+
+#' Build three reference temperature traces for heat-injury validation
+#'
+#' Returns a list of three tibbles, each with columns `time_h` and `temp`,
+#' representing the canonical validation scenarios:
+#'
+#' - `flat` — constant `baseline` temperature for `n_hours` hours.
+#' - `single_spike` — flat baseline with one hour at `spike_temp` placed at
+#'    each of `spike_times_single` (default one spike).
+#' - `multi_spike` — flat baseline with one hour at `spike_temp` placed at
+#'    each of `spike_times_multi` (default three spikes).
+#'
+#' The defaults are deliberately calibrated so that, given typical TDT
+#' parameters (`z = 5 °C`, `CTmax_1hr = 32 °C`), each `single_spike` delivers
+#' a sub-lethal but visible dose, and `multi_spike` accumulates enough to
+#' approach an LT50 dose. Pass [planted_dose_from_trace()] the same trace plus
+#' known parameters to compute the analytical expected HI.
+#'
+#' @param baseline    Numeric. Constant baseline temperature (°C). Default 20.
+#' @param spike_temp  Numeric. Temperature of each one-hour spike (°C).
+#'                    Default 30.
+#' @param n_hours     Integer. Total length of each trace, in hours. Default 96.
+#' @param dt_hours    Numeric. Time step, in hours. Default 1 (hourly).
+#' @param spike_times_single Integer vector. Hours at which the single-spike
+#'                    trace has a spike. Default `24`.
+#' @param spike_times_multi  Integer vector. Hours at which the multi-spike
+#'                    trace has a spike. Default `c(24, 48, 72)`.
+#' @return A named list of three tibbles (`flat`, `single_spike`,
+#'         `multi_spike`), each with columns `time_h` (numeric, hours from
+#'         start) and `temp` (°C).
+#' @examples
+#' scens <- make_temperature_scenarios()
+#' lapply(scens, head)
+#' @export
+make_temperature_scenarios <- function(baseline    = 20,
+                                       spike_temp  = 30,
+                                       n_hours     = 96,
+                                       dt_hours    = 1,
+                                       spike_times_single = 24,
+                                       spike_times_multi  = c(24, 48, 72)) {
+
+  time_h  <- seq(0, n_hours - dt_hours, by = dt_hours)
+  base    <- tibble::tibble(time_h = time_h, temp = baseline)
+
+  flat <- base
+
+  apply_spikes <- function(spike_hours) {
+    out <- base
+    for (h in spike_hours) {
+      i <- which(out$time_h == h)
+      if (length(i) == 1L) out$temp[i] <- spike_temp
+    }
+    out
+  }
+
+  list(
+    flat         = flat,
+    single_spike = apply_spikes(spike_times_single),
+    multi_spike  = apply_spikes(spike_times_multi)
+  )
+}
+
+#' Analytical heat-injury accumulation along a temperature trace
+#'
+#' Implements the classical HI integral exactly (Equation 7 of the manuscript),
+#' given known TDT parameters. Use this as the **truth** that
+#' [predict_heat_injury()] should recover when fed the same trace and a model
+#' fit whose posterior is consistent with `(z, CTmax_1hr, T_c)`.
+#'
+#' At each time step, contribution is
+#'
+#' \deqn{\Delta HI_i = 100 \cdot 10^{(T_i - CT_{max,1hr}) / z} \cdot \Delta t}
+#'
+#' when `T_i > T_c`, and zero otherwise. Cumulative HI is the running sum.
+#'
+#' @param trace      Tibble with columns `time_h` and `temp`, output of
+#'                   [make_temperature_scenarios()].
+#' @param z          Thermal sensitivity, °C per decade of time.
+#' @param CTmax_1hr  Static temperature at which LT50 = 1 hour, °C.
+#' @param T_c        Damage threshold (°C); contributions below `T_c` are zero.
+#' @return The input trace augmented with two new columns:
+#'         - `hi_inc` — instantaneous HI contribution at each hour (%).
+#'         - `hi_cumulative` — running sum of `hi_inc` (%).
+#' @examples
+#' scens <- make_temperature_scenarios(spike_temp = 30)
+#' planted_dose_from_trace(scens$single_spike, z = 5, CTmax_1hr = 32, T_c = 25)
+#' @export
+planted_dose_from_trace <- function(trace, z, CTmax_1hr, T_c) {
+  dt <- if (nrow(trace) >= 2L) {
+    diff(trace$time_h)[1]
+  } else 1
+  inc <- ifelse(trace$temp > T_c,
+                100 * 10 ^ ((trace$temp - CTmax_1hr) / z) * dt,
+                0)
+  trace$hi_inc        <- inc
+  trace$hi_cumulative <- cumsum(inc)
+  trace
+}
