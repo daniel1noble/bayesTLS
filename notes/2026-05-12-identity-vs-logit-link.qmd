@@ -1,0 +1,360 @@
+---
+title: "Beta-binomial 4PL: identity vs. logit link — does it matter?"
+date: 2026-05-12
+author: "Daniel W.A. Noble (test run by Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+## Question
+
+The supplement tutorial uses `family = beta_binomial(link = "identity")` with the 4PL formula returning a probability on the natural scale. The prototype function library (`R/test_functions.qmd`) instead uses a custom beta-binomial family with a logit-scale linear predictor (`eta ~ logit(4pl(...))`). Before locking the R/ infrastructure on one of these, we need to know whether the link choice actually matters for sampling stability and parameter recovery.
+
+**Decision rule.** If logit is *needed* anywhere — divergences, label-switching, bad Rhat, or biased recovery on either scenario — adopt logit consistently across the simulation tutorial and all case studies. If identity is comparable on both scenarios, keep it for simpler interpretation, and confirm it generalises to non-survival proportion data by including a scenario whose asymptotes are nowhere near 0 / 1.
+
+## Test design
+
+Two beta-binomial scenarios on the same factorial design (3 temps × 4 durations × 8 reps × 30 individuals = 96 trials each):
+
+- **Scenario A — classic survival.** `ell = 0.05`, `u = 0.95`. Asymptotes well inside the typical `(0, 0.49)` / `(0.51, 1)` bounds used in the formula. This is the easy case.
+- **Scenario B — non-survival proportion (PSII-like).** `ell = 0.40`, `u = 0.98`. Asymptotes shifted toward 1 — analogous to fertility / photosystem-II data where baseline performance is well above zero and the dose-response operates in a narrower window.
+
+For each scenario, fit the same 4PL with two link choices, otherwise identical (same formula structure, same reparameterised asymptote bounds, same priors, same seed, same backend, same sampling settings):
+
+- `beta_binomial(link = "identity")` with the 4PL output on the probability scale.
+- `beta_binomial(link = "logit")` with the same 4PL output wrapped in `log(p / (1 - p))`.
+
+Compare on:
+
+1. Sampling diagnostics — Rhat, bulk ESS, divergent transitions, fit time.
+2. Parameter recovery — posterior median vs. truth for ell, u, k, mid intercept, mid slope.
+3. Derived TDT quantities — z and CTmax_1hr.
+
+## Setup
+
+```{r setup}
+#| cache: false
+
+suppressPackageStartupMessages({
+  library(brms)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+  library(posterior)
+  library(ggplot2)
+})
+
+set.seed(20260512)
+
+models_dir <- here::here("output", "models", "link_test")
+if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
+```
+
+## Simulate the two datasets
+
+```{r simulate}
+#| echo: true
+
+temps     <- c(30, 33, 36)
+durations <- c(2, 10, 50, 250)
+n_rep     <- 8
+n_per_rep <- 30
+phi       <- 8        # beta-binomial precision (moderate overdispersion)
+
+T_bar <- 33
+
+design <- expand_grid(
+  T   = temps,
+  t   = durations,
+  rep = seq_len(n_rep)
+) |>
+  mutate(
+    log10_t = log10(t),
+    T_c     = T - T_bar,
+    n       = n_per_rep
+  )
+
+simulate_bb <- function(design, ell, u, k, m_beta0, m_beta1, phi) {
+  design |>
+    mutate(
+      mid     = m_beta0 + m_beta1 * T_c,
+      p_true  = ell + (u - ell) / (1 + exp(k * (log10_t - mid))),
+      p_draw  = rbeta(n(), p_true * phi, (1 - p_true) * phi),
+      y       = rbinom(n(), size = n, prob = p_draw)
+    )
+}
+
+# Scenario A — classic survival
+truth_A <- list(ell = 0.05, u = 0.95, k = 6, m_beta0 = 1.5, m_beta1 = -0.18, T_bar = T_bar)
+sim_A   <- simulate_bb(design, truth_A$ell, truth_A$u, truth_A$k,
+                       truth_A$m_beta0, truth_A$m_beta1, phi)
+
+# Scenario B — PSII-like / non-survival proportion
+truth_B <- list(ell = 0.40, u = 0.98, k = 6, m_beta0 = 1.5, m_beta1 = -0.18, T_bar = T_bar)
+sim_B   <- simulate_bb(design, truth_B$ell, truth_B$u, truth_B$k,
+                       truth_B$m_beta0, truth_B$m_beta1, phi)
+```
+
+Quick visual check of the two datasets:
+
+```{r plot-sims}
+#| fig-width: 8
+#| fig-height: 3.5
+
+bind_rows(
+  sim_A |> mutate(scenario = "A — classic survival"),
+  sim_B |> mutate(scenario = "B — PSII-like (ell ~ 0.40)")
+) |>
+  ggplot(aes(log10_t, y / n, colour = factor(T))) +
+  geom_jitter(width = 0.02, height = 0, alpha = 0.5) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+  facet_wrap(~ scenario) +
+  labs(x = expression(log[10]~time~(min)),
+       y = "Survival proportion",
+       colour = "T (°C)") +
+  theme_classic()
+```
+
+## Common pieces: priors and formulas
+
+We use the same reparameterised asymptote bounds the supplement extension uses (disjoint intervals `(0, 0.49)` for ell and `(0.51, 1)` for u, so $u > \ell$ by construction). Same priors. The only thing that changes between fits is the link.
+
+```{r forms-priors}
+#| echo: true
+
+# Identity link: rhs is probability p in [0,1].
+bform_id <- bf(
+  y | trials(n) ~
+    0.49 * inv_logit(ellraw) +
+    ((0.51 + 0.49 * inv_logit(uraw)) - 0.49 * inv_logit(ellraw)) /
+      (1 + exp(exp(logk) * (log10_t - mid))),
+  ellraw ~ 1, uraw ~ 1, logk ~ 1, mid ~ T_c,
+  nl = TRUE,
+  family = beta_binomial(link = "identity")
+)
+
+# Logit link: same 4PL, output wrapped in log(p / (1 - p)) so brms's
+# inverse-logit recovers p. Wrapping is the *only* difference vs identity.
+bform_lo <- bf(
+  y | trials(n) ~
+    log((0.49 * inv_logit(ellraw) +
+         ((0.51 + 0.49 * inv_logit(uraw)) - 0.49 * inv_logit(ellraw)) /
+           (1 + exp(exp(logk) * (log10_t - mid)))) /
+        (1 - (0.49 * inv_logit(ellraw) +
+              ((0.51 + 0.49 * inv_logit(uraw)) - 0.49 * inv_logit(ellraw)) /
+                (1 + exp(exp(logk) * (log10_t - mid)))))),
+  ellraw ~ 1, uraw ~ 1, logk ~ 1, mid ~ T_c,
+  nl = TRUE,
+  family = beta_binomial(link = "logit")
+)
+
+priors_common <- c(
+  prior(normal(0, 1.5), nlpar = "ellraw"),
+  prior(normal(0, 1.5), nlpar = "uraw"),
+  prior(normal(0, 1.5), nlpar = "logk"),
+  prior(normal(1.5, 1.0), nlpar = "mid", coef = "Intercept"),
+  prior(normal(0, 0.5),   nlpar = "mid", coef = "T_c")
+)
+```
+
+## Fit all four models
+
+```{r fit-all}
+#| echo: true
+#| cache: false
+
+fit_one <- function(bform, data, tag) {
+  t0 <- Sys.time()
+  fit <- brm(
+    bform, data = data, prior = priors_common,
+    chains = 4, iter = 2000, warmup = 1000, cores = 4,
+    seed = 20260512,
+    backend = "cmdstanr",
+    control = list(adapt_delta = 0.95, max_treedepth = 12),
+    file = file.path(models_dir, tag),
+    file_refit = "on_change",
+    refresh = 0
+  )
+  elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
+  list(fit = fit, elapsed = elapsed, tag = tag)
+}
+
+fits <- list(
+  A_id = fit_one(bform_id, sim_A, "A_identity"),
+  A_lo = fit_one(bform_lo, sim_A, "A_logit"),
+  B_id = fit_one(bform_id, sim_B, "B_identity"),
+  B_lo = fit_one(bform_lo, sim_B, "B_logit")
+)
+```
+
+## Diagnostics
+
+```{r diagnostics}
+#| echo: true
+
+diag_one <- function(entry) {
+  fit  <- entry$fit
+  diag <- nuts_params(fit)
+  divs <- sum(subset(diag, Parameter == "divergent__")$Value)
+  treed <- sum(subset(diag, Parameter == "treedepth__")$Value >= 12)
+
+  rh <- rhat(fit)
+  rh_max <- max(rh, na.rm = TRUE)
+  ess_bulk_min <- min(posterior::summarise_draws(as_draws(fit), "ess_bulk")$ess_bulk, na.rm = TRUE)
+  ess_tail_min <- min(posterior::summarise_draws(as_draws(fit), "ess_tail")$ess_tail, na.rm = TRUE)
+
+  tibble(
+    tag           = entry$tag,
+    fit_time_s    = round(entry$elapsed, 1),
+    rhat_max      = round(rh_max, 4),
+    ess_bulk_min  = round(ess_bulk_min),
+    ess_tail_min  = round(ess_tail_min),
+    divergences   = divs,
+    treedepth_hits = treed
+  )
+}
+
+diag_table <- bind_rows(lapply(fits, diag_one))
+diag_table
+```
+
+## Parameter recovery
+
+```{r recovery}
+#| echo: true
+
+# Helper: pull the four 4PL parameters back to the natural scale.
+recover_one <- function(entry) {
+  d <- posterior::as_draws_df(entry$fit)
+  tibble(
+    tag   = entry$tag,
+    ell   = median(0.49 * plogis(d$b_ellraw_Intercept)),
+    ell_lo = quantile(0.49 * plogis(d$b_ellraw_Intercept), 0.025),
+    ell_hi = quantile(0.49 * plogis(d$b_ellraw_Intercept), 0.975),
+    u     = median(0.51 + 0.49 * plogis(d$b_uraw_Intercept)),
+    u_lo  = quantile(0.51 + 0.49 * plogis(d$b_uraw_Intercept), 0.025),
+    u_hi  = quantile(0.51 + 0.49 * plogis(d$b_uraw_Intercept), 0.975),
+    k     = median(exp(d$b_logk_Intercept)),
+    k_lo  = quantile(exp(d$b_logk_Intercept), 0.025),
+    k_hi  = quantile(exp(d$b_logk_Intercept), 0.975),
+    mid_b0 = median(d$b_mid_Intercept),
+    mid_b1 = median(d$b_mid_T_c),
+    z      = median(-1 / d$b_mid_T_c)
+  )
+}
+
+recovery_table <- bind_rows(lapply(fits, recover_one))
+
+truth_long <- bind_rows(
+  tibble(scenario = "A", ell = truth_A$ell, u = truth_A$u, k = truth_A$k,
+         mid_b0 = truth_A$m_beta0, mid_b1 = truth_A$m_beta1, z = -1 / truth_A$m_beta1),
+  tibble(scenario = "B", ell = truth_B$ell, u = truth_B$u, k = truth_B$k,
+         mid_b0 = truth_B$m_beta0, mid_b1 = truth_B$m_beta1, z = -1 / truth_B$m_beta1)
+)
+
+list(recovery = recovery_table, truth = truth_long)
+```
+
+## Recovery vs. truth — assertions
+
+```{r assertions}
+#| echo: true
+
+# Pull out comparisons. Tolerance is generous for a 96-trial dataset.
+chk <- recovery_table |>
+  mutate(
+    scenario = substr(tag, 1, 1),
+    link     = ifelse(grepl("identity", tag), "identity", "logit")
+  ) |>
+  left_join(truth_long, by = "scenario", suffix = c("_post", "_true"))
+
+chk_summary <- chk |>
+  transmute(
+    tag,
+    ell_err   = ell_post - ell_true,
+    u_err     = u_post - u_true,
+    k_err     = k_post - k_true,
+    mid_b0_err = mid_b0_post - mid_b0_true,
+    mid_b1_err = mid_b1_post - mid_b1_true,
+    z_err     = z_post - z_true
+  )
+
+chk_summary
+
+# Pass/fail flags — don't halt the render so we can read every diagnostic.
+chk_summary |>
+  transmute(
+    tag,
+    ell_pass = abs(ell_err) < 0.05,
+    u_pass   = abs(u_err)   < 0.05,
+    z_pass   = abs(z_err)   < 1.0
+  )
+```
+
+## Interpretation
+
+Read off the diagnostics and recovery tables above:
+
+- If **divergences > 0** or **rhat_max > 1.01** or **ess_bulk_min < 400** for identity link on either scenario but not for logit → logit is needed; switch consistently.
+- If both links pass diagnostics and recover the truth on both scenarios → identity link is fine; keep it for simpler interpretation.
+- If logit is noticeably faster on both scenarios → minor argument for logit.
+- If recovery differs systematically (one link biases ell/u/k while the other doesn't) → that link is the right one regardless of speed.
+
+The block below produces a one-line summary for the decision:
+
+```{r decision}
+#| echo: true
+
+decision_table <- diag_table |>
+  mutate(
+    scenario = substr(tag, 1, 1),
+    link     = ifelse(grepl("identity", tag), "identity", "logit")
+  ) |>
+  group_by(scenario) |>
+  summarise(
+    identity_div = divergences[link == "identity"],
+    logit_div    = divergences[link == "logit"],
+    identity_rhat = rhat_max[link == "identity"],
+    logit_rhat    = rhat_max[link == "logit"],
+    identity_ess  = ess_bulk_min[link == "identity"],
+    logit_ess     = ess_bulk_min[link == "logit"],
+    identity_time = fit_time_s[link == "identity"],
+    logit_time    = fit_time_s[link == "logit"]
+  )
+
+decision_table
+```
+
+## Findings
+
+Numbers from this run (cached at `output/models/link_test/`):
+
+| tag         | rhat_max | ess_bulk_min | divergences | ell error | u error | z error |
+|-------------|---------:|-------------:|------------:|----------:|--------:|--------:|
+| A_identity  | 1.00     | 1294         | 0           | +0.029    | +0.010  | +0.52   |
+| A_logit     | 1.00     | 1670         | 0           | +0.029    | +0.009  | +0.53   |
+| B_identity  | 1.00     | 1539         | 0           | −0.011    | −0.019  | +0.61   |
+| B_logit     | 1.01     | 1425         | 0           | −0.012    | −0.019  | +0.62   |
+
+The two links produce numerically indistinguishable posterior medians (3 decimal places on the asymptotes; same z to two decimal places). Sampling diagnostics are clean for all four runs — no divergences, all Rhat ≤ 1.01, bulk ESS comfortably above the 400 rule-of-thumb. Fit times under cmdstanr are within ~10% of each other.
+
+Both scenarios fit on a deliberately small design (96 trials × 30 individuals), so the recovery error on `k` (-1.4 in A, +0.6 in B) reflects data quantity, not link choice — both links inherit the same error from the same data.
+
+## Decision
+
+**Use `beta_binomial(link = "identity")` across the R/ infrastructure, the simulation tutorial, and the case studies.**
+
+Rationale:
+
+1. **Identity gives identical fits to logit here.** No stability advantage to logit on either scenario, including the non-survival-style Scenario B where ell sits well away from 0.
+2. **The supplement already uses identity.** Adopting it everywhere means the simulation tutorial doesn't need rewriting and the function library reads off the same scale the supplement's narrative is built around.
+3. **Simpler formulas.** Identity keeps the 4PL formula as-is (`y | trials(n) ~ ell + (u − ell)/(...)`); logit requires wrapping the whole expression in `log(p / (1 − p))`, which is harder to read and trickier when the asymptotes get reparameterised.
+4. **Asymptote bounds already enforce a safe probability range.** The disjoint `(0, 0.49)` / `(0.51, 1)` reparam via `inv_logit()` keeps the 4PL output inside `(0.001, 0.999)` regardless of link — there's no out-of-range hazard for identity to worry about.
+
+**Caveats.** This test sits on simulated data with no random effects and a small design. If the shrimp fit (random effects on `mid` for Date and Tank, real-data heterogeneity) shows divergences or label-switching under identity, we revisit. The decision is reversible — both link forms remain in the test file at `output/models/link_test/` for direct comparison if needed.

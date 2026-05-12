@@ -128,6 +128,12 @@ models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
 
+# Introduction
+
+We've made a bunch of functions that can be used to help users apply the approaches described in the main manuscript and supplement. To load the functions, copy the code chunk and run it in your R console. 
+
+
+
 # **A Tutorial with Simulations**
 
 This section is a guided tutorial using simulated data. We show, step by step, how the Bayesian hierarchical 4PL — under both binomial sampling and the more realistic beta-binomial (overdispersed) case – can recover thermal sensitivity ($z$) and $CT_{max_{1hr}}$ from the single joint model, yet provide substantial downstream benefits in terms of propagating uncertainty and giving more flexibility. We then complement the simulation with a few case studies which walk through real data that is presented within the main manuscript in other sections.

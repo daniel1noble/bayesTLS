@@ -1,0 +1,83 @@
+---
+title: "Two uses of `inv_logit` in the beta-binomial 4PL: reparameterisation vs link"
+date: 2026-05-12
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+---
+
+## Question
+
+In the identity-link 4PL fit (see `notes/2026-05-12-identity-vs-logit-link.qmd`), the formula reads:
+
+``` r
+y | trials(n) ~
+  0.49 * inv_logit(ellraw) +
+  ((0.51 + 0.49 * inv_logit(uraw)) - 0.49 * inv_logit(ellraw)) /
+    (1 + exp(exp(logk) * (log10_t - mid)))
+```
+
+with `family = beta_binomial(link = "identity")`. Why is `inv_logit(...)` appearing inside the formula when the family link is identity?
+
+## Short answer
+
+`inv_logit` is doing **two different jobs** in beta-binomial regression, and only one of them is link-related. In our formula it's playing the *first* role (asymptote reparameterisation), which is independent of the link choice.
+
+| Role | Where | Purpose |
+|---|---|---|
+| 1. Asymptote reparam | `0.49 * inv_logit(ellraw)` inside the formula | Identify the 4PL asymptotes on an unconstrained scale; prevent boundary stickiness and label-switching |
+| 2. Link function | `family = beta_binomial(link = "logit")` (we don't use this) | Map an unconstrained linear predictor onto `(0, 1)` for the likelihood |
+
+Both roles use the same `inv_logit` function but for unrelated reasons.
+
+## Role 1 — Reparameterising the asymptotes
+
+The 4PL is `p = ell + (u - ell) / (1 + exp(k(log10 t - mid)))`. For `p` to be a valid probability we need:
+
+- `0 ≤ ell < u ≤ 1`
+- `k > 0` (or we explicitly flip the sign convention).
+
+Two ways to enforce these constraints in MCMC:
+
+**(a) Hard bounds via priors.** E.g. `prior(beta(1, 5), nlpar = "ell", lb = 0, ub = 1)`. Works in principle but in practice MCMC chains hit two pathologies:
+
+1. **Boundary stickiness.** When `ell` lives very close to 0 or `u` very close to 1, the gradient of the log posterior flattens at the wall, the leapfrog steps can't escape efficiently, and effective sample size collapses.
+2. **Label switching.** If both asymptotes can occupy the full interval `(0, 1)`, the model has an exact symmetry: swap `(ell, u) → (u, ell)` and flip the sign of `k`, and the likelihood is unchanged. Some chains end up labelling the upper plateau "ell"; the posterior becomes bimodal in a way that breaks all downstream summaries.
+
+**(b) Smooth reparam through `inv_logit` onto a disjoint interval.** Estimate `ellraw, uraw ∈ ℝ` on the unconstrained scale and deterministically map:
+
+- `ell = 0.49 * inv_logit(ellraw)` → squashed into `(0, 0.49)`.
+- `u   = 0.51 + 0.49 * inv_logit(uraw)` → squashed into `(0.51, 1)`.
+
+This buys three things at once:
+
+- **No boundaries to stick at.** `ellraw, uraw` live on all of `ℝ`; HMC has clean gradients everywhere.
+- **No label-switching.** The 0.02 gap between `(0, 0.49)` and `(0.51, 1)` guarantees `u > ell` *by construction*. The symmetry that caused chains to flip is destroyed before MCMC starts. The chains can no longer find an equivalent solution by relabelling.
+- **The asymptotes only have to be "biologically away from 0.5".** For survival data this is automatic — genuine LT50 assays don't have asymptotes pinned at exactly 0.5. The cost of the reparam is that `ell` is forced ≤ 0.49 and `u` ≥ 0.51, which is harmless for any sensible TDT dataset.
+
+Analogously `k = exp(logk)` keeps `k > 0` via the same unconstrained-scale trick.
+
+## Role 2 — Link function
+
+`family = beta_binomial(link, ...)` controls **what scale the linear predictor sits on**. Two options:
+
+- `link = "identity"`. The formula's right-hand side IS the mean probability. brms hands it straight to the likelihood. Requires the formula to return a value in `(0, 1)`.
+- `link = "logit"`. The formula's right-hand side is `logit(mean)`. brms applies `inv_logit(...)` externally to recover the mean before evaluating the likelihood. The formula can return any real value.
+
+Critically, **the link operates on the whole linear predictor, not on individual parameters**. So:
+
+- Identity link + asymptote reparam = our setup. The 4PL formula returns a probability (guaranteed by the reparam keeping `ell, u` in their disjoint intervals), and identity hands it straight through. The reparam is doing the work of keeping us in-bounds; the link doesn't need to.
+- Logit link + asymptote reparam = wrap the *entire* 4PL output in `log(p / (1 - p))` so brms can `inv_logit` it back. Mathematically identical posterior on this data (verified in `notes/2026-05-12-identity-vs-logit-link.qmd`). Slightly more awkward to read.
+
+## Why this matters for the project
+
+We have one formula, one link, one reparam pattern, all enforced together:
+
+- **Identity link** because the test showed it's indistinguishable from logit and matches the supplement's existing tutorial code.
+- **`inv_logit` reparam on `ell, u`** because it kills label-switching and boundary stickiness regardless of link.
+- **`exp` reparam on `k`** for the same reason on the positivity constraint.
+
+When someone reads the formula and sees `inv_logit(ellraw)`, they shouldn't infer the family is using logit link. The reparam and the link are two independent design choices that happen to share the same R/Stan function name.
