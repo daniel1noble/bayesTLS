@@ -200,34 +200,44 @@ derive_tdt_parameters <- function(ltx_curve,
   list(draws = params, summary = summary, t_ref = t_ref)
 }
 
-#' Extract classical TDT quantities from a fitted 4PL: z, CTmax, T_crit
+#' Extract classical TDT quantities from a fitted 4PL: z, CTmax (optional T_crit)
 #'
-#' Bundles the three classical TDT summaries with full posterior uncertainty:
+#' Always returns:
 #'
 #' - **z** — thermal sensitivity, derived by per-draw log-linear regression of
 #'   `log10(LT50)` on temperature (see [derive_tdt_parameters()]).
 #' - **CTmax** — temperature at which survival = 0.5 after `t_ref` exposure;
 #'   the temperature where the LT_50 curve crosses `t_ref`. Computed by
 #'   inverting the 4PL surface at fixed exposure duration.
-#' - **T_crit** — the temperature below which the TDT-line damage rate falls
-#'   beneath an empirically motivated floor `r*` (% HI per hour). For each
-#'   posterior draw, `T_crit = CTmax + z * log10(r* / 100)`, with `r*` drawn
-#'   uniformly on the log10 scale across `TC_rate_range`. The pooled posterior
-#'   thus carries both parameter uncertainty (in CTmax and z) and operational
-#'   uncertainty in the choice of damage-rate floor. The default range
-#'   `c(0.1, 1)` % HI per hour brackets the empirical breakpoints found by
-#'   Faber et al. (2026) and Jørgensen et al. (2021) across taxa as different
-#'   as *Drosophila suzukii* and *Lemna gibba*.
 #'
-#' All three quantities inherit the same posterior — no extra fitting step.
+#' When `lethal = TRUE` it *also* returns **T_crit**, the rate-multiplier
+#' critical temperature: for each posterior draw,
+#' `T_crit = CTmax + z * log10(r* / 100)`, with `r*` drawn uniformly on the
+#' `log10` scale across `TC_rate_range`. The pooled posterior thus carries
+#' both parameter uncertainty (in `CTmax` and `z`) and operational uncertainty
+#' in the choice of damage-rate floor. The default range `c(0.1, 1)` %
+#' HI per hour brackets the empirical breakpoints found by Faber et al. (2026)
+#' and Jørgensen et al. (2021) across taxa as different as *Drosophila suzukii*
+#' and *Lemna gibba*.
+#'
+#' T_crit only makes physical sense for **lethal-endpoint** data — proportion-
+#' or count-based survival under a damage-accumulation interpretation. For
+#' sublethal endpoints (knockdown time, photosystem-II failure, etc.) the
+#' fitted `z` measures the rate of *performance reduction* rather than damage
+#' accumulation, and the two are not interchangeable: sublethal `z` is
+#' typically far steeper, which in turn pushes the rate-multiplier `T_crit`
+#' implausibly low. Setting `lethal = FALSE` (the default) suppresses `T_crit`
+#' to avoid that pitfall; users with lethal data opt in by passing
+#' `lethal = TRUE` and are reminded by a startup message.
 #'
 #' @param workflow    Fitted `tdt_4pl_workflow`.
 #' @param t_ref       Reference exposure duration for CTmax, in the
 #'                    `output_time_unit` (default `"min"`). Default 60.
 #' @param TC_rate_range Numeric length-2: HI-rate floor range, in % LT50-dose
-#'                    per hour, used to derive T_crit. Default `c(0.1, 1)`.
-#'                    Sampled uniformly on `log10(r/100)`, which is the natural
-#'                    scale for a rate threshold.
+#'                    per hour, used to derive T_crit (only when
+#'                    `lethal = TRUE`). Default `c(0.1, 1)`. Sampled uniformly
+#'                    on `log10(r/100)`, which is the natural scale for a
+#'                    rate threshold.
 #' @param temp_grid   Numeric vector of temperatures to search over. Default:
 #'                    a fine grid spanning the training-data temperature range
 #'                    extended by ±2 °C.
@@ -238,21 +248,30 @@ derive_tdt_parameters <- function(ltx_curve,
 #' @param time_multiplier Multiplier from model time units to `output_time_unit`.
 #'                    Default 60 (so hour-scale data → minute-scale outputs).
 #' @param output_time_unit Label for the output time unit. Default `"min"`.
+#' @param lethal      Logical. When `TRUE`, also returns the rate-multiplier
+#'                    T_crit and emits a one-line reminder that T_crit is
+#'                    valid only for damage-accumulation (lethal) endpoints.
+#'                    Default `FALSE`.
 #' @return A list with elements:
 #'   - `z`: list with `draws` (per-draw z, slope, intercept, R²) and `summary`.
 #'   - `CTmax`: list with `draws` (per-draw temperature) and `summary`.
-#'   - `T_crit`: list with `draws` and `summary`.
+#'   - `T_crit`: list with `draws` and `summary` when `lethal = TRUE`;
+#'     `NULL` otherwise.
 #'   - `lt50_curve`: output of [derive_ltx_curve()] (intermediate).
-#'   - `meta`: list of inputs used (`t_ref`, `TC_rate_range`, `output_time_unit`).
+#'   - `meta`: list of inputs used (`t_ref`, `TC_rate_range`, `lethal`,
+#'     `output_time_unit`).
 #' @examples
 #' \dontrun{
 #' wf  <- fit_4pl(d, ...)
-#' out <- extract_tdt(wf)
+#' out <- extract_tdt(wf)                  # z + CTmax only
 #' out$z$summary
 #' out$CTmax$summary
-#' out$T_crit$summary
+#'
+#' # Lethal-endpoint data — opt in to T_crit:
+#' out2 <- extract_tdt(wf, lethal = TRUE)
+#' out2$T_crit$summary
 #' # Feed the T_crit posterior median into predict_heat_injury():
-#' hi <- predict_heat_injury(trace, wf, T_c = out$T_crit$summary$temp_median)
+#' hi <- predict_heat_injury(trace, wf, T_c = out2$T_crit$summary$temp_median)
 #' }
 #' @export
 extract_tdt <- function(workflow,
@@ -262,7 +281,8 @@ extract_tdt <- function(workflow,
                         duration_grid    = NULL,
                         ndraws           = 1000,
                         time_multiplier  = 60,
-                        output_time_unit = "min") {
+                        output_time_unit = "min",
+                        lethal           = FALSE) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
   if (length(TC_rate_range) != 2L ||
@@ -302,33 +322,41 @@ extract_tdt <- function(workflow,
     ndraws            = ndraws
   )
 
-  # T_crit via rate-multiplier integration. For each posterior draw, sample
-  # r* uniformly on log10 across TC_rate_range, then compute
-  # T_crit = CTmax + z * log10(r*/100). Pairs z and CTmax by .draw index
-  # so the joint posterior is preserved; inner_join drops draws that didn't
-  # survive both pipelines (e.g. ill-conditioned LT50 regressions).
-  z_df     <- z_ctmax$draws   |> dplyr::select(.draw, z)
-  ctmax_df <- ctmax$draws     |> dplyr::select(.draw, CTmax_temp = temp)
-  paired   <- dplyr::inner_join(z_df, ctmax_df, by = ".draw")
+  t_crit_block <- NULL
+  if (isTRUE(lethal)) {
+    message("extract_tdt(): T_crit reported under the rate-multiplier ",
+            "definition; valid for damage-accumulation (lethal) endpoints ",
+            "only. If your data are sublethal (knockdown, performance, ",
+            "PSII, ...) ignore T_crit and supply T_c manually downstream.")
 
-  log10_low  <- log10(TC_rate_range[1] / 100)
-  log10_high <- log10(TC_rate_range[2] / 100)
-  paired$log10_rate <- stats::runif(nrow(paired),
-                                     min = log10_low, max = log10_high)
-  paired$T_crit     <- paired$CTmax_temp + paired$z * paired$log10_rate
+    # T_crit via rate-multiplier integration. For each posterior draw, sample
+    # r* uniformly on log10 across TC_rate_range, then compute
+    # T_crit = CTmax + z * log10(r*/100). Pairs z and CTmax by .draw index
+    # so the joint posterior is preserved.
+    z_df     <- z_ctmax$draws   |> dplyr::select(.draw, z)
+    ctmax_df <- ctmax$draws     |> dplyr::select(.draw, CTmax_temp = temp)
+    paired   <- dplyr::inner_join(z_df, ctmax_df, by = ".draw")
 
-  t_crit_draws <- tibble::tibble(.draw = paired$.draw,
-                                  temp = paired$T_crit,
-                                  log10_rate = paired$log10_rate)
-  q <- stats::quantile(t_crit_draws$temp,
-                       c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
-  t_crit_summary <- tibble::tibble(
-    TC_rate_low  = TC_rate_range[1],
-    TC_rate_high = TC_rate_range[2],
-    temp_lower   = q[1],
-    temp_median  = q[2],
-    temp_upper   = q[3]
-  )
+    log10_low  <- log10(TC_rate_range[1] / 100)
+    log10_high <- log10(TC_rate_range[2] / 100)
+    paired$log10_rate <- stats::runif(nrow(paired),
+                                       min = log10_low, max = log10_high)
+    paired$T_crit     <- paired$CTmax_temp + paired$z * paired$log10_rate
+
+    t_crit_draws <- tibble::tibble(.draw = paired$.draw,
+                                    temp = paired$T_crit,
+                                    log10_rate = paired$log10_rate)
+    q <- stats::quantile(t_crit_draws$temp,
+                         c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+    t_crit_summary <- tibble::tibble(
+      TC_rate_low  = TC_rate_range[1],
+      TC_rate_high = TC_rate_range[2],
+      temp_lower   = q[1],
+      temp_median  = q[2],
+      temp_upper   = q[3]
+    )
+    t_crit_block <- list(draws = t_crit_draws, summary = t_crit_summary)
+  }
 
   list(
     z          = list(draws   = z_ctmax$draws |> dplyr::select(.draw, z),
@@ -336,11 +364,11 @@ extract_tdt <- function(workflow,
                         dplyr::select(z_median, z_lower, z_upper)),
     CTmax      = list(draws   = ctmax$draws,
                       summary = ctmax$summary),
-    T_crit     = list(draws   = t_crit_draws,
-                      summary = t_crit_summary),
+    T_crit     = t_crit_block,
     lt50_curve = lt50_curve,
     meta       = list(t_ref            = t_ref,
                       TC_rate_range    = TC_rate_range,
+                      lethal           = isTRUE(lethal),
                       output_time_unit = output_time_unit)
   )
 }

@@ -179,7 +179,7 @@ tdt_function_tour <- tibble::tribble(
   "TDT quantities",   "derive_ltx_curve()",                 "Time-to-x-survival across temperature (per-draw inversion).",
   "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at survival = X for a fixed exposure duration.",
   "TDT quantities",   "derive_tdt_parameters()",            "Per-draw log-linear regression of LT_x on temperature; z + CTmax.",
-  "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z, CTmax, T_crit posteriors in one call.",
+  "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only).",
   "Heat injury",      "make_temperature_scenarios()",       "Three reference traces (flat / single spike / multi-spike).",
   "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
   "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace.",
@@ -641,11 +641,11 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 ### *Deriving $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the posterior* {#sec-joint-derive}
 
-The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities fall out as transformations of the posterior we just fit — no second regression, no bootstrap. `extract_tdt()` bundles three of them:
+The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities fall out as transformations of the posterior we just fit — no second regression, no bootstrap. `extract_tdt()` always returns the first two and, opt-in via `lethal = TRUE`, also returns the third:
 
 - **$z$** — thermal sensitivity, derived by a per-draw log-linear regression of $\log_{10}\text{LT50}$ on temperature (Equation 7 of the manuscript).
 - **$CT_{max_{1hr}}$** — temperature at 50% survival after 1 hour exposure, obtained by inverting the fitted 4PL at the reference time, per posterior draw.
-- **$T_{crit}$** — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
+- **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
 
 $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
@@ -653,7 +653,15 @@ $$ {#eq-tcrit}
 
 Different $r^*$ values give different $T_{crit}$ thresholds, and the literature does not converge on a single value. Empirical breakpoint analyses across taxa as different as *Drosophila suzukii* and *Lemna gibba* fall in the range $r^* \in [0.1, 1]$ % HI per hour, corresponding to "$\sim 4$ days to 1000 hours of continuous exposure to reach $LT_{50}$" [@jorgensen_unifying_2021; @arnold_thermal_2025; @faber2026]. Rather than commit to one $r^*$, we treat it as an unknown with a uniform prior on $\log_{10} r^*$ over that range and integrate; the posterior of $T_{crit}$ then carries both parameter uncertainty (in $CT_{max,1hr}$ and $z$) and operational uncertainty (in the choice of $r^*$). The median of that pooled posterior sits at $CT_{max,1hr} - 2.5 \cdot z$, which corresponds to $r^* \approx 0.3$ % HI per hour (the geometric mean of the rate range).
 
-All three quantities inherit the same posterior, so every credible interval reflects joint uncertainty in $(\ell, u, k, \beta_0, \beta_1)$.
+::: {.callout-warning}
+## $T_{crit}$ is meaningful only for lethal-endpoint data
+
+The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the slope of *damage accumulation* on temperature — strictly a property of lethal-endpoint dose-response data (proportion survival, knock-out counts where the endpoint is irreversible). For **sublethal** endpoints — knockdown time, photosystem-II decline, performance drop — the fitted $z$ instead measures the slope of *performance reduction* with temperature, which is typically far steeper than its damage-accumulation analogue. Plugging a sublethal $z$ into Equation @eq-tcrit pushes $T_{crit}$ implausibly low (the supplement's sublethal shrimp example demonstrates this: a sublethal $z \approx 1$ °C yields a $T_{crit}$ that would predict lethal exposures within ~2 hours at temperatures well within the organism's ecological range). Field practice treats $T_{crit}$ as the breakpoint where the thermal-performance curve and the thermal-death-time curve intersect [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026], which requires *both* lethal and sublethal data — not just one.
+
+`extract_tdt()` reflects this by making $T_{crit}$ **opt-in**: the default `lethal = FALSE` returns only $z$ and $CT_{max_{1hr}}$, and users with lethal-endpoint data set `lethal = TRUE` to additionally derive $T_{crit}$. When `lethal = TRUE`, a one-line console message reiterates the lethal-only validity of the quantity.
+:::
+
+The two always-returned quantities inherit the same posterior, so every credible interval reflects joint uncertainty in $(\ell, u, k, \beta_0, \beta_1)$. The opt-in $T_{crit}$ pools that same posterior with the additional uniform prior on $\log_{10} r^*$.
 
 ::: {.callout-note}
 
@@ -672,10 +680,14 @@ $$ {#eq-lt50-tvarying}
 
 # Data are in minutes (standardize_data was called with duration_unit = "minutes"),
 # so set time_multiplier = 1 to keep the model's time axis unchanged on output,
-# and t_ref = 60 to read CTmax at the 1-hour reference. T_crit uses the
-# rate-multiplier integration; default TC_rate_range = c(0.1, 1) % HI per hour.
-et_bin <- extract_tdt(wf_bin, t_ref = 60, time_multiplier = 1, ndraws = 1000)
-et_bb  <- extract_tdt(wf_bb,  t_ref = 60, time_multiplier = 1, ndraws = 1000)
+# and t_ref = 60 to read CTmax at the 1-hour reference. The simulated data are
+# binomial / beta-binomial *lethal* survival counts, so we opt into T_crit via
+# the rate-multiplier integration (lethal = TRUE; default TC_rate_range =
+# c(0.1, 1) % HI per hour). See the next paragraph for why T_crit is opt-in.
+et_bin <- extract_tdt(wf_bin, t_ref = 60, time_multiplier = 1,
+                      ndraws = 1000, lethal = TRUE)
+et_bb  <- extract_tdt(wf_bb,  t_ref = 60, time_multiplier = 1,
+                      ndraws = 1000, lethal = TRUE)
 ```
 
 ```{r tls-recovery-table}
@@ -1090,7 +1102,8 @@ Now we apply the same `extract_tdt()` call as in @sec-joint-derive — there is 
 #| label: extract-tdt-ext
 #| echo: true
 
-et_ext <- extract_tdt(wf_ext, t_ref = 60, time_multiplier = 1, ndraws = 1000)
+et_ext <- extract_tdt(wf_ext, t_ref = 60, time_multiplier = 1,
+                      ndraws = 1000, lethal = TRUE)
 ```
 
 @tbl-extract-ext compares the three classical TDT quantities from `extract_tdt()` to the analytical truth derived above.
@@ -1503,7 +1516,7 @@ plot_tdt_landscape(lsp_shrimp, observed = shrimp_std)
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-shrimp-extract}
 
-`extract_tdt()` bundles z (from per-draw log-linear regression of the LT50 curve), $CT_{max_{1hr}}$ (4PL inversion at the 60-minute reference for 50% survival), and $T_{crit}$ (the rate-multiplier damage-threshold, integrated over $r^* \in [0.1, 1]$ % HI per hour — see @eq-tcrit) in a single call. Every output inherits the model's posterior, so all three quantities come with calibrated credible intervals.
+`extract_tdt()` returns $z$ (from per-draw log-linear regression of the LT50 curve) and $CT_{max_{1hr}}$ (4PL inversion at the 60-minute reference for 50% survival) by default; passing `lethal = TRUE` additionally returns $T_{crit}$ (the rate-multiplier damage-threshold, integrated over $r^* \in [0.1, 1]$ % HI per hour — see @eq-tcrit). The shrimp lethal-TDT dataset measures mortality counts, so we opt in to $T_{crit}$ here. Every output inherits the model's posterior, so all three quantities come with calibrated credible intervals.
 
 ```{r shrimp-extract}
 #| label: shrimp-extract
@@ -1513,7 +1526,8 @@ et_shrimp <- extract_tdt(
   wf_shrimp,
   t_ref         = 60,            # CTmax defined at 1-hour exposure
   TC_rate_range = c(0.1, 1),     # T_crit integrated over r* in % HI/hr
-  ndraws        = 500
+  ndraws        = 500,
+  lethal        = TRUE           # mortality counts ⇒ opt-in to T_crit
 )
 ```
 
@@ -1931,6 +1945,10 @@ The 4PL aggregation pools cups within each $(\text{date} \times \text{tank} \tim
 #| label: shrimp-sublethal-4pl-extract
 #| echo: true
 
+# Sublethal endpoint (knockdown): leave `lethal = FALSE` so that T_crit is
+# not derived. The fitted z for knockdown data measures performance-reduction
+# slope rather than damage-accumulation slope, and the two are not
+# interchangeable — see the warning callout in @sec-joint-derive.
 et_sub_4pl <- extract_tdt(
   wf_sub_4pl,
   t_ref           = 60,
@@ -1941,13 +1959,12 @@ et_sub_4pl <- extract_tdt(
 
 ```{r shrimp-sublethal-4pl-table}
 #| label: tbl-shrimp-sub-4pl
-#| tbl-cap: "Posterior summaries from the joint Bayesian 4PL on proportion-knocked-down data: $z$, $CT_{max_{1hr}}$, and $T_{crit}$ ($r^* \\in [0.1, 1]$ % HI per hour)."
+#| tbl-cap: "Posterior summaries from the joint Bayesian 4PL on proportion-knocked-down data: $z$ and $CT_{max_{1hr}}$. $T_{crit}$ is not reported for sublethal endpoints (see @sec-joint-derive)."
 
 tibble::tribble(
-  ~Quantity,                              ~Median,                              ~Lower,                            ~Upper,
-  "z (°C)",                               et_sub_4pl$z$summary$z_median,        et_sub_4pl$z$summary$z_lower,      et_sub_4pl$z$summary$z_upper,
-  "CTmax at 1 hr (°C)",                   et_sub_4pl$CTmax$summary$temp_median, et_sub_4pl$CTmax$summary$temp_lower, et_sub_4pl$CTmax$summary$temp_upper,
-  "T_crit (°C)",                          et_sub_4pl$T_crit$summary$temp_median, et_sub_4pl$T_crit$summary$temp_lower, et_sub_4pl$T_crit$summary$temp_upper
+  ~Quantity,             ~Median,                              ~Lower,                              ~Upper,
+  "z (°C)",              et_sub_4pl$z$summary$z_median,        et_sub_4pl$z$summary$z_lower,        et_sub_4pl$z$summary$z_upper,
+  "CTmax at 1 hr (°C)",  et_sub_4pl$CTmax$summary$temp_median, et_sub_4pl$CTmax$summary$temp_lower, et_sub_4pl$CTmax$summary$temp_upper
 ) |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
@@ -2055,7 +2072,7 @@ compare_sub <- tibble::tibble(
 tinytable::tt(compare_sub, digits = 3, escape = TRUE)
 ```
 
-The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}}$ on this dataset (medians within their mutual credible intervals; see @tbl-shrimp-sub-compare). The 4PL on proportion-knocked-down data has the practical advantage that the *same* `extract_tdt()` workflow used for the lethal counts also returns a posterior of $T_{crit}$ for free — a quantity the linear time-to-event model does not produce directly.
+The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}}$ on this dataset (medians within their mutual credible intervals; see @tbl-shrimp-sub-compare). The 4PL on proportion-knocked-down data has the practical advantage that the *same* `extract_tdt()` workflow used for the lethal counts produces a posterior $\log_{10}\text{LT50}(T)$ curve and a posterior $CT_{max_{1hr}}$ — quantities the linear time-to-event model does not produce directly. $T_{crit}$, however, is not derived from the sublethal fit: as discussed in @sec-joint-derive, the rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as a damage-accumulation slope, which the sublethal $z$ is not. The empirical estimate of $T_{crit}$ for shrimp instead comes from the lethal-TDT fit in @sec-shrimp-extract, where the rate-multiplier interpretation is meaningful.
 
 ### A caution on cross-endpoint comparison of $T_{crit}$ {#sec-shrimp-tcrit-endpoint-caveat}
 

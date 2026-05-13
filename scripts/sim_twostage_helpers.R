@@ -259,8 +259,11 @@ fit_joint_4pl_sim <- function(data,
                 draws = NULL))
   }
 
+  # The bias simulation generates beta-binomial *lethal* data, so opt into
+  # the rate-multiplier T_crit for the joint-4PL summary.
   et <- tryCatch(
-    extract_tdt(wf, t_ref = 60, time_multiplier = 1, ndraws = ndraws),
+    suppressMessages(extract_tdt(wf, t_ref = 60, time_multiplier = 1,
+                                  ndraws = ndraws, lethal = TRUE)),
     error = function(e) e
   )
   if (inherits(et, "error")) {

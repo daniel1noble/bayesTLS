@@ -2,7 +2,7 @@
 % Please edit documentation in R/extract_tdt.R
 \name{extract_tdt}
 \alias{extract_tdt}
-\title{Extract classical TDT quantities from a fitted 4PL: z, CTmax, T_crit}
+\title{Extract classical TDT quantities from a fitted 4PL: z, CTmax (optional T_crit)}
 \usage{
 extract_tdt(
   workflow,
@@ -12,7 +12,8 @@ extract_tdt(
   duration_grid = NULL,
   ndraws = 1000,
   time_multiplier = 60,
-  output_time_unit = "min"
+  output_time_unit = "min",
+  lethal = FALSE
 )
 }
 \arguments{
@@ -22,9 +23,10 @@ extract_tdt(
 \code{output_time_unit} (default \code{"min"}). Default 60.}
 
 \item{TC_rate_range}{Numeric length-2: HI-rate floor range, in \% LT50-dose
-per hour, used to derive T_crit. Default \code{c(0.1, 1)}.
-Sampled uniformly on \code{log10(r/100)}, which is the natural
-scale for a rate threshold.}
+per hour, used to derive T_crit (only when
+\code{lethal = TRUE}). Default \code{c(0.1, 1)}. Sampled uniformly
+on \code{log10(r/100)}, which is the natural scale for a
+rate threshold.}
 
 \item{temp_grid}{Numeric vector of temperatures to search over. Default:
 a fine grid spanning the training-data temperature range
@@ -40,19 +42,26 @@ training-data duration range.}
 Default 60 (so hour-scale data → minute-scale outputs).}
 
 \item{output_time_unit}{Label for the output time unit. Default \code{"min"}.}
+
+\item{lethal}{Logical. When \code{TRUE}, also returns the rate-multiplier
+T_crit and emits a one-line reminder that T_crit is
+valid only for damage-accumulation (lethal) endpoints.
+Default \code{FALSE}.}
 }
 \value{
 A list with elements:
 \itemize{
 \item \code{z}: list with \code{draws} (per-draw z, slope, intercept, R²) and \code{summary}.
 \item \code{CTmax}: list with \code{draws} (per-draw temperature) and \code{summary}.
-\item \code{T_crit}: list with \code{draws} and \code{summary}.
+\item \code{T_crit}: list with \code{draws} and \code{summary} when \code{lethal = TRUE};
+\code{NULL} otherwise.
 \item \code{lt50_curve}: output of \code{\link[=derive_ltx_curve]{derive_ltx_curve()}} (intermediate).
-\item \code{meta}: list of inputs used (\code{t_ref}, \code{TC_rate_range}, \code{output_time_unit}).
+\item \code{meta}: list of inputs used (\code{t_ref}, \code{TC_rate_range}, \code{lethal},
+\code{output_time_unit}).
 }
 }
 \description{
-Bundles the three classical TDT summaries with full posterior uncertainty:
+Always returns:
 }
 \details{
 \itemize{
@@ -61,27 +70,39 @@ Bundles the three classical TDT summaries with full posterior uncertainty:
 \item \strong{CTmax} — temperature at which survival = 0.5 after \code{t_ref} exposure;
 the temperature where the LT_50 curve crosses \code{t_ref}. Computed by
 inverting the 4PL surface at fixed exposure duration.
-\item \strong{T_crit} — the temperature below which the TDT-line damage rate falls
-beneath an empirically motivated floor \verb{r*} (\% HI per hour). For each
-posterior draw, \verb{T_crit = CTmax + z * log10(r* / 100)}, with \verb{r*} drawn
-uniformly on the log10 scale across \code{TC_rate_range}. The pooled posterior
-thus carries both parameter uncertainty (in CTmax and z) and operational
-uncertainty in the choice of damage-rate floor. The default range
-\code{c(0.1, 1)} \% HI per hour brackets the empirical breakpoints found by
-Faber et al. (2026) and Jørgensen et al. (2021) across taxa as different
-as \emph{Drosophila suzukii} and \emph{Lemna gibba}.
 }
 
-All three quantities inherit the same posterior — no extra fitting step.
+When \code{lethal = TRUE} it \emph{also} returns \strong{T_crit}, the rate-multiplier
+critical temperature: for each posterior draw,
+\verb{T_crit = CTmax + z * log10(r* / 100)}, with \verb{r*} drawn uniformly on the
+\code{log10} scale across \code{TC_rate_range}. The pooled posterior thus carries
+both parameter uncertainty (in \code{CTmax} and \code{z}) and operational uncertainty
+in the choice of damage-rate floor. The default range \code{c(0.1, 1)} \%
+HI per hour brackets the empirical breakpoints found by Faber et al. (2026)
+and Jørgensen et al. (2021) across taxa as different as \emph{Drosophila suzukii}
+and \emph{Lemna gibba}.
+
+T_crit only makes physical sense for \strong{lethal-endpoint} data — proportion-
+or count-based survival under a damage-accumulation interpretation. For
+sublethal endpoints (knockdown time, photosystem-II failure, etc.) the
+fitted \code{z} measures the rate of \emph{performance reduction} rather than damage
+accumulation, and the two are not interchangeable: sublethal \code{z} is
+typically far steeper, which in turn pushes the rate-multiplier \code{T_crit}
+implausibly low. Setting \code{lethal = FALSE} (the default) suppresses \code{T_crit}
+to avoid that pitfall; users with lethal data opt in by passing
+\code{lethal = TRUE} and are reminded by a startup message.
 }
 \examples{
 \dontrun{
 wf  <- fit_4pl(d, ...)
-out <- extract_tdt(wf)
+out <- extract_tdt(wf)                  # z + CTmax only
 out$z$summary
 out$CTmax$summary
-out$T_crit$summary
+
+# Lethal-endpoint data — opt in to T_crit:
+out2 <- extract_tdt(wf, lethal = TRUE)
+out2$T_crit$summary
 # Feed the T_crit posterior median into predict_heat_injury():
-hi <- predict_heat_injury(trace, wf, T_c = out$T_crit$summary$temp_median)
+hi <- predict_heat_injury(trace, wf, T_c = out2$T_crit$summary$temp_median)
 }
 }

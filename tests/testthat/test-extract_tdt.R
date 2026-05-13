@@ -1,8 +1,9 @@
 # Gated brms integration test: fits a small cached model and asserts that
-# extract_tdt() recovers z, CTmax_1hr, and T_crit within tolerance of truth.
-# Set RUN_BRMS_TESTS=true to enable. Without that, the file becomes a no-op.
+# extract_tdt() recovers z and CTmax_1hr within tolerance of truth, and that
+# `lethal = TRUE` returns a sensible T_crit. Set RUN_BRMS_TESTS=true to
+# enable. Without that, the file becomes a no-op.
 
-test_that("extract_tdt recovers z, CTmax_1hr, and T_crit from simulated truth", {
+test_that("extract_tdt recovers z and CTmax_1hr from simulated truth", {
   skip_unless_brms()
 
   wf      <- load_fixture_workflow()
@@ -20,6 +21,23 @@ test_that("extract_tdt recovers z, CTmax_1hr, and T_crit from simulated truth", 
   expect_gte(out$z$summary$z_upper,         ts$z)
   expect_lte(out$CTmax$summary$temp_lower,  ts$CTmax_1hr)
   expect_gte(out$CTmax$summary$temp_upper,  ts$CTmax_1hr)
+
+  # T_crit is opt-in via `lethal = TRUE` and must be NULL otherwise.
+  expect_null(out$T_crit)
+  expect_false(out$meta$lethal)
+})
+
+test_that("extract_tdt with lethal = TRUE returns a sensible T_crit", {
+  skip_unless_brms()
+
+  wf  <- load_fixture_workflow()
+  ts  <- truth_summary()
+  out <- suppressMessages(
+    extract_tdt(wf, t_ref = 60, ndraws = 500, lethal = TRUE)
+  )
+
+  expect_true(!is.null(out$T_crit))
+  expect_true(out$meta$lethal)
 
   # T_crit (rate-multiplier-based) sits below CTmax by 2-3 z; with default
   # TC_rate_range = c(0.1, 1) the median is at CTmax - 2.5 * z (geometric mean
