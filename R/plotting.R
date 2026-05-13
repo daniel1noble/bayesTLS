@@ -51,7 +51,7 @@ plot_survival_curves <- function(pred, observed = NULL) {
     ggplot2::scale_x_log10() +
     ggplot2::scale_y_continuous(limits = c(0, 1)) +
     ggplot2::labs(x = "Exposure duration", y = "Survival probability",
-                  colour = "Temperature (°C)", fill = "Temperature (°C)") +
+                  colour = "Temperature (\u00b0C)", fill = "Temperature (\u00b0C)") +
     theme_tdt()
 
   if (!is.null(observed)) {
@@ -88,7 +88,7 @@ plot_ltx_curve <- function(ltx) {
                          fill = "#146C7C", alpha = 0.2) +
     ggplot2::geom_line(colour = "#146C7C", linewidth = 1) +
     ggplot2::scale_y_log10() +
-    ggplot2::labs(x = "Assay temperature (°C)",
+    ggplot2::labs(x = "Assay temperature (\u00b0C)",
                   y = paste0("Time to ", target_lab, " (",
                              ltx$output_time_unit, ")")) +
     theme_tdt()
@@ -118,7 +118,7 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
                           colour = "white", alpha = 0.7) +
     ggplot2::scale_fill_viridis_c(limits = c(0, 1), option = "inferno") +
     ggplot2::scale_y_log10() +
-    ggplot2::labs(x = "Temperature (°C)",
+    ggplot2::labs(x = "Temperature (\u00b0C)",
                   y = "Exposure duration",
                   fill = "Survival") +
     theme_tdt()
@@ -145,7 +145,7 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
 #'                   with `$draws` and `$summary` from [extract_tdt()].
 #' @param truth      Optional numeric scalar: a true value to mark with a
 #'                   dashed vertical line.
-#' @param x_label    X-axis label. Default `"Temperature (°C)"`.
+#' @param x_label    X-axis label. Default `"Temperature (degC)"`.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -155,7 +155,7 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
 #' }
 #' @export
 plot_temperature_density <- function(temp_post, truth = NULL,
-                                     x_label = "Temperature (°C)") {
+                                     x_label = "Temperature (\u00b0C)") {
   draws <- temp_post$draws |> dplyr::filter(is.finite(temp))
   d     <- stats::density(draws$temp, na.rm = TRUE)
   y_ci  <- -max(d$y, na.rm = TRUE) * 0.1
@@ -208,7 +208,7 @@ plot_temperature_scenarios <- function(scens, T_c = NULL) {
   p <- ggplot2::ggplot(df, ggplot2::aes(x = time_h, y = temp)) +
     ggplot2::geom_line(linewidth = 0.7, colour = "#146C7C") +
     ggplot2::facet_wrap(~ scenario, ncol = 1) +
-    ggplot2::labs(x = "Time (hours)", y = "Temperature (°C)") +
+    ggplot2::labs(x = "Time (hours)", y = "Temperature (\u00b0C)") +
     theme_tdt()
 
   if (!is.null(T_c)) {
@@ -263,7 +263,7 @@ plot_heat_injury <- function(hi, lt50_threshold = 100) {
 
 #' Plot a Sharpe-Schoolfield repair TPC
 #'
-#' @param temp_grid   Numeric vector of temperatures (°C) to evaluate.
+#' @param temp_grid   Numeric vector of temperatures (degC) to evaluate.
 #' @param repair_pars Named list of Sharpe-Schoolfield parameters
 #'                    (`TA, TAL, TAH, TL, TH, TREF, r_ref`).
 #' @return A ggplot object.
@@ -285,7 +285,7 @@ plot_repair_rate <- function(temp_grid, repair_pars) {
 
   ggplot2::ggplot(df, ggplot2::aes(x = temp, y = repair_rate)) +
     ggplot2::geom_line(linewidth = 1, colour = "#4DAC26") +
-    ggplot2::labs(x = "Temperature (°C)",
+    ggplot2::labs(x = "Temperature (\u00b0C)",
                   y = "Repair rate (per hour)") +
     theme_tdt()
 }

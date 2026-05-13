@@ -90,6 +90,6 @@ tdt_parameter_table <- function(workflow) {
     summary_row(draws$k,        "k (slope)"),
     summary_row(draws$mid_int,  "mid intercept (at T_bar)"),
     summary_row(draws$mid_temp, "mid temp_c slope"),
-    summary_row(draws$z,        "z (°C)")
+    summary_row(draws$z,        "z (\u00b0C)")
   )
 }

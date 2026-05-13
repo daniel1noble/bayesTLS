@@ -1,7 +1,7 @@
 #' Sharpe-Schoolfield thermal performance curve for repair rate
 #'
 #' Computes a temperature-dependent repair rate using the Sharpe-Schoolfield
-#' formulation [@sharpe_schoolfield_1981]. All Arrhenius temperatures inside
+#' formulation (Sharpe & Schoolfield, 1981). All Arrhenius temperatures inside
 #' this function are in Kelvin; the user-facing `temp_celsius` argument is in
 #' degrees Celsius and converted internally.
 #'

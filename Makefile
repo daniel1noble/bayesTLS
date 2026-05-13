@@ -37,13 +37,17 @@ BUILD_MS  := $(BUILDROOT)/ms
 
 all: ms supp
 
-# Sync sources to BUILDROOT. `bib/`, `output/`, and `R/` are symlinked from
+# Sync sources to BUILDROOT. `bib/`, `output/`, and `data/` are symlinked from
 # the project so that:
 #   - qmd files using `../bib/...` YAML paths resolve to BUILDROOT/bib
 #   - `here::here("output", "models")` from chunks evaluated in BUILD_MS
 #     resolves to the project's `output/models/` (brms-cached fits)
-#   - `here::here("R", ...)` in the supplement's source_all chunk finds the
-#     function library files.
+#   - `here::here("data", ...)` resolves to the project's `data/` (shrimp xlsx)
+#
+# R/ symlinks are intentionally NOT created here: the analytical functions
+# now live in the bayesTLS R package, which the supplement loads via
+# `library(bayesTLS)`. Install the package once before rendering:
+#   remotes::install_github("daniel1noble/tls_model_equivalence")
 #
 # Symlinks at BUILDROOT serve the YAML `../bib/...` style; symlinks at
 # BUILD_MS serve `here::here(...)` (which detects no project root in the
@@ -57,11 +61,9 @@ sync-sources:
 	  ms/ $(BUILD_MS)/
 	@ln -sfn $(abspath bib)    $(BUILDROOT)/bib
 	@ln -sfn $(abspath output) $(BUILDROOT)/output
-	@ln -sfn $(abspath R)      $(BUILDROOT)/R
 	@ln -sfn $(abspath data)   $(BUILDROOT)/data
 	@ln -sfn $(abspath bib)    $(BUILD_MS)/bib
 	@ln -sfn $(abspath output) $(BUILD_MS)/output
-	@ln -sfn $(abspath R)      $(BUILD_MS)/R
 	@ln -sfn $(abspath data)   $(BUILD_MS)/data
 
 # Render <source.qmd> to <format> with output filename <basename.ext>.

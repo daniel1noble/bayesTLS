@@ -83,7 +83,7 @@ time_to_surv_threshold_4pl <- function(temp, survival_target,
 #' on the reference dose-response curve.
 #'
 #' @param dose Numeric vector of cumulative doses (in units where 1 dose =
-#'             1 × LT_{target_surv}).
+#'             1 LT-dose at target_surv).
 #' @param low,up,k 4PL parameters at the reference (centring) temperature.
 #' @param target_surv Survival probability that defines "1 dose". Default 0.5.
 #' @return Numeric vector of predicted survival probabilities.
@@ -100,7 +100,7 @@ survival_from_dose <- function(dose, low, up, k, target_surv = 0.5) {
 #' accumulation integration along the supplied temperature trace, returning
 #' the posterior median and 95% credible band of:
 #'
-#' - **HI(t)** — cumulative heat injury, in % of an LT_{target_surv} dose.
+#' - **HI(t)** — cumulative heat injury, in percent of an LT_target_surv dose.
 #'   When `HI(t) = 100`, the population has accumulated one full dose at the
 #'   chosen survival threshold (default 50% mortality).
 #' - **S(t)** — predicted survival fraction, mapped from the cumulative dose

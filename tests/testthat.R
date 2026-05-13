@@ -1,6 +1,8 @@
-# Entry point for `testthat::test_dir()`.
+# Standard testthat entry point. R CMD check / devtools::test() /
+# devtools::check() all run this file. test_check() auto-discovers
+# test-*.R files inside tests/testthat/.
 #
-# Run from the project root:
+# To run from the project root in a plain R session:
 #   testthat::test_dir("tests/testthat")
 #
 # Set RUN_BRMS_TESTS=true in the environment to enable the brms-fitting
@@ -8,4 +10,5 @@
 # runs in seconds.
 
 library(testthat)
-testthat::test_dir("tests/testthat")
+library(bayesTLS)
+test_check("bayesTLS")
