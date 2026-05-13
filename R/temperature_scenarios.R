@@ -7,9 +7,9 @@
 # Use planted_dose_from_trace() to compute the analytical truth given any trace
 # and any (z, CTmax_1hr, T_c) triple.
 
-#' Build three reference temperature traces for heat-injury validation
+#' Build reference temperature traces for heat-injury validation
 #'
-#' Returns a list of three tibbles, each with columns `time_h` and `temp`,
+#' Returns a list of four tibbles, each with columns `time_h` and `temp`,
 #' representing the canonical validation scenarios:
 #'
 #' - `flat` — constant `baseline` temperature for `n_hours` hours.
@@ -17,12 +17,15 @@
 #'    each of `spike_times_single` (default one spike).
 #' - `multi_spike` — flat baseline with one hour at `spike_temp` placed at
 #'    each of `spike_times_multi` (default three spikes).
+#' - `diurnal` — multi-day diurnal cycle with day-to-day variation in peak
+#'    temperature and small hourly fluctuations on top. Useful as a stand-in
+#'    for a natural thermal regime where some days exceed `T_crit` and accrue
+#'    injury while others stay below.
 #'
-#' The defaults are deliberately calibrated so that, given typical TDT
-#' parameters (`z = 5 °C`, `CTmax_1hr = 32 °C`), each `single_spike` delivers
-#' a sub-lethal but visible dose, and `multi_spike` accumulates enough to
-#' approach an LT50 dose. Pass [planted_dose_from_trace()] the same trace plus
-#' known parameters to compute the analytical expected HI.
+#' For a single 1-hour spike, the analytical dose is
+#' \eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}} % LT50-dose. Setting
+#' `spike_temp = CTmax_1hr` therefore delivers ~100% LT50-dose per spike — a
+#' calibration target for `predict_heat_injury()` validation.
 #'
 #' @param baseline    Numeric. Constant baseline temperature (°C). Default 20.
 #' @param spike_temp  Numeric. Temperature of each one-hour spike (°C).
@@ -33,19 +36,49 @@
 #'                    trace has a spike. Default `24`.
 #' @param spike_times_multi  Integer vector. Hours at which the multi-spike
 #'                    trace has a spike. Default `c(24, 48, 72)`.
-#' @return A named list of three tibbles (`flat`, `single_spike`,
-#'         `multi_spike`), each with columns `time_h` (numeric, hours from
-#'         start) and `temp` (°C).
+#' @param diurnal_n_days   Integer. Number of days in the diurnal scenario.
+#'                    Default 7.
+#' @param diurnal_night_temp Numeric. Night-time baseline temperature (°C) in
+#'                    the diurnal scenario. Default `baseline`.
+#' @param diurnal_day_peaks  Numeric vector of length `diurnal_n_days` (or
+#'                    length 1, recycled): the peak temperature each day reaches
+#'                    near 14:00. If `NULL` (default) the function alternates
+#'                    cool (`baseline + 5`) and warm (`baseline + 8`) days so
+#'                    some days accrue HI and others do not.
+#' @param diurnal_peak_fwhm Numeric. Full-width-half-maximum of the daily
+#'                    Gaussian temperature peak, in hours. Default 6 (≈ 4-5
+#'                    hours near the daily peak).
+#' @param diurnal_noise_sd Numeric. Standard deviation (°C) of smooth hourly
+#'                    fluctuations added on top of the diurnal cycle.
+#'                    Default 0.3.
+#' @param diurnal_seed Integer. Seed for the hourly-noise RNG so the diurnal
+#'                    trace is reproducible. Default 1L.
+#' @return A named list of four tibbles (`flat`, `single_spike`, `multi_spike`,
+#'         `diurnal`), each with columns `time_h` (numeric, hours from start)
+#'         and `temp` (°C).
 #' @examples
 #' scens <- make_temperature_scenarios()
 #' lapply(scens, head)
+#' # Diurnal calibrated for a shrimp-like organism (T_crit ~ 25 °C):
+#' make_temperature_scenarios(
+#'   baseline = 18,
+#'   diurnal_n_days = 7,
+#'   diurnal_night_temp = 19,
+#'   diurnal_day_peaks  = c(24, 27, 24.5, 27.5, 23, 26.5, 25.5)
+#' )$diurnal
 #' @export
 make_temperature_scenarios <- function(baseline    = 20,
                                        spike_temp  = 30,
                                        n_hours     = 96,
                                        dt_hours    = 1,
                                        spike_times_single = 24,
-                                       spike_times_multi  = c(24, 48, 72)) {
+                                       spike_times_multi  = c(24, 48, 72),
+                                       diurnal_n_days     = 7,
+                                       diurnal_night_temp = baseline,
+                                       diurnal_day_peaks  = NULL,
+                                       diurnal_peak_fwhm  = 6,
+                                       diurnal_noise_sd   = 0.3,
+                                       diurnal_seed       = 1L) {
 
   time_h  <- seq(0, n_hours - dt_hours, by = dt_hours)
   base    <- tibble::tibble(time_h = time_h, temp = baseline)
@@ -61,10 +94,48 @@ make_temperature_scenarios <- function(baseline    = 20,
     out
   }
 
+  # ----- diurnal scenario -------------------------------------------------
+  diurnal_t_h <- seq(0, diurnal_n_days * 24 - dt_hours, by = dt_hours)
+  hour_of_day <- diurnal_t_h %% 24
+  day_index   <- floor(diurnal_t_h / 24) + 1L
+
+  if (is.null(diurnal_day_peaks)) {
+    diurnal_day_peaks <- rep(c(baseline + 5, baseline + 8),
+                              length.out = diurnal_n_days)
+  } else if (length(diurnal_day_peaks) == 1L) {
+    diurnal_day_peaks <- rep(diurnal_day_peaks, diurnal_n_days)
+  } else if (length(diurnal_day_peaks) < diurnal_n_days) {
+    diurnal_day_peaks <- rep(diurnal_day_peaks, length.out = diurnal_n_days)
+  }
+
+  # Gaussian peak centred at 14:00 with the requested FWHM.
+  sigma         <- diurnal_peak_fwhm / 2.355
+  diurnal_shape <- exp(-((hour_of_day - 14)^2) / (2 * sigma^2))
+
+  peak_at_t <- diurnal_day_peaks[day_index]
+  diurnal_temp <- diurnal_night_temp +
+                  (peak_at_t - diurnal_night_temp) * diurnal_shape
+
+  # Smoothed hourly noise: random walk filtered with a length-3 moving average
+  # so adjacent hours have correlated, "consistent" fluctuations rather than
+  # white-noise jitter.
+  set.seed(diurnal_seed)
+  raw_noise   <- stats::rnorm(length(diurnal_t_h))
+  smoothed    <- stats::filter(raw_noise, c(1, 2, 1) / 4, sides = 2)
+  smoothed    <- as.numeric(smoothed)
+  smoothed[is.na(smoothed)] <- 0
+  if (stats::sd(smoothed) > 0) {
+    smoothed <- smoothed * (diurnal_noise_sd / stats::sd(smoothed))
+  }
+  diurnal_temp <- diurnal_temp + smoothed
+
+  diurnal <- tibble::tibble(time_h = diurnal_t_h, temp = diurnal_temp)
+
   list(
     flat         = flat,
     single_spike = apply_spikes(spike_times_single),
-    multi_spike  = apply_spikes(spike_times_multi)
+    multi_spike  = apply_spikes(spike_times_multi),
+    diurnal      = diurnal
   )
 }
 

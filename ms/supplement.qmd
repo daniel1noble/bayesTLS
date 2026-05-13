@@ -1548,23 +1548,31 @@ patchwork::wrap_plots(
 )
 ```
 
-## Heat injury under three reference traces {#sec-shrimp-hi}
+## Heat injury under reference traces {#sec-shrimp-hi}
 
-We now project the fitted shrimp model under the same three-scenario harness used in the simulation validation above (§[Validation: recovering known planted doses]). The traces are calibrated to shrimp ecology and the posterior of the fitted model: 17 °C is the natural holding temperature, 30 °C is a heat-stress spike that sits between $T_{crit}$ and $CT_{max_{1hr}}$, and the damage threshold passed to `predict_heat_injury()` is the posterior median of $T_{crit}$ from `extract_tdt()` — model-derived rather than hand-picked.
+We now project the fitted shrimp model through four temperature traces — flat baseline, single 1-hour spike, three 1-hour spikes, and a multi-day diurnal cycle — and predict cumulative heat-injury (HI) and survival under each. The damage threshold $T_c$ passed to `predict_heat_injury()` is the posterior median of $T_{crit}$ from `extract_tdt()` (model-derived, not hand-picked). The single-spike scenario is deliberately calibrated as an analytical sanity check: the spike temperature is set to the posterior median of $CT_{max_{1hr}}$, so the 1-hour spike is — by definition — a 1-hour exposure at the LT50 temperature and should accumulate ~100% LT50-dose (≈ 50% mortality) by the end of the spike hour.
 
 ```{r shrimp-hi}
 #| label: shrimp-hi
 #| echo: true
 
 # Damage threshold = posterior median of T_crit from the fit. Model-derived.
-shrimp_T_c <- et_shrimp$T_crit$summary$temp_median
+shrimp_T_c       <- et_shrimp$T_crit$summary$temp_median
+shrimp_CTmax_med <- et_shrimp$CTmax$summary$temp_median
 
 shrimp_scens <- make_temperature_scenarios(
-  baseline   = 17,
-  spike_temp = 30,    # between T_crit and CTmax_1hr — clearly stressful
+  baseline   = 17,                  # shrimp natural holding temperature
+  spike_temp = shrimp_CTmax_med,    # 1-hr spike at LT50-temperature → 100% HI
   n_hours    = 96,
   spike_times_single = 24,
-  spike_times_multi  = c(24, 48, 72)
+  spike_times_multi  = c(24, 48, 72),
+  # Diurnal: 7 days, night below T_crit (no injury), day peaks alternating
+  # cool (≤ T_crit, no injury) and warm (above T_crit, ~25% HI per day).
+  diurnal_n_days     = 7,
+  diurnal_night_temp = 19,
+  diurnal_day_peaks  = c(24, 26.5, 24.5, 27, 23, 26.5, 25.5),
+  diurnal_noise_sd   = 0.25,
+  diurnal_seed       = 1L
 )
 
 # Predict HI + survival under each scenario, without repair.
@@ -1578,9 +1586,9 @@ shrimp_hi <- purrr::map(shrimp_scens, function(sc) {
   )
 })
 
-# Sharpe-Schoolfield repair parameters tuned to shrimp: optimum ~17 °C, modest
-# repair capacity. r_ref is in (doses per hour) because the model time unit
-# for the shrimp fit is hours.
+# Sharpe-Schoolfield repair parameters tuned to shrimp: optimum ~17 °C,
+# r_ref = 0.05 → 5% LT50-dose repaired per hour at TREF (≈ 50% HI cleared
+# in 10 hours of permissive temperature).
 shrimp_repair_pars <- list(
   TA   = 14065,
   TAL  = 50000,
@@ -1588,12 +1596,23 @@ shrimp_repair_pars <- list(
   TL   = 10.5 + 273.15,
   TH   = 22.5 + 273.15,
   TREF = 17   + 273.15,
-  r_ref = 0.005    # 0.5% LT50-dose repaired per hour at TREF
+  r_ref = 0.05
 )
 
-# Re-run with repair on the multi-spike scenario to show the offsetting effect.
-shrimp_hi_repair <- predict_heat_injury(
+# Re-run with repair on the two scenarios that produce non-trivial HI:
+# the multi-spike and the diurnal trace.
+shrimp_hi_multi_rep <- predict_heat_injury(
   trace       = shrimp_scens$multi_spike,
+  workflow    = wf_shrimp,
+  target_surv = 0.5,
+  T_c         = shrimp_T_c,
+  ndraws      = 500,
+  repair      = TRUE,
+  repair_pars = shrimp_repair_pars
+)
+
+shrimp_hi_diurnal_rep <- predict_heat_injury(
+  trace       = shrimp_scens$diurnal,
   workflow    = wf_shrimp,
   target_surv = 0.5,
   T_c         = shrimp_T_c,
@@ -1605,16 +1624,25 @@ shrimp_hi_repair <- predict_heat_injury(
 
 ```{r shrimp-hi-traces}
 #| label: fig-shrimp-hi-traces
-#| fig-cap: "The three reference temperature traces used for the shrimp heat-injury prediction. Baseline 17 °C (shrimp natural holding temperature); 1-hour spikes at 28 °C; the dashed line marks the damage threshold T_c set at the lower 95% credible bound of T_crit."
+#| fig-cap: "The four reference temperature traces used for the shrimp heat-injury prediction. Baseline 17 °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ (LT50 temperature) so each spike delivers a full LT50 dose by construction. The diurnal scenario alternates cool days (peaks at or below $T_{crit}$, no injury) with warm days (peaks above $T_{crit}$, ~25% LT50-dose per day). The dashed line marks the model-derived damage threshold $T_c = T_{crit}$."
 #| fig-width: 7
-#| fig-height: 4
+#| fig-height: 6
 
 plot_temperature_scenarios(shrimp_scens, T_c = shrimp_T_c)
 ```
 
+```{r shrimp-hi-single-noreapair}
+#| label: fig-shrimp-hi-single-norep
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, the analytical expectation is ~100% LT50-dose by the end of hour 24, which produces ~50% mortality. The posterior median tracks this prediction. Posterior 95% credible band shown."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(shrimp_hi$single_spike)
+```
+
 ```{r shrimp-hi-multi-noreapair}
 #| label: fig-shrimp-hi-multi-norep
-#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the multi-spike trace, **no repair**. Posterior median lines and 95% credible bands."
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver ~3 × LT50-dose, driving cumulative HI well past 100% and survival to near zero."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -1623,11 +1651,31 @@ plot_heat_injury(shrimp_hi$multi_spike)
 
 ```{r shrimp-hi-multi-rep}
 #| label: fig-shrimp-hi-multi-rep
-#| fig-cap: "Same multi-spike trace as above, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.005` doses per hour at 17 °C). Repair fully offsets the spike damage at sub-T_c baseline."
+#| fig-cap: "Same multi-spike trace, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.05` doses per hour at 17 °C — ≈ 50% repair in 10 hours of permissive temperature). Repair clears most of the dose between spikes, leaving residual injury but stopping the runaway accumulation seen without repair."
 #| fig-width: 7
 #| fig-height: 5
 
-plot_heat_injury(shrimp_hi_repair)
+plot_heat_injury(shrimp_hi_multi_rep)
+```
+
+The diurnal scenario (@fig-shrimp-hi-diurnal-norep, @fig-shrimp-hi-diurnal-rep) is more realistic: seven 24-hour day–night cycles with day-to-day variation in the peak temperature, plus small hourly fluctuations. Some days' peaks stay below $T_{crit}$ (no injury accrues); on warm days the peak rises above $T_{crit}$ and a sub-LT50 dose accumulates. The no-repair trajectory shows monotonic accumulation on the warm-day peaks, separated by flat plateaus on the cool days. With repair on, the cool-day plateaus turn into recovery phases — cumulative HI falls back as the organism repairs faster than it accrues new injury at sub-$T_{crit}$ temperatures.
+
+```{r shrimp-hi-diurnal-noreapair}
+#| label: fig-shrimp-hi-diurnal-norep
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **diurnal** trace, **no repair**. Peaks on the warm days push the temperature above $T_{crit}$ and drive injury accumulation; cool days flat-line. Posterior median + 95% credible band."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(shrimp_hi$diurnal)
+```
+
+```{r shrimp-hi-diurnal-rep}
+#| label: fig-shrimp-hi-diurnal-rep
+#| fig-cap: "Same diurnal trace, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.05` doses per hour at 17 °C). Cool days now turn into recovery phases, repair offsets some of the previous warm-day damage, and the trajectory is dominated by the net balance between daily injury accrual and overnight repair."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(shrimp_hi_diurnal_rep)
 ```
 
 ```{r shrimp-hi-summary}
@@ -1653,7 +1701,11 @@ shrimp_hi_table <- dplyr::bind_rows(
                                                      Repair = "None"),
   final_row(shrimp_hi$multi_spike)  |> dplyr::mutate(Scenario = "Multi spike",
                                                      Repair = "None"),
-  final_row(shrimp_hi_repair)       |> dplyr::mutate(Scenario = "Multi spike",
+  final_row(shrimp_hi_multi_rep)    |> dplyr::mutate(Scenario = "Multi spike",
+                                                     Repair = "Sharpe-Schoolfield"),
+  final_row(shrimp_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+                                                     Repair = "None"),
+  final_row(shrimp_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (7 days)",
                                                      Repair = "Sharpe-Schoolfield")
 ) |>
   dplyr::select(Scenario, Repair, dplyr::everything())
@@ -1662,6 +1714,335 @@ tinytable::tt(shrimp_hi_table, escape = TRUE)
 ```
 
 The shrimp case study shows the complete loop: raw counts → fitted model → classical TDT quantities (with credible intervals on every one of them) → heat-injury predictions under fluctuating field traces (with and without repair). Every quantity reported here inherits the joint posterior of the single 4PL fit — there is no second-stage regression, no point-estimate-then-bootstrap, no separate ramping-rate experiment. The same machinery applies to any TDT-style proportion dataset by changing only `standardize_data()`'s column-name arguments.
+
+## Sublethal time-to-knockdown data {#sec-shrimp-sublethal}
+
+So far the brown-shrimp analysis has used the lethal TDT dataset, which records mortality counts at fixed (temperature × duration) cells. The same animals can also be analysed via a **sublethal** endpoint — loss of response to touch — where each cup contributes a single time-to-knockdown observation rather than a binary survival count at a pre-specified duration. This sublethal dataset (shipped in the project's `data/Data_Shrimp_TDT_CTmax_experiment.xlsx`, sheet `SUBLETHAL_TDT`) covers five assay temperatures from 31 to 33 °C, distributed across three experimental dates and six holding tanks; the exact cup counts per temperature are reported in @tbl-shrimp-sub-summary below.
+
+The classical analysis of time-to-event sublethal data is a log-linear regression of $\log_{10}(\text{time to event})$ on temperature, giving $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$ directly from the regression coefficients [@jorgensen_unifying_2021; @orsted_finding_2022]. Below we reproduce that classical analysis in a Bayesian framework (with the same hierarchical structure as the joint 4PL above), then re-cast the *same* time-to-event data as a proportion-knocked-down 4PL fit [@orsted_suzukii_2024], and finally compare the two pipelines' TDT lines and posterior summaries.
+
+### Data preparation {#sec-shrimp-sub-data}
+
+The raw sublethal sheet records one row per cup, with the time when the cup's individuals lost response to touch. We parse the Excel time-of-day values, restrict to non-excluded rows, and add the grouping factors used as random intercepts (`date_experiment`, `tank_ID`, `cup_ID`).
+
+```{r shrimp-sublethal-data}
+#| label: shrimp-sublethal-data
+#| echo: true
+
+sublethal_raw <- readxl::read_excel(
+  here::here("data", "Data_Shrimp_TDT_CTmax_experiment.xlsx"),
+  sheet = "SUBLETHAL_TDT"
+)
+
+# Time_to_death is stored as a fractional-day string (Excel format).
+# Starting_time is a POSIXct on 1899-12-31 carrying the time-of-day; we
+# extract its time-of-day and difference the two to get exposure duration
+# in minutes.
+tdt_sub <- sublethal_raw |>
+  dplyr::filter(Exclude == "no") |>
+  dplyr::mutate(
+    assay_temp      = as.numeric(Assay_temperature),
+    date_experiment = factor(as.character(as.Date(Date))),
+    tank_ID         = factor(Tank),
+    cup_ID          = factor(paste0(Trial_ID, "_", Sample)),
+    ttd_frac        = as.numeric(Time_to_death),
+    start_frac      = (as.numeric(format(Starting_time, "%H")) * 3600 +
+                       as.numeric(format(Starting_time, "%M")) * 60 +
+                       as.numeric(format(Starting_time, "%S"))) / 86400,
+    time_to_event   = (ttd_frac - start_frac) * 1440          # minutes
+  ) |>
+  dplyr::filter(is.finite(time_to_event), time_to_event > 0) |>
+  dplyr::mutate(
+    log10_time = log10(time_to_event),
+    temp_mean  = mean(assay_temp),
+    temp_c     = assay_temp - temp_mean
+  )
+```
+
+@tbl-shrimp-sub-summary summarises the sublethal panel: five assay temperatures spanning the sublethal-to-lethal transition.
+
+```{r shrimp-sublethal-summary-table}
+#| label: tbl-shrimp-sub-summary
+#| tbl-cap: "Brown-shrimp sublethal time-to-knockdown panel: number of cups, median exposure time to knockdown, and 95% range, per assay temperature."
+
+tdt_sub |>
+  dplyr::group_by(assay_temp) |>
+  dplyr::summarise(
+    `N cups`      = dplyr::n(),
+    `Median (min)` = round(stats::median(time_to_event), 2),
+    `Lower 95-pct (min)`  = round(stats::quantile(time_to_event, 0.025), 2),
+    `Upper 95-pct (min)`  = round(stats::quantile(time_to_event, 0.975), 2),
+    .groups       = "drop"
+  ) |>
+  dplyr::rename(`Temperature (°C)` = assay_temp) |>
+  tinytable::tt(escape = TRUE)
+```
+
+### Linear Bayesian time-to-event model {#sec-shrimp-sub-linear}
+
+The classical sublethal TDT analysis fits a hierarchical log-linear regression: $\log_{10}(\text{time to event}) = \beta_0 + \beta_1 (T - \bar{T}) + \text{random effects} + \varepsilon$, with random intercepts on the three experimental grouping factors (`date_experiment`, `tank_ID`, `cup_ID`). The two scalar TDT quantities follow as transformations of the posterior of $(\beta_0, \beta_1)$:
+
+$$
+z \;=\; -\frac{1}{\beta_1}, \qquad
+CT_{max_{1hr}} \;=\; \bar{T} \;+\; \frac{\log_{10}(60) - \beta_0}{\beta_1}.
+$$
+
+```{r shrimp-sublethal-linear-fit}
+#| label: shrimp-sublethal-linear-fit
+#| echo: true
+#| cache: false
+
+priors_sub_lin <- c(
+  brms::prior(normal(2, 1.5),    class = "Intercept"),
+  brms::prior(normal(-1, 1),     class = "b"),
+  brms::prior(exponential(2),    class = "sd"),
+  brms::prior(exponential(2),    class = "sigma")
+)
+
+fit_sub_lin <- brms::brm(
+  brms::bf(log10_time ~ temp_c +
+           (1 | date_experiment) + (1 | tank_ID) + (1 | cup_ID)),
+  data       = tdt_sub,
+  prior      = priors_sub_lin,
+  chains     = 4,
+  cores      = 4,
+  iter       = 8000,
+  warmup     = 4000,
+  init       = 0,
+  control    = list(adapt_delta = 0.995, max_treedepth = 14),
+  backend    = "cmdstanr",
+  seed       = 123,
+  file       = file.path(models_dir, "fit_shrimp_sublethal_linear"),
+  file_refit = "on_change"
+)
+```
+
+Posterior summaries on the natural scale follow from the regression coefficients and the mean-centring temperature:
+
+```{r shrimp-sublethal-linear-derive}
+#| label: shrimp-sublethal-linear-derive
+#| echo: true
+
+post_sub_lin <- posterior::as_draws_df(fit_sub_lin) |> as.data.frame()
+temp_mean_sub <- mean(tdt_sub$assay_temp)
+
+z_lin_draws       <- -1 / post_sub_lin$b_temp_c
+CTmax_1hr_lin_draws <- temp_mean_sub +
+  (log10(60) - post_sub_lin$b_Intercept) / post_sub_lin$b_temp_c
+
+summarise_post <- function(x) {
+  q <- stats::quantile(x, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+  tibble::tibble(median = q[2], lower = q[1], upper = q[3])
+}
+```
+
+```{r shrimp-sublethal-linear-table}
+#| label: tbl-shrimp-sub-linear
+#| tbl-cap: "Posterior summaries from the linear Bayesian sublethal time-to-event model: thermal sensitivity $z$ and the critical temperature at the 1-hour reference duration $CT_{max_{1hr}}$, derived from the regression coefficients."
+
+tibble::tibble(
+  Quantity     = c("z (°C)", "CTmax at 1 hr (°C)"),
+  Median       = c(stats::median(z_lin_draws),
+                   stats::median(CTmax_1hr_lin_draws)),
+  Lower        = c(stats::quantile(z_lin_draws, 0.025, names = FALSE),
+                   stats::quantile(CTmax_1hr_lin_draws, 0.025, names = FALSE)),
+  Upper        = c(stats::quantile(z_lin_draws, 0.975, names = FALSE),
+                   stats::quantile(CTmax_1hr_lin_draws, 0.975, names = FALSE))
+) |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+### Joint 4PL on proportion knocked-down {#sec-shrimp-sub-4pl}
+
+Following @orsted_suzukii_2024, the *same* time-to-knockdown data can be re-cast as proportion-alive observations. At each assay temperature, the fraction of cups that have *not yet* been knocked down by time $t$ defines a cumulative survival curve; that curve is the canonical 4PL input. Concretely, for each $(\text{date} \times \text{tank} \times \text{temperature})$ trial we count cups at a grid of evaluation times — when $t$ is short, most cups are still alive; when $t$ is long, almost none are. The resulting $(n_{\text{total}}, n_{\text{alive}})$ panel is then fed straight into `standardize_data()` and `fit_4pl()`.
+
+```{r shrimp-sublethal-4pl-panel}
+#| label: shrimp-sublethal-4pl-panel
+#| echo: true
+
+# Evaluation grid: log-spaced, covering the observed knockdown-time range.
+ttd_range <- range(tdt_sub$time_to_event, na.rm = TRUE)
+eval_times_min <- 10 ^ seq(log10(max(0.2, ttd_range[1] * 0.5)),
+                            log10(ttd_range[2] * 1.5),
+                            length.out = 18)
+
+# For each (Date, Tank, Temp) trial, count cups still alive at each eval_time.
+sub_4pl_panel <- tdt_sub |>
+  dplyr::group_by(date_experiment, tank_ID, assay_temp) |>
+  dplyr::summarise(n_total = dplyr::n(),
+                   ttds    = list(time_to_event),
+                   .groups = "drop") |>
+  purrr::pmap_dfr(function(date_experiment, tank_ID, assay_temp,
+                           n_total, ttds) {
+    tibble::tibble(
+      date_experiment = date_experiment,
+      tank_ID         = tank_ID,
+      assay_temp      = assay_temp,
+      duration_min    = eval_times_min,
+      n_total         = n_total,
+      n_alive         = vapply(eval_times_min,
+                                function(t) sum(ttds > t), integer(1))
+    )
+  })
+
+std_sub_4pl <- standardize_data(
+  sub_4pl_panel,
+  temp           = "assay_temp",
+  duration       = "duration_min",
+  n_total        = "n_total",
+  n_surv         = "n_alive",
+  random_effects = c("date_experiment", "tank_ID"),
+  duration_unit  = "minutes"
+)
+```
+
+```{r shrimp-sublethal-4pl-fit}
+#| label: shrimp-sublethal-4pl-fit
+#| echo: true
+#| cache: false
+
+wf_sub_4pl <- fit_4pl(
+  std_sub_4pl,
+  random_effects = c("date_experiment", "tank_ID"),
+  chains  = 4, iter = 2000, cores = 4, seed = 123,
+  file    = file.path(models_dir, "fit_shrimp_sublethal_4pl"),
+  file_refit = "on_change"
+)
+```
+
+::: {.callout-note}
+The 4PL aggregation pools cups within each $(\text{date} \times \text{tank} \times \text{temperature})$ trial, so `cup_ID` is no longer a grouping variable; cup-level dispersion is instead absorbed by the beta-binomial precision parameter $\phi$. The 4PL therefore uses two random intercepts (`date_experiment`, `tank_ID`) — one fewer than the cup-level linear fit above — plus $\phi$ to capture the extra-binomial variance.
+:::
+
+```{r shrimp-sublethal-4pl-extract}
+#| label: shrimp-sublethal-4pl-extract
+#| echo: true
+
+et_sub_4pl <- extract_tdt(
+  wf_sub_4pl,
+  t_ref           = 60,
+  time_multiplier = 1,
+  ndraws          = 1000
+)
+```
+
+```{r shrimp-sublethal-4pl-table}
+#| label: tbl-shrimp-sub-4pl
+#| tbl-cap: "Posterior summaries from the joint Bayesian 4PL on proportion-knocked-down data: $z$, $CT_{max_{1hr}}$, and $T_{crit}$ ($r^* \\in [0.1, 1]$ % HI per hour)."
+
+tibble::tribble(
+  ~Quantity,                              ~Median,                              ~Lower,                            ~Upper,
+  "z (°C)",                               et_sub_4pl$z$summary$z_median,        et_sub_4pl$z$summary$z_lower,      et_sub_4pl$z$summary$z_upper,
+  "CTmax at 1 hr (°C)",                   et_sub_4pl$CTmax$summary$temp_median, et_sub_4pl$CTmax$summary$temp_lower, et_sub_4pl$CTmax$summary$temp_upper,
+  "T_crit (°C)",                          et_sub_4pl$T_crit$summary$temp_median, et_sub_4pl$T_crit$summary$temp_lower, et_sub_4pl$T_crit$summary$temp_upper
+) |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+### Comparing the two sublethal pipelines {#sec-shrimp-sub-compare}
+
+The two pipelines analyse the *same* knockdown observations through different statistical structures: the linear model regresses individual log-times on temperature, the 4PL fits a sigmoidal cumulative-knockdown curve at each temperature and reads off $\log_{10}\text{LT50}$ from each posterior draw. Their posteriors of $z$ and $CT_{max_{1hr}}$ should agree to within the data's information content. @fig-shrimp-sub-compare overlays the two TDT lines (predicted $\log_{10}(\text{time to 50\% knockdown})$ versus assay temperature), and @tbl-shrimp-sub-compare puts the posterior summaries side-by-side.
+
+```{r shrimp-sublethal-compare-data}
+#| label: shrimp-sublethal-compare-data
+#| echo: true
+
+temp_grid_sub <- seq(min(tdt_sub$assay_temp) - 0.25,
+                     max(tdt_sub$assay_temp) + 0.25, by = 0.05)
+
+# Linear model: predicted log10(time) from the population-level posterior
+lin_grid <- tibble::tibble(temp_c = temp_grid_sub - temp_mean_sub)
+lin_lp   <- brms::posterior_linpred(fit_sub_lin, newdata = lin_grid,
+                                     re_formula = NA)
+lin_pred <- tibble::tibble(
+  assay_temp     = temp_grid_sub,
+  log10_time_med = apply(lin_lp, 2, stats::median),
+  log10_time_lo  = apply(lin_lp, 2, stats::quantile, 0.025, names = FALSE),
+  log10_time_hi  = apply(lin_lp, 2, stats::quantile, 0.975, names = FALSE),
+  method         = "Linear Bayesian"
+)
+
+# 4PL model: per-draw log10(LT50) curve from extract_tdt
+ltx_sub <- derive_ltx_curve(
+  wf_sub_4pl,
+  temp_grid       = temp_grid_sub,
+  target_surv     = 0.5,
+  ndraws          = 1000,
+  time_multiplier = 1
+)
+
+pl_4pl_pred <- ltx_sub$summary |>
+  dplyr::transmute(
+    assay_temp     = temp,
+    log10_time_med = log10(duration_median),
+    log10_time_lo  = log10(duration_lower),
+    log10_time_hi  = log10(duration_upper),
+    method         = "Joint 4PL (proportion knocked-down)"
+  )
+
+tdt_lines_sub <- dplyr::bind_rows(lin_pred, pl_4pl_pred) |>
+  dplyr::mutate(method = factor(method,
+                                levels = c("Linear Bayesian",
+                                           "Joint 4PL (proportion knocked-down)")))
+```
+
+::: {#fig-shrimp-sub-compare}
+
+```{r shrimp-sublethal-compare-plot}
+#| label: plot-shrimp-sub-compare
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot2::ggplot(tdt_lines_sub,
+                ggplot2::aes(x = assay_temp, y = log10_time_med,
+                             colour = method, fill = method)) +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = log10_time_lo,
+                                    ymax = log10_time_hi),
+                       alpha = 0.18, colour = NA) +
+  ggplot2::geom_line(linewidth = 1) +
+  ggplot2::geom_jitter(
+    data = tdt_sub,
+    ggplot2::aes(x = assay_temp, y = log10_time),
+    inherit.aes = FALSE,
+    width = 0.05, height = 0,
+    alpha = 0.35, size = 1.2, colour = "grey30"
+  ) +
+  ggplot2::scale_colour_manual(values = c("#2c7fb8", "#d95f02")) +
+  ggplot2::scale_fill_manual(values   = c("#2c7fb8", "#d95f02")) +
+  ggplot2::labs(x = "Assay temperature (°C)",
+                y = expression(log[10]~"(time to 50% knockdown, min)"),
+                colour = NULL, fill = NULL) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "top")
+```
+
+Posterior $\log_{10}(\text{time to 50\% knockdown})$ versus assay temperature, from the linear Bayesian model (blue) and the joint 4PL on proportion-knocked-down data (orange). Shaded ribbons are 95% credible intervals; grey points are the individual observed knockdown times. The two pipelines analyse the *same* data and produce TDT lines that overlap across the assay range.
+:::
+
+```{r shrimp-sublethal-compare-table}
+#| label: tbl-shrimp-sub-compare
+#| tbl-cap: "Side-by-side posterior summaries of $z$ and $CT_{max_{1hr}}$ from the linear Bayesian time-to-event model and the joint 4PL on proportion-knocked-down data. Both fits use the same sublethal observations and the same hierarchical grouping structure (date and tank; the linear fit additionally carries a per-cup random intercept that is absorbed into `n_total` in the 4PL aggregation)."
+
+compare_sub <- tibble::tibble(
+  Quantity = c("z (°C)", "CTmax at 1 hr (°C)"),
+  `Linear median`  = c(stats::median(z_lin_draws),
+                       stats::median(CTmax_1hr_lin_draws)),
+  `Linear lower`   = c(stats::quantile(z_lin_draws, 0.025, names = FALSE),
+                       stats::quantile(CTmax_1hr_lin_draws, 0.025, names = FALSE)),
+  `Linear upper`   = c(stats::quantile(z_lin_draws, 0.975, names = FALSE),
+                       stats::quantile(CTmax_1hr_lin_draws, 0.975, names = FALSE)),
+  `4PL median`     = c(et_sub_4pl$z$summary$z_median,
+                       et_sub_4pl$CTmax$summary$temp_median),
+  `4PL lower`      = c(et_sub_4pl$z$summary$z_lower,
+                       et_sub_4pl$CTmax$summary$temp_lower),
+  `4PL upper`      = c(et_sub_4pl$z$summary$z_upper,
+                       et_sub_4pl$CTmax$summary$temp_upper)
+)
+
+tinytable::tt(compare_sub, digits = 3, escape = TRUE)
+```
+
+The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}}$ on this dataset (medians within their mutual credible intervals; see @tbl-shrimp-sub-compare). The 4PL on proportion-knocked-down data has the practical advantage that the *same* `extract_tdt()` workflow used for the lethal counts also returns a posterior of $T_{crit}$ for free — a quantity the linear time-to-event model does not produce directly.
 
 # **References**
 

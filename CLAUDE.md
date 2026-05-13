@@ -15,7 +15,7 @@ You are a biostatistician and biologist with strong mathematical and coding skil
 
 **What this project studies:** We are developing new statistical and mathematical approaches to increase the rigor of the thermal death time (thermal death sensitivity) framework. A document in the repo (`tdt_problems.qmd`) outlines the problems and proposed solutions — read it VERY carefully, including the papers it cites, before contributing.
 
-**Target journal / style:** *Methods in Ecology and Evolution*.
+**Target journal / style:** *Ecology Letters*.
 
 **Project type:** research compendium by default. I will tell you if it's an R package instead — in that case, use standard R package layout (`DESCRIPTION`, `NAMESPACE`, `vignettes/`) and `R CMD check` in CI.
 

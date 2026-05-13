@@ -29,17 +29,30 @@ theme_tdt <- function(base_size = 13) {
 #' coloured line per assay temperature. Optionally overlays observed survival
 #' proportions per replicate.
 #'
-#' @param pred     Output of [predict_survival_curves()].
-#' @param observed Optional standardised data tibble (from [standardize_data()])
-#'                 to overlay as points (jittered, transparent).
+#' Colour mapping uses the viridis palette by default (yellow at the highest
+#' temperature, dark purple at the lowest); the exposure-duration axis is
+#' linear by default, with the classical log-time TDT view available via
+#' `log_time = TRUE`.
+#'
+#' @param pred      Output of [predict_survival_curves()].
+#' @param observed  Optional standardised data tibble (from [standardize_data()])
+#'                  to overlay as points (jittered, transparent).
+#' @param log_time  Logical. If `TRUE`, the exposure-duration axis is log10.
+#'                  Default `FALSE` (linear).
+#' @param palette   Character. Viridis option for the temperature colour scale.
+#'                  Default `"viridis"`; pass `NULL` to keep ggplot's default
+#'                  hue scale.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
 #' pred <- predict_survival_curves(wf, temps = c(30, 32, 34, 36))
 #' plot_survival_curves(pred, observed = wf$data)
+#' plot_survival_curves(pred, log_time = TRUE)  # classical TDT view
 #' }
 #' @export
-plot_survival_curves <- function(pred, observed = NULL) {
+plot_survival_curves <- function(pred, observed = NULL,
+                                 log_time = FALSE,
+                                 palette  = "viridis") {
   df <- pred$summary
   p <- ggplot2::ggplot(df, ggplot2::aes(x = duration, y = survival_median,
                                         colour = factor(temp),
@@ -48,11 +61,21 @@ plot_survival_curves <- function(pred, observed = NULL) {
                                       ymax = survival_upper),
                          alpha = 0.18, colour = NA) +
     ggplot2::geom_line(linewidth = 0.9) +
-    ggplot2::scale_x_log10() +
     ggplot2::scale_y_continuous(limits = c(0, 1)) +
     ggplot2::labs(x = "Exposure duration", y = "Survival probability",
-                  colour = "Temperature (\u00b0C)", fill = "Temperature (\u00b0C)") +
+                  colour = "Temperature (\u00b0C)",
+                  fill   = "Temperature (\u00b0C)") +
     theme_tdt()
+
+  if (isTRUE(log_time)) p <- p + ggplot2::scale_x_log10()
+
+  if (!is.null(palette)) {
+    p <- p +
+      ggplot2::scale_colour_viridis_d(option = palette,
+                                      end = 0.95, direction = 1) +
+      ggplot2::scale_fill_viridis_d(option = palette,
+                                    end = 0.95, direction = 1)
+  }
 
   if (!is.null(observed)) {
     p <- p + ggplot2::geom_jitter(
@@ -96,10 +119,15 @@ plot_ltx_curve <- function(ltx) {
 
 #' Plot the TDT survival landscape as a heatmap
 #'
+#' Exposure-duration axis is linear by default; pass `log_time = TRUE` for the
+#' classical log-time TDT presentation.
+#'
 #' @param landscape Output of [derive_tdt_landscape()].
 #' @param observed  Optional standardised data tibble to overlay.
 #' @param contours  Numeric vector of survival levels to draw contours at.
 #'                  Default `c(0.25, 0.5, 0.75)`.
+#' @param log_time  Logical. If `TRUE`, exposure-duration y-axis is log10.
+#'                  Default `FALSE` (linear).
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -108,7 +136,8 @@ plot_ltx_curve <- function(ltx) {
 #' }
 #' @export
 plot_tdt_landscape <- function(landscape, observed = NULL,
-                               contours = c(0.25, 0.5, 0.75)) {
+                               contours = c(0.25, 0.5, 0.75),
+                               log_time = FALSE) {
   df <- landscape$summary
   p <- ggplot2::ggplot(df, ggplot2::aes(x = temp, y = duration,
                                         fill = survival_median)) +
@@ -117,11 +146,12 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
                           breaks = contours,
                           colour = "white", alpha = 0.7) +
     ggplot2::scale_fill_viridis_c(limits = c(0, 1), option = "inferno") +
-    ggplot2::scale_y_log10() +
     ggplot2::labs(x = "Temperature (\u00b0C)",
                   y = "Exposure duration",
                   fill = "Survival") +
     theme_tdt()
+
+  if (isTRUE(log_time)) p <- p + ggplot2::scale_y_log10()
 
   if (!is.null(observed)) {
     p <- p + ggplot2::geom_point(
@@ -202,12 +232,16 @@ plot_temperature_scenarios <- function(scens, T_c = NULL) {
       x <- scens[[nm]]; x$scenario <- nm; x
     })
   )
-  df$scenario <- factor(df$scenario,
-                        levels = c("flat", "single_spike", "multi_spike"))
+  scen_levels <- intersect(
+    c("flat", "single_spike", "multi_spike", "diurnal"),
+    unique(df$scenario)
+  )
+  if (length(scen_levels) == 0L) scen_levels <- unique(df$scenario)
+  df$scenario <- factor(df$scenario, levels = scen_levels)
 
   p <- ggplot2::ggplot(df, ggplot2::aes(x = time_h, y = temp)) +
     ggplot2::geom_line(linewidth = 0.7, colour = "#146C7C") +
-    ggplot2::facet_wrap(~ scenario, ncol = 1) +
+    ggplot2::facet_wrap(~ scenario, ncol = 1, scales = "free_x") +
     ggplot2::labs(x = "Time (hours)", y = "Temperature (\u00b0C)") +
     theme_tdt()
 
