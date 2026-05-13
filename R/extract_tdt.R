@@ -12,7 +12,7 @@
 #' This is the **horizontal** read of the survival surface: fix a survival
 #' threshold, read off the time required to reach it at each temperature.
 #'
-#' @param workflow         Fitted `tdt_4pl_workflow`.
+#' @param workflow         Fitted `bayes_tls`.
 #' @param temp_grid        Numeric vector of temperatures (°C).
 #' @param duration_grid    Numeric vector of durations along which to search.
 #'                         Default: 350 log-spaced values spanning 0.2× to 5×
@@ -93,7 +93,7 @@ derive_ltx_curve <- function(workflow,
 #' This is the primitive used by [extract_tdt()] to derive CTmax (at
 #' `target_surv = 0.5`) and T_crit (at `target_surv = 1 - TC_thresh`).
 #'
-#' @param workflow         Fitted `tdt_4pl_workflow`.
+#' @param workflow         Fitted `bayes_tls`.
 #' @param exposure_duration Numeric scalar — the fixed duration (model units).
 #' @param temp_grid        Numeric vector of temperatures to search over.
 #' @param target_surv      Survival probability to invert at. Default 0.5.
@@ -230,7 +230,7 @@ derive_tdt_parameters <- function(ltx_curve,
 #' to avoid that pitfall; users with lethal data opt in by passing
 #' `lethal = TRUE` and are reminded by a startup message.
 #'
-#' @param workflow    Fitted `tdt_4pl_workflow`.
+#' @param workflow    Fitted `bayes_tls`.
 #' @param t_ref       Reference exposure duration for CTmax, in the
 #'                    `output_time_unit` (default `"min"`). Default 60.
 #' @param TC_rate_range Numeric length-2: HI-rate floor range, in % LT50-dose

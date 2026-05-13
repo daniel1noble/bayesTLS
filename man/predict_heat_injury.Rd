@@ -21,7 +21,7 @@ predict_heat_injury(
 \item{trace}{Tibble with columns \code{time_h} (numeric, hours from start)
 and \code{temp} (°C), in time order. Requires ≥ 2 rows.}
 
-\item{workflow}{Fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{Fitted \code{bayes_tls}.}
 
 \item{target_surv}{Survival probability defining "1 dose". Default 0.5
 (LT50). Other values (e.g. 0.95 for T_crit framing) are

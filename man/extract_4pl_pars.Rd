@@ -7,7 +7,7 @@
 extract_4pl_pars(workflow)
 }
 \arguments{
-\item{workflow}{Fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{Fitted \code{bayes_tls}.}
 }
 \value{
 A tibble with \verb{(.draw, low, up, k, mid_int, mid_temp)} columns,

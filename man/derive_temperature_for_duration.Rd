@@ -14,7 +14,7 @@ derive_temperature_for_duration(
 )
 }
 \arguments{
-\item{workflow}{Fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{Fitted \code{bayes_tls}.}
 
 \item{exposure_duration}{Numeric scalar — the fixed duration (model units).}
 

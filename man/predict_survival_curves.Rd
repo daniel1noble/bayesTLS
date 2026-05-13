@@ -13,7 +13,7 @@ predict_survival_curves(
 )
 }
 \arguments{
-\item{workflow}{A fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{A fitted \code{bayes_tls}.}
 
 \item{temps}{Numeric vector of temperatures (°C). Default: unique assay
 temperatures in the training data.}

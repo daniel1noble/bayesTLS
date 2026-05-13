@@ -10,7 +10,7 @@
 #' and fills random-effect grouping columns with their first observed level
 #' (these are marginalised out at prediction time via `re_formula = NA`).
 #'
-#' @param workflow  A `tdt_4pl_workflow` object.
+#' @param workflow  A `bayes_tls` object.
 #' @param temps     Numeric vector of assay temperatures (°C).
 #' @param durations Numeric vector of exposure durations (same unit as the
 #'                  training data, typically hours).
@@ -58,7 +58,7 @@ new_tdt_grid <- function(workflow,
 #' marginalised out by default (`re_formula = NA`) so the result is a
 #' population-level prediction.
 #'
-#' @param workflow   A fitted `tdt_4pl_workflow`.
+#' @param workflow   A fitted `bayes_tls`.
 #' @param newdata    Prediction grid from [new_tdt_grid()].
 #' @param ndraws     Integer number of posterior draws to use, or `NULL` for all.
 #' @param re_formula Passed to [brms::posterior_linpred()]. `NA` (default)
@@ -121,7 +121,7 @@ summarise_observed_survival <- function(observed) {
 #' Use this for *curves* (a handful of temperatures, dense in duration). For a
 #' 2-D survival heatmap call [derive_tdt_landscape()] instead.
 #'
-#' @param workflow  A fitted `tdt_4pl_workflow`.
+#' @param workflow  A fitted `bayes_tls`.
 #' @param temps     Numeric vector of temperatures (°C). Default: unique assay
 #'                  temperatures in the training data.
 #' @param durations Numeric vector of durations. Default: 250 log-spaced values

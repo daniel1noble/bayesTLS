@@ -37,7 +37,7 @@ wf <- structure(list(
     random_effects = NULL, lower = 0, upper = 1,
     bounds = compute_4pl_bounds(0, 1)
   )
-), class = "tdt_4pl_workflow")
+), class = "bayes_tls")
 
 fig_dir <- here::here("output", "figs", "smoke_phase1d")
 if (!dir.exists(fig_dir)) dir.create(fig_dir, recursive = TRUE)

@@ -7,7 +7,7 @@
 posterior_linpred_tdt(workflow, newdata, ndraws = NULL, re_formula = NA)
 }
 \arguments{
-\item{workflow}{A fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{A fitted \code{bayes_tls}.}
 
 \item{newdata}{Prediction grid from \code{\link[=new_tdt_grid]{new_tdt_grid()}}.}
 

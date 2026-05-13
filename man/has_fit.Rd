@@ -16,6 +16,6 @@ Logical scalar.
 Whether a workflow has been fitted
 }
 \examples{
-wf <- list(fit = NULL); class(wf) <- "tdt_4pl_workflow"
+wf <- list(fit = NULL); class(wf) <- "bayes_tls"
 has_fit(wf)
 }

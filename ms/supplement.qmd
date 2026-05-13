@@ -171,7 +171,7 @@ tdt_function_tour <- tibble::tribble(
   "Data",             "standardize_data()",                 "Rename raw columns to project schema; attach metadata.",
   "Model spec",       "make_4pl_priors()",                  "Weakly informative priors for the disjoint-bounds 4PL.",
   "Model spec",       "make_4pl_formula()",                 "brms non-linear formula; identity link, all four sub-parameters get temp_c.",
-  "Fit",              "fit_4pl()",                          "Joint Bayesian 4PL fit; returns a tdt_4pl_workflow object.",
+  "Fit",              "fit_4pl()",                          "Joint Bayesian 4PL fit; returns a `bayes_tls` object (use `print()`, `summary()`, `plot()`).",
   "Diagnostics",      "diagnose_tdt_fit()",                 "Rhat / ESS / divergences / treedepth, with pass-fail flags.",
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z).",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands.",

@@ -13,7 +13,7 @@ derive_tdt_landscape(
 )
 }
 \arguments{
-\item{workflow}{Fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{Fitted \code{bayes_tls}.}
 
 \item{temp_grid}{Numeric vector of temperatures (°C). Default: 120
 equally spaced values across the training-data range.}

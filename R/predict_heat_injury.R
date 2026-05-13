@@ -19,7 +19,7 @@
 #' shrunk near zero by the data, this introduces no bias; otherwise it is the
 #' same approximation the classical HI framework makes.
 #'
-#' @param workflow Fitted `tdt_4pl_workflow`.
+#' @param workflow Fitted `bayes_tls`.
 #' @return A tibble with `(.draw, low, up, k, mid_int, mid_temp)` columns,
 #'         filtered to draws producing valid parameter values.
 #' @examples
@@ -111,7 +111,7 @@ survival_from_dose <- function(dose, low, up, k, target_surv = 0.5) {
 #'
 #' @param trace        Tibble with columns `time_h` (numeric, hours from start)
 #'                     and `temp` (°C), in time order. Requires ≥ 2 rows.
-#' @param workflow     Fitted `tdt_4pl_workflow`.
+#' @param workflow     Fitted `bayes_tls`.
 #' @param target_surv  Survival probability defining "1 dose". Default 0.5
 #'                     (LT50). Other values (e.g. 0.95 for T_crit framing) are
 #'                     mechanically valid but reinterpret what HI = 100% means.

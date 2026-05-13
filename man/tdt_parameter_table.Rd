@@ -7,7 +7,7 @@
 tdt_parameter_table(workflow)
 }
 \arguments{
-\item{workflow}{A fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{A fitted \code{bayes_tls}.}
 }
 \value{
 A tibble with columns \code{parameter}, \code{median}, \code{lower}, \code{upper}.

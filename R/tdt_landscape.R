@@ -9,7 +9,7 @@
 #' heatmap or contour with [plot_tdt_landscape()] (Phase 1d). For curves at a
 #' handful of temperatures, use [predict_survival_curves()] instead.
 #'
-#' @param workflow      Fitted `tdt_4pl_workflow`.
+#' @param workflow      Fitted `bayes_tls`.
 #' @param temp_grid     Numeric vector of temperatures (°C). Default: 120
 #'                      equally spaced values across the training-data range.
 #' @param duration_grid Numeric vector of durations. Default: 120 log-spaced

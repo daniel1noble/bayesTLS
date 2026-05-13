@@ -1,4 +1,4 @@
-# Lightweight diagnostic helpers for a fitted tdt_4pl_workflow. Wraps the
+# Lightweight diagnostic helpers for a fitted bayes_tls. Wraps the
 # usual brms / posterior diagnostics into a single one-line summary plus a
 # tidy parameter table, and points to brms::pp_check() for visual PPC.
 
@@ -9,7 +9,7 @@
 #' tree-depth saturations. Healthy values: Rhat < 1.01, ESS > 400, zero
 #' divergences and treedepth hits.
 #'
-#' @param workflow A fitted `tdt_4pl_workflow`.
+#' @param workflow A fitted `bayes_tls`.
 #' @return A tibble with one row of diagnostic statistics.
 #' @examples
 #' \dontrun{
@@ -55,7 +55,7 @@ diagnose_tdt_fit <- function(workflow) {
 #' includes `z = -1 / mid_temp`. Returns a one-row-per-parameter tibble with
 #' median + 95% CrI.
 #'
-#' @param workflow A fitted `tdt_4pl_workflow`.
+#' @param workflow A fitted `bayes_tls`.
 #' @return A tibble with columns `parameter`, `median`, `lower`, `upper`.
 #' @examples
 #' \dontrun{
