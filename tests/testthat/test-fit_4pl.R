@@ -26,7 +26,7 @@ test_that("make_4pl_formula with PSII bounds bakes lower/upper into rhs", {
   expect_true(grepl("0\\.926", main))
 })
 
-test_that("fit_4pl(fit = FALSE) returns a tdt_4pl_workflow without fitting", {
+test_that("fit_4pl(fit = FALSE) returns a bayes_tls without fitting", {
   raw <- data.frame(
     temperature_C = rep(c(30, 32, 34), each = 3),
     exposure_h    = rep(c(1, 2, 4), times = 3),
@@ -37,7 +37,7 @@ test_that("fit_4pl(fit = FALSE) returns a tdt_4pl_workflow without fitting", {
                           n_total = "n", n_surv = "alive")
 
   wf <- fit_4pl(std, fit = FALSE)
-  expect_s3_class(wf, "tdt_4pl_workflow")
+  expect_s3_class(wf, "bayes_tls")
   expect_null(wf$fit)
   expect_false(has_fit(wf))
   expect_s3_class(wf$formula, "brmsformula")

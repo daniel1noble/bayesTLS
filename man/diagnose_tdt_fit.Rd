@@ -7,7 +7,7 @@
 diagnose_tdt_fit(workflow)
 }
 \arguments{
-\item{workflow}{A fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{A fitted \code{bayes_tls}.}
 }
 \value{
 A tibble with one row of diagnostic statistics.

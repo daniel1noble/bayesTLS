@@ -91,8 +91,10 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param fit            Logical. If `FALSE`, returns the workflow spec without
 #'                       fitting — useful for inspecting the formula and priors.
 #' @param ...            Further arguments passed to [brms::brm()].
-#' @return A list of class `"tdt_4pl_workflow"` with elements `fit`, `data`,
-#'         `formula`, `prior`, `meta`.
+#' @return A list of class `"bayes_tls"` with elements `fit`, `data`,
+#'         `formula`, `prior`, `meta`. See [print.bayes_tls()],
+#'         [summary.bayes_tls()], and [plot.bayes_tls()] for the available
+#'         methods.
 #' @examples
 #' \dontrun{
 #' d  <- standardize_data(raw, ...)
@@ -154,7 +156,7 @@ fit_4pl <- function(data,
   workflow <- structure(
     list(fit = NULL, data = data, formula = formula,
          prior = prior, meta = meta_full),
-    class = "tdt_4pl_workflow"
+    class = "bayes_tls"
   )
 
   if (!fit) return(workflow)
@@ -184,33 +186,9 @@ fit_4pl <- function(data,
 #' @param workflow Object returned by [fit_4pl()].
 #' @return Logical scalar.
 #' @examples
-#' wf <- list(fit = NULL); class(wf) <- "tdt_4pl_workflow"
+#' wf <- list(fit = NULL); class(wf) <- "bayes_tls"
 #' has_fit(wf)
 #' @export
 has_fit <- function(workflow) {
-  inherits(workflow, "tdt_4pl_workflow") && !is.null(workflow$fit)
-}
-
-#' Brief printout of a TDT workflow
-#'
-#' @param x A `tdt_4pl_workflow` object.
-#' @param ... Ignored.
-#' @export
-print.tdt_4pl_workflow <- function(x, ...) {
-  bounds <- x$meta$bounds
-  cat("<tdt_4pl_workflow>\n")
-  cat("  Data:    ", nrow(x$data), "rows;",
-      length(unique(x$data$temp)), "temperatures;",
-      length(unique(x$data$duration)), "durations\n")
-  cat("  T_bar:   ", round(x$meta$temp_mean, 2), "\n")
-  cat(sprintf("  Range:    response in (%.3f, %.3f); low in (%.3f, %.3f); up in (%.3f, %.3f)\n",
-              x$meta$lower, x$meta$upper,
-              bounds$low_min, bounds$low_max,
-              bounds$up_min,  bounds$up_max))
-  if (!is.null(x$meta$random_effects))
-    cat("  RE:      ", paste(x$meta$random_effects, collapse = ", "), "\n")
-  cat("  Status:  ", if (is.null(x$fit)) "spec only (not fitted)"
-                      else sprintf("fitted (%d draws)", brms::ndraws(x$fit)),
-      "\n")
-  invisible(x)
+  inherits(workflow, "bayes_tls") && !is.null(workflow$fit)
 }

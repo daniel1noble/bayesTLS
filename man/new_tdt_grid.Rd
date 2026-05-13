@@ -7,7 +7,7 @@
 new_tdt_grid(workflow, temps, durations, n_total = NULL)
 }
 \arguments{
-\item{workflow}{A \code{tdt_4pl_workflow} object.}
+\item{workflow}{A \code{bayes_tls} object.}
 
 \item{temps}{Numeric vector of assay temperatures (°C).}
 

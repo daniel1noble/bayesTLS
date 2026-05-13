@@ -62,8 +62,10 @@ fitting — useful for inspecting the formula and priors.}
 \item{...}{Further arguments passed to \code{\link[brms:brm]{brms::brm()}}.}
 }
 \value{
-A list of class \code{"tdt_4pl_workflow"} with elements \code{fit}, \code{data},
-\code{formula}, \code{prior}, \code{meta}.
+A list of class \code{"bayes_tls"} with elements \code{fit}, \code{data},
+\code{formula}, \code{prior}, \code{meta}. See \code{\link[=print.bayes_tls]{print.bayes_tls()}},
+\code{\link[=summary.bayes_tls]{summary.bayes_tls()}}, and \code{\link[=plot.bayes_tls]{plot.bayes_tls()}} for the available
+methods.
 }
 \description{
 Wraps \code{\link[=make_4pl_formula]{make_4pl_formula()}} + \code{\link[=make_4pl_priors]{make_4pl_priors()}} + \code{\link[brms:brm]{brms::brm()}}. Returns

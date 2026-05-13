@@ -34,6 +34,7 @@ utils::globalVariables(c(
   "target_surv", "temp", "temp_c",
   "temp_lower", "temp_median", "temp_upper",
   "time_h", "value", "model", "quantity",
+  "iteration", "chain", "parameter",
   "z", "z_lower", "z_median", "z_upper",
   # raw posterior columns referenced in helpers / extractors:
   "b_lowraw_Intercept", "b_upraw_Intercept",

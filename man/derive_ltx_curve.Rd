@@ -16,7 +16,7 @@ derive_ltx_curve(
 )
 }
 \arguments{
-\item{workflow}{Fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{Fitted \code{bayes_tls}.}
 
 \item{temp_grid}{Numeric vector of temperatures (°C).}
 

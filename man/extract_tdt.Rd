@@ -17,7 +17,7 @@ extract_tdt(
 )
 }
 \arguments{
-\item{workflow}{Fitted \code{tdt_4pl_workflow}.}
+\item{workflow}{Fitted \code{bayes_tls}.}
 
 \item{t_ref}{Reference exposure duration for CTmax, in the
 \code{output_time_unit} (default \code{"min"}). Default 60.}
