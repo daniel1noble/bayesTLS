@@ -14,6 +14,7 @@ authors:
     email: patrice.pottier@bioenv.gu.se
     affiliations:
       - ref: gu
+      - ref: unsw
 affiliations:
   - id: anu
     name: Division of Ecology and Evolution, Research School of Biology, Australian National University
@@ -23,21 +24,24 @@ affiliations:
     name: Department of Biological and Environmental Sciences, University of Gothenburg
     city: Gothenburg
     country: Sweden
+  - id: unsw
+    name: Evolution & Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales
+    city: Sydney
+    state: New South Wales
+    country: Australia
 abstract: |
-  1.  The thermal load sensitivity (TLS) framework is the gold standard for estimating and predicting thermal tolerance in nature. However, its two-step pipeline — first inferring median times to death across a range of assay temperatures, then regressing $\log_{10}\text{time to death}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
+  The thermal load sensitivity (TLS) and thermal death time (TDT) frameworks are gold standard approaches for estimating thermal tolerance and predict organismal vulnerability under natural thermal regimes. However, these frameworks are usually implemented through a two-step pipeline. Median times to lethal or sublethal endpoints ($t_{50}$) are first estimated independently across a range of assay temperatures, and these $\log_{10}(t_{50})$ estimates are then regressed against temperature. This two-step approach violates key statistical assumptions that are likely to bias the mean and variance in derived quantities such as thermal sensitivity ($z$), critical thermal limits ($CT_{max}$), heat-injury predictions, and survival probabilities.
 
-  2. We describe a flexible Bayesian, single-stage four-parameter logistic (4PL) model for modelling the impact of temperature and time on survival and sublethal responses to heat stress. We demonstrate how such an approach can recover all the classical TDT output typical of a two-stage modelling framework — including thermal sensitivity ($z$, slopes), critical thermal limit ($CT_{max_{1hr}}$) and the heat-injury (HI) integral, which allows for one to predict thermal injury in nature under realistic exposure temperatures. Given its fully Bayesian implementation, it allows for error propagation to account for uncertainty at all stages of modelling as well as improved inferences.
+  We present a flexible Bayesian four-parameter logistic (4PL) model that estimates survival or sublethal responses as a joint function of temperature and exposure duration. We demonstrate how such an approach recovers all the classical outputs of the TLS and TDT two-stage modelling frameworks (i.e., $z$, $CT_{max}$, heat-injury integral, survival probabilities), while propagating uncertainty through all derived quantities.  Using simulated data and empirical case studies in brown shrimp (*Crangon crangon*), zebrafish (*Danio rerio*), and XXX (* XXX*), we demonstrate the benefits of this new modelling framework. 
 
-  3. We applied our new modelling framework to simulated data, as well as case studies in brown shrimp (*Crangon crangon*), zebrafish (*Danio rerio*), and XXX to demonstrate the equivalencies and benefits of such an approach.
-
-  4. We show that the classical and Bayesian frameworks are equivalent, but that the hierarchical 4PL delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new data using the TLS framework.
+  We show that the classical and Bayesian frameworks are equivalent, but that the Bayesian approach delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, and unlocks outputs the two-step pipeline cannot provide, including full survival surfaces, mortality percentiles, decomposable between-group contrasts, and variation in the shape of thermal dose-response curves. We provide a new R package ($bayesTLS$) and recommend the bayesian four-parameter loigistic model as the default approach for analysing TDT and TLS data, particularly when the goal is to make accurate predictions of survival under natural thermal regimes.
 keywords:
   - thermal death time
   - tolerance landscape
   - hierarchical Bayesian model
   - 4-parameter logistic
   - heat injury
-  - CTmax
+  - CT_max
   - ectotherm
 format:
   html:
@@ -84,9 +88,10 @@ format:
         \AtBeginDocument{%
           \OldAuthor[1]{Daniel W.A. Noble\thanks{Corresponding author: \texttt{daniel.noble@anu.edu.au}}}%
           \OldAuthor[1]{Pieter A. Arnold}%
-          \OldAuthor[2]{Patrice Pottier}%
+          \OldAuthor[2,3]{Patrice Pottier}%
           \affil[1]{Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia}%
           \affil[2]{Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden}%
+          \affil[3]{Evolution \& Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales, Sydney, New South Wales, Australia}%
         }
 bibliography: ../bib/tdt_problems.bib
 csl: ../bib/ecology-letters.csl
@@ -101,23 +106,22 @@ execute:
 ---
 
 ::: {.content-visible when-format="docx"}
-**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Patrice Pottier**^2^
+**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Patrice Pottier**^2,3^
 
 ^1^Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia.
 ^2^Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden.
+^3^Evolution & Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales, Sydney, New South Wales, Australia.
 ^\*^Corresponding author: daniel.noble@anu.edu.au
 
 **Abstract**
 
-  1.  The thermal load sensitivity (TLS) and thermal death time (TDT) models are the gold standard for estimating and predicting thermal tolerance in nature. However, its two-step pipeline — first inferring median times to death across a range of assay temperatures, then regressing $\log_{10}\text{time to death}$ on temperature — rests on statistical assumptions that are routinely violated and that bias every downstream quantity (z, CTmax, heat-injury predictions).
+The thermal load sensitivity (TLS) and thermal death time (TDT) frameworks are gold standard approaches for estimating thermal tolerance and predict organismal vulnerability under natural thermal regimes. However, these frameworks are usually implemented through a two-step pipeline. Median times to lethal or sublethal endpoints ($t_{50}$) are first estimated independently across a range of assay temperatures, and these $\log_{10}(t_{50})$ estimates are then regressed against temperature. This two-step approach violates key statistical assumptions that are likely to bias the mean and variance in derived quantities such as thermal sensitivity ($z$), critical thermal limits ($CT_{max}$), heat-injury predictions, and survival probabilities.
 
-  2. We describe a flexible Bayesian, single-stage four-parameter logistic (4PL) model for modelling the impact of temperature and time on survival and sublethal responses to heat stress. We demonstrate how such an approach can recover all the classical TDT output typical of a two-stage modelling framework — including thermal sensitivity ($z$, slopes), critical thermal limit ($CT_{max_{1hr}}$) and the heat-injury (HI) integral, which allows for one to predict thermal injury in nature under realistic exposure temperatures. Given its fully Bayesian implementation, it allows for error propagation to account for uncertainty at all stages of modelling as well as improved inferences.
+We present a flexible Bayesian four-parameter logistic (4PL) model that estimates survival or sublethal responses as a joint function of temperature and exposure duration. We demonstrate how such an approach recovers all the classical outputs of the TLS and TDT two-stage modelling frameworks (i.e., $z$, $CT_{max}$, heat-injury integral, survival probabilities), while propagating uncertainty through all derived quantities.  Using simulated data and empirical case studies in brown shrimp (*Crangon crangon*), zebrafish (*Danio rerio*), and XXX (*XXX*), we demonstrate the benefits of this new modelling framework. 
 
-  3. We applied our new modelling framework to simulated data, as well as case studies in brown shrimp (*Crangon crangon*), zebrafish (*Danio rerio*), and XXX to demonstrate the equivalencies and benefits of such an approach.
+We show that the classical and Bayesian frameworks are equivalent, but that the Bayesian approach delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, and unlocks outputs the two-step pipeline cannot provide, including full survival surfaces, mortality percentiles, decomposable between-group contrasts, and variation in the shape of thermal dose-response curves. We provide a new R package ($bayesTLS$) and recommend the bayesian four-parameter loigistic model as the default approach for analysing TDT and TLS data, particularly when the goal is to make accurate predictions of survival under natural thermal regimes.
 
-  4. We show that the classical and Bayesian frameworks are equivalent, but that the hierarchical 4PL delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate censoring and overdispersion, and unlocks outputs the two-step pipeline cannot provide (full survival surface, arbitrary mortality percentiles, decomposable between-group contrasts). We provide reusable R helpers and recommend the hierarchical 4PL as the default analysis for new data using the TLS framework.
-
-**Keywords:** thermal death time; TDT; tolerance landscape; hierarchical Bayesian model; 4-parameter logistic; heat injury; CTmax; ectotherm
+**Keywords:** thermal death time; TDT; tolerance landscape; hierarchical Bayesian model; 4-parameter logistic; heat injury; $CT_{max}$; ectotherm
 :::
 
 ```{r setup}
@@ -202,9 +206,9 @@ Setting $p_{ij} = 0.5$ in @eq-4pl, isolating the exponential, and taking natural
 
 $$
 \log_{10} t_{50}(T) \;=\; \underbrace{\left[\beta_0 + \tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}} - \beta_1\bar{T}\right]}_{\alpha} \;+\; \beta_1\,T,
-$$ {#eq-lt50}
+$$ {#eq-t50}
 
-Note that @eq-lt50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. With this subtraction, the intercept estimates $\log_{10}t_{50}$ at the average temperature ($\bar{T}$); without it, the intercept estimates $\log_{10}t_{50}$ at $T = 0$°C. From @eq-lt50, the classical TLS quantities fall out directly. Thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\text{low}$, $\text{up}$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
+Note that @eq-t50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. With this subtraction, the intercept estimates $\log_{10}t_{50}$ at the average temperature ($\bar{T}$); without it, the intercept estimates $\log_{10}t_{50}$ at $T = 0$°C. From @eq-t50, the classical TLS quantities fall out directly. Thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\text{low}$, $\text{up}$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
 
 
 The same derivation generalises beyond the median: the Bayesian dose-response fit gives access to *any* mortality percentile, not just $t_{50}$ [@rezende_drosophila_mortality_2020; @jorgensen_unifying_2021]. Setting $p_{ij} = x/100$ in @eq-4pl and following the same algebra used for $t_{50}$, the posterior samples of $(\text{low}, \text{up}, k, m(T))$ deliver the time at which $x\%$ of the population reaches the assayed endpoint:
@@ -215,17 +219,17 @@ $$ {#eq-LTx}
 
 Varying $x$ in @eq-LTx then yields any threshold of interest. For instance, $t_{10}$ marks the onset of early mortality — useful for risk management — while $t_{90}$ is closer to a population-collapse threshold. As with $t_{50}$, every prediction inherits the joint posterior, so uncertainty bands can be reported alongside the population-level median.
 
-Importantly, the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \text{low}}$ does not depend on $T$. Instead, it shifts $\log_{10}t_{50}$ vertically without changing the slope. In contrast, threshold summaries are not robust in this way; when partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, the asymmetry correction must be retained — added to the naive $\log_{10}t_{50}$ (@eq-lt50-corrected) and subtracted, after division by the slope (to convert the vertical shift in $\log_{10}t_{50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
+Importantly, the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \text{low}}$ does not depend on $T$. Instead, it shifts $\log_{10}t_{50}$ vertically without changing the slope. In contrast, threshold summaries are not robust in this way; when partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, the asymmetry correction must be retained — added to the naive $\log_{10}t_{50}$ (@eq-t50-corrected) and subtracted, after division by the slope (to convert the vertical shift in $\log_{10}t_{50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
 
 $$
 \log_{10}t_{50}(T) \;=\; \underbrace{\beta_0 + \beta_1(T - \bar{T})}_{\text{naive estimate}} \;+\; \underbrace{\tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}}}_{\text{correction}},
-$$ {#eq-lt50-corrected}
+$$ {#eq-t50-corrected}
 
 $$
 CT_{max}(t_\text{ref}) \;=\; \underbrace{\frac{\log_{10}t_\text{ref} - \beta_0 + \beta_1\bar{T}}{\beta_1}}_{\text{naive estimate}} \;-\; \underbrace{\tfrac{1}{\beta_1}\cdot\tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}}}_{\text{correction}}.
 $$ {#eq-ctmax-corrected}
 
-In practice, however, these corrections may not be needed so long as the experimental design includes treatments that span the full mortality range which anchors $\text{low}$ and $\text{up}$ tightly near 1 and 0 and makes the correction term effectively zero. When this is the case, $\log_{10}t_{50}$ and $CT_{max}$ can be read directly from the naive forms in @eq-lt50-corrected and @eq-ctmax-corrected. Regardless, we recommend using the correction factor as a safeguard. However, computing both the naive and corrected estimates and comparing them is a useful sensitivity check for whether the correction is needed in any given dataset.
+In practice, however, these corrections may not be needed so long as the experimental design includes treatments that span the full mortality range which anchors $\text{low}$ and $\text{up}$ tightly near 1 and 0 and makes the correction term effectively zero. When this is the case, $\log_{10}t_{50}$ and $CT_{max}$ can be read directly from the naive forms in @eq-t50-corrected and @eq-ctmax-corrected. Regardless, we recommend using the correction factor as a safeguard. However, computing both the naive and corrected estimates and comparing them is a useful sensitivity check for whether the correction is needed in any given dataset.
 
 # Predicting heat injury and survival under dynamic thermal environments
 
@@ -272,7 +276,7 @@ $$ {#eq-linpred}
 
 where $\bar T$ is the grand mean of assay temperatures (centring stabilises sampling and decorrelates $\beta_0$ from $\beta_1$), $\mathbf{x}_{ij}$ holds any additional fixed covariates with coefficients $\boldsymbol{\gamma}$, $b_{j}$ collects the nested random effects and $\varepsilon_{ij} \sim \mathcal{N}(0, \sigma_\varepsilon^2)$ is an observation-level random effect that absorbs the binomial overdispersion characteristic of replicated count assays [@harrison_olre_2014]. However, we could also remove the observation-level random effect from the model and instead fit a beta-binomial error distribution which estimates a dispersion parameter ($\phi$) more naturally.
 
-Together, @eq-likelihood–@eq-linpred define the hierarchical Bayesian 4PL fit directly to the raw binomial counts. Every classical TDT quantity — slope, $z$, CTmax at any reference time, and the heat-injury integral — is recovered as a one-line posterior summary of this single joint fit, as derived in §[Equivalence with the classical pipeline].
+Together, @eq-likelihood–@eq-linpred define the hierarchical Bayesian 4PL fit directly to the raw binomial counts. Every classical TDT quantity — slope, $z$, $CT_{max}$ at any reference time, and the heat-injury integral — is recovered as a one-line posterior summary of this single joint fit, as derived in §[Equivalence with the classical pipeline].
 
 # Case Study 1: Thermal sensitivity estimation across life stages in shrimp
 
@@ -308,13 +312,13 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Sublethal time-to-death
 
-## Dynamic CTmax across ramping rates
+## Dynamic $CT_{max}$ across ramping rates
 
 ## Reconciling the three endpoints via the Jørgensen ramping equation
 
 ```{r fig-tdt-ctmax-reconciliation}
 #| label: fig-tdt-ctmax-reconciliation
-#| fig-cap: "Forward (TDT → dynamic CTmax) and inverse (CTmax → TDT) reconciliation under full posterior propagation."
+#| fig-cap: "Forward (TDT → dynamic $CT_{max}$) and inverse ($CT_{max}$ → TDT) reconciliation under full posterior propagation."
 #| eval: false
 ```
 
@@ -335,7 +339,7 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 <!--
 Honest discussion of:
 - Repair kernel parameters fixed, not fit
-- dCTmax reconciliation uses nls() per draw rather than a joint Stan likelihood
+- d$CT_{max}$ reconciliation uses nls() per draw rather than a joint Stan likelihood
 - Arrhenius (1/T-Kelvin) sensitivity check belongs in the supplement
 - Endpoint heterogeneity is not eliminated, only made visible
 -->
