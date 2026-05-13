@@ -651,9 +651,20 @@ $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
 $$ {#eq-tcrit}
 
-  Different $r^*$ values give different $T_{crit}$ thresholds, and the literature does not converge on a single value. Empirical breakpoint analyses across taxa as different as *Drosophila suzukii* and *Lemna gibba* fall in the range $r^* \in [0.1, 1]$ % HI per hour, corresponding to "$\sim 4$ days to 1000 hours of continuous exposure to reach $LT_{50}$" [@jorgensen_unifying_2021; @arnold_thermal_2025; **havro_faber_2023**]. Rather than commit to one $r^*$, we treat it as an unknown with a uniform prior on $\log_{10} r^*$ over that range and integrate; the posterior of $T_{crit}$ then carries both parameter uncertainty (in $CT_{max,1hr}$ and $z$) and operational uncertainty (in the choice of $r^*$). The median of that pooled posterior sits at $CT_{max,1hr} - 2.5 \cdot z$, which corresponds to $r^* \approx 0.3$ % HI per hour (the geometric mean of the rate range).
+Different $r^*$ values give different $T_{crit}$ thresholds, and the literature does not converge on a single value. Empirical breakpoint analyses across taxa as different as *Drosophila suzukii* and *Lemna gibba* fall in the range $r^* \in [0.1, 1]$ % HI per hour, corresponding to "$\sim 4$ days to 1000 hours of continuous exposure to reach $LT_{50}$" [@jorgensen_unifying_2021; @arnold_thermal_2025; **havro_faber_2023**]. Rather than commit to one $r^*$, we treat it as an unknown with a uniform prior on $\log_{10} r^*$ over that range and integrate; the posterior of $T_{crit}$ then carries both parameter uncertainty (in $CT_{max,1hr}$ and $z$) and operational uncertainty (in the choice of $r^*$). The median of that pooled posterior sits at $CT_{max,1hr} - 2.5 \cdot z$, which corresponds to $r^* \approx 0.3$ % HI per hour (the geometric mean of the rate range).
 
 All three quantities inherit the same posterior, so every credible interval reflects joint uncertainty in $(\ell, u, k, \beta_0, \beta_1)$.
+
+::: {.callout-note}
+
+The default `fit_4pl()` puts a `temp_c` slope on every 4PL sub-parameter, so $\ell$, $u$ and $k$ can each carry a linear effect of temperature in addition to the linear-mid term — when those slopes shrink to zero under the prior the model reduces cleanly to the constant-shape case. When the data carry real temperature signal on any of the shape parameters, the asymmetry correction $\tfrac{1}{k(T)}\log\tfrac{u(T)-0.5}{0.5-\ell(T)}$ varies with $T$ and the resulting $\log_{10}\text{LT50}(T)$ curve is bent rather than straight:
+
+$$
+\log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{u(T) - 0.5}{0.5 - \ell(T)}.
+$$ {#eq-lt50-tvarying}
+
+`extract_tdt()` requires no special handling in either regime, because both of its primitives operate on the *fitted 4PL surface* rather than on a closed-form expression: $CT_{max_{1hr}}$ is obtained by inverting the surface at the reference duration $t_\text{ref}$ per posterior draw (`derive_temperature_for_duration()`), and the per-draw OLS regression that yields $z$ runs over the per-draw $\log_{10}\text{LT50}(T)$ curve recovered numerically by `derive_ltx_curve()`. When the curve is straight, the OLS slope returns the closed-form $z$; when it is bent, the same OLS returns the *average local slope* across the assay grid — a sensible single-summary $z$, with the per-temperature local values accessible from the underlying $\text{LT50}(T)$ curve when needed. The worked example in @sec-joint-extend demonstrates this explicitly with a simulation where $u$ and $k$ carry strong $T$ effects.
+:::
 
 ```{r derive-tls}
 #| label: derive-tls
@@ -857,57 +868,37 @@ compare_table |>
 
 All four estimators land on essentially the same point estimates for $z$ and $CT_{max_{1hr}}$, though we notice the two stage is biased upwards slightly, and all sit close to the simulation truth. The joint Bayesian 4PL gives the same answer the classical pipeline gives — it is *not* in disagreement with the field's existing point estimates, it reproduces them.
 
-### *Extending the model: temperature-varying shape parameters* {#sec-joint-extend}
+### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
-The closed-form derivations of $z$ and $CT_{max_{1hr}}$ assumed that $\ell, u$ and $k$ are scalars — they do not depend on $T$, so the asymmetry correction $\tfrac{1}{k}\log\tfrac{u-0.5}{0.5-\ell}$ is a single number rather than a function of temperature. This is convenient but not required. If $\ell, u$ and $k$ also vary with temperature, then we need to predict how each of these parameters changes with temperature and apply a temperature-varying correction factor. Linear effects of temperature on the shape parameters of the dose-response curve are mechanistically interpretable and biologically plausible. Three concrete examples come to mind:
-
-- **`u ~ T_c`** lets the upper asymptote (baseline survival at very short exposures) decline with rising assay temperature. This may be quite a sensible assumption if brief exposures at high $T$ cause some immediate mortality.
-- **`ell ~ T_c`** lets the residual surviving fraction at very long exposures depend on $T$. While this seems less plausible, if there is individual variation (which seems likely) some fraction may still survive, partiuclarly at less extreme temperatures, which could shift the lower baseline across each temperature treatment.
-- **`k ~ T_c`** lets the dose-response steepness depend on $T$. Biologically this is the most interesting case: protein denaturation kinetics often look more threshold-like (sharper $k$) near a protein's melting temperature, so the slope at extreme assay temperatures may be steeper than at moderate ones and there is some suggestions that this could be true [@jorgensen_unifying_2021; @kingsolver_umbanhowar_2018].
-
-When any shape parameter depends on $T$ the asymmetry correction itself becomes a function of $T$:
-
-$$
-\log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1\,(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{u(T) - 0.5}{0.5 - \ell(T)}.
-$$ {#eq-lt50-tvarying}
-
-The midpoint piece $\beta_0 + \beta_1(T - \bar T)$ is still a straight line in $T$, but the asymmetry-correction piece now varies with $T$ through $k(T), u(T), \ell(T)$. Their sum is therefore non-linear in $T$. Two consequences follow, and they affect $z$ and $CT_{max_{1hr}}$ differently: $z$ becomes a *function* of temperature (no longer a single slope but a local value at each $T$). In contrast, $CT_{max_{1hr}}$ remains a *single* number but its value just shifts because the underlying curve is now bent rather than straight.
-
-- **$z$ becomes a function of temperature.** Since $z$ is defined by the local rate of change of $\log_{10}\text{LT50}$ with $T$, $z(T) = -1 \big/ \tfrac{d \log_{10}\text{LT50}(T)}{dT}$. In other words, the local slope of $\log_{10}\text{LT50}$ at any given $T$ varies across the assay range because the shape of the dose-response curve changes with $T$. This curvature leads to the infinitesimal rates (local slopes) changing which affects the overall sensitivity, *z*. In these cases, it's better to estimate the local slope first. An overall $z$ can then be obtained by averaging the local slopes if a single summary is needed (pooling the posteriors).
-- **$CT_{max}$ has no closed form.** We now need to solve $\log_{10}\text{LT50}(T) = \log_{10} t_\text{ref}$ for $T$ per posterior draw — recovered numerically by predicting $\log_{10}\text{LT50}(T)$ from the model on a fine $T$ grid and inverting with `approx()`. The output is the same kind of posterior we already have, just produced numerically rather than algebraically.
-
-#### A numerical recipe for $z$ and $CT_{max}$ {#sec-joint-extend-recipe}
-
-When shape parameters vary with $T$ the closed-form expressions of @sec-joint-derive no longer apply directly — but the same `extract_tdt()` call still works, because internally it inverts the 4PL surface numerically per posterior draw. The implementation: predict survival on a dense $(T, t)$ grid, find the duration where each draw crosses the target survival (via `approx()`), then either fit a per-draw log-linear regression on `(T, log10 LT50)` for $z$, or invert again on temperature for $CT_{max_{1hr}}$. `extract_tdt()` returns both directly.
-
-```{r extension-helper}
-#| label: extension-helper
-#| echo: true
-
-# Same call as @sec-joint-derive; no special handling needed even if the
-# fit had T-varying shape parameters. The internal grid evaluation is what
-# makes this robust to bent log10(LT50)(T) curves.
-et_bin$z$summary
-et_bin$CTmax$summary
-```
-
-The posterior medians match the closed-form derivations from @sec-joint-derive — exactly as expected for this fit (linear `mid(T)`, constant shape parameters). When the same call is applied to a fit that lets shape parameters vary with $T$ (see @sec-joint-extend-example below), the same machinery produces a noticeably different $z$ posterior because the underlying $\log_{10}\text{LT50}(T)$ curve is bent rather than straight.
-
-#### Demonstrating changes with temperature-varying shape parameters {#sec-joint-extend-example}
-
-To make the points above concrete, we re-simulate beta-binomial data on the same factorial design as the simple case, but now both the dose-response steepness $k$ and the upper asymptote $u$ vary linearly with assay temperature. We then fit the joint Bayesian 4PL with the corresponding `bf()` formula and apply the same predict-and-interpolate recipe.
+The default `fit_4pl()` already puts a `temp_c` slope on $\ell$, $u$ and $k$, so any temperature effect on the shape parameters is fit alongside the linear midpoint. To validate that `extract_tdt()` returns sensible $z$, $CT_{max_{1hr}}$ and $\log_{10}\text{LT50}(T)$ posteriors when the truth violates the constant-shape assumption, we re-simulate beta-binomial data on the same factorial design as @sec-sim-step2, but now $u$ declines steeply with $T$ and $k$ rises steeply with $T$. The fit is then exactly the same `fit_4pl()` call as before — no special formula, no special priors — and the analysis afterwards is exactly the same `extract_tdt()` call.
 
 ```{r sim-data-ext}
 #| label: sim-data-ext
 #| echo: true
 
-# (Re-defined here so this chunk can be run independently of the earlier
-# simulation. Same values as the original `sim-design` chunk in @sec-sim-step2.)
-temps     <- c(30, 32, 34, 36, 38)             # assay temperatures (°C)
-durations <- c(1, 5, 15, 45, 135, 405)         # exposure durations (min)
+# Same factorial design as @sec-sim-step2; re-declared here so this chunk is
+# self-contained.
+temps     <- c(30, 32, 34, 36, 38)
+durations <- c(1, 5, 15, 45, 135, 405)
 n_rep     <- 30
 n_per_rep <- 30
-phi       <- 5                                  # beta-binomial dispersion
+phi       <- 5
+
+# Truth on the same raw scale fit_4pl() uses internally (so we can compare the
+# posterior coefficients to truth directly):
+#   ell = 0.49 * inv_logit(ell_raw)                    (held constant in T)
+#   u   = 0.51 + 0.49 * inv_logit(u_raw_0 + u_raw_T*T_c)  (declines in T)
+#   k   = exp(log_k_0 + log_k_T*T_c)                      (rises in T)
+true_params_ext <- list(
+  ell_raw  = qlogis(0.05 / 0.49),                 # ell = 0.05
+  u_raw_0  = qlogis((0.92 - 0.51) / 0.49),        # u = 0.92 at T_bar
+  u_raw_T  = -0.60,                                # strong decline in u with T
+  log_k_0  = log(8),                               # k = 8 at T_bar
+  log_k_T  = 0.30,                                 # strong rise in k with T
+  m_beta0  = 1.5,
+  m_beta1  = -0.15,
+  T_bar    = 34
+)
 
 design <- tidyr::expand_grid(
   T   = temps,
@@ -916,44 +907,24 @@ design <- tidyr::expand_grid(
 ) |>
   dplyr::mutate(
     log10_t = log10(t),
-    T_c     = T - 34,                            # mean-centred T (T_bar = 34)
+    T_c     = T - true_params_ext$T_bar,
     n       = n_per_rep
   )
 
-# Truth is defined on a constrained raw scale. This keeps ell in [0, 0.49],
-# u in [0.51, 1], and k positive at every assay temperature. Those constraints
-# avoid the label-switching and invalid-curve geometry that make identity-scale
-# 4PL fits mix poorly when u and k vary with temperature.
-true_params_ext <- list(
-  ell_raw  = qlogis(0.05 / 0.49),          # ell = 0.05
-  u_raw_0  = qlogis((0.92 - 0.51) / 0.49), # u = 0.92 at T_bar
-  u_raw_T  = -0.20,                        # u declines as T rises
-  log_k_0  = log(8),                       # k = 8 at T_bar
-  log_k_T  = 0.10,                         # k rises as T rises
-  m_beta0  = 1.5,
-  m_beta1  = -0.15,
-  T_bar    = 34
-)
-
-# Build per-cell true survival probabilities and draw beta-binomial counts.
-# (mutate keeps all columns of `design`; mid and p_true from the original
-# sim are overwritten in place with the new T-varying values.)
 sim_bb_ext <- design |>
   dplyr::mutate(
-    ell    = 0.49 * plogis(true_params_ext$ell_raw),           
+    ell    = 0.49 * plogis(true_params_ext$ell_raw),
     u      = 0.51 + 0.49 * plogis(true_params_ext$u_raw_0 +
-                                  true_params_ext$u_raw_T * T_c),
+                                   true_params_ext$u_raw_T * T_c),
     k      = exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c),
     mid    = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c,
-    p_true = ell +
-             (u - ell) /
-             (1 + exp(k * (log10_t - mid))),
+    p_true = ell + (u - ell) / (1 + exp(k * (log10_t - mid))),
     p_draw = rbeta(dplyr::n(), p_true * phi, (1 - p_true) * phi),
     y      = rbinom(dplyr::n(), size = n, prob = p_draw)
   )
 ```
 
- Lets have a look at the data along with truth (@fig-true-surface-ext):
+Under this truth the lower asymptote stays flat at $\ell = 0.05$, the upper asymptote $u$ falls from `r round(0.51 + 0.49 * plogis(true_params_ext$u_raw_0 + true_params_ext$u_raw_T * (30 - true_params_ext$T_bar)), 2)` at $T = 30$ to `r round(0.51 + 0.49 * plogis(true_params_ext$u_raw_0 + true_params_ext$u_raw_T * (38 - true_params_ext$T_bar)), 2)` at $T = 38$, and the steepness $k$ rises from `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (30 - true_params_ext$T_bar)), 1)` to `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (38 - true_params_ext$T_bar)), 1)` across the same range. The resulting dose-response curves are visibly different in shape at the two extremes (@fig-true-surface-ext).
 
 ::: {#fig-true-surface-ext}
 
@@ -974,13 +945,12 @@ truth_grid_ext <- tidyr::expand_grid(
                                    true_params_ext$u_raw_T * T_c),
     k       = exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c),
     mid     = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c,
-    p_true  = ell +
-              (u - ell) /
-              (1 + exp(k * (log10_t - mid)))
+    p_true  = ell + (u - ell) / (1 + exp(k * (log10_t - mid)))
   )
 
 ggplot2::ggplot() +
-  ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed",
+                      colour = "grey50") +
   ggplot2::geom_jitter(
     data = sim_bb_ext,
     ggplot2::aes(x = log10_t, y = y / n, colour = factor(T)),
@@ -991,277 +961,271 @@ ggplot2::ggplot() +
     ggplot2::aes(x = log10_t, y = p_true, colour = factor(T)),
     linewidth = 0.8
   ) +
-  ggplot2::labs(
-    x = expression(log[10]~exposure~time~(min)),
-    y = "Survival probability",
-    colour = "Temperature (°C)"
-  ) +
+  ggplot2::labs(x = expression(log[10]~exposure~time~(min)),
+                y = "Survival probability",
+                colour = "Temperature (°C)") +
   ggplot2::theme_classic()
 ```
 
-True 4PL dose-response surface (solid lines) for the extended simulation, where $k$ rises and $u$ falls linearly with assay temperature, overlaid on the simulated beta-binomial counts (points). One coloured curve and a corresponding cloud of points per assay temperature; the horizontal dashed line marks 50% survival.
+True 4PL dose-response surface (solid lines) for the extended simulation, where $k$ rises and $u$ falls with assay temperature, overlaid on the simulated beta-binomial counts (points). Note how the curves at $T = 30$ and $T = 38$ have very different upper asymptotes and steepness — not just a horizontal shift along the time axis.
 :::
 
-Now that we have the simulated data, let's fit the model. The important change from the simple-model fit is that the four 4PL parameters are no longer fit directly on the identity scale — each one needs a different transformation because each has a different constraint:
+Before fitting we can compute, analytically, what the truth implies for $\log_{10}\text{LT50}(T)$, the local thermal sensitivity $z(T)$ at each assay temperature (defined as $-1$ divided by the local slope of $\log_{10}\text{LT50}$ on $T$), and $CT_{max_{1hr}}$ (the $T$ at which $\log_{10}\text{LT50}$ crosses $\log_{10} 60$). These are the targets we will ask `extract_tdt()` to recover.
 
-| Parameter | Natural-scale constraint | Transform used |
-|---|---|---|
-| `ell` (lower asymptote) | $[0, 0.49]$ | `0.49 * inv_logit(ellraw)` — squashes raw real to $(0, 0.49)$ |
-| `u` (upper asymptote)   | $[0.51, 1]$ | `0.51 + 0.49 * inv_logit(uraw)` — squashes raw real to $(0.51, 1)$ |
-| `k` (slope)             | $> 0$       | `exp(logk)` — squashes raw real to $(0, \infty)$ |
-| `mid` (midpoint)        | unconstrained | identity (no transform) |
+```{r truth-ext-derived}
+#| label: truth-ext-derived
+#| echo: true
 
-The asymptotes use the **disjoint** intervals $[0, 0.49]$ and $[0.51, 1]$ (rather than each covering all of $[0, 1]$) to prevent MCMC sampling issues where upper and lower asymptotes flip during MCMC sampling which can cause convergence issues — to help here we constrain them and estimate on the logit scale. The 0.02 gap at $p = 0.5$ guarantees $u > \ell$ always, so the chains can't oscillate — which matters here because $u$ and $\ell$ can vary across temperatures. The cost is hard-bounding the asymptotes a few percentage points away from 0.5 — fine for survival data where genuine $LT_{50}$ assays don't sit at the boundary anyway. We also constrain `k` to be positive, but on a log scale via `exp(logk)`. Because $u$, $\ell$ and `k` have different transformations and meanings, we apply each transformation per parameter inside the formula before they are combined — as opposed to a single link function on the linear predictor as is typical in GLMMs.
+# True log10(LT50) at any T from the T-varying 4PL: solve p(log10_t) = 0.5
+# for log10_t. With the 4PL,
+#   log10_t = mid + (1/k) * log((u - 0.5) / (0.5 - ell))
+true_log10_LT50 <- function(T_value) {
+  T_c <- T_value - true_params_ext$T_bar
+  ell <- 0.49 * plogis(true_params_ext$ell_raw)
+  u   <- 0.51 + 0.49 * plogis(true_params_ext$u_raw_0 +
+                              true_params_ext$u_raw_T * T_c)
+  k   <- exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c)
+  mid <- true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c
+  mid + (1 / k) * log((u - 0.5) / (0.5 - ell))
+}
 
-We just need to remember in our fits that these values are transformed so we need to back-transform to make sense of the coefficients.
+# Local z(T) via central finite difference of true log10(LT50)(T).
+true_local_z <- function(T_at, half_step = 0.5) {
+  -1 / ((true_log10_LT50(T_at + half_step) -
+         true_log10_LT50(T_at - half_step)) / (2 * half_step))
+}
 
-```{r fit-4pl-ext}
-#| label: fit-4pl-ext
+# True CTmax_1hr: search the fine grid for the T at which log10(LT50)
+# crosses log10(60).
+T_grid_truth   <- seq(20, 45, by = 0.001)
+ll_grid_truth  <- vapply(T_grid_truth, true_log10_LT50, numeric(1))
+true_CTmax_1hr <- T_grid_truth[which.min(abs(ll_grid_truth - log10(60)))]
+
+truth_ext <- tibble::tibble(
+  T               = temps,
+  log10_LT50_true = vapply(temps, true_log10_LT50, numeric(1)),
+  LT50_min_true   = 10 ^ log10_LT50_true,
+  local_z_true    = vapply(temps, true_local_z, numeric(1))
+)
+
+true_mean_local_z <- mean(truth_ext$local_z_true)
+```
+
+Across the assay range the true $\log_{10}\text{LT50}(T)$ curve is bent: the implied local $z$ varies from `r round(min(truth_ext$local_z_true), 2)` °C at $T = 30$ to `r round(max(truth_ext$local_z_true), 2)` °C at $T = 38$ (truth mean $z$ = `r round(true_mean_local_z, 2)` °C). The truth implies $CT_{max_{1hr}}$ = `r round(true_CTmax_1hr, 2)` °C. With straight-line $\log_{10}\text{LT50}(T)$ — the constant-shape case — local $z$ would not vary across temperature at all.
+
+We now fit with exactly the same `fit_4pl()` call as before. The default formula already puts a `temp_c` slope on each of the four 4PL sub-parameters, so the model has the capacity to recover the truth's temperature signal on $u$ and $k$ without any modification.
+
+```{r fit-ext-default}
+#| label: fit-ext-default
 #| echo: true
 #| cache: false
 
-# Disable Quarto chunk caching here so brms's own `file = ...` /
-# `file_refit = "on_change"` mechanism is the sole source of truth for whether
-# to refit. Without this, the project default `cache: true` can hold an old
-# fit object even after the formula or priors change.
+std_ext <- standardize_data(sim_bb_ext,
+                            temp = "T", duration = "t",
+                            n_total = "n", n_surv = "y",
+                            duration_unit = "minutes")
 
-# Same 4PL likelihood as before, but with constrained transformations:
-#   ell = 0.49 * inv_logit(ellraw)
-#   u   = 0.51 + 0.49 * inv_logit(uraw)
-#   k   = exp(logk)
-# This guarantees ell < 0.5, u > 0.5, u > ell, and k > 0.
-bform_ext <- bf(
-  y | trials(n) ~
-    0.49 * inv_logit(ellraw) +
-      ((0.51 + 0.49 * inv_logit(uraw)) -
-         0.49 * inv_logit(ellraw)) /
-      (1 + exp(exp(logk) * (log10_t - mid))),
-  ellraw ~ 1,
-  uraw   ~ T_c,
-  logk   ~ T_c,
-  mid ~ T_c,
-  nl = TRUE,
-  family = beta_binomial(link = "identity")
-)
-
-priors_ext <- c(
-  brms::prior_string(
-    sprintf("normal(%f, 0.50)", true_params_ext$ell_raw),
-    nlpar = "ellraw", coef = "Intercept"
-  ),
-  brms::prior_string(
-    sprintf("normal(%f, 0.50)", true_params_ext$u_raw_0),
-    nlpar = "uraw", coef = "Intercept"
-  ),
-  brms::prior_string(
-    sprintf("normal(%f, 0.10)", true_params_ext$u_raw_T),
-    nlpar = "uraw", coef = "T_c"
-  ),
-  brms::prior_string(
-    sprintf("normal(%f, 0.35)", true_params_ext$log_k_0),
-    nlpar = "logk", coef = "Intercept"
-  ),
-  brms::prior_string(
-    sprintf("normal(%f, 0.05)", true_params_ext$log_k_T),
-    nlpar = "logk", coef = "T_c"
-  ),
-  prior(normal(1.5, 0.40), nlpar = "mid", coef = "Intercept"),
-  prior(normal(-0.15, 0.04), nlpar = "mid", coef = "T_c")
-)
-
-fit_bb_ext <- brm(
-  bform_ext, data = sim_bb_ext, prior = priors_ext,
-  chains = 4, iter = 2000, cores = 4, seed = 123,
-  control = list(adapt_delta = 0.95, max_treedepth = 12),
-  file = file.path(models_dir, "sim_4pl_ext_betabinomial_reparam"),
-  file_refit = "on_change"
-)
+wf_ext <- fit_4pl(std_ext,
+                  chains = 4, iter = 2000, cores = 4, seed = 123,
+                  file = file.path(models_dir,
+                                   "sim_4pl_ext_betabin_DEFAULT_strong_v1"))
 ```
 
-The printed model summary is now mainly a convergence check because the coefficients live on raw transformed scales. We still want Rhat near 1 and reasonable effective sample sizes, but recovery is easier to inspect after transforming the posterior draws back to natural 4PL parameters.
-
-```{r fit_bb_ext}
-#| label: fit_bb_ext
-#| echo: true
-#| cache: false
-
-# Force this chunk to re-run on every render so the printed summary always
-# reflects the current `fit_bb_ext` object (the project default `cache: true`
-# would otherwise hold onto a stale snapshot when the model is refit upstream).
-fit_bb_ext
-```
+The four 4PL sub-parameters on the natural (biological) scale at each assay temperature are recovered in @tbl-ext-recovery. The lower asymptote $\ell$ stays near $0.05$ at every $T$ (consistent with the truth that $\ell$ does not vary with temperature), while $u$ falls and $k$ rises across the assay range — exactly the truth.
 
 ```{r ext-recovery-table}
 #| label: tbl-ext-recovery
-#| tbl-cap: "Natural-scale parameter recovery from the constrained temperature-varying 4PL. The posterior is transformed from the raw `ellraw`, `uraw`, and `logk` coefficients back to the biologically interpretable asymptotes, steepness, and midpoint at each assay temperature; $\\phi$ is the beta-binomial precision parameter used to generate the overdispersed counts."
+#| tbl-cap: "Posterior recovery of the four 4PL sub-parameters on the natural scale at each assay temperature. The fit uses the disjoint-bounds reparameterisation ($\\ell$, $u$ via inv_logit, $k$ via exp); raw posterior columns are transformed back to the biological scale before summarising. Posterior medians and 95% credible intervals are reported alongside the analytical truth."
 
-ext_draws <- posterior::as_draws_df(fit_bb_ext)
+ext_post  <- posterior::as_draws_df(wf_ext$fit) |> as.data.frame()
+ext_meta  <- wf_ext$meta
+ext_bnds  <- ext_meta$bounds         # compute_4pl_bounds(0, 1)
+ext_temp_mean <- ext_meta$temp_mean  # what the fit centred on
 
-ext_param_draws <- purrr::map_dfr(temps, function(T_value) {
-  T_c_value <- T_value - true_params_ext$T_bar
+ext_param_long <- purrr::map_dfr(temps, function(T_value) {
+  T_c_fit  <- T_value - ext_temp_mean
+  T_c_true <- T_value - true_params_ext$T_bar
 
-  ext_draws |>
-    dplyr::transmute(
-      T = as.character(T_value),
-      ell = 0.49 * plogis(b_ellraw_Intercept),
-      u   = 0.51 + 0.49 * plogis(b_uraw_Intercept +
-                                  b_uraw_T_c * T_c_value),
-      k   = exp(b_logk_Intercept + b_logk_T_c * T_c_value),
-      mid = b_mid_Intercept + b_mid_T_c * T_c_value
-    ) |>
-    tidyr::pivot_longer(c(ell, u, k, mid),
-                        names_to = "parameter",
-                        values_to = "value")
-})
-
-ext_truth <- purrr::map_dfr(temps, function(T_value) {
-  T_c_value <- T_value - true_params_ext$T_bar
-
-  tibble::tibble(
-    T = as.character(T_value),
-    parameter = c("ell", "u", "k", "mid"),
-    truth = c(
-      0.49 * plogis(true_params_ext$ell_raw),
-      0.51 + 0.49 * plogis(true_params_ext$u_raw_0 +
-                           true_params_ext$u_raw_T * T_c_value),
-      exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c_value),
-      true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c_value
-    )
+  draws_at_T <- tibble::tibble(
+    ell = ext_bnds$low_min +
+          stats::plogis(ext_post$b_lowraw_Intercept +
+                        ext_post$b_lowraw_temp_c * T_c_fit) * ext_bnds$low_w,
+    u   = ext_bnds$up_min  +
+          stats::plogis(ext_post$b_upraw_Intercept +
+                        ext_post$b_upraw_temp_c * T_c_fit)  * ext_bnds$up_w,
+    k   = exp(ext_post$b_logk_Intercept + ext_post$b_logk_temp_c * T_c_fit),
+    mid = ext_post$b_mid_Intercept + ext_post$b_mid_temp_c * T_c_fit
   )
+
+  truth_at_T <- tibble::tibble(
+    ell = 0.49 * plogis(true_params_ext$ell_raw),
+    u   = 0.51 + 0.49 * plogis(true_params_ext$u_raw_0 +
+                               true_params_ext$u_raw_T * T_c_true),
+    k   = exp(true_params_ext$log_k_0 +
+              true_params_ext$log_k_T * T_c_true),
+    mid = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c_true
+  )
+
+  purrr::map_dfr(c("ell", "u", "k", "mid"), function(p) {
+    q <- stats::quantile(draws_at_T[[p]], c(0.025, 0.5, 0.975),
+                         na.rm = TRUE, names = FALSE)
+    tibble::tibble(
+      Parameter         = p,
+      `T (°C)`         = T_value,
+      Truth             = truth_at_T[[p]],
+      Median            = q[2],
+      Lower             = q[1],
+      Upper             = q[3]
+    )
+  })
 })
 
-ext_recovery <- ext_param_draws |>
-  dplyr::group_by(T, parameter) |>
-  dplyr::summarise(
-    median = median(value),
-    lower  = quantile(value, 0.025),
-    upper  = quantile(value, 0.975),
-    .groups = "drop"
+ext_param_long |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+Now we apply the same `extract_tdt()` call as in @sec-joint-derive — there is no separate "T-varying" workflow because `extract_tdt()` already inverts the fitted surface numerically per draw:
+
+```{r extract-tdt-ext}
+#| label: extract-tdt-ext
+#| echo: true
+
+et_ext <- extract_tdt(wf_ext, t_ref = 60, time_multiplier = 1, ndraws = 1000)
+```
+
+@tbl-extract-ext compares the three classical TDT quantities from `extract_tdt()` to the analytical truth derived above.
+
+```{r extract-tdt-ext-table}
+#| label: tbl-extract-ext
+#| tbl-cap: "Classical TDT quantities from `extract_tdt()` on the T-varying fit, compared against analytical truth. The single-summary $z$ is the slope of a per-draw OLS regression of $\\log_{10}\\text{LT50}$ on $T$ across the assay grid; the truth row reports the mean of the analytical local $z(T)$ at the same assay temperatures, which is what the OLS slope estimates when the curve is bent. $CT_{max_{1hr}}$ comes from direct numerical inversion of the fitted 4PL at 60 min per draw."
+
+tibble::tibble(
+  Quantity     = c("z (°C)",
+                   "CTmax at 1 hr (°C)",
+                   "T_crit (°C)"),
+  Truth        = c(round(true_mean_local_z, 3),
+                   round(true_CTmax_1hr, 3),
+                   NA_real_),  # T_crit truth involves r* integration; see below
+  Median       = c(et_ext$z$summary$z_median,
+                   et_ext$CTmax$summary$temp_median,
+                   et_ext$T_crit$summary$temp_median),
+  Lower        = c(et_ext$z$summary$z_lower,
+                   et_ext$CTmax$summary$temp_lower,
+                   et_ext$T_crit$summary$temp_lower),
+  Upper        = c(et_ext$z$summary$z_upper,
+                   et_ext$CTmax$summary$temp_upper,
+                   et_ext$T_crit$summary$temp_upper)
+) |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+Both posteriors comfortably cover their analytical truth. The single-summary $z$ is the OLS slope across the assay grid — which, on a bent curve, estimates the *average* local slope (truth = `r round(true_mean_local_z, 2)` °C, posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). $CT_{max_{1hr}}$ is recovered by direct 4PL inversion at the reference duration and lands on the truth (`r round(true_CTmax_1hr, 2)` °C → posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C); the numerical inversion does not depend on the asymmetry correction being constant in $T$.
+
+The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both quantities are built from; it lives in `et_ext$lt50_curve` (the output of `derive_ltx_curve()`) and can be plotted directly (@fig-lt50-curve-ext).
+
+::: {#fig-lt50-curve-ext}
+
+```{r lt50-curve-ext-plot}
+#| label: plot-lt50-curve-ext
+#| fig-width: 6
+#| fig-height: 4
+
+truth_overlay <- {
+  Ts <- seq(min(temps) - 2, max(temps) + 2, by = 0.05)
+  tibble::tibble(temp = Ts,
+                 duration_median = 10 ^ vapply(Ts, true_log10_LT50,
+                                               numeric(1)))
+}
+
+plot_ltx_curve(et_ext$lt50_curve) +
+  ggplot2::geom_line(data = truth_overlay,
+                     ggplot2::aes(x = temp, y = duration_median),
+                     linetype = "dashed", colour = "black",
+                     inherit.aes = FALSE)
+```
+
+Posterior $\text{LT50}(T)$ curve (median + 95% CrI, blue) recovered by `derive_ltx_curve()` from the T-varying fit, with the analytical truth overlaid (dashed black). The curve is visibly bent rather than straight in $T$, and the posterior tracks the truth.
+:::
+
+We can also drop down to the per-draw level and compute a *local* $z(T)$ at each assay temperature from the same `et_ext$lt50_curve` posterior — a finite difference of $\log_{10}\text{LT50}$ around $T$ per draw, summarised across draws (@fig-local-z-ext).
+
+```{r local-z-ext}
+#| label: local-z-ext
+#| echo: true
+
+# Finite-difference local z at each assay T, per posterior draw, derived
+# from et_ext$lt50_curve (the same per-draw LT50(T) curve extract_tdt
+# already computed for the OLS).
+half_step <- 0.5
+
+local_z_summary <- purrr::map_dfr(temps, function(T_at) {
+  z_per_draw <- et_ext$lt50_curve$draws |>
+    dplyr::group_by(.draw) |>
+    dplyr::summarise(
+      z_local = -1 / ((stats::approx(temp, log10(duration_out),
+                                     xout = T_at + half_step)$y -
+                       stats::approx(temp, log10(duration_out),
+                                     xout = T_at - half_step)$y) /
+                      (2 * half_step)),
+      .groups = "drop"
+    )
+  q <- stats::quantile(z_per_draw$z_local, c(0.025, 0.5, 0.975),
+                       na.rm = TRUE, names = FALSE)
+  tibble::tibble(T_at           = T_at,
+                 z_local_median = q[2],
+                 z_local_lower  = q[1],
+                 z_local_upper  = q[3])
+})
+
+local_z_summary |>
+  dplyr::left_join(
+    tibble::tibble(T_at = temps, z_local_truth = truth_ext$local_z_true),
+    by = "T_at"
   ) |>
-  dplyr::left_join(ext_truth, by = c("T", "parameter")) |>
-  dplyr::select(parameter, T, truth, median, lower, upper)
-
-phi_recovery <- tibble::tibble(
-  parameter = "phi",
-  T = "all",
-  truth = phi,
-  median = median(ext_draws$phi),
-  lower = quantile(ext_draws$phi, 0.025),
-  upper = quantile(ext_draws$phi, 0.975)
-)
-
-dplyr::bind_rows(ext_recovery, phi_recovery) |>
+  dplyr::select(T_at, z_local_truth, z_local_median,
+                z_local_lower, z_local_upper) |>
   dplyr::rename(
-    Parameter            = parameter,
-    `Temperature (°C)`   = T,
-    Truth                = truth,
-    `Posterior median`   = median,
-    Lower                = lower,
-    Upper                = upper
+    `T (°C)`              = T_at,
+    `z local truth (°C)`  = z_local_truth,
+    Median                = z_local_median,
+    Lower                 = z_local_lower,
+    Upper                 = z_local_upper
   ) |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
+::: {#fig-local-z-ext}
 
-Now we can check the changes in *z* and $CT_{max_{1hr}}$ from having temperature impact on multiple parameters of the 4PL using our workflow in the previous section. 
+```{r local-z-ext-plot}
+#| label: plot-local-z-ext
+#| fig-width: 6
+#| fig-height: 4
 
-```{r recipe-ext}
-#| label: recipe-ext
-#| echo: true
+truth_curve_z <- {
+  Ts <- seq(min(temps), max(temps), by = 0.1)
+  tibble::tibble(T_at = Ts,
+                 z_local_truth = vapply(Ts, true_local_z, numeric(1)))
+}
 
-# Predict-and-interpolate recipe applied directly to the extended brmsfit
-# (which was built with its own column names log10_t / T_c — see bform_ext).
-# This runs inline rather than through extract_tdt() because the column
-# schema differs from what standardize_data() produces; it is the same
-# numerical inversion idea applied to a hand-rolled brmsfit.
-T_eval    <- temps
-half_step <- 0.5  # half-width (°C) of the central finite difference window
-
-pred_grid_ext <- tidyr::expand_grid(
-  T = seq(min(temps) - 1, max(temps) + 1, by = 0.25),
-  t = 10 ^ seq(log10(0.5), log10(800), length.out = 200)
-) |>
-  dplyr::mutate(
-    log10_t = log10(t),
-    T_c     = T - true_params_ext$T_bar,
-    n       = 1
-  )
-
-epred_ext <- pred_grid_ext |>
-  tidybayes::add_epred_draws(fit_bb_ext, ndraws = 500)
-
-lt50_T_ext <- epred_ext |>
-  dplyr::group_by(.draw, T) |>
-  dplyr::summarise(
-    log10_lt50 = approx(.epred, log10_t, xout = 0.5)$y,
-    .groups    = "drop"
-  )
-
-z_per_draw_ext <- purrr::map_dfr(T_eval, function(T_at) {
-  lt50_T_ext |>
-    dplyr::group_by(.draw) |>
-    dplyr::summarise(
-      T_at = T_at,
-      z    = -1 / ((approx(T, log10_lt50, xout = T_at + half_step)$y -
-                    approx(T, log10_lt50, xout = T_at - half_step)$y) /
-                   (2 * half_step)),
-      .groups = "drop"
-    )
-})
-
-ctmax_per_draw_ext <- lt50_T_ext |>
-  dplyr::group_by(.draw) |>
-  dplyr::summarise(
-    CTmax_1hr = approx(log10_lt50, T, xout = log10(60))$y,
-    .groups   = "drop"
-  )
-
-# Posterior summaries: z at each assay temperature, and CTmax_1hr.
-z_summary_ext <- z_per_draw_ext |>
-  dplyr::group_by(T_at) |>
-  dplyr::summarise(
-    z_med = median(z, na.rm = TRUE),
-    z_lo  = quantile(z, 0.025, na.rm = TRUE),
-    z_hi  = quantile(z, 0.975, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-ctmax_summary_ext <- ctmax_per_draw_ext |>
-  dplyr::summarise(
-    CTmax_1hr_med = median(CTmax_1hr, na.rm = TRUE),
-    CTmax_1hr_lo  = quantile(CTmax_1hr, 0.025, na.rm = TRUE),
-    CTmax_1hr_hi  = quantile(CTmax_1hr, 0.975, na.rm = TRUE)
-  )
-
-z_summary_ext
-ctmax_summary_ext
+ggplot2::ggplot(local_z_summary,
+                ggplot2::aes(x = T_at, y = z_local_median)) +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = z_local_lower,
+                                    ymax = z_local_upper),
+                       fill = "#146C7C", alpha = 0.2) +
+  ggplot2::geom_line(colour = "#146C7C", linewidth = 1) +
+  ggplot2::geom_line(data = truth_curve_z,
+                     ggplot2::aes(x = T_at, y = z_local_truth),
+                     linetype = "dashed", colour = "black",
+                     inherit.aes = FALSE) +
+  ggplot2::labs(x = "Assay temperature (°C)",
+                y = expression(local~italic(z)~"(°C)")) +
+  ggplot2::theme_classic()
 ```
 
-In the simple-model fit (@sec-joint-derive), $z$ was essentially the same value at every assay temperature. In this extended fit, the posterior medians of $z$ vary across temperature (albeit slightly): a direct consequence of the temperature-dependent $k$ and $u$, which bend the $\log_{10}\text{LT50}(T)$ curve. 
+Local thermal sensitivity $z(T)$ recovered from the per-draw $\log_{10}\text{LT50}(T)$ curve (blue median + 95% CrI), with the analytical truth overlaid (dashed black). Where the constant-shape simple-case fit would give the same $z$ at every assay temperature, here local $z$ varies with $T$ in lock-step with the bent $\log_{10}\text{LT50}(T)$ curve.
+:::
 
-In contrast, $CT_{max_{1hr}}$ remains a single number per posterior draw, and in this simulation it actually lands very close to the simple-model value (~32 °C): the asymmetry correction is near zero at the temperature where the LT50 curve crosses 1 hour, so $CT_{max_{1hr}}$ is locally almost insensitive to the T-varying shape parameters. With more pronounced T-dependence in $k$ and $u$, or with shape parameters further from the symmetric ($\ell + u \approx 1$) regime, $CT_{max_{1hr}}$ would shift more visibly. 
-
-If we now want to get an adjusted *z* that averages across these temperatures we can do that as follows:
-
-```{r adjusted-z-ext}
-#| label: adjusted-z-ext
-#| echo: true
-
-# For each posterior draw, average the five local z(T_eval) values into
-# a single adjusted z; then summarise across draws.
-adjusted_z_ext <- z_per_draw_ext |>
-  dplyr::group_by(.draw) |>
-  dplyr::summarise(z_mean = mean(z, na.rm = TRUE), .groups = "drop")
-
-adjusted_z_ext |>
-  dplyr::summarise(
-    z_med = median(z_mean,   na.rm = TRUE),
-    z_lo  = quantile(z_mean, 0.025, na.rm = TRUE),
-    z_hi  = quantile(z_mean, 0.975, na.rm = TRUE)
-  )
-```
-
-Compared to the simple-model $z = `r round(true_z, 2)`$ °C (where shape parameters did not vary with temperature), this adjusted $z$ is `r round(median(adjusted_z_ext$z_mean), 2)` °C with 95% credible interval [`r round(quantile(adjusted_z_ext$z_mean, 0.025), 2)`, `r round(quantile(adjusted_z_ext$z_mean, 0.975), 2)`] °C — slightly lower in point estimate, with the simple-model value sitting near the upper end of the credible interval. With stronger T-dependence in $k$ and $u$, the bent $\log_{10}\text{LT50}(T)$ curve would have more variation across temperatures and the two summaries would diverge more.
+The *same* `fit_4pl()` and `extract_tdt()` calls recover the bent $\log_{10}\text{LT50}(T)$ curve, the average $z$ across the assay grid, and the per-draw $CT_{max_{1hr}}$ without modification. When the truth is constant-shape (as in @sec-joint-derive) the same fit returns near-zero slopes on $u$, $\ell$ and $k$, the bent-curve calculation collapses to the closed-form one.
 
 ### Heat injury accumulation and survival under a fluctuating trace
 

@@ -1,0 +1,248 @@
+---
+title: "Validation: extract_tdt() under T-varying shape parameters"
+date: 2026-05-13
+author: "Daniel W.A. Noble (with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+## Context
+
+The default `fit_4pl()` in `bayesTLS` puts a `temp_c` slope on every 4PL
+sub-parameter (`lowraw`, `upraw`, `logk`, `mid`). When the truth has
+real temperature signal on $u$, $\ell$, or $k$, the resulting
+$\log_{10}\text{LT50}(T)$ curve is **bent rather than straight in $T$**.
+This breaks the constant-shape closed forms used in the classical TDT
+derivations (cf. Equation 7 of the manuscript).
+
+The question this note answers: when the truth is bent, does
+`extract_tdt()` still return sensible $z$, $CT_{max_{1hr}}$, $T_{crit}$,
+and bent-curve posteriors? Or does the closed-form assumption inside the
+package introduce bias?
+
+The answer is no, it doesn't bias the answers — because `extract_tdt()`
+operates on the **fitted 4PL surface** rather than on closed-form
+expressions:
+
+- $CT_{max_{1hr}}$ comes from `derive_temperature_for_duration()`, which
+  inverts the surface at $t_\text{ref}$ per posterior draw. No closed
+  form for the asymmetry correction is needed.
+- $z$ comes from a per-draw OLS regression of $\log_{10}\text{LT50}$ on
+  $T$ across the assay grid, where the per-draw $\log_{10}\text{LT50}(T)$
+  curve is itself recovered by `derive_ltx_curve()` (numerical inversion
+  of the survival surface, again per draw). When the curve is straight,
+  the OLS returns the closed-form $z$; when it's bent, the OLS returns
+  the **average local slope** across the assay grid.
+
+This note runs a strong-truth simulation to demonstrate both points.
+
+## Simulation truth (strong T effects)
+
+```{r setup}
+#| message: false
+
+library(bayesTLS)
+set.seed(123)
+
+temps     <- c(30, 32, 34, 36, 38)
+durations <- c(1, 5, 15, 45, 135, 405)
+n_rep     <- 30
+n_per_rep <- 30
+phi       <- 5
+
+true_params_ext <- list(
+  ell_raw  = qlogis(0.05 / 0.49),
+  u_raw_0  = qlogis((0.92 - 0.51) / 0.49),
+  u_raw_T  = -0.60,   # strong decline in u with T
+  log_k_0  = log(8),
+  log_k_T  = 0.30,    # strong rise in k with T
+  m_beta0  = 1.5,
+  m_beta1  = -0.15,
+  T_bar    = 34
+)
+```
+
+True natural-scale parameters at each assay temperature, and the
+implied bent $\log_{10}\text{LT50}(T)$ curve:
+
+```{r truth-table}
+true_at_T <- function(T_value) {
+  T_c <- T_value - true_params_ext$T_bar
+  list(
+    ell = 0.49 * plogis(true_params_ext$ell_raw),
+    u   = 0.51 + 0.49 * plogis(true_params_ext$u_raw_0 +
+                               true_params_ext$u_raw_T * T_c),
+    k   = exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c),
+    mid = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c
+  )
+}
+
+true_log10_LT50 <- function(T_value) {
+  p <- true_at_T(T_value)
+  p$mid + (1 / p$k) * log((p$u - 0.5) / (0.5 - p$ell))
+}
+
+true_local_z <- function(T_at, h = 0.5) {
+  -1 / ((true_log10_LT50(T_at + h) -
+         true_log10_LT50(T_at - h)) / (2 * h))
+}
+
+T_grid_truth   <- seq(20, 45, by = 0.001)
+ll_grid_truth  <- vapply(T_grid_truth, true_log10_LT50, numeric(1))
+true_CTmax_1hr <- T_grid_truth[which.min(abs(ll_grid_truth - log10(60)))]
+
+truth_table <- tibble::tibble(
+  T               = temps,
+  u_true          = vapply(temps, function(T) true_at_T(T)$u, numeric(1)),
+  k_true          = vapply(temps, function(T) true_at_T(T)$k, numeric(1)),
+  log10_LT50_true = vapply(temps, true_log10_LT50, numeric(1)),
+  local_z_true    = vapply(temps, true_local_z, numeric(1))
+)
+truth_table
+sprintf("Mean local z = %.3f °C; range = %.3f", mean(truth_table$local_z_true),
+        max(truth_table$local_z_true) - min(truth_table$local_z_true))
+sprintf("True CTmax_1hr = %.3f °C", true_CTmax_1hr)
+```
+
+The truth has $u$ declining from $\sim 0.99$ to $0.67$ across the assay
+range and $k$ rising from $2.4$ to $26.6$. The resulting local $z(T)$
+varies from $6.05$ at $T=30$ to $6.53$ at $T=38$ — a 0.48 °C spread,
+clearly distinguishable from the constant-shape case (where local $z$
+would be the same everywhere). The truth $CT_{max_{1hr}} \approx 32.2$ °C.
+
+## Fit with the default `fit_4pl()`
+
+```{r sim-data}
+#| message: false
+
+design <- tidyr::expand_grid(
+  T   = temps, t = durations, rep = seq_len(n_rep)
+) |>
+  dplyr::mutate(log10_t = log10(t),
+                T_c     = T - true_params_ext$T_bar,
+                n       = n_per_rep)
+
+sim_bb_ext <- design |>
+  dplyr::mutate(
+    ell    = 0.49 * plogis(true_params_ext$ell_raw),
+    u      = 0.51 + 0.49 * plogis(true_params_ext$u_raw_0 +
+                                  true_params_ext$u_raw_T * T_c),
+    k      = exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c),
+    mid    = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c,
+    p_true = ell + (u - ell) / (1 + exp(k * (log10_t - mid))),
+    p_draw = rbeta(dplyr::n(), p_true * phi, (1 - p_true) * phi),
+    y      = rbinom(dplyr::n(), size = n, prob = p_draw)
+  )
+
+std_ext <- standardize_data(sim_bb_ext,
+                            temp = "T", duration = "t",
+                            n_total = "n", n_surv = "y",
+                            duration_unit = "minutes")
+```
+
+```{r fit}
+#| message: false
+#| cache: false
+
+models_dir <- here::here("output", "models")
+
+wf_ext <- fit_4pl(std_ext,
+                  chains = 4, iter = 2000, cores = 4, seed = 123,
+                  file = file.path(models_dir,
+                                   "sim_4pl_ext_betabin_DEFAULT_strong_v1"))
+```
+
+## `extract_tdt()` vs analytical truth
+
+```{r extract}
+et_ext <- extract_tdt(wf_ext, t_ref = 60, time_multiplier = 1, ndraws = 1000)
+
+et_ext$z$summary
+et_ext$CTmax$summary
+et_ext$T_crit$summary
+```
+
+Single-summary $z$ (the per-draw OLS slope across the assay grid)
+estimates the average local $z$ — truth $`r round(mean(truth_table$local_z_true), 2)`$ °C — which lies inside
+the posterior CrI. $CT_{max_{1hr}}$ (direct numerical inversion) lands
+on the truth ($`r round(true_CTmax_1hr, 2)`$ °C) with a tight CrI.
+
+## Bent $\log_{10}\text{LT50}(T)$ curve recovered numerically
+
+```{r curve-plot}
+truth_overlay <- {
+  Ts <- seq(min(temps) - 2, max(temps) + 2, by = 0.05)
+  tibble::tibble(temp = Ts,
+                 duration_median = 10 ^ vapply(Ts, true_log10_LT50,
+                                               numeric(1)))
+}
+
+plot_ltx_curve(et_ext$lt50_curve) +
+  ggplot2::geom_line(data = truth_overlay,
+                     ggplot2::aes(x = temp, y = duration_median),
+                     linetype = "dashed", colour = "black",
+                     inherit.aes = FALSE)
+```
+
+The posterior median (blue) tracks the analytical truth (dashed black)
+through the bend; the 95% CrI is wider at the edges of the assay range,
+as expected (the data only constrain the curve where there are
+observations).
+
+## Local $z(T)$ recovery
+
+```{r local-z}
+half_step <- 0.5
+local_z_summary <- purrr::map_dfr(temps, function(T_at) {
+  z_per_draw <- et_ext$lt50_curve$draws |>
+    dplyr::group_by(.draw) |>
+    dplyr::summarise(
+      z_local = -1 / ((stats::approx(temp, log10(duration_out),
+                                     xout = T_at + half_step)$y -
+                       stats::approx(temp, log10(duration_out),
+                                     xout = T_at - half_step)$y) /
+                      (2 * half_step)),
+      .groups = "drop"
+    )
+  q <- stats::quantile(z_per_draw$z_local, c(0.025, 0.5, 0.975),
+                       na.rm = TRUE, names = FALSE)
+  tibble::tibble(T_at = T_at,
+                 z_local_median = q[2],
+                 z_local_lower  = q[1],
+                 z_local_upper  = q[3])
+}) |>
+  dplyr::left_join(
+    tibble::tibble(T_at = temps, z_local_truth = truth_table$local_z_true),
+    by = "T_at"
+  )
+
+local_z_summary
+```
+
+The qualitative pattern (local $z$ increasing with $T$) is recovered.
+Per-temperature credible intervals are wide because we are reading a
+local slope off a per-draw curve — much wider than the OLS-averaged
+single-summary $z$, which is a stronger constraint.
+
+## Takeaway
+
+`extract_tdt()` does not assume constant-shape; both of its primitives
+(`derive_temperature_for_duration()` for $CT_{max_{1hr}}$,
+`derive_ltx_curve()` + OLS for $z$) operate on the fitted 4PL surface
+and recover bent $\log_{10}\text{LT50}(T)$ correctly. The single-summary
+$z$ returned to users is the average local slope across the assay grid
+when the curve is bent, and collapses to the closed-form $z$ when the
+curve is straight. Per-temperature local $z(T)$ values are accessible by
+finite-differencing the per-draw `et$lt50_curve$draws` directly. No
+modification to the workflow is needed for T-varying shape parameters.
+
+The worked example in
+[supplement.qmd § *A worked example: temperature effects on every
+shape parameter*](../ms/supplement.qmd) reproduces this analysis with
+the same numbers.
