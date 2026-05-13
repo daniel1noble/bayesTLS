@@ -99,3 +99,11 @@ scripts/smoke-test-phase1d.R
 
 # testthat-built fixture (cached small brms fit; auto-rebuilds on first run)
 tests/testthat/fixtures/sim_fit_small.rds
+output/sim_twostage/diffs_n5.rds
+.gitignore
+.gitignore
+output/sim_twostage/meta_n5.rds
+output/sim_twostage/per_sim_n5.rds
+output/sim_twostage/summary_n5.rds
+.gitignore
+.gitignore
