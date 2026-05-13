@@ -1,0 +1,1350 @@
+---
+title: "bayesian_TDT_leaves"
+format: html
+---
+
+```{r}
+pacman::p_load(
+  tidyverse,
+  ggdist,
+  broom,
+  MASS,
+  patchwork,
+  readxl,
+  lme4,
+  brms,
+  drc,
+  mgcv,
+  medrc, #remotes::install_github("DoseResponse/medrc")
+  plotly,
+  viridisLite,
+  posterior,
+  scales,
+  glmmTMB,
+  MuMIn,
+  survminer,
+  survival,
+  flextable,
+  performance,
+  future,
+  future.apply,
+  hms)
+
+# source("R/test_functions.r")
+
+```
+
+
+```{r}
+
+get_par <- function(nm) {
+  if (nm %in% names(dr)) {
+    dr[[nm]]
+  } else {
+    rep(0, nrow(dr))
+  }
+}
+
+get_4pl_draws <- function(temp_c_value) {
+  data.frame(
+    .draw = dr$.draw,
+    temp_c = temp_c_value,
+    low = plogis(get_par("b_lraw_Intercept")) * 0.49,
+    up = 0.51 + plogis(get_par("b_uraw_Intercept")) * 0.49,
+    k = exp(get_par("b_logk_Intercept")),
+    mid = get_par("b_mid_Intercept") +
+      get_par("b_mid_temp_c") * temp_c_value
+  )
+}
+
+```
+
+
+
+```{r}
+
+base_theme <- theme_classic(base_size = 22) +
+  theme(
+    axis.title = element_text(size = 24, face = "bold"),
+    axis.text  = element_text(size = 20),
+    legend.title = element_text(size = 22),
+    legend.text  = element_text(size = 20),
+    plot.title = element_text(size = 26, face = "bold", hjust = 0.5),
+    axis.line = element_line(linewidth = 1),
+    axis.ticks = element_line(linewidth = 1),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 2)
+  )
+
+ybreaks_left  <- c(1, 60, 120, 240, 480, 960)
+ybreaks_right <- c(1, 10, 30, 60, 120, 240, 480)
+lab_number <- function(x) scales::number(x, big.mark = "", accuracy = 1)
+
+```
+
+
+
+
+## Leaf example testing
+
+
+```{r}
+
+leaf_raw <- read.csv("/Users/u1058369/Library/CloudStorage/Dropbox/Pieter/ANU/ATLS project/2023 Heat load experiment/Heat Load Methods Paper/Example/Example_TLS_dat_clean.csv")
+str(leaf_raw)
+
+assay_temp <- as.numeric(leaf_raw$Temp)
+temp_mean <- mean(assay_temp, na.rm = TRUE)
+
+d <- leaf_raw %>% mutate(
+  intact = fvfm_prop_io,
+  n_total = 5, 
+  assay_temp = Temp,
+  temp_c = assay_temp - temp_mean,
+  duration = Time,
+  logd = log10(duration)
+)
+
+# Beta regression with 4PL structure
+# Need to ensure values are strictly in (0,1), not exactly 0 or 1
+d <- d %>%
+  mutate(
+    # Transform to open interval (0,1)
+    intact = case_when(
+      intact >= 1 ~ 0.999,
+      intact <= 0 ~ 0.001,
+      TRUE ~ intact
+    )
+  )
+
+leaf_tdt <- prepare_tdt_survival_data(
+  data = d,
+  temp = "Temp",
+  duration = "duration",
+  n_total = "n_total",
+  survival = "intact",
+  # random_effects = c("Date", "Tank"),
+  duration_unit = "minutes"
+)
+
+
+leaf_data_summary <- leaf_tdt %>%
+  dplyr::summarise(
+    n_rows = dplyr::n(),
+    `Temperature min (°C)` = min(assay_temp, na.rm = TRUE),
+    `Temperature max (°C)` = max(assay_temp, na.rm = TRUE),
+    `Duration min (min)` = min(duration, na.rm = TRUE),
+    `Duration max (min)` = max(duration, na.rm = TRUE),
+    median_n = median(n_total, na.rm = TRUE),
+    `Temperature centre (°C)` = attr(leaf_tdt, "tdt_meta")$temp_mean
+  )
+
+tdt_ft(leaf_data_summary, digits = 2, caption = "Leaf sublethal TDT dataset used for the 4PL fit.")
+
+```
+
+## Build Or Load The Main Model
+
+```{r}
+leaf_workflow_spec <- fit_tdt_4pl(
+  data = leaf_tdt,
+  fit = FALSE
+)
+
+leaf_workflow_spec$formula$family <- brms::Beta(link = "logit")
+leaf_workflow_spec$formula <- intact ~ mu
+
+saveRDS(leaf_workflow_spec, file.path(tdt_output_dir, "leaf_sublethal_workflow_spec.RDS"))
+
+leaf_workflow_spec$formula
+
+tdt_ft(
+  as.data.frame(leaf_workflow_spec$prior),
+  digits = 3,
+  caption = "Priors used for the leaf beta 4PL model."
+)
+```
+
+```{r}
+#| output: false
+
+if (file.exists(params$model_path) && !isTRUE(params$refit_model)) {
+  
+  fit_leaf_4pl <- leaf_workflow_spec
+  fit_leaf_4pl$fit <- readRDS(params$model_path)
+  
+} else {
+  
+  fit_leaf_4pl <- fit_tdt_4pl(
+    data = leaf_tdt,
+    random_effects = NULL,
+    chains = 4,
+    cores = 4,
+    iter = 6000,
+    warmup = 3000,
+    seed = 123,
+    backend = "cmdstanr",
+    control = list(adapt_delta = 0.995, max_treedepth = 15),
+    file = params$model_path,
+    overwrite = TRUE,
+    fit = TRUE,
+    refresh = if (isTRUE(params$show_sampler_progress)) 100 else 0
+  )
+}
+
+```
+
+
+```{r}
+# Model summary
+summary(fit_leaf_4pl$fit)
+```
+
+## Model Checks And Derived Outputs
+
+The remaining chunks only run if a fitted model is available.
+
+```{r}
+if (tdt_has_fit(fit_leaf_4pl)) {
+  model_checks <- summarise_tdt_model(fit_leaf_4pl)
+  saveRDS(model_checks, file.path(tdt_output_dir, "leaf_sublethal_model_checks.RDS"))
+
+  parameter_table <- model_parameter_table(fit_leaf_4pl$fit)
+
+  tdt_ft(parameter_table, digits = 3, caption = "Table 1. Posterior summary of fitted 4PL parameters for the leaf sublethal TDT beta-binomial model. Population-level coefficients (b_) are on the transformed parameter scale (logit for asymptotes, log for k and mid).")
+  tdt_ft(r2_table(fit_leaf_4pl$fit), digits = 3, caption = "Table 2. Bayesian R² for the leaf sublethal TDT model, computed from posterior predictive variances.")
+  tdt_ft(loo_table(model_checks), digits = 2, caption = "Table 3. Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO) summary. ELPD-LOO is the expected log predictive density; lower LOOIC indicates better predictive accuracy.")
+  tdt_ft(diagnostic_table(model_checks), digits = 3, caption = "Table 4. Automatic HMC and LOO diagnostics. Values within acceptable thresholds (Rhat < 1.01, ESS ratio > 0.1, 0 divergent transitions) indicate reliable sampling.")
+}
+```
+
+```{r}
+#| fig-cap: "**Figure 1.** Posterior predictive check: observed versus model-predicted survival proportions. Each point represents one experimental unit (well or cup), coloured by assay temperature. Vertical intervals show the 95% posterior predictive interval. Points close to the 1:1 dashed line indicate good model fit; systematic deviations would suggest model misspecification."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  p_ppc <- plot_ppc_observed_vs_predicted(fit_leaf_4pl, ndraws = 500)
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_ppc_observed_vs_predicted.png"),
+    plot = p_ppc,
+    width = 6,
+    height = 5,
+    dpi = 350
+  )
+
+  p_ppc
+}
+```
+
+### Survival Curves
+
+```{r}
+#| fig-cap: "**Figure 2.** Posterior survival curves as a function of exposure duration for eight assay temperatures (30–58 °C). Lines show the posterior median survival probability; shaded ribbons are 95% credible intervals from the beta-binomial 4PL model. Points and error bars overlay observed mean ± SE survival proportions at each experimental temperature–duration combination. Duration is shown on the natural scale in hours; model predictions are population-level."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  surv_pred <- predict_survival_curves(
+    workflow = fit_leaf_4pl,
+    temps = c(30, 40, 42, 44, 48, 52, 54, 58),
+    ndraws = params$ndraws
+  )
+
+  saveRDS(surv_pred, file.path(tdt_output_dir, "leaf_sublethal_survival_curve_predictions.RDS"))
+
+  p_survival_curves <- plot_survival_curves(
+    pred = surv_pred,
+    observed = leaf_tdt
+  )
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_survival_curves.png"),
+    plot = p_survival_curves,
+    width = 9,
+    height = 6,
+    dpi = 400
+  )
+
+  p_survival_curves
+}
+```
+
+### TDT Curve And Classical TDT Parameters
+
+```{r}
+#| output: false
+if (tdt_has_fit(fit_leaf_4pl)) {
+  tdt_temp_grid <- seq(30, 58, by = 0.1)
+
+  leaf_lt75 <- derive_ltx_curve(
+    workflow        = fit_leaf_4pl,
+    temp_grid       = tdt_temp_grid,
+    target_survival = 0.75,
+    ndraws          = params$ndraws,
+    time_multiplier = 1,
+    output_time_unit = "min"
+  )
+
+  leaf_lt50 <- LT50_T_curve(
+    workflow = fit_leaf_4pl,
+    T_grid   = tdt_temp_grid,
+    ndraws   = params$ndraws,
+    time_multiplier  = 1,
+    output_time_unit = "min"
+  )
+
+  leaf_lt25 <- derive_ltx_curve(
+    workflow        = fit_leaf_4pl,
+    temp_grid       = tdt_temp_grid,
+    target_survival = 0.25,
+    ndraws          = params$ndraws,
+    time_multiplier = 1,
+    output_time_unit = "min"
+  )
+
+  leaf_ltx_all <- bind_ltx_curves(leaf_lt75, leaf_lt50, leaf_lt25)
+
+  saveRDS(leaf_lt50,    file.path(tdt_output_dir, "leaf_sublethal_lt50_curve.RDS"))
+  saveRDS(leaf_ltx_all, file.path(tdt_output_dir, "leaf_sublethal_ltx_all_curves.RDS"))
+
+  leaf_tdt_params <- derive_tdt_parameters(ltx_curve = leaf_lt50, t_ref = 1)
+  saveRDS(leaf_tdt_params, file.path(tdt_output_dir, "leaf_sublethal_tdt_parameters.RDS"))
+}
+```
+
+```{r}
+#| fig-cap: "**Figure 3.** Thermal death time (TDT) curves for three impairment thresholds. Upper panel: raw time (min); lower panel: log10 time (min). Lines show the posterior median time needed to reduce PSII function to 75% (green), 50% (teal), or 25% (orange) at a given assay temperature; shaded ribbons are 95% credible intervals. All curves are derived by numerically inverting the posterior 4PL survival model at each temperature, and therefore fully propagate parameter uncertainty."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  p_ltx_all <- plot_ltx_curve(leaf_ltx_all, time_unit = "min")
+
+  p_lt50 <- plot_ltx_curve(leaf_lt50, time_unit = "min")
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_lt50_tdt_curve.png"),
+    plot = p_lt50,
+    width = 8, height = 10, dpi = 400
+  )
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_lt25_lt50_lt75_tdt_curve.png"),
+    plot = p_ltx_all,
+    width = 8, height = 10, dpi = 400
+  )
+
+  p_ltx_all
+}
+```
+
+```{r}
+if (tdt_has_fit(fit_leaf_4pl)) {
+  tdt_params_table <- leaf_tdt_params$summary %>%
+    dplyr::mutate(
+      `z (°C per decade)` = format_interval(z_median, z_lower, z_upper, digits = 2)
+    ) %>%
+    dplyr::select(`z (°C per decade)`)
+
+  tdt_ft(
+    tdt_params_table,
+    caption = "Table 5. Classical TDT parameters derived from the posterior LT50 curve. z is the thermal tolerance range (°C per decade of time), estimated as −1/slope from per-draw log-linear regressions of log10(LT50) on temperature."
+  )
+}
+```
+
+### TDT Landscape
+
+```{r}
+#| fig-cap: "**Figure 5.** Thermal death time landscape: posterior median predicted survival across the full temperature–duration design space. Colour intensity (dark = low survival, light = high survival) is the posterior median of the 4PL survival probability on a n × n grid spanning the observed temperature (30–58 °C) and duration (5–120 min) ranges. White contour lines mark the 25%, 50%, and 75% survival isolines. Overlaid points show raw observed survival proportions at each experimental combination."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  landscape <- derive_tdt_landscape(
+    workflow = fit_leaf_4pl,
+    temp_grid = seq(
+      min(leaf_tdt$assay_temp, na.rm = TRUE),
+      max(leaf_tdt$assay_temp, na.rm = TRUE),
+      length.out = 120
+    ),
+    duration_grid = seq(
+      min(leaf_tdt$duration, na.rm = TRUE),
+      max(leaf_tdt$duration, na.rm = TRUE),
+      length.out = 120
+    ),
+    ndraws = params$ndraws
+  )
+
+  saveRDS(landscape, file.path(tdt_output_dir, "leaf_sublethal_tdt_landscape.RDS"))
+
+  p_landscape <- plot_tdt_landscape(
+    landscape = landscape,
+    observed = leaf_tdt
+  )
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_tdt_landscape.png"),
+    plot = p_landscape,
+    width = 8,
+    height = 6,
+    dpi = 400
+  )
+
+  p_landscape
+}
+```
+
+### Damage and Repair Rates
+
+The fitted 4PL model implies an instantaneous damage rate at every temperature: $r_D(T) = 1 / \text{LT50}(T)$. Here LT50 is in hours, so $r_D$ is in LT50-doses per hour; multiplying by 100/60 converts to % LT50-dose per minute. Repair is modelled as a Sharpe–Schoolfield thermal performance curve that peaks at an optimum temperature and declines at both extremes. Note that at temperatures below ~30 °C the damage rate is very small (< 1 % per min), so it appears near-zero on a scale that accommodates the steep rise above 33 °C — both figures are numerically consistent, just viewed at different y-axis scales.
+
+```{r}
+#| output: false
+
+repair_pars_leaf <- list(
+  TA   = 14065,
+  TAL  = 50000,
+  TAH  = 120000,
+  TL   = 20.5 + 273.15,
+  TH   = 26.5 + 273.15,
+  TREF = 17   + 273.15
+)
+
+repair_levels_pct_min <- c(
+  none     = 0,
+  low      = 0.005,
+  moderate = 0.01,
+  high     = 0.05
+)
+
+if (tdt_has_fit(fit_leaf_4pl)) {
+  pars_leaf <- extract_standard_4pl_pars(fit_leaf_4pl)
+  saveRDS(pars_leaf, file.path(tdt_output_dir, "leaf_sublethal_4pl_posterior_parameters.RDS"))
+
+  damage_leaf <- damage_rate_curve(
+    pars        = pars_leaf,
+    temp_mean   = fit_leaf_4pl$meta$temp_mean,
+    temp_grid   = seq(10, 58, by = 0.1),
+    n_draws     = params$ndraws,
+    time_multiplier_to_minutes = 60
+  )
+  saveRDS(damage_leaf, file.path(tdt_output_dir, "leaf_sublethal_damage_rate_curve.RDS"))
+
+  repair_leaf <- repair_curve_df(
+    repair_pars         = repair_pars_leaf,
+    kdot_levels_pct_min = repair_levels_pct_min,
+    temp_grid           = seq(10, 58, by = 0.1)
+  )
+  saveRDS(repair_leaf, file.path(tdt_output_dir, "leaf_sublethal_repair_rate_curve.RDS"))
+}
+```
+
+```{r}
+#| fig-cap: "**Figure 6.** Damage and repair rates as a function of temperature on a log10 scale. The black line and grey ribbon show the posterior median and 95% credible interval of the instantaneous damage rate (% LT50-dose per minute), derived analytically from the fitted 4PL model as $r_D(T) = 100 / (60 \\times \\text{LT50}_h(T))$. Coloured dashed lines show three illustrative repair rates (low, moderate, high) modelled as Sharpe–Schoolfield thermal performance curves with an optimum at ~17–22 °C. On a log scale the three repair levels are clearly visible as near-horizontal lines in the range 0.001–0.1 % per min, while damage rises steeply above 31 °C and exceeds even the highest repair level above ~32 °C. At 25–28 °C (the spike temperatures used in the fluctuating simulations) damage rates are 0.02–0.25 % per min — small but non-zero."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  repair_overlay <- repair_curve_df(
+    repair_pars         = repair_pars_leaf,
+    kdot_levels_pct_min = repair_levels_pct_min[c("low", "moderate", "high")],
+    temp_grid           = seq(10, 58, by = 0.1)
+  ) %>%
+    dplyr::filter(repair_rate_pct_min > 1e-6)
+
+  damage_log_df <- damage_leaf$summary %>%
+    dplyr::filter(
+      damage_rate_pct_min_median  > 1e-6,
+      damage_rate_pct_min_lower   > 1e-6,
+      damage_rate_pct_min_upper   > 1e-6
+    )
+
+  p_damage_repair <- ggplot() +
+    geom_ribbon(
+      data = damage_log_df,
+      aes(x = temp, ymin = damage_rate_pct_min_lower, ymax = damage_rate_pct_min_upper),
+      fill = "grey70", alpha = 0.25, colour = NA
+    ) +
+    geom_line(
+      data = damage_log_df,
+      aes(x = temp, y = damage_rate_pct_min_median, colour = "Damage"),
+      linewidth = 1
+    ) +
+    geom_line(
+      data = repair_overlay,
+      aes(x = temp, y = repair_rate_pct_min, colour = repair_level, linetype = repair_level),
+      linewidth = 0.85
+    ) +
+    scale_colour_manual(
+      values = c(
+        Damage   = "#2F2F2F",
+        low      = "#4D9221",
+        moderate = "#146C7C",
+        high     = "#C76D37"
+      ),
+      name = NULL
+    ) +
+    scale_linetype_manual(
+      values = c(low = "dashed", moderate = "dashed", high = "dashed"),
+      name = NULL, guide = "none"
+    ) +
+    scale_y_log10(
+      breaks = c(0.0001, 0.001, 0.01, 0.1, 1, 10, 100),
+      labels = c("0.0001", "0.001", "0.01", "0.1", "1", "10", "100")
+    ) +
+    coord_cartesian(xlim = c(10, 58), ylim = c(0.0001, 200)) +
+    labs(
+      x = "Temperature (°C)",
+      y = "Rate (% LT50-dose per min, log[10] scale)"
+    ) +
+    theme_tdt +
+    theme(legend.position = "right")
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_damage_repair_combined.png"),
+    plot     = p_damage_repair,
+    width = 8, height = 5.5, dpi = 400
+  )
+
+  p_damage_repair
+}
+```
+
+```{r}
+#| fig-cap: "**Figure 7.** Net damage rate (damage minus repair) as a function of temperature, zoomed to the biologically relevant crossover region (−0.2 to 2 % LT50-dose per min). Positive values indicate net injury accumulation; negative values indicate net repair (recovery). The dashed line marks equilibrium. At temperatures below ~28–31 °C (depending on repair level), repair capacity exceeds incoming damage, allowing partial recovery. Above the crossover, damage dominates irreversibly. The steep rise of the 'none' and low-repair curves above 30 °C continues off the top of this panel; the log-scale figure above shows the full magnitude."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  p_net <- plot_net_damage_rate(damage_leaf, repair_leaf) +
+    coord_cartesian(xlim = c(10, 58), ylim = c(-0.2, 2))
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_net_damage_rate.png"),
+    plot     = p_net,
+    width = 8, height = 5.5, dpi = 400
+  )
+
+  p_net
+}
+```
+
+### Temperature Scenarios And Fluctuating Survival
+
+Hourly temperature time series (96 hours, 20 °C baseline) with five scenarios: a single 1-hour spike at 31.5 °C, three mild 1-hour spikes at 29 °C, three severe 1-hour spikes at 31 °C, and a mixed scenario (two mild + one severe). These temperatures are in the biologically relevant range where damage rates are substantial: at 29 °C the LT50 is roughly 100–200 min, and at 31–31.5 °C it drops to 20–60 min, so a single 1-hour spike at 31.5 °C already corresponds to a meaningful fraction of the LT50-dose. Panels are ordered from simplest (no heat) to most complex (mixed severity).
+
+```{r}
+#| output: false
+if (tdt_has_fit(fit_leaf_4pl)) {
+  temp_scenarios <- make_temperature_scenarios(
+    baseline    = 30,
+    single_temp = 45,
+    mild_temp   = 36,
+    severe_temp = 49
+  )
+
+  saveRDS(temp_scenarios, file.path(tdt_output_dir, "leaf_sublethal_temperature_scenarios.RDS"))
+
+  repair_prediction_levels <- c(
+    no_repair       = 0,
+    moderate_repair = repair_levels_pct_min[["moderate"]],
+    high_repair     = repair_levels_pct_min[["high"]]
+  )
+
+  fluctuating_predictions <- list()
+  for (scenario_name in names(temp_scenarios)) {
+    for (repair_name in names(repair_prediction_levels)) {
+      use_repair  <- repair_prediction_levels[[repair_name]] > 0
+      pred_name   <- paste(scenario_name, repair_name, sep = "__")
+
+      fluctuating_predictions[[pred_name]] <- predict_survival_fluctuating(
+        temp_df          = temp_scenarios[[scenario_name]],
+        pars             = pars_leaf,
+        temp_mean        = fit_leaf_4pl$meta$temp_mean,
+        n_draws          = params$ndraws,
+        repair           = use_repair,
+        repair_pars      = repair_pars_leaf,
+        kdot_ref_pct_min = repair_prediction_levels[[repair_name]],
+        irreversible_mortality = TRUE
+      )
+    }
+  }
+
+  saveRDS(
+    fluctuating_predictions,
+    file.path(tdt_output_dir, "leaf_sublethal_fluctuating_predictions.RDS")
+  )
+
+  scenario_summary <- summarise_fluctuating_predictions(
+    temp_scenarios = temp_scenarios,
+    predictions    = fluctuating_predictions
+  )
+
+  saveRDS(
+    scenario_summary,
+    file.path(tdt_output_dir, "leaf_sublethal_fluctuating_prediction_summary.RDS")
+  )
+}
+```
+
+```{r}
+#| fig-cap: "**Figure 8.** Temperature time series for the five simulation scenarios. Each trace shows 96 hours of hourly temperatures at a 20 °C baseline with 1-hour heat spikes. The single-spike scenario has one spike at 31.5 °C; mild repeated has three spikes at 29 °C; severe repeated has three spikes at 31 °C; mixed severity has two mild (29 °C) spikes followed by one severe (31 °C) spike. Panels are ordered from simplest to most complex thermal challenge."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  p_temperature_scenarios <- plot_temperature_scenarios(temp_scenarios)
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_temperature_scenarios.png"),
+    plot     = p_temperature_scenarios,
+    width = 9, height = 13, dpi = 400
+  )
+
+  p_temperature_scenarios
+}
+```
+
+```{r}
+#| fig-cap: "**Figure 9.** Accumulated latent injury dose over 96 hours under five temperature scenarios and three repair assumptions. The latent dose is expressed in LT50-dose units: a dose of 1 corresponds to 50% expected mortality. The dashed horizontal line marks this LT50 threshold. Coloured lines show posterior median dose; ribbons are 95% credible intervals. The single 31.5 °C spike produces immediate dose accumulation; repeated 31 °C severe spikes accumulate the most total dose. High repair capacity reduces the residual dose between events."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  p_fluctuating_dose <- plot_fluctuating_metric(fluctuating_predictions, metric = "latent_dose")
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_fluctuating_latent_dose.png"),
+    plot     = p_fluctuating_dose,
+    width = 10, height = 14, dpi = 400
+  )
+
+  p_fluctuating_dose
+}
+```
+
+```{r}
+#| fig-cap: "**Figure 10.** Predicted cumulative survival over 96 hours under five temperature scenarios and three repair assumptions. Survival is derived from the accumulated latent dose via the fitted 4PL dose–response curve and the irreversible mortality assumption (survival can only decrease over time). The no-heat baseline shows negligible injury throughout. The single 31.5 °C spike causes immediate, permanent mortality reduction. Repeated 31 °C severe spikes cause the largest cumulative mortality; high repair capacity provides meaningful buffering, particularly between successive events in the mild and mixed-severity scenarios."
+if (tdt_has_fit(fit_leaf_4pl)) {
+  p_fluctuating_survival <- plot_fluctuating_metric(fluctuating_predictions, metric = "survival")
+
+  ggsave(
+    filename = file.path(tdt_fig_dir, "leaf_sublethal_fluctuating_survival.png"),
+    plot     = p_fluctuating_survival,
+    width = 10, height = 14, dpi = 400
+  )
+
+  p_fluctuating_survival
+}
+```
+
+```{r}
+if (tdt_has_fit(fit_leaf_4pl)) {
+  tdt_ft(
+    scenario_summary,
+    digits  = 3,
+    caption = "Table 7. Summary of end-state predictions for each temperature scenario and repair level. Peak dose is the maximum accumulated latent injury dose (LT50-dose units); final dose is the dose at t = 96 h; minimum survival and final mortality are the worst-case and end-state population outcomes. Doses < 1 indicate sub-sublethal cumulative injury."
+  )
+}
+```
+
+
+## Piet leaf testing
+
+```{r, eval=FALSE, include=FALSE}
+
+# =========================
+# 1) Load + process raw data
+# =========================
+
+tls_sub <- read.csv("/Users/u1058369/Library/CloudStorage/Dropbox/Pieter/ANU/ATLS project/2023 Heat load experiment/Heat Load Methods Paper/Example/Example_TLS_dat_clean.csv")
+str(tls_sub)
+
+assay_temp <- as.numeric(tls_sub$Temp)
+temp_mean <- mean(assay_temp, na.rm = TRUE)
+
+d <- tls_sub %>% mutate(
+  survival = fvfm_prop_io,
+  n_total = 100, 
+  n_surv  = round(survival * n_total),
+  n_dead  = n_total - n_surv,
+  assay_temp = Temp,
+  temp_c = assay_temp - temp_mean,
+  duration = Time,
+  logd = log10(duration)
+)
+
+# Beta regression with 4PL structure
+# Need to ensure values are strictly in (0,1), not exactly 0 or 1
+d <- d %>%
+  mutate(
+    # Transform to open interval (0,1)
+    survival_beta = case_when(
+      survival >= 1 ~ 0.999,
+      survival <= 0 ~ 0.001,
+      TRUE ~ survival
+    )
+  )
+
+d$obs <- factor(seq_len(nrow(d)))
+str(d)
+
+# =========================
+# 2) Numeric constants for priors / init
+# =========================
+
+mid_start <- median(d$logd, na.rm = TRUE)
+lraw_mean <- qlogis(0.02 / 0.49)
+uraw_mean <- qlogis((0.98 - 0.51) / 0.49)
+logk_mean <- log(2)
+
+num_to_string <- function(x) {
+  formatC(x, digits = 16, format = "fg", flag = "#")
+}
+
+mid_start_s <- num_to_string(mid_start)
+lraw_mean_s <- num_to_string(lraw_mean)
+uraw_mean_s <- num_to_string(uraw_mean)
+logk_mean_s <- num_to_string(logk_mean)
+
+
+# =========================
+# 3) 4-parameter logistic model over duration
+# =========================
+# Probability-scale curve:
+#
+# p = low + (up - low) / (1 + exp(exp(logk) * (logd - mid)))
+#
+# low = inv_logit(lraw) * 0.49
+# up  = 0.51 + inv_logit(uraw) * 0.49
+#
+
+f_tdt_4pl <- bf(
+  survival_beta ~ eta,
+  nlf(
+    eta ~ logit(
+      (0.001 + inv_logit(lraw) * 0.498) +
+        (
+          (0.501 + inv_logit(uraw) * 0.498) -
+          (0.001 + inv_logit(lraw) * 0.498)
+        ) / (1 + exp(exp(logk) * (logd - mid)))
+    )
+  ),
+  lf(lraw ~ temp_c),
+  lf(uraw ~ temp_c),
+  lf(logk ~ temp_c),
+  lf(mid  ~ temp_c),
+  nl = TRUE
+)
+
+# =========================
+# 4) Priors
+# =========================
+priors_tdt_4pl <- c(
+  set_prior(
+    paste0("normal(", lraw_mean_s, ", 1)"),
+    class = "b", nlpar = "lraw"
+  ),
+  set_prior(
+    paste0("normal(", uraw_mean_s, ", 1)"),
+    class = "b", nlpar = "uraw"
+  ),
+  set_prior(
+    paste0("normal(", logk_mean_s, ", 1)"),
+    class = "b", nlpar = "logk"
+  ),
+  set_prior(
+    paste0("normal(", mid_start_s, ", 1.5)"),
+    class = "b", nlpar = "mid", coef = "Intercept"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "temp_c"
+  )
+)
+
+# =========================
+# 5) Initial values
+# =========================
+init_tdt_4pl <- function() {
+  list(
+    b_lraw_Intercept = lraw_mean,
+    b_uraw_Intercept = uraw_mean,
+    b_logk_Intercept = logk_mean,
+    b_mid_Intercept = mid_start,
+    b_mid_temp_c = 0
+  )
+}
+
+# =========================
+# 6) Fit model
+# =========================
+fit_4pl <- brm(
+  formula = f_tdt_4pl,
+  data = d,
+  family = Beta(link = "logit"),
+  prior = priors_tdt_4pl,
+  save_pars = save_pars(all = TRUE),
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = init_tdt_4pl,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+
+print(fit_4pl)
+r2(fit_4pl)
+dr <- posterior::as_draws_df(fit_4pl)
+
+z_draws <- -1 / dr$b_mid_temp_c
+
+quantile(z_draws, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+mean(z_draws, na.rm = TRUE) # z = 2.55 
+
+```
+
+
+
+```{r}
+
+temps_plot <- seq(30, 58, by = 2)
+
+dur_min <- min(d$duration, na.rm = TRUE)
+dur_max <- max(d$duration, na.rm = TRUE)
+dur_grid <- exp(seq(log(dur_min), log(dur_max), length.out = 250))
+
+nd_surv <- expand.grid(
+  assay_temp = temps_plot,
+  duration = dur_grid,
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
+
+nd_surv <- nd_surv %>%
+  mutate(
+    logd = log10(duration),
+    temp_c = assay_temp - temp_mean,
+    # n_total = as.integer(round(median(d$n_total, na.rm = TRUE))),
+    obs = levels(d$obs)[1],
+    temp_f = factor(assay_temp, levels = sort(unique(assay_temp)))
+  )
+
+pr_surv <- posterior_linpred(
+  fit_4pl,
+  newdata = nd_surv,
+  re_formula = NA,
+  transform = TRUE
+)
+
+nd_surv$pred_mean <- apply(pr_surv, 2, median, na.rm = TRUE)
+nd_surv$pred_lo   <- apply(pr_surv, 2, quantile, probs = 0.025, na.rm = TRUE)
+nd_surv$pred_hi   <- apply(pr_surv, 2, quantile, probs = 0.975, na.rm = TRUE)
+
+
+d_plot <- d %>% 
+    mutate(
+    temp_f = factor(assay_temp, levels = sort(unique(nd_surv$assay_temp))))
+
+p_surv_curves <- ggplot(
+  nd_surv,
+  aes(x = duration, y = pred_mean, colour = temp_f, fill = temp_f, group = temp_f)
+) +
+  geom_ribbon(
+    aes(ymin = pred_lo, ymax = pred_hi),
+    alpha = 0.15,
+    colour = NA,
+    show.legend = FALSE
+  ) +
+  geom_line(linewidth = 1.1) +
+  geom_jitter(
+    data = d_plot,
+    aes(x = duration, y = survival, fill = temp_f),
+    width = 0.01, 
+    inherit.aes = FALSE,
+    size = 3,
+    alpha = 0.9,
+    shape = 21, 
+    stroke = 0.5,
+    colour = "white"
+  ) +
+  scale_colour_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+  scale_fill_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+labs(
+  x = "Exposure duration (minutes)",
+  y = "Predicted PSII function",
+  colour = NULL
+) +
+base_theme +
+  coord_cartesian(ylim = c(0, 1.05)) +
+theme(
+  legend.position = "bottom",
+  legend.justification = c(1, 1),
+  legend.direction = "horizontal",
+  legend.title = element_blank(),
+  legend.text = element_text(size = 12),
+  legend.background = element_blank()
+) +
+guides(
+  colour = guide_legend(nrow = 2),
+  fill = "none"
+)
+
+print(p_surv_curves)
+
+
+temps_df <- data.frame(
+  assay_temp = seq(30, 58.1, by = 0.01)
+) %>%
+  mutate(
+    temp_c = assay_temp - temp_mean
+  )
+
+tdt_draws_avg <- bind_rows(
+  lapply(seq_len(nrow(temps_df)), function(i) {
+    out <- get_4pl_draws(
+      temp_c_value = temps_df$temp_c[i]
+    )
+    out$assay_temp <- temps_df$assay_temp[i]
+    out
+  })
+) %>%
+  mutate(
+    log10_t_h = mid + log((up - 0.5) / (0.5 - low)) / k,
+    t50_h = 10^log10_t_h,
+    t50_min = 60 * t50_h
+  ) %>%
+  filter(
+    is.finite(t50_min),
+    t50_min > 0
+  )
+
+pred_df_tdt_avg <- tdt_draws_avg %>%
+  group_by(assay_temp) %>%
+  summarise(
+    time_to_50 = median(t50_min, na.rm = TRUE),
+    lower = quantile(t50_min, 0.025, na.rm = TRUE),
+    upper = quantile(t50_min, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_tdt_avg_lin <- ggplot(pred_df_tdt_avg) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_continuous(breaks = ybreaks_left, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% survival (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+p_tdt_avg_log <- ggplot(pred_df_tdt_avg) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% mortality (min)",
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_tdt_avg_lin + p_tdt_avg_log + patchwork::plot_layout(ncol = 2))
+
+
+```
+
+
+
+
+```{r}
+
+library(brms)
+
+# Beta regression with 4PL structure
+# Need to ensure values are strictly in (0,1), not exactly 0 or 1
+d <- d %>%
+  mutate(
+    # Transform to open interval (0,1)
+    survival_beta = case_when(
+      survival >= 1 ~ 0.999,
+      survival <= 0 ~ 0.001,
+      TRUE ~ survival
+    )
+  )
+
+
+f_tdt_4pl <- bf(
+  n_surv | trials(n_total) ~ eta,
+  nlf(
+    eta ~ logit(
+      (inv_logit(lraw) * 0.49) +
+        (
+          (0.51 + inv_logit(uraw) * 0.49) -
+            (inv_logit(lraw) * 0.49)
+        ) / (1 + exp(exp(logk) * (logd - mid)))
+    ) + z
+  ),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1),
+  lf(logk ~ 1),
+  lf(mid ~ temp_c),
+  lf(z ~ 0 + (1 | obs)),
+  nl = TRUE
+)
+
+f_tdt_4pl_beta <- bf(
+  survival_beta ~ eta,
+  nlf(
+    eta ~ logit(
+      (inv_logit(lraw) * 0.499) + 
+        (
+          (0.501 + inv_logit(uraw) * 0.499) - 
+            (inv_logit(lraw) * 0.499)
+        ) / (1 + exp(exp(logk) * (logd - mid)))
+    )
+  ),
+  lf(lraw ~ 1),
+  lf(uraw ~ 1), 
+  lf(logk ~ 1),
+  lf(mid ~ temp_c),
+  lf(phi ~ 1),
+  nl = TRUE
+)
+
+# =========================
+# 4) Priors
+# =========================
+priors_tdt_4pl <- c(
+  set_prior(
+    paste0("normal(", lraw_mean_s, ", 1)"),
+    class = "b", nlpar = "lraw"
+  ),
+  set_prior(
+    paste0("normal(", uraw_mean_s, ", 1)"),
+    class = "b", nlpar = "uraw"
+  ),
+  set_prior(
+    paste0("normal(", logk_mean_s, ", 1)"),
+    class = "b", nlpar = "logk"
+  ),
+  set_prior(
+    paste0("normal(", mid_start_s, ", 1.5)"),
+    class = "b", nlpar = "mid", coef = "Intercept"
+  ),
+  set_prior(
+    "normal(0, 0.6)",
+    class = "b", nlpar = "mid", coef = "temp_c"
+  )
+)
+
+
+fit_4pl <- brm(
+  formula = f_tdt_4pl,
+  data = d,
+  family = binomial(link = "logit"),
+  prior = priors_tdt_4pl,
+  save_pars = save_pars(all = TRUE),
+  chains = 4,
+  cores = 4,
+  iter = 10000,
+  warmup = 5000,
+  init = init_tdt_4pl,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+
+fit_4pl_beta <- brm(
+  formula = f_tdt_4pl_beta,
+  data = d,
+  family = Beta(link = "logit"),
+  prior = priors_tdt_4pl,
+  save_pars = save_pars(all = TRUE),
+  chains = 4,
+  cores = 8,
+  iter = 10000,
+  warmup = 5000,
+  init = init_tdt_4pl,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  seed = 123
+)
+
+
+print(fit_4pl_beta)
+r2(fit_4pl_beta)
+dr <- posterior::as_draws_df(fit_4pl_beta)
+
+z_draws <- -1 / dr$b_mid_temp_c
+
+quantile(z_draws, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+mean(z_draws, na.rm = TRUE) # z = 5.82
+
+```
+
+
+
+```{r}
+
+library(tidybayes)
+library(dplyr)
+library(ggplot2)
+
+# Create newdata with all required variables
+newdata <- expand_grid(
+  temp_c = seq(-15, 10, length.out = 50),
+  logd = seq(0, 2, length.out = 50)
+) %>%
+  mutate(
+    n_total = 100  # Match what you used in the original data
+  )
+
+# Now predictions should work
+pred_binomial <- newdata %>%
+  add_epred_draws(fit_4pl, 
+                  ndraws = 100,
+                  re_formula = NA) %>%
+  mutate(model = "Binomial")
+
+pred_beta <- newdata %>%
+  add_epred_draws(fit_4pl_beta, 
+                  ndraws = 100,
+                  re_formula = NA) %>%
+  mutate(model = "Beta")
+
+# Combine predictions
+pred_combined <- bind_rows(pred_binomial, pred_beta)
+
+# Plot comparison - by duration
+ggplot(pred_combined, aes(x = temp_c, y = .epred, color = model, group = interaction(.draw, model))) +
+  geom_line(alpha = 0.1) +
+  facet_wrap(~round(logd, 2), labeller = label_both, nrow = 2) +
+  scale_color_manual(values = c("Binomial" = "blue", "Beta" = "red")) +
+  labs(title = "Model Comparison: Binomial vs Beta",
+       subtitle = "Population-level predictions across durations (log scale)",
+       x = "Temperature (centered)",
+       y = "Predicted Fv/Fm proportion",
+       color = "Model") +
+  theme_minimal()
+
+# Plot comparison - surface plot
+ggplot(pred_combined %>% group_by(temp_c, logd, model) %>% summarise(.epred = mean(.epred), .groups = "drop"),
+       aes(x = temp_c, y = logd, fill = .epred)) +
+  geom_tile() +
+  facet_wrap(~model) +
+  scale_fill_viridis_c(name = "Predicted\nFv/Fm", limits = c(0, 1)) +
+  labs(title = "Predicted Fv/Fm Surface",
+       x = "Temperature (centered)",
+       y = "Log duration") +
+  theme_minimal()
+
+# Calculate and visualize difference
+diff_summary <- pred_combined %>%
+  group_by(temp_c, logd, .draw) %>%
+  summarise(
+    binomial = .epred[model == "Binomial"],
+    beta = .epred[model == "Beta"],
+    .groups = "drop"
+  ) %>%
+  mutate(
+    difference = beta - binomial,
+    abs_difference = abs(difference)
+  )
+
+# Summary statistics
+cat("\n=== Model Difference Summary ===\n")
+cat("Mean absolute difference:", round(mean(diff_summary$abs_difference, na.rm = TRUE), 5), "\n")
+cat("Max absolute difference:", round(max(diff_summary$abs_difference, na.rm = TRUE), 5), "\n")
+cat("95th percentile:", round(quantile(diff_summary$abs_difference, 0.95, na.rm = TRUE), 5), "\n")
+
+# Difference heatmap
+ggplot(diff_summary %>% group_by(temp_c, logd) %>% summarise(mean_diff = mean(difference), .groups = "drop"),
+       aes(x = temp_c, y = logd, fill = mean_diff)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", 
+                       midpoint = 0,
+                       name = "Difference\n(Beta - Binomial)") +
+  labs(title = "Mean Difference: Beta vs Binomial Predictions",
+       x = "Temperature (centered)",
+       y = "Log duration") +
+  theme_minimal()
+```
+
+
+```{r}
+temps_plot <- seq(30, 58, by = 2)
+
+dur_min <- min(d$duration, na.rm = TRUE)
+dur_max <- max(d$duration, na.rm = TRUE)
+dur_grid <- exp(seq(log(dur_min), log(dur_max), length.out = 250))
+
+nd_surv <- expand.grid(
+  assay_temp = temps_plot,
+  duration = dur_grid,
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
+
+nd_surv <- nd_surv %>%
+  mutate(
+    logd = log10(duration),
+    temp_c = assay_temp - temp_mean,
+    n_total = as.integer(round(median(d$survival_beta, na.rm = TRUE))),
+    obs = levels(d$obs)[1],
+    temp_f = factor(assay_temp, levels = sort(unique(assay_temp)))
+  )
+
+pr_surv <- posterior_linpred(
+  fit_4pl_beta,
+  newdata = nd_surv,
+  re_formula = NA,
+  transform = TRUE
+)
+
+nd_surv$pred_mean <- apply(pr_surv, 2, median, na.rm = TRUE)
+nd_surv$pred_lo   <- apply(pr_surv, 2, quantile, probs = 0.025, na.rm = TRUE)
+nd_surv$pred_hi   <- apply(pr_surv, 2, quantile, probs = 0.975, na.rm = TRUE)
+
+
+d_plot <- d %>% 
+    mutate(
+    temp_f = factor(assay_temp, levels = sort(unique(nd_surv$assay_temp))))
+
+p_surv_curves <- ggplot(
+  nd_surv,
+  aes(x = duration, y = pred_mean, colour = temp_f, fill = temp_f, group = temp_f)
+) +
+  geom_ribbon(
+    aes(ymin = pred_lo, ymax = pred_hi),
+    alpha = 0.15,
+    colour = NA,
+    show.legend = FALSE
+  ) +
+  geom_line(linewidth = 1.1) +
+  geom_jitter(
+    data = d_plot,
+    aes(x = duration, y = survival, fill = temp_f),
+    width = 0.01, 
+    inherit.aes = FALSE,
+    size = 3,
+    alpha = 0.9,
+    shape = 21, 
+    stroke = 0.5,
+    colour = "white"
+  ) +
+  scale_colour_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+  scale_fill_viridis_d(option = "plasma", direction = 1, begin = 0.05, end = 0.95) +
+labs(
+  x = "Exposure duration (minutes)",
+  y = "Predicted PSII function",
+  colour = NULL
+) +
+base_theme +
+  coord_cartesian(ylim = c(0, 1.05)) +
+theme(
+  legend.position = "bottom",
+  legend.justification = c(1, 1),
+  legend.direction = "horizontal",
+  legend.title = element_blank(),
+  legend.text = element_text(size = 12),
+  legend.background = element_blank()
+) +
+guides(
+  colour = guide_legend(nrow = 2),
+  fill = "none"
+)
+
+print(p_surv_curves)
+```
+
+
+```{r}
+
+temps_df <- data.frame(
+  assay_temp = seq(30, 58, by = 0.01)
+) %>%
+  mutate(
+    temp_c = assay_temp - temp_mean
+  )
+
+tdt_draws_avg <- bind_rows(
+  lapply(seq_len(nrow(temps_df)), function(i) {
+    out <- get_4pl_draws(
+      temp_c_value = temps_df$temp_c[i]
+    )
+    out$assay_temp <- temps_df$assay_temp[i]
+    out
+  })
+) %>%
+  mutate(
+    log10_t_h = mid + log((up - 0.5) / (0.5 - low)) / k,
+    t50_h = 10^log10_t_h,
+    t50_min = 60 * t50_h
+  ) %>%
+  filter(
+    is.finite(t50_min),
+    t50_min > 0
+  )
+
+pred_df_tdt_avg <- tdt_draws_avg %>%
+  group_by(assay_temp) %>%
+  summarise(
+    time_to_50 = median(t50_min, na.rm = TRUE),
+    lower = quantile(t50_min, 0.025, na.rm = TRUE),
+    upper = quantile(t50_min, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_tdt_avg_lin <- ggplot(pred_df_tdt_avg) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_continuous(breaks = ybreaks_left, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% functional impairment (min)"
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+p_tdt_avg_log <- ggplot(pred_df_tdt_avg) +
+  geom_ribbon(
+    aes(x = assay_temp, ymin = lower, ymax = upper),
+    alpha = 0.20,
+    fill = "grey70"
+  ) +
+  geom_line(
+    aes(x = assay_temp, y = time_to_50),
+    linewidth = 1.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10(breaks = ybreaks_right, labels = lab_number) +
+  coord_cartesian(ylim = c(0.9, 960)) +
+  labs(
+    x = "Assay temperature (°C)",
+    y = "Time to 50% functional impairment (min)",
+  ) +
+  base_theme +
+  theme(
+    legend.position = "none"
+  )
+
+print(p_tdt_avg_lin + p_tdt_avg_log + patchwork::plot_layout(ncol = 2))
+
+
+```
