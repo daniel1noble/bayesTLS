@@ -133,7 +133,7 @@ Coding, writing, testing, and collaboration conventions live in [CLAUDE.md](CLAU
 
 ### 2026-05-12 (cont'd) — `T_crit` redefined as rate-multiplier (Faber et al. 2026)
 
-**Decision.** Replaced the LD5-at-1-hour `T_crit` with the rate-multiplier definition from Faber et al. (2026, EcoEvoRxiv preprint `havro_faber_2026`, DOI: [10.32942/X2SM1B](https://doi.org/10.32942/X2SM1B)). For each posterior draw, sample $r^*$ uniformly on $\log_{10}$ over $[0.1, 1]$ % HI per hour, then $T_{crit} = CT_{max,1hr} + z \cdot \log_{10}(r^*/100)$. Pooled posterior carries both parameter uncertainty (in $CT_{max,1hr}$, $z$) and operational uncertainty (in $r^*$). Median sits at $CT_{max,1hr} - 2.5z$. Verified on the shrimp data — recovers the hand-picked $T_c = 25\,^\circ\text{C}$ used in the prior pipeline.
+**Decision.** Replaced the LD5-at-1-hour `T_crit` with the rate-multiplier definition from Faber et al. (2026, EcoEvoRxiv preprint `faber2026`, DOI: [10.32942/X2SM1B](https://doi.org/10.32942/X2SM1B)). For each posterior draw, sample $r^*$ uniformly on $\log_{10}$ over $[0.1, 1]$ % HI per hour, then $T_{crit} = CT_{max,1hr} + z \cdot \log_{10}(r^*/100)$. Pooled posterior carries both parameter uncertainty (in $CT_{max,1hr}$, $z$) and operational uncertainty (in $r^*$). Median sits at $CT_{max,1hr} - 2.5z$. Verified on the shrimp data — recovers the hand-picked $T_c = 25\,^\circ\text{C}$ used in the prior pipeline.
 
 ### 2026-05-13 — Case studies, conceptual figure, simulation, conclusions
 
