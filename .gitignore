@@ -29,8 +29,10 @@ vignettes/*.pdf
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
 
-# Sims
-sim_twostage/
+# Sims — ignore the per-sim raw files (1000s of small RDS files,
+# regeneratable from scripts/sim_twostage_bias.R). Track only the aggregated
+# outputs the supplement loads at render time (per_sim, draws, summary, diffs).
+output/sim_twostage/raw/
 
 # knitr and R markdown default cache directories
 *_cache/
