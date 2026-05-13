@@ -16,8 +16,8 @@ fitted model.
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/daniel1noble/tls_model_equivalence}
-  \item Report bugs at \url{https://github.com/daniel1noble/tls_model_equivalence/issues}
+  \item \url{https://github.com/daniel1noble/bayesTLS}
+  \item Report bugs at \url{https://github.com/daniel1noble/bayesTLS/issues}
 }
 
 }

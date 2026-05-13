@@ -2,7 +2,7 @@
 % Please edit documentation in R/temperature_scenarios.R
 \name{make_temperature_scenarios}
 \alias{make_temperature_scenarios}
-\title{Build three reference temperature traces for heat-injury validation}
+\title{Build reference temperature traces for heat-injury validation}
 \usage{
 make_temperature_scenarios(
   baseline = 20,
@@ -10,7 +10,13 @@ make_temperature_scenarios(
   n_hours = 96,
   dt_hours = 1,
   spike_times_single = 24,
-  spike_times_multi = c(24, 48, 72)
+  spike_times_multi = c(24, 48, 72),
+  diurnal_n_days = 7,
+  diurnal_night_temp = baseline,
+  diurnal_day_peaks = NULL,
+  diurnal_peak_fwhm = 6,
+  diurnal_noise_sd = 0.3,
+  diurnal_seed = 1L
 )
 }
 \arguments{
@@ -28,14 +34,37 @@ trace has a spike. Default \code{24}.}
 
 \item{spike_times_multi}{Integer vector. Hours at which the multi-spike
 trace has a spike. Default \code{c(24, 48, 72)}.}
+
+\item{diurnal_n_days}{Integer. Number of days in the diurnal scenario.
+Default 7.}
+
+\item{diurnal_night_temp}{Numeric. Night-time baseline temperature (°C) in
+the diurnal scenario. Default \code{baseline}.}
+
+\item{diurnal_day_peaks}{Numeric vector of length \code{diurnal_n_days} (or
+length 1, recycled): the peak temperature each day reaches
+near 14:00. If \code{NULL} (default) the function alternates
+cool (\code{baseline + 5}) and warm (\code{baseline + 8}) days so
+some days accrue HI and others do not.}
+
+\item{diurnal_peak_fwhm}{Numeric. Full-width-half-maximum of the daily
+Gaussian temperature peak, in hours. Default 6 (≈ 4-5
+hours near the daily peak).}
+
+\item{diurnal_noise_sd}{Numeric. Standard deviation (°C) of smooth hourly
+fluctuations added on top of the diurnal cycle.
+Default 0.3.}
+
+\item{diurnal_seed}{Integer. Seed for the hourly-noise RNG so the diurnal
+trace is reproducible. Default 1L.}
 }
 \value{
-A named list of three tibbles (\code{flat}, \code{single_spike},
-\code{multi_spike}), each with columns \code{time_h} (numeric, hours from
-start) and \code{temp} (°C).
+A named list of four tibbles (\code{flat}, \code{single_spike}, \code{multi_spike},
+\code{diurnal}), each with columns \code{time_h} (numeric, hours from start)
+and \code{temp} (°C).
 }
 \description{
-Returns a list of three tibbles, each with columns \code{time_h} and \code{temp},
+Returns a list of four tibbles, each with columns \code{time_h} and \code{temp},
 representing the canonical validation scenarios:
 }
 \details{
@@ -45,15 +74,25 @@ representing the canonical validation scenarios:
 each of \code{spike_times_single} (default one spike).
 \item \code{multi_spike} — flat baseline with one hour at \code{spike_temp} placed at
 each of \code{spike_times_multi} (default three spikes).
+\item \code{diurnal} — multi-day diurnal cycle with day-to-day variation in peak
+temperature and small hourly fluctuations on top. Useful as a stand-in
+for a natural thermal regime where some days exceed \code{T_crit} and accrue
+injury while others stay below.
 }
 
-The defaults are deliberately calibrated so that, given typical TDT
-parameters (\verb{z = 5 °C}, \verb{CTmax_1hr = 32 °C}), each \code{single_spike} delivers
-a sub-lethal but visible dose, and \code{multi_spike} accumulates enough to
-approach an LT50 dose. Pass \code{\link[=planted_dose_from_trace]{planted_dose_from_trace()}} the same trace plus
-known parameters to compute the analytical expected HI.
+For a single 1-hour spike, the analytical dose is
+\eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}} \% LT50-dose. Setting
+\code{spike_temp = CTmax_1hr} therefore delivers ~100\% LT50-dose per spike — a
+calibration target for \code{predict_heat_injury()} validation.
 }
 \examples{
 scens <- make_temperature_scenarios()
 lapply(scens, head)
+# Diurnal calibrated for a shrimp-like organism (T_crit ~ 25 °C):
+make_temperature_scenarios(
+  baseline = 18,
+  diurnal_n_days = 7,
+  diurnal_night_temp = 19,
+  diurnal_day_peaks  = c(24, 27, 24.5, 27.5, 23, 26.5, 25.5)
+)$diurnal
 }

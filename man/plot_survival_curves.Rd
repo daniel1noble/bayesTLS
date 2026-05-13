@@ -4,13 +4,25 @@
 \alias{plot_survival_curves}
 \title{Plot posterior survival curves}
 \usage{
-plot_survival_curves(pred, observed = NULL)
+plot_survival_curves(
+  pred,
+  observed = NULL,
+  log_time = FALSE,
+  palette = "viridis"
+)
 }
 \arguments{
 \item{pred}{Output of \code{\link[=predict_survival_curves]{predict_survival_curves()}}.}
 
 \item{observed}{Optional standardised data tibble (from \code{\link[=standardize_data]{standardize_data()}})
 to overlay as points (jittered, transparent).}
+
+\item{log_time}{Logical. If \code{TRUE}, the exposure-duration axis is log10.
+Default \code{FALSE} (linear).}
+
+\item{palette}{Character. Viridis option for the temperature colour scale.
+Default \code{"viridis"}; pass \code{NULL} to keep ggplot's default
+hue scale.}
 }
 \value{
 A ggplot object.
@@ -20,9 +32,16 @@ Plots posterior median ± 95\% CrI of survival as a function of duration, one
 coloured line per assay temperature. Optionally overlays observed survival
 proportions per replicate.
 }
+\details{
+Colour mapping uses the viridis palette by default (yellow at the highest
+temperature, dark purple at the lowest); the exposure-duration axis is
+linear by default, with the classical log-time TDT view available via
+\code{log_time = TRUE}.
+}
 \examples{
 \dontrun{
 pred <- predict_survival_curves(wf, temps = c(30, 32, 34, 36))
 plot_survival_curves(pred, observed = wf$data)
+plot_survival_curves(pred, log_time = TRUE)  # classical TDT view
 }
 }

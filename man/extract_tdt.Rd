@@ -68,7 +68,7 @@ uniformly on the log10 scale across \code{TC_rate_range}. The pooled posterior
 thus carries both parameter uncertainty (in CTmax and z) and operational
 uncertainty in the choice of damage-rate floor. The default range
 \code{c(0.1, 1)} \% HI per hour brackets the empirical breakpoints found by
-Faber et al. (2023) and Jørgensen et al. (2022) across taxa as different
+Faber et al. (2026) and Jørgensen et al. (2021) across taxa as different
 as \emph{Drosophila suzukii} and \emph{Lemna gibba}.
 }
 

@@ -4,7 +4,12 @@
 \alias{plot_tdt_landscape}
 \title{Plot the TDT survival landscape as a heatmap}
 \usage{
-plot_tdt_landscape(landscape, observed = NULL, contours = c(0.25, 0.5, 0.75))
+plot_tdt_landscape(
+  landscape,
+  observed = NULL,
+  contours = c(0.25, 0.5, 0.75),
+  log_time = FALSE
+)
 }
 \arguments{
 \item{landscape}{Output of \code{\link[=derive_tdt_landscape]{derive_tdt_landscape()}}.}
@@ -13,12 +18,16 @@ plot_tdt_landscape(landscape, observed = NULL, contours = c(0.25, 0.5, 0.75))
 
 \item{contours}{Numeric vector of survival levels to draw contours at.
 Default \code{c(0.25, 0.5, 0.75)}.}
+
+\item{log_time}{Logical. If \code{TRUE}, exposure-duration y-axis is log10.
+Default \code{FALSE} (linear).}
 }
 \value{
 A ggplot object.
 }
 \description{
-Plot the TDT survival landscape as a heatmap
+Exposure-duration axis is linear by default; pass \code{log_time = TRUE} for the
+classical log-time TDT presentation.
 }
 \examples{
 \dontrun{
