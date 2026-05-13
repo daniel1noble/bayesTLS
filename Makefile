@@ -47,7 +47,7 @@ all: ms supp
 # R/ symlinks are intentionally NOT created here: the analytical functions
 # now live in the bayesTLS R package, which the supplement loads via
 # `library(bayesTLS)`. Install the package once before rendering:
-#   remotes::install_github("daniel1noble/tls_model_equivalence")
+#   remotes::install_github("daniel1noble/bayesTLS")
 #
 # Symlinks at BUILDROOT serve the YAML `../bib/...` style; symlinks at
 # BUILD_MS serve `here::here(...)` (which detects no project root in the

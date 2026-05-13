@@ -356,7 +356,7 @@ Honest discussion of:
 
 # Data and code availability {.unnumbered}
 
-All data, analysis scripts, and the rendered manuscript and supplement are available at https://github.com/daniel1noble/tls_model_equivalence. 
+All data, analysis scripts, and the rendered manuscript and supplement are available at https://github.com/daniel1noble/bayesTLS.
 
 # Conflict of interest {.unnumbered}
 

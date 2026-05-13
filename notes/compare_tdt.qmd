@@ -124,7 +124,7 @@ The "Test CTmax assumptions" and "Estimate z from ramping rate data" sections fi
 
 $$\text{dCTmax} = T_o + \frac{z}{\ln 10}\,\ln\!\left[\frac{\ln 10\cdot r\cdot t_{Ls}}{z}\,e^{(\ln 10/z)(\text{sCTmax} - T_o)} + e^{(\ln 10/z)(T_c - T_o)}\right]$$
 
-once with *z* fixed from the sublethal TDT posterior (forward branch: TDT → CTmax) and once with both *z* and `sCTmax` free (inverse branch: CTmax → TDT). Posterior draws of both *z* and CTmax are propagated through the optimiser. The plotted output places the static-TDT and ramp-derived TDT lines on the same axes (with credible bands), and likewise the ramp-derived dCTmax curve next to the observed CTmax half-eyes. This is operational equivalence-testing — the question the project title (`tls_model_equivalence`) is built around.
+once with *z* fixed from the sublethal TDT posterior (forward branch: TDT → CTmax) and once with both *z* and `sCTmax` free (inverse branch: CTmax → TDT). Posterior draws of both *z* and CTmax are propagated through the optimiser. The plotted output places the static-TDT and ramp-derived TDT lines on the same axes (with credible bands), and likewise the ramp-derived dCTmax curve next to the observed CTmax half-eyes. This is the operational TLS-equivalence test that the `bayesTLS` framework is built around.
 
 The manifesto §11 alludes to this with "if the question is about dynamic or fluctuating exposures, move from static LT50 to a rate-based damage-accumulation model" but does not run it. **The shrimp script does. It belongs in the manuscript as Figure X or Box X.**
 

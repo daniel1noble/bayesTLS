@@ -1,6 +1,6 @@
-# tls_model_equivalence
+# bayesTLS
 
-Methods paper on increasing the statistical rigor of the thermal death time (TDT) framework for ectotherm thermal tolerance. Target journal: *Methods in Ecology and Evolution*.
+Methods paper on increasing the statistical rigor of the thermal death time (TDT) framework for ectotherm thermal tolerance. Target journal: *Methods in Ecology and Evolution*. The companion R package, [`bayesTLS`](https://github.com/daniel1noble/bayesTLS), ships from this repository.
 
 ## Purpose
 
@@ -14,7 +14,7 @@ The analytical workflow is shipped as an installable R package at the root of th
 
 ```r
 # install.packages("remotes")  # if needed
-remotes::install_github("daniel1noble/tls_model_equivalence")
+remotes::install_github("daniel1noble/bayesTLS")
 library(bayesTLS)
 ```
 
@@ -131,48 +131,115 @@ Coding, writing, testing, and collaboration conventions live in [CLAUDE.md](CLAU
 
 **Posterior T_crit — a contribution in its own right.** T_crit has historically been treated as a poorly-defined point value. Here it inherits the model's posterior — full uncertainty distribution, naturally wider at the low-mortality (small-effect, sparse-data) end. Worth emphasising in the manuscript: T_crit comes out *with* a credible interval, from the same single fit that gives z and CTmax. No back-and-forth, no separate experiment.
 
+### 2026-05-12 (cont'd) — `T_crit` redefined as rate-multiplier (Faber et al. 2026)
+
+**Decision.** Replaced the LD5-at-1-hour `T_crit` with the rate-multiplier definition from Faber et al. (2026, EcoEvoRxiv preprint `havro_faber_2026`, DOI: [10.32942/X2SM1B](https://doi.org/10.32942/X2SM1B)). For each posterior draw, sample $r^*$ uniformly on $\log_{10}$ over $[0.1, 1]$ % HI per hour, then $T_{crit} = CT_{max,1hr} + z \cdot \log_{10}(r^*/100)$. Pooled posterior carries both parameter uncertainty (in $CT_{max,1hr}$, $z$) and operational uncertainty (in $r^*$). Median sits at $CT_{max,1hr} - 2.5z$. Verified on the shrimp data — recovers the hand-picked $T_c = 25\,^\circ\text{C}$ used in the prior pipeline.
+
+### 2026-05-13 — Case studies, conceptual figure, simulation, conclusions
+
+**Case studies — four total, integrated rather than per-section.** Brown shrimp (lethal + sublethal — already in supplement); zebrafish (Pete is integrating now, using `fit_4pl` with `beta_binomial(link = "identity")`); a plant species with preprint precedence (z already known from prior work, so it acts as additional validation); a fourth plant species (TBD). Adrian/students have ~100 more species coming from a Southwest-China transplant project — useful for future validation but out of scope for this paper.
+
+**Presentation format.** Single short manuscript section introducing the set with a one-paragraph blurb per case study (trait measured, experimental design, citation). Heavy lifting (data prep, fits, diagnostics, posteriors) lives in the supplement, one supplement subsection per case study. The manuscript carries the *integrated* figures only.
+
+**Manuscript figures — three integrated figures, no per-case-study figures in ms.**
+
+1. **Figure 1 — Conceptual figure (3 panels).** Panel A: per-temperature dose-response curves (two-stage Stage 1). Panel B: $\log_{10}\text{LT50}$ regression on temperature (two-stage Stage 2). Panel C: joint Bayesian 4PL — sketched two ways to be settled on a whiteboard:
+   - *Option A*: same dose-response/LT50 view as A+B but as a single coupled model with credible bands on the LT50 line ($z$ = slope, $CT_{max,1hr}$ = where the line crosses $\log_{10} 60$).
+   - *Option B*: the survival landscape ($T \times t$) with the 50% isocline; $CT_{max,1hr}$ sits at the intersection of that isocline with the 1-hour duration; uncertainty shown as dashed contour ridges. More information-dense but further from how field biologists think about TDT.
+2. **Figure 2 — z and CTmax distributions across case studies.** Two side-by-side density panels (z left, $CT_{max,1hr}$ right). For each case study, posterior density with 95% CrI bar; two-stage point estimate overlaid as a vertical line for direct comparison. Species silhouettes/iconography to make it visually appealing. Communicates the headline equivalence claim: joint 4PL and two-stage land in the same place on average, but the joint model gives a calibrated CrI for every case study.
+3. **Figure 3 — Heat-injury and survival under one simulated temperature trace, applied to all 4 case studies.** A single simulated time series at the top (a realistic regime with one or two heat-wave events), then a row of $\sim 4$ panels — one per case study — showing posterior HI accumulation and predicted survival. Demonstrates the ecological interpretation: thermally sensitive species accumulate damage rapidly and lose population fraction, less sensitive species stay stable. Concrete forward-prediction utility. Conceptually mirrors the tree-paper figure with heat-wave spikes and species-specific responses.
+
+**Two-stage bias simulation — new R script.** Run an explicit simulation harness that varies (a) sample size per cell, (b) overdispersion, (c) whether the assay design covers the full $[0, 1]$ survival range or only part of it, then compare joint Bayesian 4PL posterior estimates to two-stage point estimates of $z$ and $CT_{max,1hr}$ against the simulation truth. Goal: quantify the direction and magnitude of two-stage bias as a function of sample size and design coverage. Daniel's prior: bias is real and worst under small-sample / partial-coverage designs, but the magnitude is unknown. Outputs: bias plots, RMSE comparison, coverage of nominal 95% intervals. Lives in `scripts/sim_twostage_bias.R`; summary tables and one figure folded into the supplement.
+
+**Conclusions / discussion blocks.**
+- Joint 4PL recovers what two-stage already recovers (on average) — **enhancement, not replacement**.
+- Sampling error becomes available for every quantity → makes meta-analyses tractable (point estimates *with* CrIs from every contributing study, in a common format).
+- Interpretation is more user-friendly: predicted survival probabilities and HI trajectories speak to ecological audiences, where $z$ and $CT_{max,1hr}$ on their own do not.
+- Uncertainty propagates to nature: forward predictions under measured/projected field temperature traces inherit the full posterior, which previous TDT pipelines never did.
+- Future enhancements (out of scope for this paper, but worth pointing to): acclimation responses (Arnold; chat with Johannes in France), life-stage-specific fits, repair-function calibration.
+- *Discount-data advantage*: two-stage TDT requires assay designs that fully cross the $[0, 1]$ survival range — partial-response data, control temperatures, and replicates that didn't fully kill the organism are typically discarded. The joint 4PL uses all of it; even constant-survival data at control temperatures help estimate the upper asymptote $u$.
+- *Faber-et-al T_crit*: cross-method agreement (~1 °C across performance-assay, constant-TDT breakpoint, and alternating-CT methods in two species) suggests `T_crit` is reasonably well-identified empirically — but the uncertainty *between* methods sits on top of within-method sampling uncertainty, which we propagate explicitly.
+- *Limitations*: assumptions about how the HI integral and repair are formulated; rate-multiplier $T_{crit}$ uses an operationally chosen $r^*$ range; the framework still relies on the 4PL functional form being adequate for the dose-response.
+
+**Manuscript figure-1 conceptual sketch — open questions to decide on whiteboard.**
+- How to draw the joint-model panel so it communicates *one fit, two quantities* (z + CTmax) rather than feeling like a third side-by-side procedure.
+- Whether to fold $T_{crit}$ into the same figure or leave it as a downstream consequence with its own visualisation in the body.
+- Whether the uncertainty should be drawn as ribbons on the LT50 line or as dashed contours on the landscape.
+
+**Workflow notes (logistics).**
+- Each new case study is best developed in a self-contained script (`scripts/case_study_<species>.R`) and then merged into the supplement once the fit is sane. This keeps the supplement clean while Pete iterates on the zebrafish and plant fits.
+- The supplement is the HTML primary artefact (updatable post-publication via Zenodo/GitHub release); a PDF copy is fine but secondary.
+- Repo is private. New collaborators need to push at least one commit (e.g., touch a file, `git push`) before `remotes::install_github()` resolves their identity.
+
 ## TODO list
 
-### This paper — to do
+### Completed (locked-in as of 2026-05-13)
 
-**Function infrastructure (all to live in `R/`, tested in `tests/testthat/`, documented with roxygen2):**
+**`bayesTLS` R package — installable from GitHub, R CMD check passing:**
 
-- [ ] `standardize_data()` — clean up the existing helper, document, test. Single source of truth for variable naming downstream.
-- [ ] `make_4pl_priors()` — proportion-data priors with sensible 0–1 bounds.
-- [ ] `make_TDT_priors()` — unbounded / sublethal priors; bounds scaled to data range.
-- [ ] `fit_4pl()` — joint Bayesian wrapper.
-  - [ ] Beta-binomial likelihood (not OLRE).
-  - [ ] Default: temperature on all four parameters; test overfitting risk before locking this in.
-  - [ ] Centred temperature by default.
-  - [ ] Console-print model assumptions, priors, bounds at exit.
-  - [ ] Expose chains / iterations / cores arguments.
-  - [ ] Return diagnostics summary (z, R², Rhat, divergences, potential problems).
-  - [ ] Decide on covariate / interaction / random-effect interface — either explicit arguments or leave the user to adapt the function.
-- [ ] `fit_linear_TDT()` — linear `log10(time) ~ temperature` for sublethal / time-to-event data with heteroscedastic option. Returns an object with the same downstream interface as `fit_4pl()`.
-- [ ] `extract_tdt(fit, T_ref, target_surv = 0.5, TC_thresh = 0.05)` — z, CTmax, T_crit, per-curve and overall.
-  - [ ] `target_surv = 0.5` (default) → CTmax via 4PL inverse at the reference exposure time.
-  - [ ] `TC_thresh = 0.05` (default) → T_crit via the same inverse routine at `1 - TC_thresh` survival. Same machinery; one inversion routine called twice with different survival targets.
-  - [ ] Extract from population-level estimates; ignore random effects.
-  - [ ] Return full posterior draws for z, CTmax, and T_crit.
-  - [ ] Sanity-check: T_crit from the fit should fall where `predict_heat_injury()` output lifts off zero on the heat-injury plot. Validate visually on the zebrafish and shrimp datasets before locking the 5% default.
-- [ ] `predict_survival_curves()` — posterior predictive curves over time × temperature.
-- [ ] `predict_heat_injury(temp_series, z_post, CTmax_post, T_ref, repair = FALSE)`.
-  - [ ] `repair = TRUE` option using Sharpe-Schoolfield.
-  - [ ] Default repair TPC estimated from where exponential damage accumulation begins; optimum repair temp X°C below.
-  - [ ] Kelvin internally for the Arrhenius portion.
-  - [ ] Toggle output between heat-injury (% LT50 dose) and survival fraction.
-- [ ] Plotting helpers — `plot_4pl_fit()`, `plot_tdt()`, `plot_heat_injury()`. Faceting when categories / interactions are present.
+- [x] `standardize_data()` — column standardisation, random-effect grouping, mean-centred temperature, attached metadata.
+- [x] `make_4pl_priors()` — disjoint-bounds priors for proportion data; bounds adjustable via `lower` / `upper` for sublethal/PSII-style data.
+- [x] `fit_4pl()` — joint Bayesian wrapper with `beta_binomial(link = "identity")` (default; `binomial(link = "identity")` available for no-overdispersion), disjoint-bounds reparameterisation, default `~ temp_c` slope on all four 4PL sub-parameters, mean-centred temperature, random intercepts on `mid` via `random_effects = c(...)`, brms `file_refit = "on_change"` caching.
+- [x] `extract_tdt()` — z (per-draw OLS of $\log_{10}\text{LT50}$ on T), CTmax (per-draw 4PL inversion at $t_\text{ref}$), T_crit (rate-multiplier definition from Faber et al.: $T_{crit} = CT_{max,1hr} + z \cdot \log_{10}(r^*/100)$, $r^*$ sampled uniformly on $\log_{10}$ across `TC_rate_range`, default $[0.1, 1]$ %/hr).
+- [x] `derive_ltx_curve()`, `derive_temperature_for_duration()`, `derive_tdt_parameters()`, `derive_tdt_landscape()` — the primitives behind `extract_tdt()`, exported so users can call them directly.
+- [x] `predict_survival_curves()` — posterior survival curves on a (temp × duration) grid.
+- [x] `predict_heat_injury()` — HI accumulation under any temperature trace; optional Sharpe-Schoolfield repair (`repair_rate_schoolfield()`), Kelvin internally, irreversible-mortality option, save-draws option.
+- [x] `make_temperature_scenarios()` — four reference traces (flat / single-spike / multi-spike / diurnal). Single-spike is calibrated so a 1-hour spike at `CTmax_1hr` delivers ~100% LT50 dose by construction. Diurnal is multi-day with day-to-day variability in peak temperature.
+- [x] `planted_dose_from_trace()` — analytical HI integral truth for validation.
+- [x] Plotting helpers — `plot_survival_curves()` (default linear time + viridis temperature; classical log-time via `log_time = TRUE`), `plot_ltx_curve()`, `plot_tdt_landscape()` (default linear time), `plot_temperature_density()`, `plot_temperature_scenarios()`, `plot_heat_injury()`, `plot_repair_rate()`. Shared `theme_tdt()` for visual consistency.
 
-**Validation & simulation:**
+**Validation & supplement content:**
 
-- [ ] Heat-injury simulation harness — three temperature traces (flat / single spike / multi-spike) with known planted doses. Cross-check `predict_heat_injury` recovers the dose.
-- [ ] Overfitting check for the default `fit_4pl()` (temperature on all four parameters) — simulate from a model with no temperature effect on ℓ, u, k and confirm the full model doesn't fabricate one.
+- [x] Heat-injury simulation harness — three traces (flat / single spike / multi-spike), planted-dose validation. Single-spike at posterior median $CT_{max,1hr}$ recovers ~100% HI by construction (used as a self-check in the shrimp section).
+- [x] Overfitting check for default `fit_4pl()` — supplement § *A worked example: temperature effects on every shape parameter* shows the fit picks up real T effects on $u$ and $k$ and shrinks them toward zero when absent.
+- [x] Supplement tutorial — intro, function tour, simulation walk-through, joint Bayesian 4PL fit, $z$ / $CT_{max,1hr}$ / $T_{crit}$ derivation, comparison to the classical two-stage pipeline, T-varying-shape worked example, heat injury under reference + diurnal traces (with and without repair).
+- [x] Sublethal / linear-fit pipeline — brown-shrimp sublethal time-to-knockdown analysed both via hierarchical linear Bayesian model (`log10_time ~ temp_c + (1|date) + (1|tank) + (1|cup)`) and via Ørsted-style 4PL on proportion-knocked-down data; side-by-side comparison plot and table in the supplement.
 
-**Manuscript & supplement:**
+### This paper — outstanding
 
-- [ ] Supplement tutorial: intro → functions list → simulation walk-through → complex-case section (K varies with T, covariates, interactions).
-- [ ] Section on sublethal / linear-fit pipeline (knockdown time, fertility, PSII).
-- [ ] Section on heat injury + repair with the simulation results.
+**Case studies — four total, integrated rather than per-section in the manuscript:**
+
+- [x] Brown shrimp (lethal + sublethal) — already in the supplement.
+- [ ] Zebrafish lethal TDT (Pete is integrating). Fit with `fit_4pl()` + `beta_binomial(link = "identity")`; re-use the plotting helpers. Develop in `scripts/case_study_zebrafish.R`, then merge into the supplement once the fit is sane.
+- [ ] Plant case study #1 — Pete's species with preprint precedence (z already published; acts as additional cross-method validation).
+- [ ] Plant case study #2 — Pete's second plant species (TBD; one clean dataset, not the broader ~100-species China-transplant set).
+- [ ] Each case study contributes one supplement subsection (data prep → fit → diagnostics → `extract_tdt()` summary) and one row's worth of data to the integrated manuscript figures below.
+
+**Manuscript figures — three integrated figures, no per-case-study figures in the manuscript:**
+
+- [ ] **Figure 1 — Conceptual figure (3 panels).** Panel A: per-temperature dose-response curves (two-stage Stage 1). Panel B: $\log_{10}\text{LT50}$ regression on temperature (two-stage Stage 2). Panel C: joint Bayesian 4PL — settle the visual on whiteboard. Candidate views: (a) LT50-on-temperature line with CrI ribbons, matching A+B; (b) survival landscape with 50%-survival isocline and dashed CrI contour ridges. Decide which.
+- [ ] **Figure 2 — Distribution of $z$ and $CT_{max,1hr}$ across case studies.** Two side-by-side density panels (z left, $CT_{max,1hr}$ right). One density per case study (4 species), 95% CrI bars, two-stage point estimates overlaid as vertical lines for direct comparison. Species silhouettes for visual appeal. Headline: joint 4PL and two-stage agree on average, but only the joint 4PL gives a calibrated CrI on every quantity.
+- [ ] **Figure 3 — Heat injury + survival under one simulated temperature trace, applied to all 4 case studies.** Top: a single simulated time series (a realistic regime with one or two heat-wave events, calibrated so some species accumulate damage and others stay stable). Below: 4 panels (one per species) showing posterior HI accumulation and predicted survival. Demonstrates the ecological/community-level interpretation of the framework.
+
+**Two-stage bias simulation:**
+
+- [ ] `scripts/sim_twostage_bias.R` — self-contained harness varying (a) sample size per cell (small / moderate / large), (b) overdispersion ($\phi$), (c) design coverage (full $[0, 1]$ survival range vs partial). For each simulated dataset, fit both the joint Bayesian 4PL and the two-stage pipeline; report bias, RMSE, and 95% interval coverage for $z$ and $CT_{max,1hr}$ against the simulation truth.
+- [ ] Save outputs (per-condition summaries) to `output/sim_twostage/` so the supplement can load and summarise them without re-running the harness at render time.
+- [ ] Fold one figure and one or two summary tables into the supplement.
+
+**Manuscript prose (after the three figures are sketched):**
+
+- [ ] Single case-study intro section in `ms/ms.qmd` — brief paragraph per species (trait measured, experimental design, n temperatures, n durations, citation). Heavy lifting stays in the supplement.
+- [ ] Discussion / conclusions — pull from the 2026-05-13 planning log entry above:
+  - Equivalence-as-enhancement framing (joint 4PL reproduces what two-stage already gives, on average).
+  - Sampling error enables meta-analysis (point estimates *with* CrIs, in a common format).
+  - Interpretation gains (survival probabilities + HI trajectories speak to ecological audiences).
+  - Uncertainty propagation to forward predictions in nature.
+  - Discount-data advantage (joint 4PL uses partial-response and control data the two-stage discards).
+  - Faber-et-al cross-method $T_{crit}$ agreement vs propagated within-method uncertainty.
+- [ ] Limitations — HI integral assumptions, $r^*$ range choice for $T_{crit}$, 4PL functional-form adequacy. Be explicit but not apologetic.
+- [ ] Future directions (signposted, not implemented in this paper): acclimation responses (Arnold; Johannes chat in France), life-stage-specific fits, repair-function calibration from sub-lethal panels rather than fixed Sharpe-Schoolfield parameters.
+
+**Reference housekeeping:**
+
+- [ ] Pete to dump any of his references that fit naturally into the existing prose.
+- [ ] Daniel to chase down the references flagged as "book — needs primary-source verification" and replace with primary citations where possible.
+
+### Deferred (`fit_linear_TDT`)
+
+The sublethal section of the supplement currently calls `brms::brm()` inline for the linear time-to-event model. The original architecture planned a `fit_linear_TDT()` wrapper exposing the same downstream interface (z, CTmax, posterior draws) as `fit_4pl()`. Useful for API consistency; not blocking this paper. Schedule for a post-submission package release.
+
+- [ ] `fit_linear_TDT()` + `extract_tdt_linear()` — same downstream interface as `fit_4pl()` / `extract_tdt()`; heteroscedastic likelihood option.
 
 ### Deferred to companion papers
 

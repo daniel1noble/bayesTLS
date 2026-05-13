@@ -8,7 +8,7 @@ and the rough edges to remember before editing.
 
 ## Project Identity
 
-- Repository: `tls_model_equivalence`
+- Repository: `bayesTLS` (https://github.com/daniel1noble/bayesTLS); local Dropbox folder retains the historical name `tls_model_equivalence/`.
 - Project type: Quarto research compendium / manuscript project, currently
   configured as a Quarto book.
 - Working title: "A flexible modelling framework for estimating thermal

@@ -216,7 +216,7 @@ derive_tdt_parameters <- function(ltx_curve,
 #'   thus carries both parameter uncertainty (in CTmax and z) and operational
 #'   uncertainty in the choice of damage-rate floor. The default range
 #'   `c(0.1, 1)` % HI per hour brackets the empirical breakpoints found by
-#'   Faber et al. (2023) and Jørgensen et al. (2022) across taxa as different
+#'   Faber et al. (2026) and Jørgensen et al. (2021) across taxa as different
 #'   as *Drosophila suzukii* and *Lemna gibba*.
 #'
 #' All three quantities inherit the same posterior — no extra fitting step.

@@ -14,7 +14,7 @@ link-citations: true
 
 ## Context
 
-Faber, Møller, Ehlers, Ørsted, & Overgaard (2023, preprint *havro_faber_2023_tcrit.pdf*) test four methods for estimating the critical temperature T_c that separates permissive from stressful temperatures in two ectotherms (*Lemna gibba*, *Drosophila suzukii*). Their working definition: T_c is the temperature at which the rate of homeostatic maintenance equals the rate of homeostatic disruption — below it, damage is fully repaired; above it, damage accumulates and survival becomes time-limited.
+Faber, Møller, Ørsted, Ehlers, & Overgaard (2026, EcoEvoRxiv preprint `havro_faber_2026`, DOI [10.32942/X2SM1B](https://doi.org/10.32942/X2SM1B)) test four methods for estimating the critical temperature T_c that separates permissive from stressful temperatures in two ectotherms (*Lemna gibba*, *Drosophila suzukii*). Their working definition: T_c is the temperature at which the rate of homeostatic maintenance equals the rate of homeostatic disruption — below it, damage is fully repaired; above it, damage accumulates and survival becomes time-limited.
 
 This is exactly the T_c that appears in the HI integral (Equation 7 of our manuscript): the temperature below which the damage-rate integrand is set to zero.
 

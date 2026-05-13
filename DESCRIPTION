@@ -20,8 +20,8 @@ License: CC BY 4.0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-URL: https://github.com/daniel1noble/tls_model_equivalence
-BugReports: https://github.com/daniel1noble/tls_model_equivalence/issues
+URL: https://github.com/daniel1noble/bayesTLS
+BugReports: https://github.com/daniel1noble/bayesTLS/issues
 Imports:
     brms,
     dplyr,
