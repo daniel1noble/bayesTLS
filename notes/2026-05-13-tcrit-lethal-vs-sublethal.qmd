@@ -1,0 +1,296 @@
+---
+title: "Why does rate-multiplier $T_{crit}$ disagree between lethal and sublethal endpoints?"
+date: 2026-05-13
+author: "Patrice Pottier + Claude (Sonnet 4.6)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+    fig-cap-location: bottom
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r setup}
+#| label: setup
+#| echo: false
+
+# Snapshot produced by notes/.tcrit_compare_v2.R using the cached
+# brown-shrimp fits in output/models/. The script saves a list with
+# tdt_lines (data for the comparison plot) and posteriors (per-draw
+# vectors of z, CTmax, T_crit for each pipeline). Re-run the .R script
+# if any fit cache is refreshed.
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+dat <- readRDS(here::here("notes", "2026-05-13-tcrit-compare-data.rds"))
+posteriors <- dat$posteriors
+tdt_lines  <- dat$tdt_lines
+qd <- function(x, d = 2) round(quantile(x, c(0.5, 0.025, 0.975),
+                                         na.rm = TRUE, names = FALSE), d)
+
+# Small helper for inline reporting.
+post_med  <- function(x, d = 2) round(median(x, na.rm = TRUE), d)
+post_lo   <- function(x, d = 2) round(quantile(x, 0.025, na.rm = TRUE, names = FALSE), d)
+post_hi   <- function(x, d = 2) round(quantile(x, 0.975, na.rm = TRUE, names = FALSE), d)
+```
+
+## The observation
+
+On the brown shrimp dataset, the rate-multiplier $T_{crit}$ posteriors from
+the lethal and sublethal pipelines disagree — their 95 % credible
+intervals do not overlap.
+
+```{r tbl-numbers}
+#| label: tbl-numbers
+#| tbl-cap: "Posterior medians and 95% credible intervals for the three pipelines, computed from the cached `output/models/*.rds` fits. The lethal fit uses `time_multiplier = 60` (model time in hours, t_ref = 60 min). The sublethal 4PL uses `time_multiplier = 1` (model time already in minutes), matching the supplement's `extract_tdt()` call. The linear sublethal Tcrit is computed analytically from the linear-model posteriors using the same $r^*$ range."
+
+tibble::tribble(
+  ~Endpoint,                              ~`z (°C)`,                                 ~`CTmax_1hr (°C)`,                              ~`T_crit (°C)`,
+  "Lethal 4PL (counts)",                  paste0(qd(posteriors$lethal$z), collapse = ", "),
+                                          paste0(qd(posteriors$lethal$CTmax), collapse = ", "),
+                                          paste0(qd(posteriors$lethal$Tcrit), collapse = ", "),
+  "Sublethal 4PL (knocked-down)",         paste0(qd(posteriors$sublethal_4pl$z), collapse = ", "),
+                                          paste0(qd(posteriors$sublethal_4pl$CTmax), collapse = ", "),
+                                          paste0(qd(posteriors$sublethal_4pl$Tcrit), collapse = ", "),
+  "Sublethal linear (log time)",          paste0(qd(posteriors$sublethal_linear$z), collapse = ", "),
+                                          paste0(qd(posteriors$sublethal_linear$CTmax), collapse = ", "),
+                                          paste0(qd(posteriors$sublethal_linear$Tcrit), collapse = ", ")
+) |>
+  knitr::kable(align = "lccc")
+```
+
+Two things stand out.
+
+- **$CT_{max_{1hr}}$ for the three pipelines is essentially the same**
+  (lethal `r post_med(posteriors$lethal$CTmax)` °C, sublethal 4PL
+  `r post_med(posteriors$sublethal_4pl$CTmax)` °C, sublethal linear
+  `r post_med(posteriors$sublethal_linear$CTmax)` °C). The 1-hour-50%
+  temperature for "knocked down" and for "dead" sits at roughly the
+  same place on the temperature axis on this panel.
+- **$z$ is more than halved going from lethal to sublethal**
+  (`r post_med(posteriors$lethal$z)` °C lethal → `r post_med(posteriors$sublethal_4pl$z)` °C
+  sublethal). The two sublethal pipelines agree closely on $z$ and
+  $CT_{max_{1hr}}$, so this is not an artefact of the 4PL aggregation;
+  the sublethal log-time data really do have a steeper slope on
+  $\log_{10}(\text{time})$ vs. $T$ than the lethal data do.
+
+Plug those into $T_{crit} \approx CT_{max_{1hr}} - 2.5\,z$ (the
+posterior median of $T_{crit} = CT_{max_{1hr}} + z \cdot \log_{10}(r^*/100)$
+with $r^*$ uniform on $\log_{10}$ across $[0.1, 1]$ % HI per hour)
+[@arnold_thermal_2025; @jorgensen_unifying_2021; **havro_faber_2023**]
+and you get the observed gap:
+
+- Lethal:     `r post_med(posteriors$lethal$CTmax)` − 2.5 × `r post_med(posteriors$lethal$z)` ≈ `r round(post_med(posteriors$lethal$CTmax) - 2.5 * post_med(posteriors$lethal$z), 2)` °C
+- Sublethal:  `r post_med(posteriors$sublethal_4pl$CTmax)` − 2.5 × `r post_med(posteriors$sublethal_4pl$z)` ≈ `r round(post_med(posteriors$sublethal_4pl$CTmax) - 2.5 * post_med(posteriors$sublethal_4pl$z), 2)` °C
+
+So the gap is entirely driven by the difference in $z$, magnified
+2.5× by the rate-multiplier formula.
+
+## The TDT lines tell the same story
+
+The cleanest way to see what is happening is to plot the predicted
+1-hour-50% temperature across a temperature grid for each pipeline —
+i.e., the TDT line $\log_{10}(\text{time to endpoint}) = f(T)$. If both
+endpoints reflected the same underlying damage process with different
+manifestation thresholds, the two lines would be **parallel**, offset
+by a constant on the $\log_{10}$ axis. They are not.
+
+```{r fig-tdt-lines}
+#| label: fig-tdt-lines
+#| fig-cap: "Posterior $\\log_{10}$ (time to 50% endpoint) across temperature for the three shrimp pipelines. The horizontal dashed line is $\\log_{10}(60)$ minutes = 1 hour; the vertical reference is the posterior median $CT_{max_{1hr}}$ from the lethal fit. Where each TDT line crosses the dashed line is its $CT_{max_{1hr}}$. The two sublethal pipelines agree across the panel temperature range, and both cross the lethal line at $\\approx CT_{max_{1hr}}$. At lower temperatures the steeper sublethal line predicts *longer* times to knockdown than the lethal line predicts to death — biologically impossible — so the linearity assumption holds only over a narrow window near $CT_{max_{1hr}}$ and the two lines should not be extrapolated past the data."
+#| fig-width: 7
+#| fig-height: 5
+
+ct_let_med <- post_med(posteriors$lethal$CTmax)
+
+ggplot(tdt_lines,
+        aes(x = temp, y = log10_time_med, colour = method, fill = method)) +
+  geom_ribbon(aes(ymin = log10_time_lo, ymax = log10_time_hi),
+              alpha = 0.18, colour = NA) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = log10(60), linetype = "dashed",
+             colour = "grey40") +
+  geom_vline(xintercept = ct_let_med, linetype = "dotted",
+             colour = "grey40") +
+  annotate("text", x = min(tdt_lines$temp), y = log10(60),
+           label = "log10(60 min) = 1 hour",
+           hjust = 0, vjust = -0.3, size = 3, colour = "grey40") +
+  annotate("text", x = ct_let_med, y = max(tdt_lines$log10_time_hi),
+           label = "CTmax_1hr (lethal)",
+           hjust = -0.05, vjust = 1, size = 3, colour = "grey40") +
+  scale_colour_manual(values = c("Lethal 4PL (counts)" = "#b2182b",
+                                  "Sublethal 4PL (knocked-down)" = "#2166ac",
+                                  "Sublethal linear (log time-to-knockdown)" = "#1b7837")) +
+  scale_fill_manual(values   = c("Lethal 4PL (counts)" = "#b2182b",
+                                  "Sublethal 4PL (knocked-down)" = "#2166ac",
+                                  "Sublethal linear (log time-to-knockdown)" = "#1b7837")) +
+  labs(x = "Temperature (°C)",
+       y = expression(log[10]("time to 50% endpoint, min")),
+       colour = NULL, fill = NULL) +
+  theme_classic() +
+  theme(legend.position = "top",
+        legend.direction = "vertical",
+        legend.text = element_text(size = 9))
+```
+
+Three things to read off @fig-tdt-lines:
+
+1. **The two sublethal pipelines agree closely.** Both the joint 4PL
+   on proportion-knocked-down and the classical linear regression on
+   $\log_{10}$ times give essentially the same TDT line. The
+   discrepancy with the lethal line is therefore a real feature of
+   the data, not a 4PL-vs-linear artefact.
+2. **The lethal and sublethal lines cross at $\approx CT_{max_{1hr}}$.**
+   The posterior median lines intersect near the 1-hour duration
+   right at the lethal $CT_{max_{1hr}}$ of `r round(ct_let_med, 1)` °C.
+   At higher temperatures the lethal line predicts longer times than
+   the sublethal — which is biologically sensible (knockdown precedes
+   death). At lower temperatures the sublethal line predicts *longer*
+   times to knockdown than the lethal line predicts to death — which
+   is **biologically impossible**: an animal cannot die before it
+   loses response to touch.
+3. **Linearity breaks down outside the assay window.** The
+   sublethal panel runs 31–33 °C; below 31 °C the line is pure
+   extrapolation, and the extrapolation crosses through the lethal
+   line and into the impossible region almost immediately. This is
+   the classic warning against extrapolating a TDT line outside its
+   assay range [@jorgensen_unifying_2021; @arnold_thermal_2025].
+
+This is the underlying reason for the $T_{crit}$ disagreement.
+$T_{crit}$ in the rate-multiplier definition is computed by
+extrapolating each TDT line down to a low rate — but the sublethal
+TDT line is wrong in exactly the temperature range that
+extrapolation lands in. The lethal $T_{crit}$ at ~25 °C is itself an
+extrapolation, but at least one that stays in the region where
+ramping experiments (acclimation/recovery regimes) and the literature
+[**havro_faber_2023**] suggest the breakpoint sits. The sublethal
+$T_{crit}$ at ~28.7 °C sits on a TDT line that has *already crossed
+into the impossible region*.
+
+## What does this say about $T_{crit}$?
+
+Two related but distinct quantities are being conflated when we call
+both numbers "$T_{crit}$":
+
+(a) **$T_{crit}$ as an extrapolated TDT-line quantity** — what
+    `extract_tdt()` returns. It is the temperature at which the
+    endpoint's TDT line crosses a chosen rate floor $r^*$. The
+    sublethal TDT line is steeper than the lethal one on this panel,
+    so its $T_{crit}$ sits higher (closer to $CT_{max_{1hr}}$). This
+    is mathematically correct given the input $(\hat z, \hat{CT}_{max})$
+    but the line being extrapolated is *demonstrably wrong* below the
+    assay range (it predicts knockdown taking longer than death).
+
+(b) **$T_{crit}$ as a biological breakpoint** — Faber's, Jørgensen's
+    definition. The temperature at which the absolute damage-rate
+    function $r(T)$ stops following the $Q_{10} \sim 2$ permissive
+    regime and starts the $Q_{10} \sim 100\text{--}25{,}000$ stressful
+    regime [**havro_faber_2023**; @jorgensen_unifying_2021]. This is
+    endpoint-agnostic: $r(T)$ is the same physiological process whether
+    measured by knockdown or by death. It is detected empirically as a
+    piecewise breakpoint in $\log(\text{rate})$ vs. $T$.
+
+The current `extract_tdt()` computes (a), not (b), and labels it
+$T_{crit}$. **That is the source of the confusion**: (a) is *not* a
+good proxy for (b) unless the TDT line is approximately linear over the
+range $[T_{crit}^{(b)}, CT_{max_{1hr}}]$. For the lethal shrimp panel
+the line is well-behaved over that range and (a) lands in the right
+neighbourhood. For the sublethal shrimp panel the line is steeper at
+high $T$ and shallower at low $T$ (the data only see the high-$T$
+limb), so extrapolating linearly produces a $T_{crit}$ that is biased
+upward — the line steepens just before $CT_{max_{1hr}}$ and the
+linear extrapolation continues that steep slope downward, missing the
+true (shallower) low-$T$ regime entirely.
+
+## What is the "right" way to estimate $T_{crit}$?
+
+Three options, in increasing order of how much they fix:
+
+### 1. Stop pretending it is endpoint-agnostic
+
+Keep the rate-multiplier $T_{crit}$ as the *operational* summary
+returned by `extract_tdt()`, but call it $T_{crit}^{(\text{endpoint},
+r^*)}$ in the manuscript and never cross-compare lethal and sublethal
+values as if they were the same physiological threshold. This is the
+status quo plus honest labelling. It is the easiest change but it
+does not give us a single biologically defensible $T_{crit}$ for the
+species. We may want to make this clearer in the manuscript.
+
+### 2. Compute Faber's empirical breakpoint per posterior draw
+
+For each posterior draw, take the fitted $\log_{10}\text{LT50}(T)$
+curve over a *wide* temperature grid that spans both the permissive
+and stressful regimes. Fit a piecewise model (two segments meeting at
+a breakpoint, e.g. via `segmented::segmented()` or a brms
+piecewise-linear formula). The breakpoint location is the per-draw
+estimate of biological $T_c$. Pool across draws to get a posterior of
+$T_c$ that does **not** depend on the endpoint — the breakpoint of
+$\log(r(T))$ vs $T$ is the same physiological feature whether $r$ is
+"die-rate" or "knockdown-rate."
+
+There is one fundamental data requirement: the model has to
+have some support in the permissive regime ($T \lesssim T_c$,
+$Q_{10} \sim 2$). The shrimp panels do not: the lethal panel is
+30–33 °C, all clearly above the expected $T_c \approx 25$ °C. So
+on this dataset the breakpoint would be entirely prior-driven for
+the lethal fit, and pure extrapolation for the sublethal fit. For
+future studies that aim to estimate $T_c$ specifically (rather than
+$CT_{max}$ at a reference duration), the design implication is
+clear: include at least one assay temperature below the expected
+$T_c$ and run it for long enough to see whether any death/knockdown
+accumulates.
+
+### 3. Reframe $T_{crit}$ in absolute-damage units
+
+If we had a calibration between the sublethal endpoint dose and the
+lethal endpoint dose (e.g., "50% knockdown corresponds to $\alpha$
+fraction of the LT50 dose"), we could convert $r^*_{\text{sub}} =
+\alpha \cdot r^*_{\text{leth}}$ and bring both $T_{crit}$ values onto
+a common absolute-rate axis. This is biologically motivated but
+species- and endpoint-specific and beyond what we can do with the
+shrimp data alone. Worth a sentence in the discussion as a future
+direction.
+
+## Recommendation for the current manuscript
+
+The supplement now contains an explicit caveat
+(*A caution on cross-endpoint comparison of $T_{crit}$* in the shrimp
+sublethal section) that the rate-multiplier $T_{crit}$
+is endpoint-conditional and should not be cross-compared between
+lethal and sublethal fits without that adjustment. We should keep
+that caveat. In the discussion of the manuscript we should:
+
+- Acknowledge that the rate-multiplier $T_{crit}$ as implemented is
+  the extrapolated-TDT-line variant (a), not the empirical breakpoint
+  (b), and that the two only coincide when the TDT line is roughly
+  linear over $[T_c, CT_{max_{1hr}}]$.
+- Recommend that future TDT designs aimed at $T_c$ include at least
+  one permissive-range assay temperature.
+- Flag option 2 (piecewise breakpoint per draw) as the natural extension
+  for datasets that do have permissive-range data.
+
+## Open follow-ups
+
+- Implement `derive_breakpoint_tcrit(workflow, temp_grid)` that uses
+  `segmented::segmented()` per posterior draw on the fitted
+  $\log_{10}\text{LT50}(T)$ curve. Returns the breakpoint posterior;
+  `NA` per draw when `segmented` fails. Endpoint-agnostic by
+  construction. **Not** usable on the current shrimp panels (no
+  permissive-range data); useful for any dataset whose assay range
+  brackets the suspected $T_c$.
+- Add a $T_{crit}(r^*)$ sensitivity figure to the supplement — one
+  panel each for lethal and sublethal, with $T_{crit}$ on the y-axis
+  and $r^*$ on a log-scale x-axis from 10⁻⁴ to 10⁻¹ % per hour. Should
+  show that the lethal and sublethal curves are simply offset by the
+  endpoint dose ratio in log-space, and that no choice of $r^*$ in
+  $[0.1, 1]$ brings the two into agreement.
+
+See also [[reference_faber_2023_tcrit]] and the earlier note
+`2026-05-12-tcrit-reconsidered-faber-et-al.qmd`.

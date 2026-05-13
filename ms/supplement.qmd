@@ -90,7 +90,7 @@ link-citations: true
 editor_options:
   chunk_output_type: console
 execute:
-  echo: false
+  echo: true
   warning: false
   message: false
   cache: true
@@ -1325,6 +1325,10 @@ Posterior heat-injury accumulation (top, red) and predicted survival fraction (b
 
 By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_median, 1), 0)`% (95% CI: `r round(tail(hi$summary$hi_lower, 1), 0)`% to `r round(tail(hi$summary$hi_upper, 1), 0)`%), and median predicted survival is `r round(tail(hi$summary$surv_median, 1), 2)` (95% CI: `r round(tail(hi$summary$surv_lower, 1), 2)` to `r round(tail(hi$summary$surv_upper, 1), 2)`).
 
+#### Why are the credible bands so wide?
+
+Both posterior bands look generous relative to the precision suggested by @tbl-tls-recovery on the underlying $z$ and $CT_{max_{1hr}}$. That is not a bug — it is the exponential rate-multiplier $10^{(T - CT_{max,1hr})/z}$ doing its job. A 1 °C shift in $CT_{max_{1hr}}$ multiplies the per-hour HI rate by $10^{1/z}$, which for $z \approx 2.6$ °C is a ~2.4× change; a 0.5 °C shift in $z$ at the same peak temperature shifts the rate by a comparable factor. Over a 5-day integral those multiplicative differences compound, so even tight parameter posteriors translate into visibly wide HI bands. The classical two-stage pipeline conceals this by treating the point estimates of $z$ and $CT_{max_{1hr}}$ as known when it computes HI — the joint Bayesian framework instead propagates that uncertainty honestly. The width of the band is therefore a faithful report of how much you should *not* over-interpret a point prediction, not a sign that the fit is too uncertain to be useful.
+
 ### Validation: recovering known planted doses {#sec-hi-validation}
 
 Before trusting `predict_heat_injury()` on real field data, we validate it against analytical truth on three reference traces with known dosing structure. `make_temperature_scenarios()` builds the traces; `planted_dose_from_trace()` implements the classical HI integral (Equation 7) directly given known `z` and `CTmax_1hr`. Posterior medians from `predict_heat_injury()` should sit near the analytical truth, and the 95% credible intervals should cover it.
@@ -1563,15 +1567,21 @@ shrimp_CTmax_med <- et_shrimp$CTmax$summary$temp_median
 shrimp_scens <- make_temperature_scenarios(
   baseline   = 17,                  # shrimp natural holding temperature
   spike_temp = shrimp_CTmax_med,    # 1-hr spike at LT50-temperature → 100% HI
-  n_hours    = 96,
+  n_hours    = 96,                  # 4 days; matches diurnal length below
   spike_times_single = 24,
   spike_times_multi  = c(24, 48, 72),
-  # Diurnal: 7 days, night below T_crit (no injury), day peaks alternating
-  # cool (≤ T_crit, no injury) and warm (above T_crit, ~25% HI per day).
-  diurnal_n_days     = 7,
-  diurnal_night_temp = 19,
-  diurnal_day_peaks  = c(24, 26.5, 24.5, 27, 23, 26.5, 25.5),
-  diurnal_noise_sd   = 0.25,
+  # Diurnal: 4 days designed to mimic a clustered heat wave on a temperate
+  # coastal shrimp habitat. Day 1 is cool (peak below T_crit, no injury);
+  # the next three days build a heatwave with progressively higher peaks and
+  # warmer nights — the canonical "warm days come in runs, with warm nights"
+  # pattern of temporal autocorrelation. Calibrated so the two hottest days
+  # each deliver roughly 50–60 % LT50-dose, bringing cumulative HI past 150 %
+  # and predicted survival down to ~20 % by day 4.
+  diurnal_n_days     = 4,
+  diurnal_day_peaks  = c(22.0, 27.0, 30.0, 30.5),
+  diurnal_night_temp = c(18.0, 19.5, 21.5, 22.0),
+  diurnal_peak_fwhm  = 5,           # ~4–5 h near the daily peak
+  diurnal_noise_sd   = 0.3,
   diurnal_seed       = 1L
 )
 
@@ -1624,7 +1634,7 @@ shrimp_hi_diurnal_rep <- predict_heat_injury(
 
 ```{r shrimp-hi-traces}
 #| label: fig-shrimp-hi-traces
-#| fig-cap: "The four reference temperature traces used for the shrimp heat-injury prediction. Baseline 17 °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ (LT50 temperature) so each spike delivers a full LT50 dose by construction. The diurnal scenario alternates cool days (peaks at or below $T_{crit}$, no injury) with warm days (peaks above $T_{crit}$, ~25% LT50-dose per day). The dashed line marks the model-derived damage threshold $T_c = T_{crit}$."
+#| fig-cap: "The four reference temperature traces used for the shrimp heat-injury prediction, all 96 hours long. Baseline 17 °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ (LT50 temperature) so each spike delivers a full LT50 dose by construction. The diurnal scenario simulates a clustered 4-day heatwave: a cool day with a peak below $T_{crit}$, then three progressively hotter days whose nights also warm with the daytime peaks (warm days come in autocorrelated runs in nature). The two hottest days deliver roughly 50–60 % LT50-dose each. The dashed line marks the model-derived damage threshold $T_c = T_{crit}$."
 #| fig-width: 7
 #| fig-height: 6
 
@@ -1658,11 +1668,11 @@ plot_heat_injury(shrimp_hi$multi_spike)
 plot_heat_injury(shrimp_hi_multi_rep)
 ```
 
-The diurnal scenario (@fig-shrimp-hi-diurnal-norep, @fig-shrimp-hi-diurnal-rep) is more realistic: seven 24-hour day–night cycles with day-to-day variation in the peak temperature, plus small hourly fluctuations. Some days' peaks stay below $T_{crit}$ (no injury accrues); on warm days the peak rises above $T_{crit}$ and a sub-LT50 dose accumulates. The no-repair trajectory shows monotonic accumulation on the warm-day peaks, separated by flat plateaus on the cool days. With repair on, the cool-day plateaus turn into recovery phases — cumulative HI falls back as the organism repairs faster than it accrues new injury at sub-$T_{crit}$ temperatures.
+The diurnal scenario (@fig-shrimp-hi-diurnal-norep, @fig-shrimp-hi-diurnal-rep) is the closest to a real coastal record: a clustered 4-day heatwave. Day 1 stays below $T_{crit}$ and accumulates no injury. Days 2–4 form an autocorrelated run of progressively hotter days, with the hot afternoons coupled to warmer nights (a common natural pattern set by the same synoptic conditions that drive the warm days themselves). The no-repair trajectory shows the expected morphology: a flat first day, then three injury-accumulating bouts whose magnitude scales with the daily peak — by the end of day 4 cumulative HI is well past 100 % and predicted survival has dropped to ~20 %. With repair on, the off-peak hours and the cool first day act as recovery phases, partially offsetting the warm-day damage; the final trajectory is set by the net balance between daily accrual at sub-$CT_{max_{1hr}}$ peaks and overnight + cool-day repair.
 
 ```{r shrimp-hi-diurnal-noreapair}
 #| label: fig-shrimp-hi-diurnal-norep
-#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **diurnal** trace, **no repair**. Peaks on the warm days push the temperature above $T_{crit}$ and drive injury accumulation; cool days flat-line. Posterior median + 95% credible band."
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **4-day diurnal heatwave** trace, **no repair**. The cool first day flat-lines below $T_{crit}$; days 2–4 each accrue an injury bout that scales with the daily peak. By the end of day 4 cumulative HI is well past 100 % and predicted survival has fallen to ~20 %. Posterior median + 95 % credible band."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -1671,7 +1681,7 @@ plot_heat_injury(shrimp_hi$diurnal)
 
 ```{r shrimp-hi-diurnal-rep}
 #| label: fig-shrimp-hi-diurnal-rep
-#| fig-cap: "Same diurnal trace, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.05` doses per hour at 17 °C). Cool days now turn into recovery phases, repair offsets some of the previous warm-day damage, and the trajectory is dominated by the net balance between daily injury accrual and overnight repair."
+#| fig-cap: "Same 4-day heatwave trace, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.05` doses per hour at 17 °C). The cool first day and overnight troughs now act as recovery phases. The trajectory is dominated by the net balance between daily injury accrual at sub-$CT_{max_{1hr}}$ peaks and recovery during cool intervals."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -1806,12 +1816,14 @@ fit_sub_lin <- brms::brm(
   prior      = priors_sub_lin,
   chains     = 4,
   cores      = 4,
-  iter       = 8000,
-  warmup     = 4000,
+  iter       = 2000,                     # 4 chains x 1000 post-warmup = 4000 draws
+  warmup     = 1000,
   init       = 0,
   control    = list(adapt_delta = 0.995, max_treedepth = 14),
   backend    = "cmdstanr",
   seed       = 123,
+  silent     = 2,                        # hide cmdstanr chain trace
+  refresh    = 0,                        # hide per-iteration progress
   file       = file.path(models_dir, "fit_shrimp_sublethal_linear"),
   file_refit = "on_change"
 )
@@ -1904,7 +1916,8 @@ std_sub_4pl <- standardize_data(
 wf_sub_4pl <- fit_4pl(
   std_sub_4pl,
   random_effects = c("date_experiment", "tank_ID"),
-  chains  = 4, iter = 2000, cores = 4, seed = 123,
+  chains  = 4, iter = 2000, cores = 4, seed = 123,    # 4000 post-warmup draws
+  silent  = 2, refresh = 0,                            # hide chain trace
   file    = file.path(models_dir, "fit_shrimp_sublethal_4pl"),
   file_refit = "on_change"
 )
@@ -2043,6 +2056,10 @@ tinytable::tt(compare_sub, digits = 3, escape = TRUE)
 ```
 
 The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}}$ on this dataset (medians within their mutual credible intervals; see @tbl-shrimp-sub-compare). The 4PL on proportion-knocked-down data has the practical advantage that the *same* `extract_tdt()` workflow used for the lethal counts also returns a posterior of $T_{crit}$ for free — a quantity the linear time-to-event model does not produce directly.
+
+### A caution on cross-endpoint comparison of $T_{crit}$ {#sec-shrimp-tcrit-endpoint-caveat}
+
+The sublethal $T_{crit}$ on this dataset sits ~3.5 °C above the lethal $T_{crit}$ reported in @tbl-shrimp-extract, and their 95 % credible intervals do not overlap. This is *not* a sign that damage starts accumulating at a higher temperature for the sublethal endpoint — biologically that is impossible, since loss of response to touch manifests before death. The discrepancy is mechanical and traces to the rate-multiplier formula $T_{crit} = CT_{max_{1hr}} + z \cdot \log_{10}(r^*/100)$, which inherits a 2.5× sensitivity to $z$ in the centre of the integrated $r^*$ range. On the shrimp panel $CT_{max_{1hr}}$ for the two endpoints is essentially identical (~31.4–31.6 °C), but $z$ is more than halved for the sublethal endpoint ($\approx 1.1$ vs $\approx 2.6$ °C); $2.5 \times (2.6 - 1.1) \approx 3.7$ °C of $T_{crit}$ gap follows from that alone. The lethal and sublethal TDT lines therefore cross at $\approx CT_{max_{1hr}}$ and the steeper sublethal line, extrapolated below the 31–33 °C assay window, predicts times to knockdown that exceed times to death — biologically impossible and a sign that the linearity assumption is breaking down outside the assay range. The rate-multiplier $T_{crit}$ is therefore best read as an **endpoint-conditional operational summary** of where the *fitted TDT line* crosses a low-rate floor, not as the universal physiological threshold of **havro_faber_2023** or @jorgensen_unifying_2021. The same-species $T_{crit}^{(\text{lethal})}$ and $T_{crit}^{(\text{sublethal})}$ should not be compared directly. See [notes/2026-05-13-tcrit-lethal-vs-sublethal.qmd](../notes/2026-05-13-tcrit-lethal-vs-sublethal.qmd) for the TDT-line comparison plot, the full derivation, and a discussion of two cleaner alternatives — an empirical Q$_{10}$-breakpoint of **havro_faber_2023** per posterior draw (requires permissive-range data this panel does not have) and an absolute-damage-units rescaling (requires a species-specific calibration between endpoints).
 
 # **References**
 

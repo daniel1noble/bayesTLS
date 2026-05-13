@@ -1,11 +1,36 @@
-test_that("make_temperature_scenarios returns three traces of the right shape", {
-  s <- make_temperature_scenarios(n_hours = 48, baseline = 20, spike_temp = 30)
-  expect_named(s, c("flat", "single_spike", "multi_spike"))
-  for (nm in names(s)) {
+test_that("make_temperature_scenarios returns four traces of the right shape", {
+  s <- make_temperature_scenarios(n_hours = 48, baseline = 20, spike_temp = 30,
+                                  diurnal_n_days = 2)
+  expect_named(s, c("flat", "single_spike", "multi_spike", "diurnal"))
+  for (nm in c("flat", "single_spike", "multi_spike")) {
     expect_s3_class(s[[nm]], "tbl_df")
     expect_equal(nrow(s[[nm]]), 48)
     expect_named(s[[nm]], c("time_h", "temp"))
   }
+  expect_s3_class(s$diurnal, "tbl_df")
+  expect_equal(nrow(s$diurnal), 2 * 24)
+  expect_named(s$diurnal, c("time_h", "temp"))
+})
+
+test_that("diurnal night-temp vector lets cool/warm days have distinct night baselines", {
+  s <- make_temperature_scenarios(
+    n_hours = 96, baseline = 18, spike_temp = 30,
+    diurnal_n_days     = 2,
+    diurnal_night_temp = c(15, 22),    # cool night day 1, warm night day 2
+    diurnal_day_peaks  = c(20, 30),
+    diurnal_noise_sd   = 0
+  )
+  d <- s$diurnal
+  # 02:00 sits in the cool tail of each day, far from the 14:00 Gaussian peak,
+  # so the trace temp there should be very close to that day's night baseline.
+  night_d1 <- d$temp[d$time_h == 2]
+  night_d2 <- d$temp[d$time_h == 26]
+  expect_equal(night_d1, 15, tolerance = 0.05)
+  expect_equal(night_d2, 22, tolerance = 0.05)
+  # Sanity: hot-day peak hotter than cool-day peak
+  peak_d1 <- max(d$temp[d$time_h < 24])
+  peak_d2 <- max(d$temp[d$time_h >= 24])
+  expect_gt(peak_d2, peak_d1)
 })
 
 test_that("flat trace is constant baseline; spike traces inject spikes at the right hours", {

@@ -38,8 +38,12 @@
 #'                    trace has a spike. Default `c(24, 48, 72)`.
 #' @param diurnal_n_days   Integer. Number of days in the diurnal scenario.
 #'                    Default 7.
-#' @param diurnal_night_temp Numeric. Night-time baseline temperature (°C) in
-#'                    the diurnal scenario. Default `baseline`.
+#' @param diurnal_night_temp Numeric vector of length `diurnal_n_days` (or
+#'                    length 1, recycled): night-time baseline temperature (°C)
+#'                    each day, applied at the cool end of that day's diurnal
+#'                    cycle. Passing a vector lets nights on hot days be warmer
+#'                    than nights on cool days (a common natural pattern).
+#'                    Default `baseline` (constant across days).
 #' @param diurnal_day_peaks  Numeric vector of length `diurnal_n_days` (or
 #'                    length 1, recycled): the peak temperature each day reaches
 #'                    near 14:00. If `NULL` (default) the function alternates
@@ -108,13 +112,22 @@ make_temperature_scenarios <- function(baseline    = 20,
     diurnal_day_peaks <- rep(diurnal_day_peaks, length.out = diurnal_n_days)
   }
 
+  # Per-day night baseline (vector). Recycle a length-1 scalar; pad shorter
+  # vectors. Lets hot days couple to warmer nights.
+  if (length(diurnal_night_temp) == 1L) {
+    diurnal_night_temp <- rep(diurnal_night_temp, diurnal_n_days)
+  } else if (length(diurnal_night_temp) < diurnal_n_days) {
+    diurnal_night_temp <- rep(diurnal_night_temp, length.out = diurnal_n_days)
+  }
+
   # Gaussian peak centred at 14:00 with the requested FWHM.
   sigma         <- diurnal_peak_fwhm / 2.355
   diurnal_shape <- exp(-((hour_of_day - 14)^2) / (2 * sigma^2))
 
-  peak_at_t <- diurnal_day_peaks[day_index]
-  diurnal_temp <- diurnal_night_temp +
-                  (peak_at_t - diurnal_night_temp) * diurnal_shape
+  peak_at_t  <- diurnal_day_peaks[day_index]
+  night_at_t <- diurnal_night_temp[day_index]
+  diurnal_temp <- night_at_t +
+                  (peak_at_t - night_at_t) * diurnal_shape
 
   # Smoothed hourly noise: random walk filtered with a length-3 moving average
   # so adjacent hours have correlated, "consistent" fluctuations rather than

@@ -38,8 +38,12 @@ trace has a spike. Default \code{c(24, 48, 72)}.}
 \item{diurnal_n_days}{Integer. Number of days in the diurnal scenario.
 Default 7.}
 
-\item{diurnal_night_temp}{Numeric. Night-time baseline temperature (°C) in
-the diurnal scenario. Default \code{baseline}.}
+\item{diurnal_night_temp}{Numeric vector of length \code{diurnal_n_days} (or
+length 1, recycled): night-time baseline temperature (°C)
+each day, applied at the cool end of that day's diurnal
+cycle. Passing a vector lets nights on hot days be warmer
+than nights on cool days (a common natural pattern).
+Default \code{baseline} (constant across days).}
 
 \item{diurnal_day_peaks}{Numeric vector of length \code{diurnal_n_days} (or
 length 1, recycled): the peak temperature each day reaches
