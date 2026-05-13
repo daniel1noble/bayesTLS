@@ -130,38 +130,35 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 # **Introduction**
 
-This supplement walks through the joint Bayesian 4-parameter logistic (4PL) framework described in the main manuscript. We provide a set of functions that allow you to apply the full workflow allowing the 4PL models to be fit and TLS parameters ($z$, $CT_{max_{1hr}}$, $T_{crit}$) to be extracted and also providing opportunities to integrate these TLS parameters to predict Heat Injury ($HI$) and survival fraction. These can also be combined with a repair model to allow damage (and therefore reductions in survival) to be repaired through a temperature time series. The functions are located in the `R/` directory of the project repository — there is no package to install. Sourcing the files at the top of an analysis (see below) makes every function available to call.
+This supplement walks through the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript using the **`bayesTLS`** R package, which ships with this project. It provides functions to fit the 4PL, extract the classical TLS quantities ($z$, $CT_{max_{1hr}}$, $T_{crit}$) with full posterior uncertainty, and use them to predict heat-injury accumulation and survival fraction under arbitrary temperature time-series, optionally with a Sharpe-Schoolfield repair kernel.
 
-The functions are designed to be integrated together as a single pipeline:
+Install once from GitHub, then load:
 
-1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …). This function ensures that the naming of columns is consistent to make it easier for downstream processing of models.
-2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation.
-3. **Extract** the classical TDT quantities — thermal sensitivity ($z$), critical thermal limit at one hour ($CT_{max_{1hr}}$), and the critical-injury threshold temperature ($T_{crit}$) — all with full posterior uncertainty.
-4. **Predict** survival under fluctuating field temperature traces, including heat-injury accumulation with optional Sharpe-Schoolfield repair.
-5. **Plot** each step with shared theming so figures across the workflow read consistently.
-
-The remainder of the supplement walks the pipeline through a controlled simulation where the truth is known (§ A Tutorial with Simulations), then applies the same machinery end-to-end to a real lethal-TDT dataset on brown shrimp (§ Case Study 1: Shrimp data).
-
-## *Loading the function library {#sec-load-library}*
-
-The supplement assumes the project repository is the current working directory, so [`here::here()`](https://here.r-lib.org) can resolve paths to `R/`. The chunk below loads required packages and sources every file in the function library.
-
-```{r load-tdt-library}
-#| label: load-tdt-library
+```{r install-bayesTLS}
+#| eval: false
 #| echo: true
-#| cache: false
-
-# Source the project function library (12 thematic files under R/).
-tdt_lib_files <- c(
-  "utils.R", "standardize_data.R", "priors.R", "fit_4pl.R",
-  "predict_survival_curves.R", "extract_tdt.R", "tdt_landscape.R",
-  "repair.R", "temperature_scenarios.R", "predict_heat_injury.R",
-  "plotting.R", "diagnostics.R"
-)
-for (f in tdt_lib_files) source(here::here("R", f))
+# install.packages("remotes")   # if not already installed
+remotes::install_github("daniel1noble/tls_model_equivalence")
 ```
 
-## *What each function does {#sec-function-tour}*
+```{r load-bayesTLS}
+#| label: load-bayesTLS
+#| echo: true
+#| cache: false
+library(bayesTLS)
+```
+
+The functions chain together as a single pipeline:
+
+1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …).
+2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation.
+3. **Extract** $z$, $CT_{max_{1hr}}$, and $T_{crit}$ — all with full posterior uncertainty.
+4. **Predict** survival and heat-injury accumulation under fluctuating field temperature traces, with optional repair.
+5. **Plot** each step with shared theming so figures across the workflow read consistently.
+
+Every exported function is documented with roxygen2 (`?fit_4pl`, etc.) and the package ships with `testthat` tests — fast unit tests plus a gated set of `brms`-fitting integration tests that assert recovery of known simulation truths. `R CMD check` runs cleanly. The remainder of the supplement first walks the pipeline through a controlled simulation where the truth is known (§ A Tutorial with Simulations), then applies the same machinery end-to-end to a real lethal-TDT dataset on brown shrimp (§ Case Study 1: Shrimp data).
+
+## *What each function does* {#sec-function-tour}
 
 @tbl-function-tour lists every exported function in the library, grouped by pipeline stage. Each function is single-purpose; the full roxygen2 documentation (with runnable `@examples`) lives in the corresponding R file.
 
@@ -198,10 +195,6 @@ tdt_function_tour <- tibble::tribble(
 
 tinytable::tt(tdt_function_tour, escape = TRUE)
 ```
-
-## *Testing {#sec-library-tested}*
-
-Every function has matching unit tests under [tests/testthat/](../tests/testthat). Fast tests (data manipulation, formula construction, prior structure, plus the pure-math 4PL inversion and planted-dose math) run in seconds via `testthat::test_dir("tests/testthat")`. A small set of brms-fitting integration tests is gated behind `RUN_BRMS_TESTS=true`: those build a small cached fixture fit and assert that `extract_tdt()` and `predict_heat_injury()` recover known simulation truths within their credible intervals.
 
 # **A Tutorial with Simulations**
 
@@ -885,93 +878,20 @@ The midpoint piece $\beta_0 + \beta_1(T - \bar T)$ is still a straight line in $
 
 #### A numerical recipe for $z$ and $CT_{max}$ {#sec-joint-extend-recipe}
 
-The simplest way to recover $z$ and $CT_{max_{1hr}}$ from a fitted model — whether shape parameters are constant or vary with $T$ — is to **predict survival probabilities from the model** on a fine $(T, t)$ grid and interpolate. We can use `tidybayes::add_epred_draws()` for the prediction and base R's `approx()` for the interpolation. The same code runs whether the fit has constant shape parameters or shape parameters that vary with $T$.
+When shape parameters vary with $T$ the closed-form expressions of @sec-joint-derive no longer apply directly — but the same `extract_tdt()` call still works, because internally it inverts the 4PL surface numerically per posterior draw. The implementation: predict survival on a dense $(T, t)$ grid, find the duration where each draw crosses the target survival (via `approx()`), then either fit a per-draw log-linear regression on `(T, log10 LT50)` for $z$, or invert again on temperature for $CT_{max_{1hr}}$. `extract_tdt()` returns both directly.
 
 ```{r extension-helper}
 #| label: extension-helper
 #| echo: true
 
-# Temperatures at which we'll evaluate z. When shape parameters depend on T,
-# z is itself a function of T, so we compute it at each of the original assay
-# temperatures and report the full set rather than a single number.
-T_eval <- temps
-half_step <- 0.5  # half-width (°C) of the central finite difference window
-
-# Build a (T, t) grid covering the assay window. The columns log10_t, T_c, and
-# n must match the variables the fitted model expects on its input side — they
-# are exactly the same as the columns of `design` used to fit the model.
-pred_grid <- tidyr::expand_grid(
-  T = seq(min(temps) - 1, max(temps) + 1, by = 0.25),
-  t = 10 ^ seq(log10(0.5), log10(800), length.out = 200)
-) |>
-  dplyr::mutate(
-    log10_t = log10(t),
-    T_c     = T - true_params$T_bar,
-    n       = 1
-  )
-
-# Now, from the fitted model, draw posterior expected survival probabilities
-# at every point in the (T, t) grid. `add_epred_draws()` returns a long tibble
-# with one row per (grid point × posterior draw); the column .epred is the
-# predicted survival probability under that draw. ndraws keeps it manageable.
-epred <- pred_grid |>
-  tidybayes::add_epred_draws(fit_bin, ndraws = 500)
-
-# For each (draw, T) we find the duration t at which predicted survival
-# crosses 0.5 — that's log10(LT50)(T) for that draw. Linear interpolation
-# through the grid via approx() avoids any need for root-finding.
-lt50_T <- epred |>
-  dplyr::group_by(.draw, T) |>
-  dplyr::summarise(
-    log10_lt50 = approx(.epred, log10_t, xout = 0.5)$y,
-    .groups    = "drop"
-  )
-
-# Per posterior draw, compute z at each evaluation temperature in T_eval via
-# a central finite difference on the lt50_T grid. For each T_at we approx()
-# log10(LT50) at T_at ± half_step and divide the difference by the full step
-# (2 * half_step, in °C) to get the slope; z = -1 / slope.
-z_per_draw <- purrr::map_dfr(T_eval, function(T_at) {
-  lt50_T |>
-    dplyr::group_by(.draw) |>
-    dplyr::summarise(
-      T_at = T_at,
-      z    = -1 / ((approx(T, log10_lt50, xout = T_at + half_step)$y -
-                    approx(T, log10_lt50, xout = T_at - half_step)$y) /
-                   (2 * half_step)),
-      .groups = "drop"
-    )
-})
-
-# Per posterior draw, CTmax_1hr is the temperature at which log10(LT50) =
-# log10(60). It is a single number per draw (does not depend on T_eval).
-ctmax_per_draw <- lt50_T |>
-  dplyr::group_by(.draw) |>
-  dplyr::summarise(
-    CTmax_1hr = approx(log10_lt50, T, xout = log10(60))$y,
-    .groups   = "drop"
-  )
-
-# Posterior summary of z at each evaluation temperature: median and 95% CrI.
-z_per_draw |>
-  dplyr::group_by(T_at) |>
-  dplyr::summarise(
-    z_med = median(z,         na.rm = TRUE),
-    z_lo  = quantile(z,         0.025, na.rm = TRUE),
-    z_hi  = quantile(z,         0.975, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Posterior summary of CTmax_1hr.
-ctmax_per_draw |>
-  dplyr::summarise(
-    CTmax_1hr_med = median(CTmax_1hr, na.rm = TRUE),
-    CTmax_1hr_lo  = quantile(CTmax_1hr, 0.025, na.rm = TRUE),
-    CTmax_1hr_hi  = quantile(CTmax_1hr, 0.975, na.rm = TRUE)
-  )
+# Same call as @sec-joint-derive; no special handling needed even if the
+# fit had T-varying shape parameters. The internal grid evaluation is what
+# makes this robust to bent log10(LT50)(T) curves.
+et_bin$z$summary
+et_bin$CTmax$summary
 ```
 
-The posterior medians of $z$ at each of the five assay temperatures are essentially identical to one another, and the common value matches the closed-form posterior median of $z$ from @sec-joint-derive — exactly as expected for a fit with linear `mid(T)` and constant shape parameters, where $z$ does not depend on temperature. This flatness is the sanity check; if the same recipe is applied to a fit that lets the shape parameters vary with $T$ (e.g. `k ~ T_c`), the same output will show $z$ varying across the assay range, as it should. $CT_{max_{1hr}}$ likewise reproduces the closed-form posterior in `draws_bin_d` from @sec-joint-derive.
+The posterior medians match the closed-form derivations from @sec-joint-derive — exactly as expected for this fit (linear `mid(T)`, constant shape parameters). When the same call is applied to a fit that lets shape parameters vary with $T$ (see @sec-joint-extend-example below), the same machinery produces a noticeably different $z$ posterior because the underlying $\log_{10}\text{LT50}(T)$ curve is bent rather than straight.
 
 #### Demonstrating changes with temperature-varying shape parameters {#sec-joint-extend-example}
 
@@ -1249,8 +1169,14 @@ Now we can check the changes in *z* and $CT_{max_{1hr}}$ from having temperature
 #| label: recipe-ext
 #| echo: true
 
-# Predict-and-interpolate recipe applied to the extended fit. The code is
-# identical to @sec-joint-extend-recipe — only the fit changes.
+# Predict-and-interpolate recipe applied directly to the extended brmsfit
+# (which was built with its own column names log10_t / T_c — see bform_ext).
+# This runs inline rather than through extract_tdt() because the column
+# schema differs from what standardize_data() produces; it is the same
+# numerical inversion idea applied to a hand-rolled brmsfit.
+T_eval    <- temps
+half_step <- 0.5  # half-width (°C) of the central finite difference window
+
 pred_grid_ext <- tidyr::expand_grid(
   T = seq(min(temps) - 1, max(temps) + 1, by = 0.25),
   t = 10 ^ seq(log10(0.5), log10(800), length.out = 200)

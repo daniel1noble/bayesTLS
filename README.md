@@ -8,19 +8,25 @@ The TDT framework is dominant in thermal biology but rests on a two-stage pipeli
 
 The full problem catalogue with references lives in [tdt_problems.qmd](tdt_problems.qmd). Read it before contributing.
 
-## Status
+## Installing the `bayesTLS` R package
 
-Early stage. Currently in the repo:
+The analytical workflow is shipped as an installable R package at the root of this repository. Install from GitHub:
 
-- [tdt_problems.qmd](tdt_problems.qmd) — statistical critique of the TDT literature, with references.
-- [R/bayesian_4pl.R](R/bayesian_4pl.R) — prototype joint Bayesian 4-parameter logistic fit (`brms` / `cmdstanr`) on zebrafish survival counts: observation-level overdispersion, experiment-day random effects, life-stage-varying asymptotes, slope, and inflection. Demonstrates the proposed alternative to the two-stage TDT pipeline.
-- [bib/](bib/) — `.bib` file for `tdt_problems.qmd`, the Ecology Letters CSL style, and [bib/templates/](bib/templates/) holding the docx template used to render `.qmd` files to `.docx` for collaborators.
+```r
+# install.packages("remotes")  # if needed
+remotes::install_github("daniel1noble/tls_model_equivalence")
+library(bayesTLS)
+```
 
-Planned per [CLAUDE.md](CLAUDE.md) but not yet present: `data/`, documented and tested functions in `R/`, `tests/testthat/`, `ms/` (manuscript + SI), `notes/` (per-problem derivations), `output/`, `.github/workflows/`, `renv.lock`.
+The package depends on [`brms`](https://paulbuerkner.com/brms/) (which in turn needs a Stan backend; [`cmdstanr`](https://mc-stan.org/cmdstanr/) is the recommended one). All other dependencies (`dplyr`, `ggplot2`, `patchwork`, `posterior`, `tibble`) are CRAN packages and resolve automatically.
+
+Function reference is in the package documentation — e.g. `?fit_4pl`, `?extract_tdt`, `?predict_heat_injury`. The full guided walkthrough with simulated data plus the brown-shrimp case study lives in [`ms/supplement.qmd`](ms/supplement.qmd) and the rendered outputs in `_output/`.
 
 ## Reproducing the analysis
 
-To be written once the compendium scaffold is in place. The current prototype in [R/bayesian_4pl.R](R/bayesian_4pl.R) expects `data/data_zebrafish_TDT.xlsx` (sheet `LETHAL_TDT`), which is not yet in the repo, and it references plotting helpers (`base_theme`, `life_stage_cols`, …) that have not yet been extracted into `R/`.
+1. Install the package as above.
+2. Render the supplement with `make supp` (HTML/DOCX/PDF) — the simulation tutorial fits and the shrimp case-study fit are cached to `output/models/` via `brms`'s `file_refit = "on_change"` mechanism, so first render takes a few minutes and subsequent renders are near-instant.
+3. Inspect tests with `devtools::test()` (fast unit tests) or `RUN_BRMS_TESTS=true devtools::test()` (full integration suite that fits a small cached model and checks recovery).
 
 ## Rendering the manuscript and supplement
 

@@ -75,6 +75,9 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param lower,upper    Response-scale bounds for the asymptotes. Default
 #'                       `0, 1`; pass `lower = 0.85, upper = 1` for sublethal
 #'                       data bounded above zero.
+#' @param family         brms family. Default `beta_binomial(link = "identity")`.
+#'                       Pass `binomial(link = "identity")` for the simpler
+#'                       no-overdispersion case.
 #' @param prior          Optional `brmsprior` object. If `NULL` (default),
 #'                       [make_4pl_priors()] builds defaults from `data`,
 #'                       `lower`, `upper`, and `random_effects`.

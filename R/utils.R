@@ -27,15 +27,7 @@ format_interval <- function(median, lower, upper, digits = 2) {
          round(upper, digits), "]")
 }
 
-#' Null-coalescing operator
-#'
-#' @param x Object that may be NULL.
-#' @param y Fallback value.
-#' @return `x` if not NULL, else `y`.
-#' @examples
-#' NULL %||% 1
-#' 2 %||% 1
-#' @export
+#' @noRd
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 #' Convert various clock formats to minutes

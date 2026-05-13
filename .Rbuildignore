@@ -1,0 +1,26 @@
+^\.claude$
+^\.quarto$
+^\.vscode$
+^\.gitignore$
+^\.DS_Store$
+^\.luarc\.json$
+^.*\.Rproj$
+^\.Rproj\.user$
+
+# Manuscript + supplement (rendered separately from the package).
+^ms$
+^bib$
+^_output$
+^Makefile$
+
+# Project-level reference / scratch directories.
+^notes$
+^output$
+^scripts$
+^Rdata$
+^fig$
+^data$
+
+# Project conventions / agent memory not relevant to the package distribution.
+^CLAUDE\.md$
+^CODEX_MEMORY\.md$
