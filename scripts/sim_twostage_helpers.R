@@ -14,33 +14,102 @@
 
 # ----- truth (data-generating parameters; locked) -----------------------------
 #
-# Beta-binomial 4PL with temperature only on mid. Derived true z and CTmax_1hr
-# are deterministic from these constants.
+# Beta-binomial 4PL. Temperature acts on the midpoint always (slope m_beta1);
+# DGP variants extend this by giving u, ell, and/or k linear temperature
+# slopes via the `u_beta1`, `ell_beta1`, `k_beta1` fields of the truth list
+# (defaulting to 0 for the baseline DGP). The analytical z and CTmax_1hr
+# *targets* both estimators are judged against are the OLS slope/intercept of
+# log10(LT50_{p=0.5})(T) at the simulation design temperatures — computed
+# from the (T-varying) truth surface, not from a single-T linearisation. For
+# the baseline DGP this OLS target reduces in closed form to the existing
+# -1/m_beta1 and the existing CTmax_1hr formula.
 
 #' Default truth parameters for the two-stage bias simulation
 #'
-#' Beta-binomial 4PL with temperature varying only on the midpoint. Returns the
-#' fixed truth used by [sim_twostage_dataset()] and by the analytical
-#' z / CTmax_1hr targets the simulation judges bias against.
+#' Beta-binomial 4PL. The `dgp` argument selects a data-generating regime:
 #'
+#' \itemize{
+#'   \item `"baseline"` — temperature acts only on the midpoint. u, ell, k constant in T.
+#'   \item `"sym_ul"` — u and ell shift with T symmetrically; `(u+ell)/2` preserved.
+#'   \item `"asym_u"` — u shifts with T, ell constant; midpoint displaced.
+#'   \item `"varying_k"` — k shifts with T; u, ell constant.
+#' }
+#'
+#' Returns a named list with the truth fields plus `dgp`, plus the OLS
+#' z / CTmax_1hr targets the simulation scores against (see header comment in
+#' this file for the truth-definition note).
+#'
+#' @param dgp Character. One of `"baseline"`, `"sym_ul"`, `"asym_u"`,
+#'            `"varying_k"`.
 #' @return Named list of truth parameters.
 #' @export
-sim_twostage_truth <- function() {
-  out <- list(
-    ell     = 0.05,
-    u       = 0.92,
-    k       = 8,
-    m_beta0 = 1.5,
-    m_beta1 = -0.15,
-    T_bar   = 34,
-    phi     = 5
+sim_twostage_truth <- function(dgp = "baseline") {
+  base <- list(
+    ell       = 0.05,
+    u         = 0.92,
+    k         = 8,
+    m_beta0   = 1.5,
+    m_beta1   = -0.15,
+    T_bar     = 34,
+    phi       = 5,
+    u_beta1   = 0,    # slope of u   in (T - T_bar)
+    ell_beta1 = 0,    # slope of ell in (T - T_bar)
+    k_beta1   = 0     # slope of k   in (T - T_bar)
   )
-  out$z_true         <- -1 / out$m_beta1
-  out$CTmax_1hr_true <- (
-    log10(60) - out$m_beta0 -
-      (1 / out$k) * log((out$u - 0.5) / (0.5 - out$ell))
-  ) / out$m_beta1 + out$T_bar
+  out <- switch(dgp,
+    baseline  = base,
+    sym_ul    = utils::modifyList(base, list(u_beta1 = -0.01,
+                                              ell_beta1 = 0.01)),
+    asym_u    = utils::modifyList(base, list(u_beta1 = -0.01)),
+    varying_k = utils::modifyList(base, list(k_beta1 = 0.25)),
+    stop("Unknown dgp: '", dgp, "'. ",
+         "Use one of: baseline, sym_ul, asym_u, varying_k.")
+  )
+  out$dgp <- dgp
+
+  # OLS targets — slope of log10(LT50_{p=0.5})(T) at design temperatures.
+  tt <- compute_ols_truth(out)
+  out$z_true         <- tt$z_true
+  out$CTmax_1hr_true <- tt$CTmax_1hr_true
   out
+}
+
+#' Internal — OLS targets for z and CTmax_1hr at the design temperatures
+#'
+#' For each temperature in the design grid, compute
+#' `log10(LT50_{p=0.5})(T) = mid_t(T) + (1/k(T)) * log((u(T)-0.5)/(0.5-ell(T)))`
+#' using the (possibly T-varying) truth surface; then OLS-fit a line to those
+#' values and read off `z_true = -1/slope` and `CTmax_1hr_true =
+#' (log10(60) - intercept)/slope`. Used by [sim_twostage_truth()].
+#'
+#' @param p Named list of truth parameters (output of [sim_twostage_truth()]
+#'          before `z_true`/`CTmax_1hr_true` are written).
+#' @return List with `z_true` and `CTmax_1hr_true`.
+#' @keywords internal
+compute_ols_truth <- function(p) {
+  Ts        <- c(30, 32, 34, 36, 38)
+  T_c       <- Ts - p$T_bar
+  u_T       <- p$u   + p$u_beta1   * T_c
+  ell_T     <- p$ell + p$ell_beta1 * T_c
+  k_T       <- p$k   + p$k_beta1   * T_c
+  mid_T     <- p$m_beta0 + p$m_beta1 * T_c
+
+  if (any(u_T <= 0.5) || any(ell_T >= 0.5) || any(k_T <= 0))
+    stop("DGP gives degenerate u/ell/k at design temperatures: ",
+         "need u > 0.5, ell < 0.5, k > 0.", call. = FALSE)
+
+  ratio       <- (u_T - 0.5) / (0.5 - ell_T)
+  log10_lt50  <- mid_T + (1 / k_T) * log(ratio)
+
+  fit       <- stats::lm(log10_lt50 ~ Ts)
+  co        <- stats::coef(fit)
+  slope     <- co[["Ts"]]
+  intercept <- co[["(Intercept)"]]
+
+  list(
+    z_true         = -1 / slope,
+    CTmax_1hr_true = (log10(60) - intercept) / slope
+  )
 }
 
 #' Default factorial design grid for the two-stage bias simulation
@@ -81,13 +150,18 @@ sim_twostage_dataset <- function(n_reps,
                                  seed,
                                  truth = sim_twostage_truth()) {
   set.seed(seed)
-  grid <- sim_twostage_grid()
+  grid   <- sim_twostage_grid()
   design <- tidyr::expand_grid(grid, rep = seq_len(n_reps))
 
-  p_true <- with(truth,
-    ell + (u - ell) /
-      (1 + exp(k * (design$log10_t - (m_beta0 + m_beta1 * design$T_c))))
-  )
+  # T-varying 4PL parameters (any beta1 = 0 reduces to the constant case).
+  u_T    <- truth$u   + truth$u_beta1   * design$T_c
+  ell_T  <- truth$ell + truth$ell_beta1 * design$T_c
+  k_T    <- truth$k   + truth$k_beta1   * design$T_c
+  mid_T  <- truth$m_beta0 + truth$m_beta1 * design$T_c
+
+  p_true <- ell_T + (u_T - ell_T) /
+    (1 + exp(k_T * (design$log10_t - mid_T)))
+
   n      <- sample(seq(n_ind_range[1], n_ind_range[2]),
                    size = nrow(design), replace = TRUE)
   alpha  <- p_true * truth$phi

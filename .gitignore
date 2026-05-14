@@ -19,6 +19,8 @@ smoke*
 # Output files from R CMD check
 /*.Rcheck/
 
+sim_twostage/
+
 # RStudio files
 .Rproj.user/
 

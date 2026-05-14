@@ -44,6 +44,8 @@ source(here::here("scripts", "sim_twostage_helpers.R"))
 option_list <- list(
   optparse::make_option("--scenario", type = "character", default = "n3",
                         help = "Scenario label: n3 or n5."),
+  optparse::make_option("--dgp",      type = "character", default = "baseline",
+                        help = "DGP: baseline, sym_ul, asym_u, or varying_k."),
   optparse::make_option("--n_sims",   type = "integer",  default = 1000L,
                         help = "Number of simulated datasets."),
   optparse::make_option("--workers",  type = "integer",  default = 5L,
@@ -59,16 +61,27 @@ option_list <- list(
 opt <- optparse::parse_args(optparse::OptionParser(option_list = option_list))
 
 stopifnot(opt$scenario %in% c("n3", "n5"))
+stopifnot(opt$dgp %in% c("baseline", "sym_ul", "asym_u", "varying_k"))
 n_reps_map <- list(n3 = 3L, n5 = 5L)
 n_reps     <- n_reps_map[[opt$scenario]]
 scen_id    <- match(opt$scenario, names(n_reps_map))
 master     <- opt$seed
-truth      <- sim_twostage_truth()
+truth      <- sim_twostage_truth(opt$dgp)
 
-raw_dir <- file.path(opt$out_dir, "raw", opt$scenario)
+# Path label: baseline runs keep the existing flat layout for backwards
+# compatibility with already-completed n3/n5; non-baseline DGPs prefix the
+# scenario directory with the DGP name so they don't clash.
+path_label <- if (opt$dgp == "baseline") {
+  opt$scenario
+} else {
+  paste(opt$dgp, opt$scenario, sep = "_")
+}
+
+raw_dir <- file.path(opt$out_dir, "raw", path_label)
 dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
 
 cat(sprintf("\n=== Two-stage bias simulation ===\n"))
+cat(sprintf("  dgp:         %s\n", opt$dgp))
 cat(sprintf("  scenario:    %s (n_reps = %d)\n", opt$scenario, n_reps))
 cat(sprintf("  n_sims:      %d\n", opt$n_sims))
 cat(sprintf("  workers:     %d\n", opt$workers))
@@ -76,7 +89,9 @@ cat(sprintf("  out_dir:     %s\n", opt$out_dir))
 cat(sprintf("  raw_dir:     %s\n", raw_dir))
 cat(sprintf("  master seed: %d\n", master))
 cat(sprintf("  force:       %s\n\n", opt$force))
-cat(sprintf("  true z = %.4f °C, true CTmax_1hr = %.4f °C\n\n",
+cat(sprintf("  truth slopes: u_beta1=%g  ell_beta1=%g  k_beta1=%g\n",
+            truth$u_beta1, truth$ell_beta1, truth$k_beta1))
+cat(sprintf("  OLS-derived: z_true = %.4f °C, CTmax_1hr_true = %.4f °C\n\n",
             truth$z_true, truth$CTmax_1hr_true))
 
 # ---- one simulation ----------------------------------------------------------
@@ -102,11 +117,11 @@ run_one <- function(sim_id) {
 
   ts <- fit_two_stage_classical(data)
 
-  row  <- sim_twostage_result_row(joint, ts, truth, sim_id, opt$scenario,
+  row  <- sim_twostage_result_row(joint, ts, truth, sim_id, path_label,
                                   runtime_sec = joint_sec)
   meta <- tibble::tibble(
     sim_id      = sim_id,
-    scenario    = opt$scenario,
+    scenario    = path_label,
     seed        = seed_sim,
     joint_sec   = joint_sec,
     joint_ok    = joint$success,
@@ -122,7 +137,7 @@ run_one <- function(sim_id) {
   draws_df <- if (joint$success && !is.null(joint$draws)) {
     joint$draws |>
       dplyr::mutate(sim_id   = sim_id,
-                    scenario = opt$scenario) |>
+                    scenario = path_label) |>
       dplyr::select(sim_id, scenario, .draw, z, CTmax_1hr, T_crit)
   } else NULL
 
@@ -152,7 +167,7 @@ if (length(to_run) > 0L) {
     parallel::clusterExport(
       cl,
       varlist = c("opt", "n_reps", "scen_id", "master", "truth",
-                   "raw_dir", "run_one"),
+                   "raw_dir", "path_label", "run_one"),
       envir = environment()
     )
     invisible(parallel::parLapply(cl, to_run, run_one))
@@ -237,11 +252,11 @@ diff_summary <- diffs |>
                                  diff_q025, diff_q975),
                               ~ round(.x, 4)))
 
-out_per_sim <- file.path(opt$out_dir, sprintf("per_sim_%s.rds", opt$scenario))
-out_meta    <- file.path(opt$out_dir, sprintf("meta_%s.rds", opt$scenario))
-out_draws   <- file.path(opt$out_dir, sprintf("draws_%s.rds", opt$scenario))
-out_summary <- file.path(opt$out_dir, sprintf("summary_%s.rds", opt$scenario))
-out_diffs   <- file.path(opt$out_dir, sprintf("diffs_%s.rds", opt$scenario))
+out_per_sim <- file.path(opt$out_dir, sprintf("per_sim_%s.rds", path_label))
+out_meta    <- file.path(opt$out_dir, sprintf("meta_%s.rds",    path_label))
+out_draws   <- file.path(opt$out_dir, sprintf("draws_%s.rds",   path_label))
+out_summary <- file.path(opt$out_dir, sprintf("summary_%s.rds", path_label))
+out_diffs   <- file.path(opt$out_dir, sprintf("diffs_%s.rds",   path_label))
 saveRDS(per_sim,      out_per_sim)
 saveRDS(meta,         out_meta)
 saveRDS(draws,        out_draws)
