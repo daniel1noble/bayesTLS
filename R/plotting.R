@@ -90,31 +90,89 @@ plot_survival_curves <- function(pred, observed = NULL,
 
 #' Plot a posterior LT_x curve
 #'
-#' Plots posterior median ± 95% CrI of the duration to reach `target_surv`
-#' across temperature, with a log-scaled y axis (the classical TDT view).
+#' Plots posterior median +/- 95% CrI of the duration to reach `target_surv`
+#' across temperature. By default, returns a two-panel figure: a linear-time
+#' panel (the absolute time to reach the target) alongside a `log10`-time
+#' panel (the classical TDT view where the relationship is near-linear with
+#' slope `-1/z`). Both panels share posterior draws.
 #'
-#' @param ltx Output of [derive_ltx_curve()].
-#' @return A ggplot object.
+#' Internal y-axis behaviour: if the 95% credible interval of the LT_x curve
+#' extends above 48 hours (converted to `ltx$output_time_unit`), both panels'
+#' y-axes are clamped to 48 hours so the readable part of the curve isn't
+#' compressed by an extreme upper tail at cool temperatures. If the data
+#' already stay below 48 hours, no limits are applied and `ggplot2` chooses
+#' a data-driven range. Callers can override either way by appending their
+#' own `+ ggplot2::coord_cartesian(ylim = ...)` to the returned plot.
+#'
+#' @param ltx           Output of [derive_ltx_curve()].
+#' @param panels        One of `"both"` (default), `"linear"`, or `"log"`.
+#' @param colour        Line/ribbon colour. Default `"#146C7C"`.
+#' @return A ggplot object (single panel) or patchwork composition (two panels).
 #' @examples
 #' \dontrun{
 #' ltx <- derive_ltx_curve(wf, temp_grid = seq(29, 37, by = 0.5))
-#' plot_ltx_curve(ltx)
+#' plot_ltx_curve(ltx)                  # two-panel default
+#' plot_ltx_curve(ltx, panels = "log")  # classical TDT view only
+#'
+#' # Override the internal 48-h cap by appending a coord_cartesian:
+#' plot_ltx_curve(ltx) +
+#'   ggplot2::coord_cartesian(ylim = c(0, 240))
 #' }
 #' @export
-plot_ltx_curve <- function(ltx) {
-  target_lab <- paste0(round(100 * unique(ltx$summary$target_surv)),
-                       "% survival")
-  ggplot2::ggplot(ltx$summary,
-                  ggplot2::aes(x = temp, y = duration_median)) +
+plot_ltx_curve <- function(ltx,
+                           panels = c("both", "linear", "log"),
+                           colour = "#146C7C") {
+  panels <- match.arg(panels)
+  df <- ltx$summary
+
+  target_lab <- paste0(round(100 * unique(df$target_surv)), "% survival")
+  unit_label <- if (is.null(ltx$output_time_unit)) "min" else ltx$output_time_unit
+
+  # Convert the hard internal 48-hour ceiling to the ltx output unit. If the
+  # unit can't be recognised, fall through with no cap (apply_cap stays
+  # FALSE).
+  hours_factor <- switch(
+    tolower(as.character(unit_label)),
+    "min" = 60, "minute" = 60, "minutes" = 60,
+    "h" = 1, "hr" = 1, "hour" = 1, "hours" = 1,
+    "s" = 3600, "sec" = 3600, "second" = 3600, "seconds" = 3600,
+    "d" = 1/24, "day" = 1/24, "days" = 1/24,
+    NA_real_
+  )
+  cap       <- if (is.na(hours_factor)) NA_real_ else 48 * hours_factor
+  data_max  <- max(df$duration_upper, na.rm = TRUE)
+  apply_cap <- is.finite(cap) && data_max > cap
+
+  base <- ggplot2::ggplot(df,
+                          ggplot2::aes(x = temp, y = duration_median)) +
     ggplot2::geom_ribbon(ggplot2::aes(ymin = duration_lower,
                                       ymax = duration_upper),
-                         fill = "#146C7C", alpha = 0.2) +
-    ggplot2::geom_line(colour = "#146C7C", linewidth = 1) +
-    ggplot2::scale_y_log10() +
-    ggplot2::labs(x = "Assay temperature (\u00b0C)",
-                  y = paste0("Time to ", target_lab, " (",
-                             ltx$output_time_unit, ")")) +
+                         fill = colour, alpha = 0.2) +
+    ggplot2::geom_line(colour = colour, linewidth = 1) +
+    ggplot2::labs(x = "Assay temperature (\u00b0C)") +
     theme_tdt()
+
+  p_lin <- base +
+    ggplot2::labs(y = paste0("Time to ", target_lab, " (", unit_label, ")"))
+  if (apply_cap) {
+    p_lin <- p_lin + ggplot2::coord_cartesian(ylim = c(0, cap))
+  }
+
+  p_log <- base +
+    ggplot2::scale_y_log10() +
+    ggplot2::labs(y = paste0("log10 time to ", target_lab,
+                             " (", unit_label, ")"))
+  if (apply_cap) {
+    p_log <- p_log + ggplot2::coord_cartesian(ylim = c(NA, cap))
+  }
+
+  if (panels == "linear") return(p_lin)
+  if (panels == "log")    return(p_log)
+  if (requireNamespace("patchwork", quietly = TRUE)) {
+    patchwork::wrap_plots(p_lin, p_log, ncol = 2)
+  } else {
+    list(linear = p_lin, log = p_log)
+  }
 }
 
 #' Plot the TDT survival landscape as a heatmap

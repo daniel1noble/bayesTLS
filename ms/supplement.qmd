@@ -535,14 +535,20 @@ We now call `fit_4pl()` twice — once with the built-in `binomial(link = "ident
 #| echo: true
 #| cache: false
 
+# file_refit = "never": once the .rds exists, always reuse it. brms's
+# default ("on_change") over-triggers refits on these simulated-data fits
+# because it picks up subtle differences in tibble attributes between
+# renders. Tutorial sims are stable — to force a refit, delete the .rds.
 wf_bin <- fit_4pl(std_bin,
                   family = binomial(link = "identity"),
                   chains = 4, iter = 2000, cores = 4, seed = 123,
-                  file = file.path(models_dir, "sim_4pl_binomial_v2"))
+                  file       = file.path(models_dir, "sim_4pl_binomial_v2"),
+                  file_refit = "never")
 
 wf_bb  <- fit_4pl(std_bb,
                   chains = 4, iter = 2000, cores = 4, seed = 123,
-                  file = file.path(models_dir, "sim_4pl_betabinomial_v2"))
+                  file       = file.path(models_dir, "sim_4pl_betabinomial_v2"),
+                  file_refit = "never")
 
 # Convenience: extract the brmsfit object for downstream brms helpers.
 fit_bin <- wf_bin$fit
@@ -1039,8 +1045,9 @@ std_ext <- standardize_data(sim_bb_ext,
 
 wf_ext <- fit_4pl(std_ext,
                   chains = 4, iter = 2000, cores = 4, seed = 123,
-                  file = file.path(models_dir,
-                                   "sim_4pl_ext_betabin_DEFAULT_strong_v1"))
+                  file       = file.path(models_dir,
+                                         "sim_4pl_ext_betabin_DEFAULT_strong_v1"),
+                  file_refit = "never")     # see fit-4pl-tutorial note above
 ```
 
 The four 4PL sub-parameters on the natural (biological) scale at each assay temperature are recovered in @tbl-ext-recovery. The lower asymptote $\ell$ stays near $0.05$ at every $T$ (consistent with the truth that $\ell$ does not vary with temperature), while $u$ falls and $k$ rises across the assay range — exactly the truth.
@@ -1457,7 +1464,7 @@ We fit the default `fit_4pl()` model — beta-binomial likelihood, identity link
 wf_shrimp <- fit_4pl(
   shrimp_std,
   random_effects = c("Date", "Tank"),
-  chains  = 4, iter = 3000, warmup = 1500, cores = 4, seed = 123,
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
   control = list(adapt_delta = 0.99, max_treedepth = 12),
   file    = file.path(models_dir, "fit_shrimp_lethal_4pl")
 )
@@ -1468,8 +1475,29 @@ wf_shrimp <- fit_4pl(
 ```{r shrimp-diagnostics}
 #| label: tbl-shrimp-diagnostics
 #| tbl-cap: "Sampling diagnostics for the shrimp 4PL fit. Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
+#| cache: false
 
 tinytable::tt(diagnose_tdt_fit(wf_shrimp), digits = 3, escape = TRUE)
+```
+
+The summary diagnostics above are a one-line snapshot; the canonical visual check is the chain trace ("fuzzy caterpillar" plot). Healthy chains overlap and explore the same posterior support; chains that diverge, drift, or hang in different regions are a red flag. We pull the five fixed-effect 4PL parameters (asymptotes, slope, intercept, and temperature slope) plus the beta-binomial dispersion via `brms::mcmc_plot()` on the `brmsfit` object exposed by `workflow$fit`.
+
+```{r shrimp-trace-plot}
+#| label: fig-shrimp-trace
+#| fig-cap: "Posterior chain traces for the shrimp 4PL fixed-effect parameters and the beta-binomial dispersion `phi`. Each panel overlays four chains; well-mixed chains overlap throughout. Generated with `brms::mcmc_plot(workflow$fit, type = 'trace', variable = ...)`."
+#| fig-width: 9
+#| fig-height: 6
+#| cache: false
+
+brms::mcmc_plot(
+  wf_shrimp$fit,
+  type     = "trace",
+  variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
+               "b_logk_Intercept",   "b_mid_Intercept",
+               "b_mid_temp_c",       "phi")
+) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "bottom")
 ```
 
 ### Posterior parameters on the natural scale
@@ -1487,7 +1515,7 @@ We predict survival probability across the observed temperature × duration grid
 
 ```{r shrimp-survival-curves}
 #| label: fig-shrimp-survival-curves
-#| fig-cap: "Posterior survival curves for brown shrimp at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate survival proportions. Duration on the log scale; population-level prediction (random effects marginalised)."
+#| fig-cap: "Posterior survival curves for brown shrimp at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate survival proportions. Population-level prediction (random effects marginalised). Exposure duration on the natural (linear) scale; viridis temperature colour mapping is the default of `plot_survival_curves()`."
 #| fig-width: 8
 #| fig-height: 5
 
@@ -1497,7 +1525,8 @@ psc_shrimp <- predict_survival_curves(
   ndraws    = 500
 )
 plot_survival_curves(psc_shrimp, observed = shrimp_std) +
-  ggplot2::labs(x = "Exposure duration (hours)")
+  ggplot2::labs(x = "Exposure duration (hours)") +
+  ggplot2::coord_cartesian(xlim = c(0, 10))
 ```
 
 ## TDT landscape {#sec-shrimp-landscape}
@@ -1509,8 +1538,18 @@ A dense 2-D view of survival across the entire (temperature, duration) plane sho
 #| fig-cap: "TDT landscape for brown shrimp: posterior median predicted survival across a 120 × 120 grid of assay temperatures × durations. White contours mark 25%, 50%, and 75% survival isolines. Overlaid points are raw observed proportions."
 #| fig-width: 8
 #| fig-height: 6
+#| cache: false
 
-lsp_shrimp <- derive_tdt_landscape(wf_shrimp, ndraws = 500)
+# Linear-spaced duration grid (the derive_tdt_landscape default is
+# log-spaced, which works for narrow duration ranges but here produces
+# subpixel cells at the short-exposure end on the linear y-axis used by
+# plot_tdt_landscape, leaving only the observed points visible).
+shrimp_dur_range <- range(shrimp_std$duration, na.rm = TRUE)
+shrimp_dur_grid  <- seq(shrimp_dur_range[1], shrimp_dur_range[2],
+                         length.out = 120)
+lsp_shrimp <- derive_tdt_landscape(wf_shrimp,
+                                   duration_grid = shrimp_dur_grid,
+                                   ndraws        = 500)
 plot_tdt_landscape(lsp_shrimp, observed = shrimp_std)
 ```
 
@@ -1534,61 +1573,28 @@ time (where the slope is $-1/z$).
 #| echo: true
 
 # Posterior LT50 curve across the assayed temperature range, slightly
-# extended for visualisation. derive_ltx_curve returns minutes when the
-# default time_multiplier = 60 converts the lethal fit's model time
-# (hours) to minutes — convert to hours afterwards for plotting.
+# extended for visualisation. Using time_multiplier = 1 and
+# output_time_unit = "h" keeps the output in hours so `plot_ltx_curve()`
+# can label and clip the y-axis directly in hours.
 ltx_shrimp <- derive_ltx_curve(
   wf_shrimp,
-  temp_grid       = seq(min(shrimp_std$temp) - 0.25,
-                        max(shrimp_std$temp) + 0.25, by = 0.05),
-  target_surv     = 0.5,
-  ndraws          = 500,
-  time_multiplier = 60,
-  output_time_unit = "min"
+  temp_grid        = seq(min(shrimp_std$temp) - 2,
+                         max(shrimp_std$temp) + 2, by = 0.05),
+  target_surv      = 0.5,
+  ndraws           = 500,
+  time_multiplier  = 1,
+  output_time_unit = "h"
 )
-
-ltx_shrimp_df <- ltx_shrimp$summary |>
-  dplyr::transmute(
-    temp,
-    lt50_hours_med = duration_median / 60,
-    lt50_hours_lo  = duration_lower  / 60,
-    lt50_hours_hi  = duration_upper  / 60
-  )
 ```
 
-::: {#fig-shrimp-tdt-line}
-
 ```{r plot-shrimp-tdt-line}
-#| label: plot-shrimp-tdt-line
+#| label: fig-shrimp-tdt-line
+#| fig-cap: "Brown shrimp posterior TDT line: predicted time to 50 % survival vs assay temperature, with 95 % credible band. Linear-time panel on the left makes the rapid drop in survival time as temperature rises immediately visible; $\\log_{10}$-time panel on the right linearises the relationship, so the slope is the classical $-1/z$ summary of thermal sensitivity. Both panels share the same posterior. Produced by `plot_ltx_curve()` (two-panel default, y-axis capped at 48 h)."
 #| fig-width: 9
 #| fig-height: 4
 
-p_lin <- ggplot2::ggplot(ltx_shrimp_df,
-                          ggplot2::aes(x = temp, y = lt50_hours_med)) +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = lt50_hours_lo,
-                                    ymax = lt50_hours_hi),
-                       fill = "#b2182b", alpha = 0.2) +
-  ggplot2::geom_line(colour = "#b2182b", linewidth = 1) +
-  ggplot2::labs(x = "Assay temperature (°C)",
-                y = "Time to 50 % survival (hours)") +
-  ggplot2::theme_classic()
-
-p_log <- ggplot2::ggplot(ltx_shrimp_df,
-                          ggplot2::aes(x = temp, y = lt50_hours_med)) +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = lt50_hours_lo,
-                                    ymax = lt50_hours_hi),
-                       fill = "#b2182b", alpha = 0.2) +
-  ggplot2::geom_line(colour = "#b2182b", linewidth = 1) +
-  ggplot2::scale_y_log10() +
-  ggplot2::labs(x = "Assay temperature (°C)",
-                y = expression(log[10] * " time to 50 % survival (hours)")) +
-  ggplot2::theme_classic()
-
-patchwork::wrap_plots(p_lin, p_log, ncol = 2)
+plot_ltx_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 ```
-
-Brown shrimp posterior TDT line: predicted time to 50 % survival vs assay temperature, with 95 % credible band. Linear-time panel on the left makes the rapid drop in survival time as temperature rises immediately visible; $\log_{10}$-time panel on the right linearises the relationship, so the slope is the classical $-1/z$ summary of thermal sensitivity. Both panels share the same posterior — the curvature in the linear panel and the near-straight line in the log panel come from the *same* draws.
-:::
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-shrimp-extract}
 
@@ -1613,7 +1619,7 @@ et_shrimp <- extract_tdt(
 
 shrimp_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
-  "z (°C per decade of time)",      et_shrimp$z$summary$z_median,
+  "z (°C per order of magnitude)",      et_shrimp$z$summary$z_median,
                                     et_shrimp$z$summary$z_lower,
                                     et_shrimp$z$summary$z_upper,
   "CTmax_1hr (°C)",                 et_shrimp$CTmax$summary$temp_median,
@@ -1629,16 +1635,31 @@ tinytable::tt(shrimp_extract, digits = 2, escape = TRUE)
 
 ```{r shrimp-tcrit-ctmax-plot}
 #| label: fig-shrimp-tcrit-ctmax
-#| fig-cap: "Posterior densities of $CT_{max_{1hr}}$ (left) and $T_{crit}$ (right) for brown shrimp. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The 5–6 °C gap between the two quantities represents the sub-lethal window between the onset of detectable injury and the LT50 limit."
-#| fig-width: 8
+#| fig-cap: "Posterior densities of $z$ (left), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for brown shrimp. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The 5–6 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ represents the sub-lethal window between the onset of detectable injury and the LT50 limit; the $z$ posterior shows the thermal sensitivity (°C per order of magnitude) on the same plotting machinery."
+#| fig-width: 11
 #| fig-height: 3.5
 
+# Wrap the per-draw z posterior in the (draws, summary) shape that
+# `plot_temperature_density()` expects, so the same plotting helper can be
+# reused for z (despite z being a slope rather than a temperature).
+z_draws_shrimp   <- tibble::tibble(temp = et_shrimp$z$draws$z)
+z_q <- stats::quantile(z_draws_shrimp$temp,
+                       c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+z_post_shrimp <- list(
+  draws   = z_draws_shrimp,
+  summary = tibble::tibble(temp_lower  = z_q[1],
+                           temp_median = z_q[2],
+                           temp_upper  = z_q[3])
+)
+
 patchwork::wrap_plots(
+  plot_temperature_density(z_post_shrimp,
+                            x_label = expression(italic(z)~("°C per decade of time"))),
   plot_temperature_density(et_shrimp$CTmax,
                             x_label = expression(CT[max[1*hr]]~("°C"))),
   plot_temperature_density(et_shrimp$T_crit,
                             x_label = expression(T[crit]~("°C"))),
-  ncol = 2
+  ncol = 3
 )
 ```
 
@@ -1726,7 +1747,7 @@ shrimp_hi_diurnal_rep <- predict_heat_injury(
 #| label: fig-shrimp-hi-traces
 #| fig-cap: "The four reference temperature traces used for the shrimp heat-injury prediction, all 96 hours long. Baseline 17 °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ (LT50 temperature) so each spike delivers a full LT50 dose by construction. The diurnal scenario simulates a clustered 4-day heatwave: a cool day with a peak below $T_{crit}$, then three progressively hotter days whose nights also warm with the daytime peaks (warm days come in autocorrelated runs in nature). The two hottest days deliver roughly 50–60 % LT50-dose each. The dashed line marks the model-derived damage threshold $T_c = T_{crit}$."
 #| fig-width: 7
-#| fig-height: 6
+#| fig-height: 9
 
 plot_temperature_scenarios(shrimp_scens, T_c = shrimp_T_c)
 ```
@@ -1909,8 +1930,8 @@ fit_sub_lin <- brms::brm(
   prior      = priors_sub_lin,
   chains     = 4,
   cores      = 4,
-  iter       = 2000,                     # 4 chains x 1000 post-warmup = 4000 draws
-  warmup     = 1000,
+  iter       = 8000,                     # 4 chains x 4000 post-warmup = 16000 draws
+  warmup     = 4000,
   init       = 0,
   control    = list(adapt_delta = 0.995, max_treedepth = 14),
   backend    = "cmdstanr",
@@ -2009,11 +2030,30 @@ std_sub_4pl <- standardize_data(
 wf_sub_4pl <- fit_4pl(
   std_sub_4pl,
   random_effects = c("date_experiment", "tank_ID"),
-  chains  = 4, iter = 2000, cores = 4, seed = 123,    # 4000 post-warmup draws
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
   silent  = 2, refresh = 0,                            # hide chain trace
   file    = file.path(models_dir, "fit_shrimp_sublethal_4pl"),
   file_refit = "on_change"
 )
+```
+
+To make the joint 4PL on proportion-knocked-down data interpretable on the same axes as the lethal-TDT analysis, we plot the predicted survival ("proportion still alive") curves at each assay temperature with the observed cup counts overlaid. The 4PL aggregation pools cups into a $(\text{date} \times \text{tank} \times \text{temperature})$ count at each evaluation time, so each open point below is one such aggregated count plotted as a survival proportion.
+
+```{r shrimp-sublethal-4pl-survcurves}
+#| label: fig-shrimp-sublethal-4pl-survcurves
+#| fig-cap: "Posterior 4PL survival ('proportion still alive') curves for the brown-shrimp sublethal knockdown data at each assay temperature, with 95 % credible bands. Overlaid points are the aggregated proportion still alive per (date × tank × temperature) trial at each evaluation time. Population-level prediction (random effects marginalised); duration on the natural (linear) scale; viridis temperature colour mapping."
+#| fig-width: 8
+#| fig-height: 5
+
+psc_sub_4pl <- predict_survival_curves(
+  wf_sub_4pl,
+  temps  = sort(unique(std_sub_4pl$temp)),
+  ndraws = 500
+)
+plot_survival_curves(psc_sub_4pl, observed = std_sub_4pl) +
+  ggplot2::labs(x = "Exposure duration (minutes)",
+                y = "Proportion of live individuals") + 
+  ggplot2::coord_cartesian(xlim = c(0, 600)) 
 ```
 
 ::: {.callout-note}
@@ -2254,8 +2294,8 @@ zf_fits_sep <- lapply(zf_stages, function(s) {
   fit_4pl(
     zf_std_by_stage[[s]],
     random_effects = "Date_experiment",
-    chains  = 4, iter = 3000, warmup = 1500, cores = 4, seed = 123,
-    control = list(adapt_delta = 0.99, max_treedepth = 12),
+    chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
+    control = list(adapt_delta = 0.99, max_treedepth = 15),
     silent  = 2, refresh = 0,
     file    = file.path(models_dir,
                         paste0("fit_zf_separate_", s)),
@@ -2265,11 +2305,26 @@ zf_fits_sep <- lapply(zf_stages, function(s) {
 names(zf_fits_sep) <- zf_stages
 ```
 
+### Sampling diagnostics for the separate fits
+
+```{r zebrafish-sep-diagnostics}
+#| label: tbl-zebrafish-sep-diagnostics
+#| tbl-cap: "Sampling diagnostics for the three separate zebrafish 4PL fits, one row per life stage. Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
+#| cache: false
+
+zf_sep_diag <- dplyr::bind_rows(lapply(zf_stages, function(s) {
+  diagnose_tdt_fit(zf_fits_sep[[s]]) |>
+    dplyr::mutate(`Life stage` = s, .before = 1)
+}))
+tinytable::tt(zf_sep_diag, digits = 3, escape = TRUE)
+```
+
 ### Survival curves per life stage
 
 ```{r zebrafish-sep-survcurves}
 #| label: fig-zebrafish-sep-survcurves
-#| fig-cap: "Posterior survival curves for each zebrafish life stage from the three independent 4PL fits, with 95% credible bands. One panel per life stage; coloured points are observed per-replicate survival proportions. Panels share x and y axes."
+#| cache: false
+#| fig-cap: "Posterior survival curves for each zebrafish life stage from the three independent 4PL fits, with 95% credible bands. One panel per life stage; coloured points are observed per-replicate survival proportions. Exposure duration is constrained to the first 10 hours via `coord_cartesian()`. The temperature legend is suppressed because temperature is encoded redundantly on the panel position (each panel covers a different life stage) and reading off individual temperature lines is not the message here — the focus is on the shape of the curves and how observations cluster on them."
 #| fig-width: 11
 #| fig-height: 4.5
 
@@ -2278,27 +2333,47 @@ zf_sep_survplots <- lapply(zf_stages, function(s) {
                                   temps = sort(unique(zf_std_by_stage[[s]]$temp)),
                                   ndraws = 500)
   plot_survival_curves(psc, observed = zf_std_by_stage[[s]]) +
+    ggplot2::coord_cartesian(xlim = c(0, 10)) +
     ggplot2::labs(title = s,
-                  x = "Exposure duration (hours)")
+                  x = "Exposure duration (hours)") +
+    ggplot2::theme(legend.position = "none")
 })
 
-patchwork::wrap_plots(zf_sep_survplots, ncol = 3) +
-  patchwork::plot_layout(guides = "collect") &
-  ggplot2::theme(legend.position = "bottom")
+patchwork::wrap_plots(zf_sep_survplots, ncol = 3)
 ```
 
 ### TDT landscapes per life stage
 
 ```{r zebrafish-sep-landscape}
 #| label: fig-zebrafish-sep-landscape
-#| fig-cap: "TDT landscape for each zebrafish life stage from the three independent 4PL fits. Heatmap shows posterior median predicted survival on the temperature × duration grid; white contours mark 25, 50, and 75 % survival isolines; overlaid points are raw observed proportions."
+#| cache: false
+#| fig-cap: "TDT landscape for each zebrafish life stage from the three independent 4PL fits. Heatmap shows posterior median predicted survival on the temperature × duration grid; white contours mark 25, 50, and 75 % survival isolines; overlaid points are raw observed proportions. All three panels share the same temperature × duration ranges (drawn from the combined zebrafish panel) so the surfaces can be compared directly across life stages. Same linear-axis convention as the shrimp landscape (@fig-shrimp-landscape)."
 #| fig-width: 11
 #| fig-height: 4.5
 
+# Shared temperature × duration grid drawn from the combined zebrafish panel,
+# so the three life-stage landscapes share x and y axes and can be visually
+# compared.
+#
+# Both grids are LINEAR-spaced. The duration grid in particular must be
+# linear here, not log-spaced (the derive_tdt_landscape default), because
+# the y-axis is linear (matching the shrimp landscape). A log-spaced grid
+# on a linear axis collapses the short-duration cells of geom_raster to
+# subpixel widths, leaving only the contours and points visible.
+zf_temp_range <- range(zf$assay_temp, na.rm = TRUE)
+zf_dur_range  <- range(zf$duration_h, na.rm = TRUE)
+zf_shared_temp_grid <- seq(zf_temp_range[1], zf_temp_range[2],
+                           length.out = 120)
+zf_shared_dur_grid  <- seq(zf_dur_range[1],  zf_dur_range[2],
+                           length.out = 120)
+
 zf_sep_landplots <- lapply(zf_stages, function(s) {
-  lsp <- derive_tdt_landscape(zf_fits_sep[[s]], ndraws = 500)
+  lsp <- derive_tdt_landscape(zf_fits_sep[[s]],
+                              temp_grid     = zf_shared_temp_grid,
+                              duration_grid = zf_shared_dur_grid,
+                              ndraws        = 500)
   plot_tdt_landscape(lsp, observed = zf_std_by_stage[[s]]) +
-    ggplot2::labs(title = s)
+    ggplot2::labs(title = s, y = "Exposure duration (hours)")
 })
 
 patchwork::wrap_plots(zf_sep_landplots, ncol = 3) +
@@ -2313,6 +2388,7 @@ The classical TDT plot — predicted time to 50 % survival as a function of temp
 ```{r zebrafish-sep-ltx}
 #| label: zebrafish-sep-ltx
 #| echo: true
+#| cache: false
 
 zf_temp_grid <- seq(min(zf$assay_temp) - 0.25,
                     max(zf$assay_temp) + 0.25, by = 0.05)
@@ -2339,13 +2415,19 @@ zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 
 ```{r zebrafish-sep-tdt-line-plot}
 #| label: fig-zebrafish-sep-tdt-line
-#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits. Time to 50% survival vs assay temperature, on linear (left) and $\\log_{10}$ (right) y-axes. Lines are posterior medians; shaded bands are 95% credible intervals. The same posterior is shown on both panels — the linear panel highlights the absolute drop in tolerance at higher temperatures; the $\\log_{10}$ panel reveals the classical near-linear TDT relationship, with slope $-1/z$."
+#| cache: false
+#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits. Time to 50 % survival vs assay temperature, on linear (left) and $\\log_{10}$ (right) y-axes. Lines are posterior medians; shaded bands are 95 % credible intervals. The same posterior is shown on both panels — the linear panel highlights the absolute drop in tolerance at higher temperatures; the $\\log_{10}$ panel reveals the classical near-linear TDT relationship, with slope $-1/z$. The y-axis is capped at 48 h via `coord_cartesian()`; the larvae line uses a darker orange (inferno end) to avoid the pale viridis yellow."
 #| fig-width: 10
 #| fig-height: 4.5
 
-zf_palette <- c(young_embryos = "#440154",
-                old_embryos   = "#21918c",
-                larvae        = "#fde725")
+# Colour-blind-safe triple, distinct in luminance from each other and from
+# the panel background; replaces the unreadable viridis yellow for larvae.
+zf_palette <- c(young_embryos = "#440154",   # dark purple
+                old_embryos   = "#21918c",   # teal
+                larvae        = "#f98e09")   # orange (inferno ~0.75)
+
+# Y-axis cap = 48 hours, expressed in the same unit as time_med_min (minutes).
+y_cap_min <- 48 * 60
 
 p_lin_sep <- ggplot2::ggplot(zf_sep_ltx,
                               ggplot2::aes(x = assay_temp, y = time_med_min,
@@ -2356,15 +2438,33 @@ p_lin_sep <- ggplot2::ggplot(zf_sep_ltx,
   ggplot2::geom_line(linewidth = 1) +
   ggplot2::scale_colour_manual(values = zf_palette) +
   ggplot2::scale_fill_manual(values   = zf_palette) +
+  ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
   ggplot2::labs(x = "Assay temperature (°C)",
                 y = "Time to 50 % survival (min)",
                 colour = "Life stage", fill = "Life stage") +
-  ggplot2::theme_classic()
+  ggplot2::theme_classic() +
+  ggplot2::theme(panel.border = ggplot2::element_rect(colour = "black",
+                                                      fill = NA,
+                                                      linewidth = 0.6))
 
-p_log_sep <- p_lin_sep +
+p_log_sep <- ggplot2::ggplot(zf_sep_ltx,
+                              ggplot2::aes(x = assay_temp, y = time_med_min,
+                                            colour = life_stage,
+                                            fill   = life_stage)) +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = time_lo_min, ymax = time_hi_min),
+                       alpha = 0.18, colour = NA) +
+  ggplot2::geom_line(linewidth = 1) +
+  ggplot2::scale_colour_manual(values = zf_palette) +
+  ggplot2::scale_fill_manual(values   = zf_palette) +
   ggplot2::scale_y_log10() +
-  ggplot2::labs(y = expression(log[10] * " time to 50 % survival (min)")) +
-  ggplot2::theme(legend.position = "none")
+  ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
+  ggplot2::labs(x = "Assay temperature (°C)",
+                y = expression(log[10] * " time to 50 % survival (min)")) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "none",
+                 panel.border = ggplot2::element_rect(colour = "black",
+                                                      fill = NA,
+                                                      linewidth = 0.6))
 
 patchwork::wrap_plots(p_lin_sep, p_log_sep, ncol = 2) +
   patchwork::plot_layout(guides = "collect") &
@@ -2378,6 +2478,7 @@ patchwork::wrap_plots(p_lin_sep, p_log_sep, ncol = 2) +
 ```{r zebrafish-sep-extract}
 #| label: zebrafish-sep-extract
 #| echo: true
+#| cache: false
 
 zf_et_sep <- lapply(zf_stages, function(s) {
   extract_tdt(zf_fits_sep[[s]],
@@ -2391,6 +2492,7 @@ names(zf_et_sep) <- zf_stages
 
 ```{r zebrafish-sep-extract-table}
 #| label: tbl-zebrafish-sep-extract
+#| cache: false
 #| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from the three separate zebrafish 4PL fits. Medians with 95 % credible intervals. $T_{crit}$ is integrated over $r^* \\in [0.1, 1]$ % HI per hour, as in Case Study 1."
 
 zf_sep_tdt_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
@@ -2417,6 +2519,7 @@ Because the three fits are independent, their posteriors are *independent*: a pa
 
 ```{r zebrafish-sep-contrasts}
 #| label: tbl-zebrafish-sep-contrasts
+#| cache: false
 #| tbl-cap: "Pairwise differences in $z$ and $CT_{max_{1hr}}$ across zebrafish life stages, computed by subtracting draw-aligned posteriors from the three separate 4PL fits. Positive values mean the first-listed stage has the larger value of the quantity."
 
 # Draw-level contrast helper. The .draw index is shared across the three fits
@@ -2460,14 +2563,23 @@ The three independent fits are a fine starting point, but they leave information
 - **Partial pooling of the asymptote and slope priors.** With life-stage-specific coefficients on `lowraw`, `upraw`, `logk`, and `mid`, the *priors* on those coefficients are still shared across stages, so each stage's posterior leans gently on the others where data are sparse.
 - **Direct life-stage contrasts from a single posterior.** Differences between stages are linear combinations of draws from the same fit — no cross-fit alignment needed.
 
-We write the formula by hand, mirroring the disjoint-bounds asymptote reparameterisation used by `make_4pl_formula()` so the joint model and the separate fits use the same parameterisation. The only addition is `temp_c * life_stage` on every 4PL sub-parameter. **No observation-level random effect is included**: the beta-binomial family already estimates extra-binomial variance via $\phi$, and an additional obs-level random intercept would be redundant.
+We write the formula by hand, mirroring the disjoint-bounds asymptote reparameterisation used by `make_4pl_formula()` so the joint model and the separate fits use the same parameterisation. The life-stage covariate enters via **cell-means coding** — `~ 0 + life_stage + temp_c:life_stage` — rather than the standard `temp_c * life_stage` (treatment-contrast) coding. Both parameterisations describe the same likelihood, but they place priors on different sets of coefficients:
+
+- *Treatment-contrast* (`temp_c * life_stage`) estimates one reference-stage slope and two deviations from it; the *effective* per-stage slopes for non-reference stages are sums of two coefficients, and with `normal(0, 0.5)` priors on each, the implicit prior on those sums has $\text{SD} = \sqrt{2} \cdot 0.5 \approx 0.71$. This makes non-reference stages' slope posteriors $\sqrt{2}\times$ wider than the reference stage's a priori, an asymmetric partial-pooling that we don't want here.
+- *Cell-means* (`0 + life_stage + temp_c:life_stage`) estimates each stage's intercept and slope directly. Every per-stage coefficient receives the same `normal(0, 0.5)` (slopes) or sub-parameter-appropriate (intercepts) prior, so no stage is implicitly privileged. The choice is principled for this case: zebrafish life stages are biologically distinct enough that we don't believe any one of them is a "baseline" from which the others deviate.
+
+The four 4PL sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) all receive this cell-means structure. **No observation-level random effect is included**: the beta-binomial family already estimates extra-binomial variance via $\phi$, and an additional obs-level random intercept would be redundant.
 
 ```{r zebrafish-joint-spec}
 #| label: zebrafish-joint-spec
 #| echo: true
 
 # Build the same disjoint-bounds 4PL surface as make_4pl_formula() uses,
-# with life_stage interacting with temp_c on all four sub-parameters.
+# with cell-means coding on life_stage for every sub-parameter:
+# `0 + life_stage` gives one intercept per stage, `temp_c:life_stage` gives
+# one slope per stage. Each per-stage coefficient is its own degree of
+# freedom — no privileged reference stage, no treatment-contrast prior
+# inflation on non-reference slopes.
 zf_bounds <- bayesTLS:::compute_4pl_bounds(lower = 0, upper = 1)
 low_expr  <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)",
                      zf_bounds$low_min, zf_bounds$low_w)
@@ -2478,10 +2590,10 @@ main_rhs  <- sprintf("%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))",
 
 f_zf_joint <- brms::bf(
   stats::as.formula(sprintf("n_surv | trials(n_total) ~ %s", main_rhs)),
-  stats::as.formula("lowraw ~ temp_c * life_stage"),
-  stats::as.formula("upraw  ~ temp_c * life_stage"),
-  stats::as.formula("logk   ~ temp_c * life_stage"),
-  stats::as.formula("mid    ~ temp_c * life_stage + (1 | Date_experiment)"),
+  stats::as.formula("lowraw ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("upraw  ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("logk   ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("mid    ~ 0 + life_stage + temp_c:life_stage + (1 | Date_experiment)"),
   nl     = TRUE,
   family = brms::beta_binomial(link = "identity")
 )
@@ -2500,33 +2612,51 @@ zf_joint_data <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 }))
 ```
 
-Priors mirror the package defaults (weakly-informative Normal on the raw asymptotes and $\log k$, a centred Normal on `mid` whose location is the median observed $\log_{10}$ duration, exponential half-shrinkage on the random-intercept SD, and a brms-default gamma on $\phi$).
+Priors mirror those used by `make_4pl_priors()` for the per-stage fits, with one structural difference forced by the cell-means coding. With no `Intercept` coefficient (the global intercept is suppressed by `0 +`), each *per-stage intercept* — `life_stage<stage>` — needs its own prior centred on the appropriate sub-parameter value. The per-stage *slopes* — `life_stage<stage>:temp_c` — are picked up by the general `class = "b", nlpar = "<sub-par>"` priors (the same widths `make_4pl_priors()` uses for non-Intercept slopes).
 
 ```{r zebrafish-joint-priors}
 #| label: zebrafish-joint-priors
 #| echo: true
 
-mid_centre  <- stats::median(zf_joint_data$logd, na.rm = TRUE)
-lowraw_loc  <- stats::qlogis((0.05 - zf_bounds$low_min) / zf_bounds$low_w)
-upraw_loc   <- stats::qlogis((0.95 - zf_bounds$up_min)  / zf_bounds$up_w)
-logk_loc    <- log(5)
+# Centres for each sub-parameter's per-stage intercept prior, derived the
+# same way as in make_4pl_priors() (low_target = 2%, up_target = 98%,
+# log(k) ~ log(2) at temp_c = 0, mid centred on the median observed
+# log10(duration)).
+low_target  <- 0 + 0.02 * 1
+up_target   <- 0 + 0.98 * 1
+lowraw_loc  <- stats::qlogis((low_target - zf_bounds$low_min) / zf_bounds$low_w)
+upraw_loc   <- stats::qlogis((up_target  - zf_bounds$up_min)  / zf_bounds$up_w)
+logk_loc    <- log(2)
+mid_loc     <- stats::median(zf_joint_data$logd, na.rm = TRUE)
+
+# Helper: three identical per-stage intercept priors (one per life_stage
+# level) on the requested sub-parameter.
+per_stage_intercept_priors <- function(centre, sigma, nlpar) {
+  do.call(c, lapply(zf_stages, function(s) {
+    brms::set_prior(
+      sprintf("normal(%.6f, %.6f)", centre, sigma),
+      class = "b", nlpar = nlpar,
+      coef  = paste0("life_stage", s)
+    )
+  }))
+}
 
 zf_joint_priors <- c(
-  brms::prior_string(sprintf("normal(%.4f, 1.5)", lowraw_loc),
-                     class = "b", nlpar = "lowraw", coef = "Intercept"),
-  brms::prior_string("normal(0, 1)", class = "b", nlpar = "lowraw"),
-  brms::prior_string(sprintf("normal(%.4f, 1.5)", upraw_loc),
-                     class = "b", nlpar = "upraw",  coef = "Intercept"),
-  brms::prior_string("normal(0, 1)", class = "b", nlpar = "upraw"),
-  brms::prior_string(sprintf("normal(%.4f, 1)", logk_loc),
-                     class = "b", nlpar = "logk",   coef = "Intercept"),
-  brms::prior_string("normal(0, 0.6)", class = "b", nlpar = "logk"),
-  brms::prior_string(sprintf("normal(%.4f, 1)", mid_centre),
-                     class = "b", nlpar = "mid",    coef = "Intercept"),
-  brms::prior_string("normal(0, 0.6)", class = "b", nlpar = "mid"),
-  brms::prior_string("exponential(2)", class = "sd", nlpar = "mid",
-                     group = "Date_experiment"),
-  brms::prior_string("gamma(2, 0.1)", class = "phi")
+  # Per-stage intercept priors (3 per sub-parameter)
+  per_stage_intercept_priors(lowraw_loc, 1.0, "lowraw"),
+  per_stage_intercept_priors(upraw_loc,  1.0, "upraw"),
+  per_stage_intercept_priors(logk_loc,   1.0, "logk"),
+  per_stage_intercept_priors(mid_loc,    1.5, "mid"),
+  # General `b` priors covering the per-stage slope coefficients
+  # (`life_stage<stage>:temp_c`) on each sub-parameter
+  brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "lowraw"),
+  brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "upraw"),
+  brms::set_prior("normal(0, 0.3)", class = "b", nlpar = "logk"),
+  brms::set_prior("normal(0, 0.6)", class = "b", nlpar = "mid"),
+  # Random-effect SD on `mid` and beta-binomial dispersion
+  brms::set_prior("exponential(2)", class = "sd", nlpar = "mid",
+                  group = "Date_experiment"),
+  brms::set_prior("gamma(2, 0.1)",  class = "phi")
 )
 ```
 
@@ -2539,14 +2669,50 @@ fit_zf_joint <- brms::brm(
   formula    = f_zf_joint,
   data       = zf_joint_data,
   prior      = zf_joint_priors,
-  chains     = 4, iter = 4000, warmup = 2000, cores = 4, seed = 123,
-  control    = list(adapt_delta = 0.995, max_treedepth = 14),
+  chains     = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
+  # adapt_delta = 0.995 + max_treedepth = 15 is the cheaper of the two
+  # tunings considered: adapt_delta is the dominant cost driver (it sets
+  # the step size used by every warmup AND sampling iteration), while
+  # max_treedepth only costs extra on iterations that actually saturate.
+  # If treedepth hits reappear in the diagnostics table, bump treedepth
+  # to 20 first before raising adapt_delta further.
+  control    = list(adapt_delta = 0.995, max_treedepth = 15),
   init       = 0,
   backend    = "cmdstanr",
   silent     = 2, refresh = 0,
   file       = file.path(models_dir, "fit_zf_joint_4pl"),
   file_refit = "on_change"
 )
+```
+
+### Sampling diagnostics for the joint fit
+
+```{r zebrafish-joint-diagnostics}
+#| label: tbl-zebrafish-joint-diagnostics
+#| tbl-cap: "Sampling diagnostics for the joint zebrafish 4PL fit (one model, all three life stages). Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
+#| cache: false
+
+# The joint fit was constructed by hand from brms::bf() rather than through
+# fit_4pl(), so we can't pass it to diagnose_tdt_fit() (which expects a
+# bayes_tls workflow). Pull the same numbers directly from the brmsfit.
+np_zj      <- brms::nuts_params(fit_zf_joint)
+divs_zj    <- sum(subset(np_zj, Parameter == "divergent__")$Value)
+td_max_zj  <- max(np_zj$Value[np_zj$Parameter == "treedepth__"], na.rm = TRUE)
+td_hits_zj <- sum(subset(np_zj, Parameter == "treedepth__")$Value >= td_max_zj)
+rh_zj      <- brms::rhat(fit_zf_joint)
+ess_zj     <- posterior::summarise_draws(posterior::as_draws(fit_zf_joint),
+                                          "ess_bulk", "ess_tail")
+tibble::tibble(
+  rhat_max        = round(max(rh_zj,        na.rm = TRUE), 4),
+  ess_bulk_min    = round(min(ess_zj$ess_bulk, na.rm = TRUE)),
+  ess_tail_min    = round(min(ess_zj$ess_tail, na.rm = TRUE)),
+  divergences     = divs_zj,
+  treedepth_hits  = td_hits_zj,
+  rhat_pass       = max(rh_zj, na.rm = TRUE) < 1.01,
+  ess_pass        = min(ess_zj$ess_bulk, ess_zj$ess_tail, na.rm = TRUE) > 400,
+  divergence_pass = divs_zj == 0
+) |>
+  tinytable::tt(digits = 3, escape = TRUE)
 ```
 
 ### TDT lines: independent vs joint fit {#sec-zebrafish-tdt-overlay}
@@ -2556,6 +2722,7 @@ To compare the two approaches we extract the posterior $\log_{10}\text{LT50}(T)$
 ```{r zebrafish-joint-ltx}
 #| label: zebrafish-joint-ltx
 #| echo: true
+#| cache: false
 
 # Posterior LT50 curve from the joint fit, per life stage. We grid temp x
 # life_stage, predict each non-linear sub-parameter, reconstruct the 4PL
@@ -2615,39 +2782,56 @@ zf_joint_summary <- zf_joint_pred_grid |>
 
 ```{r zebrafish-overlay-tdt-line}
 #| label: fig-zebrafish-overlay-tdt-line
-#| fig-cap: "TDT lines for zebrafish, comparing the three independent per-life-stage fits (dashed) with the joint 4PL fit (solid). Posterior medians; 95 % credible bands from the joint fit only (for readability). Linear-time panel on the left, $\\log_{10}$-time panel on the right. The joint fit's bands are visibly narrower than the separate-fit bands (not shown) thanks to partial pooling of the asymptote and slope priors and the shared $\\phi$ — the same ribbon plotted around the dashed lines would overlap heavily."
+#| cache: false
+#| fig-cap: "TDT lines for zebrafish, comparing the three independent per-life-stage fits (dashed lines, lighter ribbons) with the joint 4PL fit (solid lines, darker ribbons). 95 % credible bands shown for both methods. Linear-time panel on the left, $\\log_{10}$-time panel on the right. Each life stage carries the same hue across methods; the lighter ribbon and dashed line mark the separate fits, the darker ribbon and solid line mark the joint fit. The y-axis is capped at 48 h via `coord_cartesian()`. The joint fit's bands are typically narrower than the separate-fit bands thanks to partial pooling of the asymptote and slope priors and the shared $\\phi$."
 #| fig-width: 10
 #| fig-height: 4.5
 
+# Tag each posterior with its method so we can map both ribbons and lines
+# from a single long tibble.
+zf_overlay_df <- dplyr::bind_rows(
+  dplyr::mutate(zf_sep_ltx,        method = "Separate fits"),
+  dplyr::mutate(zf_joint_summary,  method = "Joint fit")
+) |>
+  dplyr::mutate(method = factor(method,
+                                levels = c("Separate fits", "Joint fit")))
+
+# Same hue per life stage across methods; method is encoded by ribbon alpha
+# (lighter for separate, darker for joint) and by linetype.
+overlay_alphas    <- c("Separate fits" = 0.12, "Joint fit" = 0.32)
+overlay_linetypes <- c("Separate fits" = "dashed", "Joint fit" = "solid")
+
 build_overlay <- function(y_log = FALSE) {
-  p <- ggplot2::ggplot() +
-    ggplot2::geom_ribbon(
-      data = zf_joint_summary,
-      ggplot2::aes(x = assay_temp, ymin = time_lo_min, ymax = time_hi_min,
-                   fill = life_stage),
-      alpha = 0.15, colour = NA
-    ) +
-    ggplot2::geom_line(
-      data = zf_sep_ltx,
-      ggplot2::aes(x = assay_temp, y = time_med_min, colour = life_stage),
-      linetype = "dashed", linewidth = 0.9
-    ) +
-    ggplot2::geom_line(
-      data = zf_joint_summary,
-      ggplot2::aes(x = assay_temp, y = time_med_min, colour = life_stage),
-      linetype = "solid", linewidth = 1.1
-    ) +
+  p <- ggplot2::ggplot(zf_overlay_df,
+                       ggplot2::aes(x = assay_temp, y = time_med_min,
+                                    colour = life_stage,
+                                    fill   = life_stage,
+                                    linetype = method,
+                                    group = interaction(life_stage, method))) +
+    ggplot2::geom_ribbon(ggplot2::aes(ymin  = time_lo_min,
+                                      ymax  = time_hi_min,
+                                      alpha = method),
+                         colour = NA) +
+    ggplot2::geom_line(linewidth = 1) +
     ggplot2::scale_colour_manual(values = zf_palette) +
     ggplot2::scale_fill_manual(values   = zf_palette) +
+    ggplot2::scale_alpha_manual(values  = overlay_alphas,
+                                name    = "Method") +
+    ggplot2::scale_linetype_manual(values = overlay_linetypes,
+                                    name   = "Method") +
     ggplot2::labs(x = "Assay temperature (°C)",
                   colour = "Life stage", fill = "Life stage") +
-    ggplot2::theme_classic()
+    ggplot2::theme_classic() +
+    ggplot2::theme(panel.border = ggplot2::element_rect(colour = "black",
+                                                        fill = NA,
+                                                        linewidth = 0.6))
   if (y_log) {
     p + ggplot2::scale_y_log10() +
-      ggplot2::labs(y = expression(log[10] * " time to 50 % survival (min)")) +
-      ggplot2::theme(legend.position = "none")
+      ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
+      ggplot2::labs(y = expression(log[10] * " time to 50 % survival (min)"))
   } else {
-    p + ggplot2::labs(y = "Time to 50 % survival (min)")
+    p + ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
+      ggplot2::labs(y = "Time to 50 % survival (min)")
   }
 }
 
@@ -2663,9 +2847,16 @@ We can reuse `derive_tdt_parameters()` per life stage by feeding it the per-stag
 ```{r zebrafish-joint-extract}
 #| label: zebrafish-joint-extract
 #| echo: true
+#| cache: false
 
 # Build a derive_ltx_curve()-like object per life stage from the joint
-# posterior, then pass it to derive_tdt_parameters() to get z + CTmax.
+# posterior, then pass it to derive_tdt_parameters() to get z + CTmax. We
+# also compute the rate-multiplier T_crit per draw, using the same
+# r* in [0.1, 1] % HI per hour integration as in Case Study 1.
+TC_rate_range_zf <- c(0.1, 1)
+log10_low_zf     <- log10(TC_rate_range_zf[1] / 100)
+log10_high_zf    <- log10(TC_rate_range_zf[2] / 100)
+
 zf_joint_tdt <- lapply(zf_stages, function(s) {
   idx <- zf_joint_pred_grid$life_stage == s
   draws <- as.data.frame(t(t_min[, idx, drop = FALSE]))
@@ -2684,17 +2875,43 @@ zf_joint_tdt <- lapply(zf_stages, function(s) {
   ltx_obj <- list(draws = long, target_surv = 0.5,
                   time_multiplier = 60, output_time_unit = "min")
   zct  <- derive_tdt_parameters(ltx_obj, t_ref = 60)
-  list(z = zct, summary = zct$summary)
+
+  # Per-draw T_crit via rate-multiplier integration. Pair z and CTmax from
+  # the same posterior draw and sample r* uniformly on log10 across the
+  # default range to propagate operational uncertainty in the damage rate.
+  per_draw <- zct$draws |>
+    dplyr::select(.draw, z, CTmax) |>
+    dplyr::filter(is.finite(z), is.finite(CTmax)) |>
+    dplyr::mutate(log10_rate = stats::runif(dplyr::n(),
+                                            min = log10_low_zf,
+                                            max = log10_high_zf),
+                  T_crit     = CTmax + z * log10_rate)
+  q_tc <- stats::quantile(per_draw$T_crit,
+                          c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+  T_crit_block <- list(
+    draws   = tibble::tibble(.draw = per_draw$.draw,
+                             temp  = per_draw$T_crit,
+                             log10_rate = per_draw$log10_rate),
+    summary = tibble::tibble(TC_rate_low  = TC_rate_range_zf[1],
+                             TC_rate_high = TC_rate_range_zf[2],
+                             temp_lower   = q_tc[1],
+                             temp_median  = q_tc[2],
+                             temp_upper   = q_tc[3])
+  )
+
+  list(z = zct, summary = zct$summary, T_crit = T_crit_block)
 })
 names(zf_joint_tdt) <- zf_stages
 ```
 
 ```{r zebrafish-joint-extract-table}
 #| label: tbl-zebrafish-joint-extract
-#| tbl-cap: "Posterior summaries of $z$ and $CT_{max_{1hr}}$ from the joint 4PL fit, per life stage. Medians with 95 % credible intervals, derived from the per-draw $\\log_{10}\\text{LT50}(T)$ curve reconstructed from the joint posterior. $T_{crit}$ is not reported here (the rate-multiplier algebra is identical to Case Study 1 and can be applied to these posteriors if desired)."
+#| cache: false
+#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint 4PL fit, per life stage. Medians with 95 % credible intervals, derived from the per-draw $\\log_{10}\\text{LT50}(T)$ curve reconstructed from the joint posterior. $T_{crit}$ uses the same rate-multiplier integration ($r^* \\in [0.1, 1]$ % HI per hour) as Case Study 1."
 
 zf_joint_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
-  z_summary <- zf_joint_tdt[[s]]$z$summary
+  z_summary  <- zf_joint_tdt[[s]]$z$summary
+  tc_summary <- zf_joint_tdt[[s]]$T_crit$summary
   tibble::tibble(
     `Life stage`     = s,
     `z (°C)`         = format_interval(z_summary$z_median,
@@ -2702,7 +2919,10 @@ zf_joint_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
                                        z_summary$z_upper, digits = 2),
     `CTmax_1hr (°C)` = format_interval(z_summary$CTmax_median,
                                        z_summary$CTmax_lower,
-                                       z_summary$CTmax_upper, digits = 2)
+                                       z_summary$CTmax_upper, digits = 2),
+    `T_crit (°C)`    = format_interval(tc_summary$temp_median,
+                                       tc_summary$temp_lower,
+                                       tc_summary$temp_upper, digits = 2)
   )
 }))
 tinytable::tt(zf_joint_table, escape = TRUE)
@@ -2712,6 +2932,7 @@ tinytable::tt(zf_joint_table, escape = TRUE)
 
 ```{r zebrafish-compare-table}
 #| label: tbl-zebrafish-compare
+#| cache: false
 #| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ posteriors from the three independent per-life-stage fits (Approach 1) and the joint 4PL with `life_stage` as a covariate (Approach 2). The joint fit's credible intervals are typically narrower thanks to partial pooling of the asymptote and slope priors and a single shared dispersion $\\phi$, while medians are similar — the two approaches agree on the *direction* of life-stage effects."
 
 zf_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
@@ -2735,6 +2956,89 @@ zf_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   )
 }))
 tinytable::tt(zf_compare, escape = TRUE)
+```
+
+@fig-zebrafish-method-densities visualises the same comparison at the posterior level: one row per life stage, one column per TDT quantity ($z$, $CT_{max_{1hr}}$, $T_{crit}$), with the separate-fit and joint-fit posterior densities overlaid in every panel. Solid vertical lines mark the posterior median for each method; dashed lines mark the 2.5th and 97.5th percentiles (95 % CrI). The narrowing of the joint posteriors relative to the separate ones is visible in nearly every panel — the partial-pooling story from @tbl-zebrafish-compare made explicit on the natural scale.
+
+```{r zebrafish-method-densities}
+#| label: fig-zebrafish-method-densities
+#| fig-cap: "Posterior densities of $z$ (left column), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for each zebrafish life stage (rows), overlaid for the three separate per-stage 4PL fits (blue) and the joint 4PL with `life_stage` as a covariate (orange). Solid vertical lines mark the posterior median for each method; dashed lines mark the 2.5th and 97.5th percentiles (95 % CrI). The joint posteriors are typically narrower than the separate ones thanks to partial pooling of asymptotes / slope priors and a single shared dispersion $\\phi$, while medians track each other closely — the two approaches agree on the *location* of each quantity but the joint fit is more precise."
+#| fig-width: 10
+#| fig-height: 7
+#| cache: false
+
+zf_post_long <- dplyr::bind_rows(
+  lapply(zf_stages, function(s) {
+    dplyr::bind_rows(
+      tibble::tibble(life_stage = s, quantity = "z",         method = "Separate",
+                     value = zf_et_sep[[s]]$z$draws$z),
+      tibble::tibble(life_stage = s, quantity = "CTmax_1hr", method = "Separate",
+                     value = zf_et_sep[[s]]$CTmax$draws$temp),
+      tibble::tibble(life_stage = s, quantity = "T_crit",    method = "Separate",
+                     value = zf_et_sep[[s]]$T_crit$draws$temp),
+      tibble::tibble(life_stage = s, quantity = "z",         method = "Joint",
+                     value = zf_joint_tdt[[s]]$z$draws$z),
+      tibble::tibble(life_stage = s, quantity = "CTmax_1hr", method = "Joint",
+                     value = zf_joint_tdt[[s]]$z$draws$CTmax),
+      tibble::tibble(life_stage = s, quantity = "T_crit",    method = "Joint",
+                     value = zf_joint_tdt[[s]]$T_crit$draws$temp)
+    )
+  })
+) |>
+  dplyr::filter(is.finite(value)) |>
+  dplyr::mutate(
+    life_stage = factor(life_stage, levels = zf_stages),
+    quantity   = factor(quantity,   levels = c("z", "CTmax_1hr", "T_crit")),
+    method     = factor(method,     levels = c("Separate", "Joint"))
+  )
+
+zf_post_summary <- zf_post_long |>
+  dplyr::group_by(life_stage, quantity, method) |>
+  dplyr::summarise(
+    med = stats::median(value, na.rm = TRUE),
+    lo  = stats::quantile(value, 0.025, names = FALSE, na.rm = TRUE),
+    hi  = stats::quantile(value, 0.975, names = FALSE, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+method_colours <- c("Separate" = "#2c7fb8", "Joint" = "#d95f02")
+
+quantity_labels <- ggplot2::as_labeller(
+  c(z         = "italic(z)~(degree*C~per~log[10]~time)",
+    CTmax_1hr = "CT[max[1*hr]]~(degree*C)",
+    T_crit    = "T[crit]~(degree*C)"),
+  default = ggplot2::label_parsed
+)
+
+ggplot2::ggplot(zf_post_long,
+                ggplot2::aes(x = value, fill = method, colour = method)) +
+  ggplot2::geom_density(alpha = 0.35, linewidth = 0.4) +
+  ggplot2::geom_vline(data = zf_post_summary,
+                      ggplot2::aes(xintercept = med, colour = method),
+                      linewidth = 0.7, show.legend = FALSE) +
+  ggplot2::geom_vline(data = zf_post_summary,
+                      ggplot2::aes(xintercept = lo, colour = method),
+                      linetype = "dashed", linewidth = 0.4, alpha = 0.8,
+                      show.legend = FALSE) +
+  ggplot2::geom_vline(data = zf_post_summary,
+                      ggplot2::aes(xintercept = hi, colour = method),
+                      linetype = "dashed", linewidth = 0.4, alpha = 0.8,
+                      show.legend = FALSE) +
+  ggplot2::scale_colour_manual(values = method_colours, name = "Method") +
+  ggplot2::scale_fill_manual(values   = method_colours, name = "Method") +
+  ggplot2::facet_grid(life_stage ~ quantity, scales = "free",
+                      labeller = ggplot2::labeller(
+                        quantity   = quantity_labels,
+                        life_stage = ggplot2::label_value
+                      )) +
+  ggplot2::labs(x = NULL, y = "Posterior density") +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    legend.position  = "top",
+    strip.background = ggplot2::element_blank(),
+    panel.border     = ggplot2::element_rect(colour = "black",
+                                              fill = NA, linewidth = 0.5)
+  )
 ```
 
 The joint approach is the recommended default when the dataset spans an identifiable grouping factor (life stage here, but it could equally be population, sex, or species). It is the natural extension of the workflow in §[Joint Bayesian 4PL] from a single 4PL surface to a *family* of 4PL surfaces tied together by shared priors and (where the design allows) shared random-effect grouping.
