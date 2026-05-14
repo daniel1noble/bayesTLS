@@ -118,9 +118,23 @@ compute_ols_truth <- function(p, design = "full") {
   k_T       <- p$k   + p$k_beta1   * T_c
   mid_T     <- p$m_beta0 + p$m_beta1 * T_c
 
-  if (any(u_T <= 0.5) || any(ell_T >= 0.5) || any(k_T <= 0))
-    stop("DGP gives degenerate u/ell/k at design temperatures: ",
-         "need u > 0.5, ell < 0.5, k > 0.", call. = FALSE)
+  # Bounds check. The 4PL parameters must satisfy:
+  #   ell < 0.5 < u  (so log10(LT50_{p=0.5}) is well-defined),
+  #   0 < ell < u < 1 (so the beta-binomial DGM has positive shapes).
+  # The upper bound on u is the key one when sweeping u_beta1: u_T = u + u_beta1
+  # * (T - T_bar) can exceed 1 at the cold end of the design grid for steep
+  # negative u_beta1, which makes rbeta produce NaN survival probabilities.
+  if (any(u_T <= 0.5) || any(ell_T >= 0.5) || any(k_T <= 0) ||
+      any(u_T >= 1)   || any(ell_T <= 0))
+    stop("DGP gives infeasible u/ell/k at design temperatures: ",
+         "need 0 < ell < 0.5 < u < 1 and k > 0. ",
+         "At design temperatures, u_T = ",
+         paste(sprintf("%.3f", u_T),   collapse = ", "),
+         "; ell_T = ",
+         paste(sprintf("%.3f", ell_T), collapse = ", "),
+         "; k_T = ",
+         paste(sprintf("%.3f", k_T),   collapse = ", "), ".",
+         call. = FALSE)
 
   ratio       <- (u_T - 0.5) / (0.5 - ell_T)
   log10_lt50  <- mid_T + (1 / k_T) * log(ratio)
@@ -238,14 +252,18 @@ fit_two_stage_classical <- function(data, t_ref_min = 60) {
     d <- subset(data, T == T_value)
     d$n_surv <- d$y
     d$n_dead <- d$n - d$y
+    # Benign "fitted probabilities numerically 0 or 1" warnings are common in
+    # survival data near asymptotes — suppress them and rely on the finiteness
+    # + negative-slope coefficient checks below to detect genuine failures.
     fit <- tryCatch(
-      stats::glm(cbind(n_surv, n_dead) ~ log10_t,
-                 data = d,
-                 family = stats::binomial("logit")),
-      warning = function(w) w,
-      error   = function(e) e
+      suppressWarnings(
+        stats::glm(cbind(n_surv, n_dead) ~ log10_t,
+                   data = d,
+                   family = stats::binomial("logit"))
+      ),
+      error = function(e) e
     )
-    if (inherits(fit, "error") || inherits(fit, "warning") ||
+    if (inherits(fit, "error") ||
         !inherits(fit, "glm") ||
         any(!is.finite(stats::coef(fit)))) {
       return(list(T = T_value, log10_LT50 = NA_real_,
