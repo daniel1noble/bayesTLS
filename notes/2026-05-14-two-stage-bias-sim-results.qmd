@@ -1,0 +1,277 @@
+---
+title: "Results — joint-4PL vs two-stage bias simulation"
+date: 2026-05-14
+author: "Daniel Noble (with Claude assistance)"
+format:
+  html:
+    toc: true
+    number-sections: true
+    fig-width: 8
+    fig-height: 5
+    code-fold: true
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+#| include: false
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(here)
+source(here::here("scripts", "sim_twostage_helpers.R"))
+
+dgps    <- c("baseline", "sym_ul", "asym_u", "varying_k")
+designs <- c("n3", "n5")
+
+# OLS truths per DGP
+truths_df <- do.call(rbind, lapply(dgps, function(d) {
+  tt <- sim_twostage_truth(d)
+  data.frame(dgp       = d,
+             u_beta1   = tt$u_beta1,
+             ell_beta1 = tt$ell_beta1,
+             k_beta1   = tt$k_beta1,
+             z_true    = tt$z_true,
+             ct_true   = tt$CTmax_1hr_true)
+}))
+
+# Load all summaries + per-sim tables
+summary_list <- list()
+per_sim_list <- list()
+for (dgp in dgps) for (d in designs) {
+  label <- if (dgp == "baseline") d else paste(dgp, d, sep = "_")
+  s <- readRDS(here::here("output", "sim_twostage", sprintf("summary_%s.rds", label)))
+  p <- readRDS(here::here("output", "sim_twostage", sprintf("per_sim_%s.rds", label)))
+  s$dgp <- dgp; s$design <- d
+  p$dgp <- dgp; p$design <- d
+  summary_list[[label]] <- s
+  per_sim_list[[label]] <- p
+}
+summary_all <- bind_rows(summary_list)
+per_sim_all <- bind_rows(per_sim_list) |>
+  filter(success) |>
+  left_join(truths_df, by = "dgp") |>
+  mutate(truth = ifelse(quantity == "z", z_true, ct_true))
+
+# Ordering for plots
+summary_all$dgp    <- factor(summary_all$dgp,
+                              levels = c("baseline", "sym_ul",
+                                         "varying_k", "asym_u"))
+summary_all$method <- factor(summary_all$method,
+                              levels = c("joint_4pl", "two_stage"))
+per_sim_all$dgp    <- factor(per_sim_all$dgp,
+                              levels = levels(summary_all$dgp))
+per_sim_all$method <- factor(per_sim_all$method,
+                              levels = levels(summary_all$method))
+
+method_cols <- c("joint_4pl" = "#0072B2", "two_stage" = "#D55E00")
+
+fig_dir <- here::here("output", "figs", "sim_twostage")
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+## Summary
+
+A 1000-replicate Monte Carlo simulation comparing the joint Bayesian 4PL estimator against the classical two-stage TDT pipeline, on data generated under four data-generating processes (DGPs) and two replication budgets (3 or 5 cups per (T × duration) cell). The methods, DGP details, and the design are described in
+[`2026-05-13-two-stage-bias-sim-methods.qmd`](./2026-05-13-two-stage-bias-sim-methods.qmd).
+
+The four DGPs:
+
+```{r}
+#| label: tbl-truths
+#| tbl-cap: "OLS-derived true values of $z$ and $\\mathrm{CTmax_{1hr}}$ at each DGP, plus the temperature-slope coefficients on $u$, $\\ell$, $k$ that distinguish the DGP from baseline."
+knitr::kable(truths_df, digits = 4)
+```
+
+## Cross-DGP bias and coverage
+
+```{r}
+#| label: tbl-summary
+#| tbl-cap: "Mean signed bias and empirical 95% interval coverage for $z$ and $\\mathrm{CTmax_{1hr}}$ at each (method × DGP × design) combination. MCSEs are the Monte Carlo standard errors for each summary."
+tab <- summary_all |>
+  select(design, dgp, method, quantity,
+         mean_bias, mcse_bias, coverage, mcse_cov, rmse, med_width) |>
+  arrange(design, dgp, method, quantity)
+knitr::kable(tab, digits = 4)
+```
+
+### Bias
+
+```{r}
+#| label: fig-bias
+#| fig-cap: "Mean signed bias (°C) of each method across DGPs and designs. Error bars show ±1.96 × MCSE. The dashed line marks zero bias. Both methods are scored against the OLS-derived truth at each DGP."
+g_bias <- ggplot(summary_all,
+                 aes(x = mean_bias, y = dgp, colour = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.4) +
+  geom_errorbarh(aes(xmin = mean_bias - 1.96 * mcse_bias,
+                     xmax = mean_bias + 1.96 * mcse_bias),
+                 height = 0.15,
+                 position = position_dodge(width = 0.55)) +
+  geom_point(size = 2.5,
+             position = position_dodge(width = 0.55)) +
+  facet_grid(design ~ quantity, scales = "free_x") +
+  scale_colour_manual(values = method_cols) +
+  labs(x = "Mean bias (°C)", y = NULL, colour = "Method") +
+  theme_bw() +
+  theme(strip.background = element_rect(fill = "grey95"),
+        legend.position  = "top")
+
+ggsave(file.path(fig_dir, "bias_forest.png"),
+       g_bias, width = 8, height = 5.5, dpi = 150)
+g_bias
+```
+
+### Coverage
+
+```{r}
+#| label: fig-coverage
+#| fig-cap: "Empirical coverage of the 95% interval for each method across DGPs and designs. Error bars show ±1.96 × MCSE. The dashed line marks nominal 0.95 coverage."
+g_cov <- ggplot(summary_all,
+                aes(x = coverage, y = dgp, colour = method)) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", alpha = 0.4) +
+  geom_errorbarh(aes(xmin = coverage - 1.96 * mcse_cov,
+                     xmax = coverage + 1.96 * mcse_cov),
+                 height = 0.15,
+                 position = position_dodge(width = 0.55)) +
+  geom_point(size = 2.5,
+             position = position_dodge(width = 0.55)) +
+  facet_grid(design ~ quantity) +
+  scale_colour_manual(values = method_cols) +
+  scale_x_continuous(limits = c(0.55, 1),
+                     breaks = seq(0.6, 1, 0.1)) +
+  labs(x = "Empirical 95% interval coverage", y = NULL,
+       colour = "Method") +
+  theme_bw() +
+  theme(strip.background = element_rect(fill = "grey95"),
+        legend.position  = "top")
+
+ggsave(file.path(fig_dir, "coverage_forest.png"),
+       g_cov, width = 8, height = 5.5, dpi = 150)
+g_cov
+```
+
+### Distribution of per-simulation point estimates
+
+```{r}
+#| label: fig-violin
+#| fig-cap: "Per-simulation point-estimate distribution (1000 sims per panel-cell) for $z$ and $\\mathrm{CTmax_{1hr}}$, by method × DGP × design. Black crosses mark the OLS-derived truth for each DGP."
+truth_long <- truths_df |>
+  pivot_longer(c(z_true, ct_true),
+               names_to = "quantity", values_to = "truth") |>
+  mutate(quantity = ifelse(quantity == "z_true", "z", "CTmax_1hr"),
+         dgp = factor(dgp, levels = levels(summary_all$dgp)))
+
+g_dist <- ggplot(per_sim_all,
+                 aes(x = dgp, y = estimate, fill = method,
+                     colour = method)) +
+  geom_violin(alpha = 0.45, width = 0.85, linewidth = 0.3,
+              position = position_dodge(width = 0.8)) +
+  geom_point(data = truth_long,
+             aes(x = dgp, y = truth),
+             inherit.aes = FALSE,
+             shape = 4, size = 3.2, stroke = 1.1, colour = "black") +
+  facet_grid(design ~ quantity, scales = "free_y") +
+  scale_fill_manual(values   = method_cols) +
+  scale_colour_manual(values = method_cols) +
+  labs(x = NULL, y = "Point estimate (°C)",
+       fill = "Method", colour = "Method") +
+  theme_bw() +
+  theme(strip.background = element_rect(fill = "grey95"),
+        legend.position  = "top",
+        axis.text.x      = element_text(angle = 25, hjust = 1))
+
+ggsave(file.path(fig_dir, "estimate_violin.png"),
+       g_dist, width = 9, height = 6, dpi = 150)
+g_dist
+```
+
+## Monte Carlo SE adequacy — is N = 1000 enough?
+
+We pre-specified the following MCSE thresholds (set before running any simulations):
+
+- **Bias MCSE** < 0.05 °C
+- **Coverage MCSE** < 0.015 (i.e., the 95% interval on a coverage estimate is narrower than ±0.03)
+
+Both thresholds are slack relative to the smallest effects we'd consider interpretable (≈ 0.1 °C in bias, ≈ 0.03 in coverage). Cells failing either threshold would need additional replicates.
+
+```{r}
+#| label: tbl-mcse
+#| tbl-cap: "MCSEs by cell, with pass/fail flags against the pre-specified thresholds (bias < 0.05 °C, coverage < 0.015)."
+mcse_tab <- summary_all |>
+  mutate(bias_ok = mcse_bias < 0.05,
+         cov_ok  = mcse_cov  < 0.015,
+         both_ok = bias_ok & cov_ok) |>
+  select(design, dgp, method, quantity,
+         mcse_bias, bias_ok, mcse_cov, cov_ok, both_ok) |>
+  arrange(design, dgp, method, quantity)
+knitr::kable(mcse_tab, digits = 4)
+```
+
+```{r}
+#| label: mcse-summary
+n_total <- nrow(mcse_tab)
+n_pass  <- sum(mcse_tab$both_ok)
+worst_bias <- max(mcse_tab$mcse_bias)
+worst_cov  <- max(mcse_tab$mcse_cov)
+```
+
+`r n_pass` of `r n_total` cells pass both thresholds at N = 1000. The largest observed bias MCSE is `r format(round(worst_bias, 4))` °C (threshold 0.05) and the largest coverage MCSE is `r format(round(worst_cov, 4))` (threshold 0.015). On these criteria, N = 1000 is sufficient for every cell.
+
+## What the data say — and what they do not
+
+**(i) Under baseline.** Two-stage carries a positive bias of roughly 0.5 °C on $z$ and a negative bias of roughly 0.5 °C on $\mathrm{CTmax_{1hr}}$ at both designs. Joint 4PL bias is at most ≈ 0.08 °C on $z$ and ≈ 0.06 °C on $\mathrm{CTmax_{1hr}}$. Two-stage's 95% Wald interval undercovers — 0.76 (n3) → 0.67 (n5) for $\mathrm{CTmax_{1hr}}$, 0.87 (n3) → 0.82 (n5) for $z$ — whereas the joint 4PL's 95% credible interval is at nominal.
+
+**(ii) Coverage gets *worse* with more data for two-stage.** This is visible in @fig-coverage and @tbl-summary: two-stage's coverage on $\mathrm{CTmax_{1hr}}$ drops from 0.76 at n3 to 0.67 at n5. The Wald interval shrinks faster than the bias does, so the (smaller) interval misses the (still-shifted) truth more often. The joint 4PL's coverage stays at nominal across the same change in $N$.
+
+**(iii) Bias deltas across DGPs are a truth-definition artefact, not a method response.** For every DGP departure from baseline, the bias *shift* relative to baseline (same method, same quantity, same design) equals the OLS-truth shift between the two DGPs, to four decimal places:
+
+```{r}
+#| label: tbl-truth-artefact
+#| tbl-cap: "Bias shift between each extended DGP and baseline, alongside the truth shift between the two DGPs. The two columns agree at the displayed precision."
+b <- summary_all |>
+  select(design, dgp, method, quantity, mean_bias) |>
+  pivot_wider(names_from = dgp, values_from = mean_bias)
+
+t_shift <- truths_df |>
+  pivot_longer(c(z_true, ct_true),
+               names_to = "quantity", values_to = "truth") |>
+  mutate(quantity = ifelse(quantity == "z_true", "z", "CTmax_1hr")) |>
+  pivot_wider(names_from = dgp, values_from = truth)
+
+bias_delta <- b |>
+  transmute(design, method, quantity,
+            asym_u    = asym_u    - baseline,
+            sym_ul    = sym_ul    - baseline,
+            varying_k = varying_k - baseline)
+
+truth_delta <- t_shift |>
+  transmute(quantity,
+            asym_u    = baseline - asym_u,
+            sym_ul    = baseline - sym_ul,
+            varying_k = baseline - varying_k)
+
+cmp <- bias_delta |>
+  pivot_longer(c(asym_u, sym_ul, varying_k),
+               names_to = "dgp", values_to = "bias_shift") |>
+  left_join(
+    truth_delta |>
+      pivot_longer(c(asym_u, sym_ul, varying_k),
+                   names_to = "dgp", values_to = "truth_shift"),
+    by = c("quantity", "dgp")
+  ) |>
+  arrange(design, method, quantity, dgp)
+knitr::kable(cmp, digits = 4)
+```
+
+Mechanically: when the DGP changes (e.g. `asym_u` puts a temperature slope on $u$), the binomial counts on which both estimators operate differ from those under baseline, but the *average* point estimate produced by each method is essentially the same. Only the target moved. The variations we ran — `u_beta1 = ±0.01`, `ell_beta1 = ±0.01`, `k_beta1 = +0.25` per °C — are too small to produce data the methods can distinguish from baseline.
+
+What the present run therefore **does not** establish: how the two methods compare under temperature-varying $u$, $\ell$, or $k$ that is large enough to actually shift the data. A follow-up run at substantially larger DGP magnitudes (e.g. `u_beta1 = −0.05` per °C, `k_beta1 = ±1.0` per °C) would be required to answer that question.
+
+## Open confounders (carried over from the baseline note)
+
+1. **Prior sensitivity.** Joint 4PL coverage and bias depend on the prior. We have not varied it.
+2. **Implementation symmetry.** Two-stage Stage-1 uses a 2-parameter logit GLM. A 4-parameter dose-response per temperature (e.g. `drc::drm`) would have a different per-T LT50 estimate; the current run benchmarks against the most common, simplest field implementation.
+3. **MCMC pathology.** Joint 4PL produced ≥ 95% of fits with zero divergences across all 8 cells, and no fit exceeded $\hat R = 1.05$. We have not checked whether bias conditional on `divergences = 0` differs from the marginal.
+4. **Design coverage.** Two design points (n3, n5) at one set of temperatures; no characterisation as a continuous function of design.
