@@ -110,3 +110,4 @@ output/sim_twostage/summary_n5.rds
 .gitignore
 .gitignore
 output/sim_twostage/draws_n5.rds
+scripts/run_sweep_queue.sh

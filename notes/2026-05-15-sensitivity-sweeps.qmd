@@ -1,0 +1,561 @@
+---
+title: "Sensitivity sweeps comparing the joint 4PL and the classical two-stage TDT estimator"
+date: 2026-05-15
+author: "Daniel Noble (with Claude assistance)"
+format:
+  html:
+    toc: true
+    number-sections: true
+    fig-width: 8
+    fig-height: 5
+    code-fold: true
+    df-print: kable
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(here)
+source(here::here("scripts", "sim_twostage_helpers.R"))
+
+# Helper: try to load a labelled run; return NULL on miss so the report can
+# render against partial data.
+try_load <- function(prefix, label) {
+  path <- here::here("output", "sim_twostage",
+                     sprintf("%s_%s.rds", prefix, label))
+  if (file.exists(path)) readRDS(path) else NULL
+}
+
+ub_grid <- c(0, -0.005, -0.01, -0.025, -0.05, -0.075)
+u0_grid <- c(0.99, 0.95, 0.85, 0.75, 0.65)
+c_grid  <- expand.grid(design = c("full", "sparse"),
+                        n_reps = c(1, 3, 5),
+                        stringsAsFactors = FALSE)
+
+ub_lab <- function(v) sprintf("%s%03d",
+                              ifelse(v < 0, "m", "p"),
+                              as.integer(round(abs(v) * 1000)))
+u0_lab <- function(v) sprintf("%03d", as.integer(round(v * 100)))
+ub_labels <- paste0("sweepA_ub_", ub_lab(ub_grid))
+u0_labels <- paste0("sweepB_u0_", u0_lab(u0_grid))
+c_labels  <- with(c_grid, paste0("sweepC_", design, "_n", n_reps))
+
+# Load summaries (skip silently if a cell hasn't completed yet).
+load_summaries <- function(labels, factor_vals, factor_name) {
+  out <- list()
+  for (i in seq_along(labels)) {
+    s <- try_load("summary", labels[i])
+    if (is.null(s)) next
+    s[[factor_name]] <- factor_vals[i]
+    s$label <- labels[i]
+    out[[labels[i]]] <- s
+  }
+  dplyr::bind_rows(out)
+}
+
+summary_a <- load_summaries(ub_labels, ub_grid, "u_beta1")
+summary_b <- load_summaries(u0_labels, u0_grid, "u_0")
+summary_c <- load_summaries(
+  c_labels,
+  sprintf("%s × n=%d", c_grid$design, c_grid$n_reps),
+  "condition"
+)
+
+load_per_sim <- function(labels, factor_vals, factor_name) {
+  out <- list()
+  for (i in seq_along(labels)) {
+    p <- try_load("per_sim", labels[i])
+    if (is.null(p)) next
+    p[[factor_name]] <- factor_vals[i]
+    p$label <- labels[i]
+    out[[labels[i]]] <- p
+  }
+  dplyr::bind_rows(out)
+}
+per_sim_a <- load_per_sim(ub_labels, ub_grid, "u_beta1")
+per_sim_b <- load_per_sim(u0_labels, u0_grid, "u_0")
+per_sim_c <- load_per_sim(
+  c_labels,
+  sprintf("%s × n=%d", c_grid$design, c_grid$n_reps),
+  "condition"
+)
+
+# Common look + feel
+method_cols <- c("joint_4pl" = "#0072B2", "two_stage" = "#D55E00")
+fig_dir <- here::here("output", "figs", "sim_twostage")
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+theme_set(theme_bw(base_size = 11) +
+            theme(strip.background = element_rect(fill = "grey95"),
+                  legend.position  = "top",
+                  panel.grid.minor = element_blank()))
+```
+
+# Abstract
+
+We compare the joint Bayesian 4-parameter logistic (4PL) estimator developed in this paper against the classical two-stage thermal-death-time (TDT) pipeline. We hold the data-generating process fixed at a beta-binomial 4PL surface with temperature acting only on the midpoint, and sweep three factors one at a time: (A) the temperature slope on the upper asymptote `u`; (B) the value of `u` at the centring temperature `T̄`; (C) the (temperatures × durations × replicates per cell) design grid. Each sweep cell uses 1000 simulated experiments with N=500 replicates of the inferential workflow. We report bias, RMSE, 95% interval coverage, and the full per-simulation distribution of point estimates for $z$ and $\mathrm{CTmax_{1hr}}$, each with Monte Carlo standard errors.
+
+# Background
+
+Two estimators are in common use in the TDT literature for extracting $z$ (the temperature increment for a ten-fold change in $\text{LT}_{50}$) and $\text{CT}_{\max,1\text{h}}$ from a temperature × duration × survival assay:
+
+- **Joint Bayesian 4PL** — a single non-linear model fitted to all the data simultaneously, allowing all four 4PL sub-parameters (lower asymptote $\ell$, upper asymptote $u$, slope $k$, midpoint $m$) to vary with temperature. This is the estimator developed here, implemented in the `bayesTLS` R package via `brms` with a beta-binomial(identity) likelihood.
+- **Classical two-stage** — Stage 1 fits a per-temperature binomial GLM with logit link on $\log_{10}$ duration; Stage 2 fits an unweighted OLS regression of the Stage-1 $\log_{10}\mathrm{LT_{50}}$ on temperature, with 95% Wald CIs from the delta method.
+
+A previous note ([baseline + 3 categorical DGPs](./2026-05-13-two-stage-bias-sim-results.qmd)) found that two-stage carries a bias of roughly 0.5 °C on $z$ and $\mathrm{CTmax_{1hr}}$ at the dose-response parameters used there, but that the cross-DGP differences were too small to actually shift either method's point estimates. The present run sweeps each factor across a wider, continuous range to characterise *when* the methods diverge.
+
+# Methods
+
+## Estimators
+
+Both estimators take the same input — a long-format table with columns
+`(temperature, duration, n_trials, n_survivors)` — and return a point estimate
+and a 95% interval for $z$ and $\mathrm{CTmax_{1hr}}$.
+
+**Joint Bayesian 4PL.** `bayesTLS::fit_4pl()` builds the non-linear `brms`
+formula
+
+$$
+p(T, t) \;=\; \ell^*(T) + \bigl[u^*(T) - \ell^*(T)\bigr] \big/ \bigl[1 + \exp\!\bigl(k(T)(\log_{10} t - m(T))\bigr)\bigr],
+$$
+
+where the asymptotes $\ell^*, u^*$ are mapped from unconstrained parameters
+via a disjoint-bounds reparameterisation that keeps the 4PL output inside
+$(\ell_\text{min}, u_\text{max})$ so the `beta_binomial(link="identity")`
+family is safe. Every sub-parameter ($\ell, u, k, m$) carries a centred-temperature slope.
+We use the default priors from `bayesTLS::make_4pl_priors()` (weakly informative,
+chosen for proportion-scale data in $[0, 1]$). Sampling: 2 chains × 2,000
+iterations (half discarded as warm-up), `cmdstanr` backend, `adapt_delta = 0.9`,
+`max_treedepth = 12`. We extract $z$ and $\mathrm{CTmax_{1hr}}$ from the
+posterior via `extract_tdt()` and report the posterior median and 2.5 % /
+97.5 % quantiles (1000 posterior draws kept per simulation).
+
+**Classical two-stage.** `fit_two_stage_classical()` does the textbook recipe:
+for each temperature, fit `glm(cbind(n_surv, n_dead) ~ log10(t), family = binomial("logit"))`,
+read off $\hat{\log_{10}\mathrm{LT_{50}}} = -\hat\beta_0/\hat\beta_1$ with delta-method
+SE; then `lm(log10_LT50 ~ T)` and read off $z = -1/\hat\beta_1^{(2)}$ and
+$\mathrm{CTmax_{1hr}} = (\log_{10}\!60 - \hat\beta_0^{(2)})/\hat\beta_1^{(2)}$, with
+95 % Wald CIs from the delta method on the Stage-2 covariance. A simulated
+dataset is two-stage *success* only when all Stage-1 fits returned a finite
+negative slope and the Stage-2 slope was finite and negative.
+
+## Data-generating process
+
+Simulated datasets come from a beta-binomial 4PL with the same disjoint-bounds
+reparameterisation as the joint fit. For each cell $(T_i, t_j)$ in the design
+grid (see [Designs](#sec-designs)) and each replicate cup, the per-cup sample
+size $N$ is drawn from a discrete uniform on $\{10, 11, \dots, 20\}$ and the
+observed survivor count from a beta-binomial with mean $p(T_i, t_j)$ and
+dispersion $\phi = 5$. The full DGP parameter set is
+
+| symbol      | default | notes                                                  |
+|-------------|---------|--------------------------------------------------------|
+| $\ell$      | 0.05    | lower asymptote at $T = \bar T$                        |
+| $u$         | 0.92    | upper asymptote at $T = \bar T$ — *swept in B*         |
+| $k$         | 8       | slope                                                  |
+| $\beta_0$   | 1.5     | $m(\bar T) = \log_{10}$ LT₅₀ at $\bar T$               |
+| $\beta_1$   | −0.15   | $\partial m / \partial T$                              |
+| $\bar T$    | 34 °C   | centring temperature                                   |
+| $\phi$      | 5       | beta-binomial dispersion                               |
+| $u_{\beta_1}$ | 0     | $\partial u / \partial T$ — *swept in A*               |
+| $\ell_{\beta_1}$ | 0  | $\partial \ell / \partial T$                           |
+| $k_{\beta_1}$ | 0     | $\partial k / \partial T$                              |
+
+The truth values of $z$ and $\mathrm{CTmax_{1hr}}$ used to score bias are the
+OLS targets — the slope and (60-min) intercept of $\log_{10}\!\mathrm{LT_{50}}$ as a
+function of $T$ at the design temperatures, computed analytically from the
+DGP. This is the quantity both estimators are trying to estimate.
+
+## Sweeps {#sec-designs}
+
+Three sweeps, each varying one factor while holding the other two at their
+defaults.
+
+```{r}
+#| label: tbl-sweeps
+#| tbl-cap: "The three sensitivity sweeps. Each cell uses N = 500 simulated experiments. Sweep A and B use the full design (5 temperatures × 6 durations × 5 reps per cell, i.e. 150 cups). Sweep C varies the design."
+sweep_table <- tribble(
+  ~Sweep, ~`Factor swept`,        ~Levels,                                    ~`Cells`, ~`Sims per cell`,
+  "A",    "u_beta1 (°C⁻¹)",       paste(ub_grid, collapse = ", "),            length(ub_grid), 500,
+  "B",    "u at T̄",               paste(u0_grid, collapse = ", "),            length(u0_grid), 500,
+  "C",    "design × n_reps",      "(full, sparse) × (1, 3, 5)",               nrow(c_grid),   500
+)
+knitr::kable(sweep_table)
+```
+
+The *full* design is 5 temperatures × 6 durations = 30 cells per dataset
+(temperatures 30, 32, 34, 36, 38 °C; durations 1, 5, 15, 45, 135, 405 min). The *sparse* design drops to 3 temperatures × 4 durations = 12 cells (30, 34, 38 °C; 1, 15, 135, 405 min). Replication multiplies the cell count by `n_reps`.
+
+## Sample sizes
+
+Each sweep cell is N = 500 simulated experiments. We chose 500 to keep the
+total queue under a day of compute while keeping Monte Carlo standard errors
+on the four headline summaries (mean bias, RMSE, coverage, paired difference)
+inside pre-specified thresholds (bias MCSE < 0.05 °C, coverage MCSE < 0.015).
+Cells failing either threshold would be re-run with an additional 500 sims
+appended (resume-safe, per-sim RDS storage).
+
+Total simulated experiments: $6 \times 500 + 5 \times 500 + 6 \times 500 = `r 6*500 + 5*500 + 6*500`$.
+
+## Performance metrics
+
+For each (sweep × cell × method × quantity) we report
+
+- **Mean bias** — sample mean of $(\hat{\theta}_i - \theta_\text{OLS})$ across the 500 sims;
+- **RMSE** — sample root-mean-square of $(\hat{\theta}_i - \theta_\text{OLS})$;
+- **95 % interval coverage** — fraction of sims whose 95 % interval contains $\theta_\text{OLS}$;
+- **Median 95 % interval width**;
+
+each with its Monte Carlo standard error. We also report the full
+distribution of the 500 per-simulation point estimates (violin plots, with the OLS truth marked).
+
+Per-simulation raw outputs (point estimate, CI bounds, success flag for each
+method × quantity; plus 1000 posterior draws per simulation for $z$,
+$\mathrm{CTmax_{1hr}}$, $T_\text{crit}$ for the joint method) are kept in
+`output/sim_twostage/raw/<label>/sim_NNNNN.rds`.
+
+# Results
+
+```{r}
+#| label: results-loaded-check
+loaded_status <- function(labels) {
+  tibble(label = labels,
+         loaded = file.exists(here::here("output", "sim_twostage",
+                                         sprintf("summary_%s.rds", labels))))
+}
+status_all <- bind_rows(
+  loaded_status(ub_labels) |> mutate(sweep = "A"),
+  loaded_status(u0_labels) |> mutate(sweep = "B"),
+  loaded_status(c_labels)  |> mutate(sweep = "C")
+)
+all_done <- all(status_all$loaded)
+```
+
+```{r}
+#| label: status-message
+#| include: !expr "!all_done"
+done_n <- sum(status_all$loaded)
+tot_n  <- nrow(status_all)
+cat(sprintf("**%d / %d cells loaded.** ", done_n, tot_n),
+    "Cells still pending render with the data they have at render time.\n",
+    sep = "")
+knitr::kable(status_all)
+```
+
+## Sweep A — temperature slope on `u`
+
+```{r}
+#| label: fig-sweep-a-bias
+#| fig-cap: "Sweep A: mean bias of $z$ and $\\mathrm{CTmax_{1hr}}$ as a function of `u_beta1`. Ribbons show ±1.96 × MCSE; dashed line is zero bias."
+#| eval: !expr "nrow(summary_a) > 0"
+g <- ggplot(summary_a,
+            aes(x = u_beta1, y = mean_bias, colour = method)) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  geom_ribbon(aes(ymin = mean_bias - 1.96 * mcse_bias,
+                  ymax = mean_bias + 1.96 * mcse_bias,
+                  fill = method),
+              alpha = 0.18, colour = NA) +
+  geom_line() + geom_point(size = 2.4) +
+  facet_wrap(~ quantity, scales = "free_y") +
+  scale_colour_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  labs(x = expression(u[beta[1]] ~ "(°C"^{-1}*")"),
+       y = "Mean bias (°C)", colour = "Method", fill = "Method")
+ggsave(file.path(fig_dir, "sweepA_bias.png"),
+       g, width = 8, height = 4.5, dpi = 150)
+g
+```
+
+```{r}
+#| label: fig-sweep-a-coverage
+#| fig-cap: "Sweep A: 95% interval coverage as a function of `u_beta1`. Ribbons show ±1.96 × MCSE; dashed line is nominal 0.95 coverage."
+#| eval: !expr "nrow(summary_a) > 0"
+g <- ggplot(summary_a,
+            aes(x = u_beta1, y = coverage, colour = method)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", alpha = 0.4) +
+  geom_ribbon(aes(ymin = coverage - 1.96 * mcse_cov,
+                  ymax = coverage + 1.96 * mcse_cov,
+                  fill = method),
+              alpha = 0.18, colour = NA) +
+  geom_line() + geom_point(size = 2.4) +
+  facet_wrap(~ quantity) +
+  scale_colour_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  scale_y_continuous(limits = c(0.5, 1)) +
+  labs(x = expression(u[beta[1]] ~ "(°C"^{-1}*")"),
+       y = "Empirical 95% interval coverage",
+       colour = "Method", fill = "Method")
+ggsave(file.path(fig_dir, "sweepA_coverage.png"),
+       g, width = 8, height = 4.5, dpi = 150)
+g
+```
+
+```{r}
+#| label: fig-sweep-a-dist
+#| fig-cap: "Sweep A: distribution of per-simulation point estimates across u_beta1 (500 sims per panel-cell × method). Black crosses are the OLS truth at each level."
+#| eval: !expr "nrow(per_sim_a) > 0"
+per_sim_a2 <- per_sim_a |>
+  filter(success) |>
+  mutate(u_beta1 = factor(u_beta1))
+truth_a <- per_sim_a2 |>
+  distinct(u_beta1, quantity, truth)
+g <- ggplot(per_sim_a2,
+            aes(x = u_beta1, y = estimate, fill = method, colour = method)) +
+  geom_violin(alpha = 0.4, width = 0.85, linewidth = 0.3,
+              position = position_dodge(width = 0.75)) +
+  geom_point(data = truth_a,
+             aes(x = u_beta1, y = truth),
+             inherit.aes = FALSE,
+             shape = 4, size = 3.2, stroke = 1.1, colour = "black") +
+  facet_wrap(~ quantity, scales = "free_y") +
+  scale_colour_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  labs(x = expression(u[beta[1]] ~ "(°C"^{-1}*")"),
+       y = "Point estimate (°C)",
+       fill = "Method", colour = "Method")
+ggsave(file.path(fig_dir, "sweepA_distribution.png"),
+       g, width = 8, height = 5, dpi = 150)
+g
+```
+
+```{r}
+#| label: tbl-sweep-a
+#| tbl-cap: "Sweep A summary by method × quantity × u_beta1. MCSEs flag whether N = 500 is sufficient."
+#| eval: !expr "nrow(summary_a) > 0"
+tab <- summary_a |>
+  select(u_beta1, method, quantity, mean_bias, mcse_bias, rmse,
+         coverage, mcse_cov, med_width) |>
+  arrange(u_beta1, method, quantity)
+knitr::kable(tab, digits = 4)
+```
+
+## Sweep B — upper-asymptote level at T̄
+
+```{r}
+#| label: fig-sweep-b-bias
+#| fig-cap: "Sweep B: mean bias of $z$ and $\\mathrm{CTmax_{1hr}}$ as a function of `u_0` (the value of u at T̄). Ribbons show ±1.96 × MCSE."
+#| eval: !expr "nrow(summary_b) > 0"
+g <- ggplot(summary_b,
+            aes(x = u_0, y = mean_bias, colour = method)) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  geom_ribbon(aes(ymin = mean_bias - 1.96 * mcse_bias,
+                  ymax = mean_bias + 1.96 * mcse_bias,
+                  fill = method),
+              alpha = 0.18, colour = NA) +
+  geom_line() + geom_point(size = 2.4) +
+  facet_wrap(~ quantity, scales = "free_y") +
+  scale_colour_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  labs(x = expression(u[0]), y = "Mean bias (°C)",
+       colour = "Method", fill = "Method")
+ggsave(file.path(fig_dir, "sweepB_bias.png"),
+       g, width = 8, height = 4.5, dpi = 150)
+g
+```
+
+```{r}
+#| label: fig-sweep-b-coverage
+#| fig-cap: "Sweep B: 95% interval coverage as a function of `u_0`."
+#| eval: !expr "nrow(summary_b) > 0"
+g <- ggplot(summary_b,
+            aes(x = u_0, y = coverage, colour = method)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", alpha = 0.4) +
+  geom_ribbon(aes(ymin = coverage - 1.96 * mcse_cov,
+                  ymax = coverage + 1.96 * mcse_cov,
+                  fill = method),
+              alpha = 0.18, colour = NA) +
+  geom_line() + geom_point(size = 2.4) +
+  facet_wrap(~ quantity) +
+  scale_colour_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  scale_y_continuous(limits = c(0.4, 1)) +
+  labs(x = expression(u[0]),
+       y = "Empirical 95% interval coverage",
+       colour = "Method", fill = "Method")
+ggsave(file.path(fig_dir, "sweepB_coverage.png"),
+       g, width = 8, height = 4.5, dpi = 150)
+g
+```
+
+```{r}
+#| label: fig-sweep-b-dist
+#| fig-cap: "Sweep B: per-simulation point-estimate distribution across u_0 (500 sims per panel-cell × method). Black crosses are the OLS truth at each level."
+#| eval: !expr "nrow(per_sim_b) > 0"
+per_sim_b2 <- per_sim_b |>
+  filter(success) |>
+  mutate(u_0 = factor(u_0))
+truth_b <- per_sim_b2 |>
+  distinct(u_0, quantity, truth)
+g <- ggplot(per_sim_b2,
+            aes(x = u_0, y = estimate, fill = method, colour = method)) +
+  geom_violin(alpha = 0.4, width = 0.85, linewidth = 0.3,
+              position = position_dodge(width = 0.75)) +
+  geom_point(data = truth_b,
+             aes(x = u_0, y = truth),
+             inherit.aes = FALSE,
+             shape = 4, size = 3.2, stroke = 1.1, colour = "black") +
+  facet_wrap(~ quantity, scales = "free_y") +
+  scale_colour_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  labs(x = expression(u[0]), y = "Point estimate (°C)",
+       fill = "Method", colour = "Method")
+ggsave(file.path(fig_dir, "sweepB_distribution.png"),
+       g, width = 8, height = 5, dpi = 150)
+g
+```
+
+```{r}
+#| label: tbl-sweep-b
+#| tbl-cap: "Sweep B summary by method × quantity × u_0."
+#| eval: !expr "nrow(summary_b) > 0"
+tab <- summary_b |>
+  select(u_0, method, quantity, mean_bias, mcse_bias, rmse,
+         coverage, mcse_cov, med_width) |>
+  arrange(u_0, method, quantity)
+knitr::kable(tab, digits = 4)
+```
+
+## Sweep C — design density
+
+```{r}
+#| label: fig-sweep-c-bias
+#| fig-cap: "Sweep C: mean bias by (design × n_reps). Error bars are ±1.96 × MCSE. Cells with no two-stage point are those where every Stage-1 GLM failed (separation or non-finite estimates) for all 500 sims; the joint 4PL still produces an estimate."
+#| eval: !expr "nrow(summary_c) > 0"
+summary_c2 <- summary_c |>
+  mutate(condition = factor(condition,
+                            levels = sprintf("%s × n=%d",
+                                              rep(c("sparse", "full"), each = 3),
+                                              rep(c(1, 3, 5), 2))))
+g <- ggplot(summary_c2,
+            aes(x = condition, y = mean_bias, colour = method)) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  geom_errorbar(aes(ymin = mean_bias - 1.96 * mcse_bias,
+                    ymax = mean_bias + 1.96 * mcse_bias),
+                width = 0.15,
+                position = position_dodge(width = 0.55)) +
+  geom_point(size = 2.4, position = position_dodge(width = 0.55)) +
+  facet_wrap(~ quantity, scales = "free_y") +
+  scale_colour_manual(values = method_cols) +
+  labs(x = NULL, y = "Mean bias (°C)", colour = "Method") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+ggsave(file.path(fig_dir, "sweepC_bias.png"),
+       g, width = 8, height = 4.8, dpi = 150)
+g
+```
+
+```{r}
+#| label: fig-sweep-c-coverage
+#| fig-cap: "Sweep C: 95% interval coverage by (design × n_reps)."
+#| eval: !expr "nrow(summary_c) > 0"
+g <- ggplot(summary_c2,
+            aes(x = condition, y = coverage, colour = method)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", alpha = 0.4) +
+  geom_errorbar(aes(ymin = coverage - 1.96 * mcse_cov,
+                    ymax = coverage + 1.96 * mcse_cov),
+                width = 0.15,
+                position = position_dodge(width = 0.55)) +
+  geom_point(size = 2.4, position = position_dodge(width = 0.55)) +
+  facet_wrap(~ quantity) +
+  scale_colour_manual(values = method_cols) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = NULL, y = "Empirical 95% interval coverage",
+       colour = "Method") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+ggsave(file.path(fig_dir, "sweepC_coverage.png"),
+       g, width = 8, height = 4.8, dpi = 150)
+g
+```
+
+```{r}
+#| label: fig-sweep-c-dist
+#| fig-cap: "Sweep C: per-simulation point-estimate distribution by (design × n_reps). Black crosses are the OLS truth (same across cells under baseline DGP)."
+#| eval: !expr "nrow(per_sim_c) > 0"
+per_sim_c2 <- per_sim_c |>
+  filter(success) |>
+  mutate(condition = factor(condition,
+                            levels = sprintf("%s × n=%d",
+                                              rep(c("sparse", "full"), each = 3),
+                                              rep(c(1, 3, 5), 2))))
+truth_c <- per_sim_c2 |>
+  distinct(condition, quantity, truth)
+g <- ggplot(per_sim_c2,
+            aes(x = condition, y = estimate, fill = method, colour = method)) +
+  geom_violin(alpha = 0.4, width = 0.85, linewidth = 0.3,
+              position = position_dodge(width = 0.75)) +
+  geom_point(data = truth_c,
+             aes(x = condition, y = truth),
+             inherit.aes = FALSE,
+             shape = 4, size = 3.2, stroke = 1.1, colour = "black") +
+  facet_wrap(~ quantity, scales = "free_y") +
+  scale_colour_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  labs(x = NULL, y = "Point estimate (°C)",
+       fill = "Method", colour = "Method") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+ggsave(file.path(fig_dir, "sweepC_distribution.png"),
+       g, width = 8.5, height = 5, dpi = 150)
+g
+```
+
+```{r}
+#| label: tbl-sweep-c
+#| tbl-cap: "Sweep C summary."
+#| eval: !expr "nrow(summary_c) > 0"
+tab <- summary_c |>
+  select(condition, method, quantity, mean_bias, mcse_bias, rmse,
+         coverage, mcse_cov, med_width) |>
+  arrange(condition, method, quantity)
+knitr::kable(tab, digits = 4)
+```
+
+# MCSE adequacy
+
+```{r}
+#| label: tbl-mcse-pass
+#| tbl-cap: "Pass/fail of pre-specified MCSE thresholds (bias < 0.05 °C, coverage < 0.015) across all sweep cells."
+parts <- list()
+if (nrow(summary_a) > 0)
+  parts$A <- summary_a |> mutate(sweep = "A",
+                                  level = as.character(u_beta1))
+if (nrow(summary_b) > 0)
+  parts$B <- summary_b |> mutate(sweep = "B",
+                                  level = as.character(u_0))
+if (nrow(summary_c) > 0)
+  parts$C <- summary_c |> mutate(sweep = "C",
+                                  level = as.character(condition))
+
+if (length(parts) == 0L) {
+  cat("*No cells loaded yet.*")
+} else {
+  all_sum <- bind_rows(parts) |>
+    mutate(bias_ok = mcse_bias < 0.05,
+           cov_ok  = mcse_cov  < 0.015,
+           both_ok = bias_ok & cov_ok) |>
+    select(sweep, level, method, quantity,
+           mcse_bias, bias_ok, mcse_cov, cov_ok, both_ok)
+  knitr::kable(all_sum, digits = 4)
+}
+```
+
+# Limitations
+
+- **DGP scope.** Sweep A varies only `u_beta1`; sweeps along `ell_beta1` and `k_beta1` are deferred. Joint interactions (e.g. simultaneous `u_beta1` and `k_beta1`) untested.
+- **Joint-method prior sensitivity.** All cells use `make_4pl_priors()` defaults. The joint estimator's bias/coverage will change if priors are tightened or loosened.
+- **Two-stage implementation.** We benchmark the textbook unweighted-OLS, 2-parameter logit-GLM-per-temperature version. Alternative implementations (SE-weighted Stage 2; 4-parameter dose-response per temperature) would give different numbers.
+- **Single truth definition.** Both methods are scored against the OLS-derived target at the design temperatures. A parametric truth ($z = -1/\beta_1$) would give different per-cell bias numbers in Sweep A but the same comparison logic.
+
+# Data availability
+
+All raw simulation outputs are kept under `output/sim_twostage/`:
+
+- `raw/<label>/sim_NNNNN.rds` — one file per simulation, containing the row summary (point estimate + 95 % CI per method × quantity), per-fit diagnostics (Rhat, divergences, wall time), and the 1000-draw posterior of $z$, $\mathrm{CTmax_{1hr}}$, and $T_\text{crit}$ for the joint method.
+- `per_sim_<label>.rds`, `meta_<label>.rds`, `draws_<label>.rds`, `summary_<label>.rds`, `diffs_<label>.rds` — aggregated tables.
+
+Labels follow the convention `sweepA_ub_<sign+abs×1000>`, `sweepB_u0_<×100>`, `sweepC_<design>_n<n_reps>`.

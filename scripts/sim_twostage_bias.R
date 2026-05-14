@@ -43,13 +43,27 @@ source(here::here("scripts", "sim_twostage_helpers.R"))
 
 option_list <- list(
   optparse::make_option("--scenario", type = "character", default = "n3",
-                        help = "Scenario label: n3 or n5."),
+                        help = "Replication-budget shorthand: n3 or n5 (sets n_reps to 3 or 5). Ignored when --n_reps is given."),
+  optparse::make_option("--n_reps",   type = "integer",  default = NA_integer_,
+                        help = "Replicate cups per (T, t) cell. Overrides --scenario."),
   optparse::make_option("--dgp",      type = "character", default = "baseline",
-                        help = "DGP: baseline, sym_ul, asym_u, or varying_k."),
+                        help = "DGP preset: baseline, sym_ul, asym_u, or varying_k."),
+  optparse::make_option("--design",   type = "character", default = "full",
+                        help = "Design grid: 'full' (5T x 6t) or 'sparse' (3T x 4t)."),
+  optparse::make_option("--u_0",       type = "double", default = NA_real_,
+                        help = "Override upper asymptote at T_bar. Default = DGP preset."),
+  optparse::make_option("--u_beta1",   type = "double", default = NA_real_,
+                        help = "Override temperature slope of u. Default = DGP preset."),
+  optparse::make_option("--ell_beta1", type = "double", default = NA_real_,
+                        help = "Override temperature slope of ell. Default = DGP preset."),
+  optparse::make_option("--k_beta1",   type = "double", default = NA_real_,
+                        help = "Override temperature slope of k. Default = DGP preset."),
+  optparse::make_option("--label",    type = "character", default = NA_character_,
+                        help = "Custom output label (file/dir name). Default: derived from --dgp/--scenario."),
   optparse::make_option("--n_sims",   type = "integer",  default = 1000L,
                         help = "Number of simulated datasets."),
   optparse::make_option("--workers",  type = "integer",  default = 5L,
-                        help = "Parallel workers (parallel::mclapply mc.cores)."),
+                        help = "Parallel workers (PSOCK cluster size)."),
   optparse::make_option("--out_dir",  type = "character",
                         default = "output/sim_twostage",
                         help = "Output directory for per-sim and summary RDS."),
@@ -60,35 +74,63 @@ option_list <- list(
 )
 opt <- optparse::parse_args(optparse::OptionParser(option_list = option_list))
 
-stopifnot(opt$scenario %in% c("n3", "n5"))
 stopifnot(opt$dgp %in% c("baseline", "sym_ul", "asym_u", "varying_k"))
-n_reps_map <- list(n3 = 3L, n5 = 5L)
-n_reps     <- n_reps_map[[opt$scenario]]
-scen_id    <- match(opt$scenario, names(n_reps_map))
-master     <- opt$seed
-truth      <- sim_twostage_truth(opt$dgp)
+stopifnot(opt$design %in% c("full", "sparse"))
 
-# Path label: baseline runs keep the existing flat layout for backwards
-# compatibility with already-completed n3/n5; non-baseline DGPs prefix the
-# scenario directory with the DGP name so they don't clash.
-path_label <- if (opt$dgp == "baseline") {
+# Resolve n_reps. --n_reps overrides --scenario; otherwise --scenario must be
+# n3/n5. Both routes set scen_id (used to keep simulation seeds disjoint).
+if (!is.na(opt$n_reps)) {
+  n_reps  <- opt$n_reps
+  scen_id <- as.integer(100L + n_reps)
+} else {
+  stopifnot(opt$scenario %in% c("n3", "n5"))
+  n_reps_map <- list(n3 = 3L, n5 = 5L)
+  n_reps     <- n_reps_map[[opt$scenario]]
+  scen_id    <- match(opt$scenario, names(n_reps_map))
+}
+
+master <- opt$seed
+
+# Convert NA overrides → NULL for sim_twostage_truth(), which uses NULL to
+# mean "keep the DGP preset value".
+to_null <- function(x) if (is.na(x)) NULL else x
+truth  <- sim_twostage_truth(
+  dgp       = opt$dgp,
+  u_0       = to_null(opt$u_0),
+  u_beta1   = to_null(opt$u_beta1),
+  ell_beta1 = to_null(opt$ell_beta1),
+  k_beta1   = to_null(opt$k_beta1),
+  design    = opt$design
+)
+
+# Output label: explicit --label wins; else built from the DGP + scenario.
+# (opt$scenario always has a default of "n3", so the baseline branch is
+# self-contained.)
+path_label <- if (!is.na(opt$label)) {
+  opt$label
+} else if (opt$dgp == "baseline") {
   opt$scenario
 } else {
   paste(opt$dgp, opt$scenario, sep = "_")
 }
+stopifnot(is.character(path_label), nchar(path_label) > 0)
 
 raw_dir <- file.path(opt$out_dir, "raw", path_label)
 dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
 
 cat(sprintf("\n=== Two-stage bias simulation ===\n"))
+cat(sprintf("  label:       %s\n", path_label))
 cat(sprintf("  dgp:         %s\n", opt$dgp))
-cat(sprintf("  scenario:    %s (n_reps = %d)\n", opt$scenario, n_reps))
+cat(sprintf("  design:      %s\n", opt$design))
+cat(sprintf("  n_reps:      %d (scenario = %s)\n", n_reps, opt$scenario))
 cat(sprintf("  n_sims:      %d\n", opt$n_sims))
 cat(sprintf("  workers:     %d\n", opt$workers))
 cat(sprintf("  out_dir:     %s\n", opt$out_dir))
 cat(sprintf("  raw_dir:     %s\n", raw_dir))
 cat(sprintf("  master seed: %d\n", master))
 cat(sprintf("  force:       %s\n\n", opt$force))
+cat(sprintf("  truth: u_0=%g  ell_0=%g  k_0=%g\n",
+            truth$u, truth$ell, truth$k))
 cat(sprintf("  truth slopes: u_beta1=%g  ell_beta1=%g  k_beta1=%g\n",
             truth$u_beta1, truth$ell_beta1, truth$k_beta1))
 cat(sprintf("  OLS-derived: z_true = %.4f °C, CTmax_1hr_true = %.4f °C\n\n",
@@ -231,26 +273,53 @@ mcse_summary <- per_sim |>
 # dataset (different from comparing aggregate biases, which marginalise out
 # the per-sim correlation).
 
-diffs <- per_sim |>
-  dplyr::filter(success) |>
-  dplyr::select(sim_id, scenario, method, quantity, estimate) |>
-  tidyr::pivot_wider(names_from = method, values_from = estimate) |>
-  dplyr::mutate(diff = joint_4pl - two_stage)
+# Paired diff: keep only sims where BOTH methods succeeded (otherwise the
+# pivot is missing a column and a per-sim contrast is undefined). When the
+# data are very sparse (e.g. sparse design x n_reps=1) all two-stage fits
+# may fail; in that case `diffs` stays empty and we record a placeholder.
+both_ok <- per_sim |>
+  dplyr::select(sim_id, scenario, method, quantity, estimate, success) |>
+  tidyr::pivot_wider(names_from  = method,
+                     values_from = c(estimate, success),
+                     names_sep   = "_")
 
-diff_summary <- diffs |>
-  dplyr::group_by(scenario, quantity) |>
-  dplyr::summarise(
-    n            = dplyr::n(),
-    mean_diff    = mean(diff, na.rm = TRUE),
-    mcse_diff    = stats::sd(diff, na.rm = TRUE) / sqrt(dplyr::n()),
-    median_diff  = stats::median(diff, na.rm = TRUE),
-    diff_q025    = stats::quantile(diff, 0.025, na.rm = TRUE, names = FALSE),
-    diff_q975    = stats::quantile(diff, 0.975, na.rm = TRUE, names = FALSE),
-    .groups      = "drop"
-  ) |>
-  dplyr::mutate(dplyr::across(c(mean_diff, mcse_diff, median_diff,
-                                 diff_q025, diff_q975),
-                              ~ round(.x, 4)))
+needed_cols <- c("estimate_joint_4pl", "estimate_two_stage",
+                 "success_joint_4pl",  "success_two_stage")
+diffs <- if (all(needed_cols %in% names(both_ok))) {
+  both_ok |>
+    dplyr::filter(success_joint_4pl, success_two_stage) |>
+    dplyr::transmute(sim_id, scenario, quantity,
+                     joint_4pl = estimate_joint_4pl,
+                     two_stage = estimate_two_stage,
+                     diff      = joint_4pl - two_stage)
+} else {
+  tibble::tibble(sim_id = integer(0), scenario = character(0),
+                 quantity = character(0),
+                 joint_4pl = numeric(0), two_stage = numeric(0),
+                 diff = numeric(0))
+}
+
+diff_summary <- if (nrow(diffs) == 0L) {
+  tibble::tibble(scenario = character(0), quantity = character(0),
+                 n = integer(0), mean_diff = numeric(0),
+                 mcse_diff = numeric(0), median_diff = numeric(0),
+                 diff_q025 = numeric(0), diff_q975 = numeric(0))
+} else {
+  diffs |>
+    dplyr::group_by(scenario, quantity) |>
+    dplyr::summarise(
+      n            = dplyr::n(),
+      mean_diff    = mean(diff, na.rm = TRUE),
+      mcse_diff    = stats::sd(diff, na.rm = TRUE) / sqrt(dplyr::n()),
+      median_diff  = stats::median(diff, na.rm = TRUE),
+      diff_q025    = stats::quantile(diff, 0.025, na.rm = TRUE, names = FALSE),
+      diff_q975    = stats::quantile(diff, 0.975, na.rm = TRUE, names = FALSE),
+      .groups      = "drop"
+    ) |>
+    dplyr::mutate(dplyr::across(c(mean_diff, mcse_diff, median_diff,
+                                   diff_q025, diff_q975),
+                                ~ round(.x, 4)))
+}
 
 out_per_sim <- file.path(opt$out_dir, sprintf("per_sim_%s.rds", path_label))
 out_meta    <- file.path(opt$out_dir, sprintf("meta_%s.rds",    path_label))

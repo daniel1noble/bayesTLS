@@ -41,9 +41,21 @@
 #'
 #' @param dgp Character. One of `"baseline"`, `"sym_ul"`, `"asym_u"`,
 #'            `"varying_k"`.
+#' @param u_0 Optional numeric — overrides the upper-asymptote intercept (the
+#'            value of u at T = T_bar). `NULL` keeps the DGP preset.
+#' @param u_beta1,ell_beta1,k_beta1 Optional numeric — override the temperature
+#'            slopes of u, ell, k. `NULL` keeps the DGP preset.
+#' @param design Character — `"full"` (5 temps × 6 durations, the original
+#'            design) or `"sparse"` (3 temps × 4 durations). Controls the
+#'            grid on which the OLS truth is evaluated.
 #' @return Named list of truth parameters.
 #' @export
-sim_twostage_truth <- function(dgp = "baseline") {
+sim_twostage_truth <- function(dgp       = "baseline",
+                                u_0       = NULL,
+                                u_beta1   = NULL,
+                                ell_beta1 = NULL,
+                                k_beta1   = NULL,
+                                design    = "full") {
   base <- list(
     ell       = 0.05,
     u         = 0.92,
@@ -65,10 +77,18 @@ sim_twostage_truth <- function(dgp = "baseline") {
     stop("Unknown dgp: '", dgp, "'. ",
          "Use one of: baseline, sym_ul, asym_u, varying_k.")
   )
-  out$dgp <- dgp
+
+  # Explicit overrides take precedence over the DGP preset.
+  if (!is.null(u_0))       out$u         <- u_0
+  if (!is.null(u_beta1))   out$u_beta1   <- u_beta1
+  if (!is.null(ell_beta1)) out$ell_beta1 <- ell_beta1
+  if (!is.null(k_beta1))   out$k_beta1   <- k_beta1
+
+  out$dgp    <- dgp
+  out$design <- design
 
   # OLS targets — slope of log10(LT50_{p=0.5})(T) at design temperatures.
-  tt <- compute_ols_truth(out)
+  tt <- compute_ols_truth(out, design = design)
   out$z_true         <- tt$z_true
   out$CTmax_1hr_true <- tt$CTmax_1hr_true
   out
@@ -86,8 +106,12 @@ sim_twostage_truth <- function(dgp = "baseline") {
 #'          before `z_true`/`CTmax_1hr_true` are written).
 #' @return List with `z_true` and `CTmax_1hr_true`.
 #' @keywords internal
-compute_ols_truth <- function(p) {
-  Ts        <- c(30, 32, 34, 36, 38)
+compute_ols_truth <- function(p, design = "full") {
+  Ts <- switch(design,
+               full   = c(30, 32, 34, 36, 38),
+               sparse = c(30, 34, 38),
+               stop("Unknown design: '", design,
+                    "'. Use 'full' or 'sparse'.", call. = FALSE))
   T_c       <- Ts - p$T_bar
   u_T       <- p$u   + p$u_beta1   * T_c
   ell_T     <- p$ell + p$ell_beta1 * T_c
@@ -118,14 +142,21 @@ compute_ols_truth <- function(p) {
 #' simulation. Returns the (temp, duration) crossing only — replication is
 #' added by [sim_twostage_dataset()] per scenario.
 #'
+#' @param design Character. `"full"` (5 temperatures × 6 durations) or
+#'               `"sparse"` (3 temperatures × 4 durations). Default `"full"`.
 #' @return Tibble with columns `T`, `t`, `log10_t`, `T_c`.
 #' @export
-sim_twostage_grid <- function() {
+sim_twostage_grid <- function(design = "full") {
   truth <- sim_twostage_truth()
-  tidyr::expand_grid(
-    T = c(30, 32, 34, 36, 38),
-    t = c(1, 5, 15, 45, 135, 405)
-  ) |>
+  cells <- switch(design,
+    full = list(T = c(30, 32, 34, 36, 38),
+                t = c(1, 5, 15, 45, 135, 405)),
+    sparse = list(T = c(30, 34, 38),
+                  t = c(1, 15, 135, 405)),
+    stop("Unknown design: '", design,
+         "'. Use 'full' or 'sparse'.", call. = FALSE)
+  )
+  tidyr::expand_grid(T = cells$T, t = cells$t) |>
     dplyr::mutate(log10_t = log10(t),
                   T_c     = T - truth$T_bar)
 }
@@ -150,7 +181,11 @@ sim_twostage_dataset <- function(n_reps,
                                  seed,
                                  truth = sim_twostage_truth()) {
   set.seed(seed)
-  grid   <- sim_twostage_grid()
+  # The truth list carries the design label (set inside sim_twostage_truth);
+  # use it so the (temp, duration) grid matches the design the OLS truth was
+  # computed against.
+  grid_design <- if (!is.null(truth$design)) truth$design else "full"
+  grid   <- sim_twostage_grid(design = grid_design)
   design <- tidyr::expand_grid(grid, rep = seq_len(n_reps))
 
   # T-varying 4PL parameters (any beta1 = 0 reduces to the constant case).
