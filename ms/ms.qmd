@@ -196,7 +196,7 @@ The key parameters of @eq-4pl (i.e., $\text{low}$, $\text{up}$, $k$, $mid_{ij}$)
 
 The TDT/TLS frameworks are elegant in that they derive metrics with clear biological interpretation that can be compared across populations and species (e.g., *z*, $CT_{max_{1hr}}$). Here, we show that we can derive these same metrics directly from @eq-4pl. 
 
-As indicated above, we can model changes in the mean of any of the four parameters in @eq-4pl. Thermal sensitivity (*z*) and $CT_{max_{1hr}}$ can therefore be derived by modelling the effect of temperature on midpoints as follows:
+As indicated above, we can model changes in the mean of any of the four parameters in @eq-4pl. Thermal sensitivity (*z*) and $CT_{max_{1hr}}$ can be derived by modelling the effect of temperature on midpoints specifically as follows:
 
 $$
 \text{mid}_{ij} = \beta_0 + \beta_1\,(T_{ij} - \bar{T}),
