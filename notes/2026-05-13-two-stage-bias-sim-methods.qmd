@@ -1,154 +1,265 @@
 ---
-title: "Methods — joint-4PL vs. classical two-stage bias simulation"
+title: "Methods — joint-4PL vs. two-stage bias simulation"
 date: 2026-05-13
+date-modified: 2026-05-15
 author: "Daniel Noble (with Claude assistance)"
 format:
   html:
     toc: true
+    toc-depth: 4
     number-sections: true
+    fig-cap-location: top
+    df-print: kable
 ---
 
-Draft methods section for a controlled simulation that compares the joint
-Bayesian 4PL estimator developed in this paper against the classical
-two-stage TDT pipeline that is the field's current default. This note
-documents exactly what has been done — DGP, estimators, sample sizes, and
-the diagnostic checks — so the text can be moved into `ms/supplement.qmd`
-after review. It deliberately does **not** make claims about which
-estimator is preferable; the results and their interpretation are reported
-elsewhere.
+::: {.callout-important}
+**Updated 2026-05-15.** The previous design was scrapped after two bugs in
+the simulation harness were discovered and one structural omission was
+added by Daniel:
 
-## Data-generating process
+1. Several `Sweep A` cells in the original sensitivity-sweep design were
+   running with infeasible DGPs (`u_T > 1` at the cold end of the design
+   grid), producing NaN survival probabilities for ~50% of cups at low
+   temperatures. The OLS-truth function had no upper-bound check; the
+   simulation kept running.
+2. The driver omitted `truth = truth` when calling the dataset generator,
+   so every cell — across the main DGP study and all three sweeps — was
+   silently generating data from the baseline DGP regardless of CLI
+   overrides. ~28 hr of compute was thrown away. See
+   `feedback_sim_preflight.md` for the institutional fixes that now
+   prevent both classes of bug.
+3. The design adds a third estimator — a *patched* two-stage that uses a
+   beta-binomial Stage-1 GLM rather than the binomial GLM used by the
+   field default. With three estimators per scenario, the contrast
+   between classical and patched isolates the *likelihood* cost of the
+   field default; the contrast between patched and joint 4PL isolates
+   the *shape / architecture* cost.
 
-Each simulated dataset is one factorial experiment with five assay
-temperatures ($T \in \{30, 32, 34, 36, 38\}\,^\circ\text{C}$) and six
-exposure durations ($t \in \{1, 5, 15, 45, 135, 405\}$ minutes). Each
-(temperature × duration) cell is replicated by $n_\text{reps}$ independent
-cups. The per-cup sample size $N$ is drawn from a discrete uniform on
-$\{10, 11, \dots, 20\}$, capturing the modest, unbalanced replication
-typical of empirical TDT assays.
+The redesign below supersedes the original eight-cell design. All results
+notes that depended on the buggy outputs (`2026-05-14-two-stage-bias-sim-results.qmd`,
+`2026-05-15-sensitivity-sweeps.qmd`) are stale and need to be regenerated
+once the corrected simulation completes.
+:::
 
-The latent survival probability follows a beta-binomial 4PL with
-temperature acting only on the midpoint:
-
-$$
-p(T, t) \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl[k\bigl(\log_{10} t - m(T)\bigr)\bigr]},
-\qquad m(T) = \beta_0 + \beta_1\,(T - \bar T).
-$$
-
-Truth parameters were fixed at $\ell = 0.05$, $u = 0.92$, $k = 8$,
-$\beta_0 = 1.5$, $\beta_1 = -0.15$, $\bar T = 34\,^\circ\text{C}$, and
-beta-binomial dispersion $\phi = 5$. The corresponding analytical targets,
-derived in closed form from the DGP, are
-
-$$
-z_\text{true} \;=\; -\frac{1}{\beta_1} \;=\; 6.667\,^\circ\text{C},
-\qquad
-\text{CT}_{\max,\,1\text{h}}^{\text{true}} \;=\; \bar T \;+\; \frac{\log_{10} 60 - \beta_0 - k^{-1}\log\!\bigl[(u - 0.5)/(0.5 - \ell)\bigr]}{\beta_1}
-\;=\; 32.094\,^\circ\text{C}.
-$$
-
-These are the per-simulation reference values against which both
-estimators are scored. Survival counts are drawn beta-binomially: for each
-cell, the cup-level probability $p^{(b)}$ is drawn from a
-$\text{Beta}(p\phi, (1-p)\phi)$ distribution and the observed survivor count
-from a $\text{Binomial}(N, p^{(b)})$. The data generator is in
-[`scripts/sim_twostage_helpers.R`](../scripts/sim_twostage_helpers.R).
-
-## Two design points
-
-We ran the full simulation under two replication budgets, chosen to bracket
-realistic small-to-moderate field designs:
-
-| Design | $n_\text{reps}$ per cell | Total cups per dataset |
-|--------|--------------------------|------------------------|
-| n3     | 3                        | 90                     |
-| n5     | 5                        | 150                    |
-
-For each design we ran $N_\text{sim} = 1000$ datasets. The number of
-simulations was set so that Monte Carlo standard errors (MCSEs) on the
-performance summaries fell below pre-specified thresholds (see
-[Sample size adequacy](#sec-mcse)).
+Methods section for a controlled simulation that compares three TDT
+estimators side-by-side: the field-default two-stage pipeline (binomial
+GLM Stage 1), a patched two-stage pipeline (beta-binomial GLM Stage 1)
+that addresses likelihood misspecification without changing the
+architecture, and the joint Bayesian 4PL developed in this paper.
 
 ## Estimators
 
-Both estimators were applied to every simulated dataset, scored against the
-same analytical truth, and summarised on the same basis (signed bias of the
-point estimate, root-mean-square error, empirical 95% interval coverage,
-and median 95% interval width).
+All three estimators are fit to every simulated dataset.
+
+### Two-stage (binomial) — the field default
+
+**Stage 1.** For each temperature independently, a binomial GLM with
+logit link is fitted to survivor counts as a function of $\log_{10} t$.
+The per-temperature $\log_{10} \text{LT}_{50}$ is read off as
+$-\hat\beta_0/\hat\beta_1$ with delta-method standard error from the
+Stage-1 covariance.
+
+**Stage 2.** An unweighted ordinary least squares regression of the five
+$\log_{10} \text{LT}_{50}$ values on temperature gives slope and
+intercept estimates from which $z = -1/\hat\beta_1^{(2)}$ and
+$\text{CT}_{\max,1\text{h}} = (\log_{10} 60 - \hat\beta_0^{(2)}) /
+\hat\beta_1^{(2)}$ follow. The 95% confidence interval comes from the
+delta method on the Stage-2 covariance. A dataset is marked as a
+two-stage success only when every temperature delivers a finite,
+negative-slope Stage-1 fit and the Stage-2 slope is itself finite and
+negative.
+
+Unweighted Stage-2 OLS is retained deliberately — it matches the version
+of the pipeline most commonly reported in the empirical TDT literature
+and is the comparator the reader will be familiar with.
+
+### Two-stage (beta-binomial) — the patched variant
+
+Same two-stage architecture, but Stage 1 swaps the binomial GLM for a
+beta-binomial GLM (logit link) fitted via `glmmTMB::glmmTMB(...,
+family = betabinomial())`. The dispersion parameter is estimated per
+temperature. Stage 2 remains unweighted OLS on the resulting per-T
+$\log_{10} \text{LT}_{50}$ estimates.
+
+This variant exists for one reason: to disentangle the *likelihood*
+component of the field default's deficit from the *shape / architecture*
+component. The contrast between the binomial two-stage and the patched
+two-stage isolates the likelihood effect (both have the same two-stage
+architecture; only the Stage-1 likelihood differs). The contrast
+between the patched two-stage and the joint 4PL isolates the shape /
+architecture effect (both have the correct likelihood for the
+beta-binomial scenarios; only the architecture differs).
 
 ### Joint Bayesian 4PL
 
 The joint model is the estimator developed in this paper. It is a
-non-linear `brms` formula with a `beta_binomial(link = "identity")` family
-in which all four 4PL sub-parameters — the reparameterised lower asymptote,
-upper asymptote, slope, and midpoint — carry a centred-temperature slope.
-Default priors from `bayesTLS::make_4pl_priors()` were used (weakly
-informative; specified in the supplement). Samples were drawn with
-`cmdstanr` (2 chains × 2,000 iterations, half discarded as warm-up;
-`adapt_delta = 0.9`, `max_treedepth = 12`). Post-fit, `z` and
-$\text{CT}_{\max,\,1\text{h}}$ were extracted with
-`bayesTLS::extract_tdt(..., lethal = TRUE)` using the standard
-rate-multiplier definition of $T_\text{crit}$; we report the posterior
-median and 2.5% / 97.5% quantiles.
+non-linear `brms` formula with a `beta_binomial(link = "identity")`
+family in which all four 4PL sub-parameters — the reparameterised lower
+asymptote, upper asymptote, slope, and midpoint — carry a centred-
+temperature slope:
 
-### Classical two-stage
+$$
+p(T, t) = \ell(T) + \frac{u(T) - \ell(T)}{1 + \exp\!\bigl[k(T) \cdot (\log_{10} t - \text{mid}(T))\bigr]}
+$$
 
-The two-stage pipeline implements the field-standard recipe. Stage 1: for
-each temperature independently, a binomial GLM with logit link is fitted to
-the survivor counts as a function of $\log_{10} t$; the per-temperature
-$\log_{10} \text{LT}_{50}$ is read off as $-\hat\beta_0/\hat\beta_1$ with
-standard error supplied by the delta method from the Stage-1 covariance.
-Stage 2: an unweighted ordinary least-squares regression of those
-$\log_{10}\text{LT}_{50}$ values on temperature gives slope and intercept
-estimates from which $z = -1/\hat\beta_1^{(2)}$ and
-$\text{CT}_{\max,\,1\text{h}} = (\log_{10} 60 - \hat\beta_0^{(2)})/\hat\beta_1^{(2)}$
-follow. The 95% confidence interval is obtained by the delta method
-applied to the Stage-2 covariance. A simulated dataset is marked as
-two-stage success only when every temperature delivered a finite,
-negative-slope Stage-1 fit and the Stage-2 slope itself was finite and
-negative.
+with $u, \ell, k, \text{mid}$ each modelled as $\beta_0 + \beta_1 \cdot
+(T - \bar T)$. Default priors from `bayesTLS::make_4pl_priors()` are
+used. Samples are drawn with `cmdstanr` (2 chains × 2,000 iterations,
+half discarded as warm-up; `adapt_delta = 0.9`, `max_treedepth = 12`).
+Post-fit, $z$ and $\text{CT}_{\max,1\text{h}}$ are extracted with
+`bayesTLS::extract_tdt(..., lethal = TRUE)` using the rate-multiplier
+definition of $T_{\text{crit}}$. We report the posterior median and
+2.5 % / 97.5 % quantiles.
 
-Unweighted OLS at Stage 2 was retained deliberately, matching the version
-of the pipeline most commonly reported in the empirical TDT literature.
-SE-weighted alternatives were not assessed in this run.
+## Performance metrics
 
-## Sample size adequacy {#sec-mcse}
+For each estimator and each output quantity ($z$,
+$\text{CT}_{\max,1\text{h}}$), each simulated dataset contributes one row
+with signed bias, squared bias (for RMSE aggregation), 95 % CI lower /
+upper, coverage indicator, and CI width. Per-cell summaries report:
 
-Each performance summary $\widehat{Q}$ was reported with a Monte Carlo
-standard error: $\text{MCSE}(\widehat{\text{bias}}) = s_b / \sqrt{N_\text{sim}}$
-for mean bias, $\sqrt{p(1-p)/N_\text{sim}}$ for coverage, and the standard
-delta-method form for RMSE. We pre-specified MCSE thresholds of 0.05 °C
-for bias and 0.015 for coverage. At $N_\text{sim} = 1000$ both designs met
-the thresholds for every method × quantity combination, so we did not
-extend the simulation.
+- Mean signed bias and Monte-Carlo SE of the bias
+- RMSE and Monte-Carlo SE
+- Empirical 95 % coverage rate and Monte-Carlo SE (binomial proportion)
+- Median 95 % CI width
 
-## Diagnostic and reproducibility checks
+These are reported twice per cell — once for *all fits*, once for *fits
+that pass all joint-4PL convergence diagnostics* (see
+[Diagnostic checks](#diagnostic-checks)).
 
-Each joint-4PL fit logs maximum $\hat R$ and divergent-transition count
-post-warm-up. Across all 2,000 fits (n3 + n5) no fit exceeded the standard
-$\hat R < 1.05$ threshold, and ≥ 95 % of fits returned zero divergences.
+### Sample-size adequacy
 
-The full set of per-simulation results, including all $1{,}000$
-posterior draws for $z$, $\text{CT}_{\max,\,1\text{h}}$ and
-$T_\text{crit}$ per simulation, is stored as resume-safe per-sim RDS
-files under `output/sim_twostage/raw/<design>/` and rolled up into
-`summary_<design>.rds`, `meta_<design>.rds`, and `diffs_<design>.rds` at
-the end of each run. The driver is
+Monte-Carlo standard error thresholds: 0.05 °C for bias, 0.015 for
+coverage. At $N_{\text{sim}} = 1000$ (Scenarios 1–5) these thresholds
+are comfortably met for all method × quantity combinations under the
+baseline DGP. At $N_{\text{sim}} = 500$ (Scenarios 6–8) the MCSE is
+$\sqrt{2}\approx 1.41 \times$ larger; for the sensitivity sweeps this is
+an accepted trade-off for halving the per-cell compute time. The driver
+auto-checks both thresholds at every cell and prints a warning if
+either is exceeded.
+
+## Truth
+
+For each simulated dataset, the true $z$ and
+$\text{CT}_{\max,1\text{h}}$ are computed analytically from the
+data-generating curve. The procedure: evaluate the true
+$\log_{10} \text{LT}_{50}$ at every design temperature; fit a line
+through those values; read off $z = -1 / \text{slope}$ and
+$\text{CT}_{\max,1\text{h}} = (\log_{10} 60 - \text{intercept}) /
+\text{slope}$. For the baseline shape (only midpoint varying with $T$),
+$\log_{10}\text{LT}_{50}(T)$ is exactly linear in $T$ and the procedure
+is an analytical identity. For shape-perturbing scenarios, the fitted
+line is the linear projection of the (non-linear) true
+$\log_{10}\text{LT}_{50}(T)$ curve onto the design grid — which is the
+target both estimators converge to, by construction of the OLS at
+Stage 2.
+
+The implementation lives in `compute_ols_truth()` in
+[`scripts/sim_twostage_helpers.R`](../scripts/sim_twostage_helpers.R)
+and is checked for feasibility before any data is simulated: the
+function rejects DGPs whose $u_T$, $\ell_T$, or $k_T$ leave
+$0 < \ell < 0.5 < u < 1$ or $k > 0$ at any design temperature.
+
+## Design grid
+
+The default design grid is five assay temperatures
+$T \in \{30, 32, 34, 36, 38\}\,^\circ\text{C}$ × six exposure durations
+$t \in \{1, 5, 15, 45, 135, 405\}$ minutes — 30 cells per dataset.
+Scenario 8 explicitly varies this between the full grid and a sparse
+grid (three temperatures $\{30, 34, 38\}\,^\circ\text{C}$ × four
+durations $\{1, 15, 135, 405\}$ minutes — 12 cells per dataset).
+
+Each (temperature × duration) cell is replicated by $n_{\text{reps}}$
+independent cups (the number varies by scenario). Each cup contains $N$
+individuals, $N$ drawn from a discrete uniform on
+$\{10, 11, \ldots, 20\}$ — capturing the modest, unbalanced replication
+typical of empirical TDT assays. So a Scenario-1 dataset with
+$n_{\text{reps}} = 5$ contains $5 \text{ T} \times 6 \text{ durations}
+\times 5 \text{ reps} = 150 \text{ cups}$, each with 10–20 individuals,
+for a total of roughly 1,500–3,000 individuals per simulated experiment.
+
+## Scenarios
+
+Eight scenarios. Scenarios 1–2 establish equivalence and isolate the
+likelihood effect; Scenarios 3–5 introduce qualitatively different
+shape perturbations; Scenarios 6–8 are sensitivity sweeps that map the
+dose-response of the comparison against parameters varied within a
+scenario.
+
+**Truth column notation.** `param ~ 1: value` means the parameter is
+constant across temperature at that value. `param ~ 1 + T_c:
+(β_0, β_1)` means the parameter equals $\beta_0 + \beta_1 \cdot T_c$
+where $T_c = T - 34$.
+
+**Default biological parameters** (overridden where the row says so):
+$u = 0.92$, $\ell = 0.05$, $k = 8$, $\text{mid}_0 = 1.5$,
+$m_{\beta_1} = -0.15$, $\phi = 5$ (beta-binomial dispersion).
+
+::: {.column-screen-inset}
+| # | Name | Truth | DGP lik. | TS lik. (Cls / Pch) | 4PL lik. | Replication (cups + N per cup) | n_sims | Why | Prediction |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | Strict equivalence baseline | u ~ 1: 0.999<br>ell ~ 1: 0.001<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.67, true CTmax_1hr = 32.15** | Bin | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups, ~1,200 or ~2,000 individuals per dataset<br>**2 simulation cells (n_reps levels)** | 1000 | All three estimators correctly specified (BB-4PL collapses to Bin via φ → ∞). Floor — divergence here would signal a bug. | All 3 unbiased; coverage ≈ 0.95. Cls TS wider CIs (Stage-2 OLS on 5 LD50 points only). Pch TS ≈ Cls (no overdispersion to exploit). 4PL narrowest CIs (joint fit shares info across T). |
+| 2 | Likelihood misspec only | Same as Scen 1 | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups<br>**2 simulation cells** | 1000 | Same shape, overdispersion added. Isolates the cost of the classical TS's binomial-likelihood assumption. | All 3 unbiased. Cls TS: wider CIs than Pch (efficiency loss); coverage ~ nominal via Stage-2 OLS residual variance. Pch TS: narrower CIs, calibrated. 4PL: narrowest CIs, calibrated. **Cls vs Pch = pure likelihood cost.** |
+| 3 | Heat lowers max survival | u ~ 1 + T_c: (0.92, −0.01)<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.54, true CTmax_1hr = 32.12** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups<br>**2 simulation cells** | 1000 | TS architectures have no asymptote parameter; heat-induced u-drop must be absorbed into the slope, biasing z. | Cls and Pch TS: both biased (same shape misspec). Cls wider CIs (may accidentally cover); Pch narrower CIs (coverage drops more sharply around the biased point). 4PL: bias ≈ 0, calibrated. **Pch vs 4PL = pure shape / architecture cost.** |
+| 4 | Asymptotes compress | u ~ 1 + T_c: (0.92, −0.01)<br>ell ~ 1 + T_c: (0.05, +0.01)<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.66, true CTmax_1hr = 32.09** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups<br>**2 simulation cells** | 1000 | Both asymptotes move toward each other; true z barely shifts because the log-ratio is nearly preserved. Stresses joint 4PL's u + ell parametrisation more than its midpoint estimation. | Cls and Pch: small bias (smaller than Scen 3 because true z perturbation is smaller). 4PL: bias ≈ 0, calibrated. |
+| 5 | Heat sharpens curve | u ~ 1: 0.92<br>ell ~ 1: 0.05<br>k ~ 1 + T_c: (8, +0.25)<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.68, true CTmax_1hr = 32.08** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups<br>**2 simulation cells** | 1000 | TS Stage-1 GLMs allow slope to vary across T (separate fit per T), but Stage-2 OLS assumes linear log10(LD50)(T). Varying k breaks linearity subtly. | Smallest bias of the shape-perturbing scenarios. Cls and Pch: slight bias, coverage near nominal. 4PL: bias ≈ 0, calibrated. |
+| 6 | Sensitivity: strength of u drift | u ~ 1 + T_c: u_0 = 0.92, **β_u ∈ {−0.005, −0.010, −0.015, −0.019}**<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z ∈ [6.42, 6.60]**<br>**true CTmax_1hr ∈ [32.11, 32.15]** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps = 5** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br>**4 simulation cells (one per β_u)** | 500 | Maps the dose-response: how does the TS shape bias scale with the strength of the asymptote drift? | Cls and Pch: bias monotonically increasing in \|β_u\|; coverage drops correspondingly. 4PL: bias ≈ 0 throughout. |
+| 7 | Sensitivity: level of upper asymptote | u ~ 1: **u_0 ∈ {0.65, 0.75, 0.85, 0.95, 0.99}**<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.67 (constant)**<br>**true CTmax_1hr ∈ [31.23, 32.22]** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps = 5** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br>**5 simulation cells (one per u_0)** | 500 | TS GLM extrapolates to u → 1. Sublethal endpoints (PSII, fertility, knockdown) rarely reach 1. Tests cost of the forced-asymptote assumption. | Cls and Pch: z bias small (constant asymptote bias across T cancels in Stage-2 slope); CTmax_1hr bias grows as u_0 drops below 1. 4PL: bias ≈ 0 throughout. |
+| 8 | Sensitivity: design intensity | u ~ 1: 0.92<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.67, true CTmax_1hr = 32.09** | BB (φ=5) | Bin / BB | BB | **Full design** (5T × 6 dur = 30 cells per dataset) **or sparse** (3T × 4 dur = 12 cells per dataset)<br>**n_reps ∈ {1, 3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 12 to 150 cups, ~160 to ~2,000 individuals per dataset<br>**6 simulation cells (design × n_reps)** | 500 | When does each method's overhead pay off? At what budget can a study get away with the two-stage? | All methods: wider CIs as data sparsens. 4PL has smallest inflation (info shared across T). At sparse × 1-rep (12 cups total, 4 unique LD50 points), TS variants may fail or carry severe bias. |
+:::
+
+**Totals.** 23 simulation cells, ~16,500 fits total. Wall time on the
+project's 5-worker PSOCK setup: approximately 32 hours.
+
+## Diagnostic checks {#diagnostic-checks}
+
+Every joint-4PL fit logs:
+
+| Statistic | Threshold |
+|---|---|
+| Maximum R̂ across parameters | < 1.01 |
+| Minimum bulk ESS | > 400 |
+| Minimum tail ESS | > 400 |
+| Divergent transitions (post-warmup) | = 0 |
+| Tree-depth saturations (post-warmup) | = 0 |
+| BFMI (per chain) | > 0.3 |
+| Combined `all_pass` flag | all of the above |
+
+Per-cell summary reports: pass rate for each individual criterion, the
+overall `all_pass` rate, and median + worst-case of each statistic
+across the 500–1000 fits in the cell. Cells with `all_pass` rate
+< 95 % are flagged for review.
+
+The bias / coverage summary is reported twice per cell:
+
+- **All fits** — every simulated dataset where the estimator produced
+  finite point estimates. Reflects the realistic experience of running
+  the recommended pipeline with default sampler settings.
+- **Convergent fits only** — restricted to fits where the joint 4PL
+  satisfies all diagnostic criteria. If the two summaries diverge,
+  pathological fits are biasing the headline numbers and sampler
+  settings need to be revisited before the simulation is interpretable.
+
+## Reproducibility
+
+The full set of per-simulation results — point estimates, CIs, all
+posterior draws of $z$, $\text{CT}_{\max,1\text{h}}$ and $T_{\text{crit}}$
+per dataset, and the full diagnostic row per fit — is stored as resume-
+safe per-sim RDS files under
+`output/sim_twostage/raw/<scenario_label>/` and rolled up into
+`summary_<label>.rds`, `meta_<label>.rds`, `draws_<label>.rds`, and
+`diffs_<label>.rds` at the end of each cell.
+
+The driver is
 [`scripts/sim_twostage_bias.R`](../scripts/sim_twostage_bias.R); the
-data-generating helpers and the two estimator wrappers live in
+data-generating helpers and the three estimator wrappers live in
 [`scripts/sim_twostage_helpers.R`](../scripts/sim_twostage_helpers.R).
-Parallelism uses a PSOCK cluster (`parallel::makeCluster` + `parLapply`)
-with five workers; a PSOCK cluster (rather than `mclapply`) is required
-because `cmdstanr` launches Stan executables via `processx`, which is not
-fork-safe under macOS.
+The queue dispatcher is
+[`scripts/run_sweep_queue.sh`](../scripts/run_sweep_queue.sh); it runs
+a pre-flight pass over every planned cell before any compute starts
+(see `feedback_sim_preflight.md` for what the pre-flight checks).
 
-## Open scope
-
-This first simulation block holds the data-generating process fixed in two
-respects: (i) temperature acts only on the 4PL midpoint, leaving the
-asymptotes ($\ell$, $u$) and slope ($k$) constant in $T$; and (ii) the
-joint-4PL estimator uses the package's default priors, with no sensitivity
-analysis. Both restrictions are deliberate first-pass simplifications.
-Extensions that vary the DGP (temperature acting on $\ell$, $u$, or $k$,
-with or without midpoint preservation) and that vary the joint-4PL priors
-are the natural next steps.
+Parallelism uses a PSOCK cluster (`parallel::makeCluster` +
+`parallel::parLapply`) with five workers; a PSOCK cluster (rather than
+`mclapply`) is required because `cmdstanr` launches Stan executables
+via `processx`, which is not fork-safe under macOS.

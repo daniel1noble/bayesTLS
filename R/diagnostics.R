@@ -5,9 +5,22 @@
 #' Sampling diagnostics for a fitted TDT workflow
 #'
 #' Returns a tibble with the per-fit summary numbers a reviewer will want at
-#' a glance: max Rhat, minimum bulk and tail ESS, divergent transitions, and
-#' tree-depth saturations. Healthy values: Rhat < 1.01, ESS > 400, zero
-#' divergences and treedepth hits.
+#' a glance: max Rhat, minimum bulk and tail ESS, divergent transitions,
+#' tree-depth saturations, minimum BFMI per chain, and pass flags for each
+#' criterion plus a combined `all_pass`. Healthy values:
+#' \itemize{
+#'   \item Rhat < 1.01
+#'   \item ESS bulk and tail > 400
+#'   \item zero divergent transitions
+#'   \item zero tree-depth saturations
+#'   \item BFMI > 0.3 per chain
+#' }
+#'
+#' The `treedepth_max_attempted` field is the model's `max_treedepth` setting
+#' (passed to `brms::brm()`); a saturation is a post-warmup transition where
+#' the sampler hit that ceiling. Per-chain BFMI is computed from the energy
+#' diagnostic in `brms::nuts_params(.)` following the standard Stan
+#' definition (Var(ΔE)/Var(E)).
 #'
 #' @param workflow A fitted `bayes_tls`.
 #' @return A tibble with one row of diagnostic statistics.
@@ -23,9 +36,10 @@ diagnose_tdt_fit <- function(workflow) {
   fit <- workflow$fit
   np  <- brms::nuts_params(fit)
 
-  divs  <- sum(subset(np, Parameter == "divergent__")$Value)
-  treed <- sum(subset(np, Parameter == "treedepth__")$Value >=
-               max(np$Value[np$Parameter == "treedepth__"], na.rm = TRUE))
+  divs    <- sum(subset(np, Parameter == "divergent__")$Value)
+  td_vals <- subset(np, Parameter == "treedepth__")$Value
+  td_max  <- if (length(td_vals)) max(td_vals, na.rm = TRUE) else NA_integer_
+  treed   <- if (is.finite(td_max)) sum(td_vals >= td_max) else 0L
 
   rh           <- brms::rhat(fit)
   rhat_max     <- max(rh, na.rm = TRUE)
@@ -35,15 +49,42 @@ diagnose_tdt_fit <- function(workflow) {
   ess_bulk_min <- min(ess_summary$ess_bulk, na.rm = TRUE)
   ess_tail_min <- min(ess_summary$ess_tail, na.rm = TRUE)
 
+  # BFMI per chain. nuts_params returns one row per (Chain, Iteration,
+  # Parameter); "energy__" is the per-iteration energy. BFMI ≈ Var(ΔE) /
+  # Var(E) per chain (post-warmup only — nuts_params is already post-warmup).
+  energy <- subset(np, Parameter == "energy__")
+  bfmi_per_chain <- if (nrow(energy) > 0L) {
+    vapply(split(energy$Value, energy$Chain), function(e) {
+      if (length(e) < 2L) return(NA_real_)
+      dE <- diff(e)
+      var_e <- stats::var(e)
+      if (!is.finite(var_e) || var_e <= 0) NA_real_ else stats::var(dE) / var_e
+    }, numeric(1))
+  } else NA_real_
+  bfmi_min <- if (all(is.na(bfmi_per_chain))) NA_real_
+              else min(bfmi_per_chain, na.rm = TRUE)
+
+  rhat_pass       <- isTRUE(rhat_max < 1.01)
+  ess_pass        <- isTRUE(ess_bulk_min > 400 && ess_tail_min > 400)
+  divergence_pass <- isTRUE(divs == 0L)
+  treedepth_pass  <- isTRUE(treed == 0L)
+  bfmi_pass       <- isTRUE(is.finite(bfmi_min) && bfmi_min > 0.3)
+  all_pass <- rhat_pass && ess_pass && divergence_pass &&
+              treedepth_pass && bfmi_pass
+
   tibble::tibble(
     rhat_max        = round(rhat_max, 4),
     ess_bulk_min    = round(ess_bulk_min),
     ess_tail_min    = round(ess_tail_min),
-    divergences     = divs,
-    treedepth_hits  = treed,
-    rhat_pass       = rhat_max < 1.01,
-    ess_pass        = ess_bulk_min > 400 & ess_tail_min > 400,
-    divergence_pass = divs == 0
+    divergences     = as.integer(divs),
+    treedepth_hits  = as.integer(treed),
+    bfmi_min        = round(bfmi_min, 4),
+    rhat_pass       = rhat_pass,
+    ess_pass        = ess_pass,
+    divergence_pass = divergence_pass,
+    treedepth_pass  = treedepth_pass,
+    bfmi_pass       = bfmi_pass,
+    all_pass        = all_pass
   )
 }
 

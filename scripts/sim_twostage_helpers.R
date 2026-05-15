@@ -43,19 +43,29 @@
 #'            `"varying_k"`.
 #' @param u_0 Optional numeric — overrides the upper-asymptote intercept (the
 #'            value of u at T = T_bar). `NULL` keeps the DGP preset.
+#' @param ell_0 Optional numeric — overrides the lower-asymptote intercept.
 #' @param u_beta1,ell_beta1,k_beta1 Optional numeric — override the temperature
 #'            slopes of u, ell, k. `NULL` keeps the DGP preset.
 #' @param design Character — `"full"` (5 temps × 6 durations, the original
 #'            design) or `"sparse"` (3 temps × 4 durations). Controls the
 #'            grid on which the OLS truth is evaluated.
+#' @param family Character — `"beta_binomial"` (default, overdispersed) or
+#'            `"binomial"` (no overdispersion). Controls which likelihood the
+#'            data generator draws from. Travels with the truth list so a
+#'            forgotten override can't silently switch likelihoods between
+#'            cells. The `phi` field stays in the truth list for both families
+#'            but is unused when `family = "binomial"`.
 #' @return Named list of truth parameters.
 #' @export
 sim_twostage_truth <- function(dgp       = "baseline",
                                 u_0       = NULL,
+                                ell_0     = NULL,
                                 u_beta1   = NULL,
                                 ell_beta1 = NULL,
                                 k_beta1   = NULL,
-                                design    = "full") {
+                                design    = "full",
+                                family    = c("beta_binomial", "binomial")) {
+  family <- match.arg(family)
   base <- list(
     ell       = 0.05,
     u         = 0.92,
@@ -80,12 +90,14 @@ sim_twostage_truth <- function(dgp       = "baseline",
 
   # Explicit overrides take precedence over the DGP preset.
   if (!is.null(u_0))       out$u         <- u_0
+  if (!is.null(ell_0))     out$ell       <- ell_0
   if (!is.null(u_beta1))   out$u_beta1   <- u_beta1
   if (!is.null(ell_beta1)) out$ell_beta1 <- ell_beta1
   if (!is.null(k_beta1))   out$k_beta1   <- k_beta1
 
   out$dgp    <- dgp
   out$design <- design
+  out$family <- family
 
   # OLS targets — slope of log10(LT50_{p=0.5})(T) at design temperatures.
   tt <- compute_ols_truth(out, design = design)
@@ -175,11 +187,18 @@ sim_twostage_grid <- function(design = "full") {
                   T_c     = T - truth$T_bar)
 }
 
-#' Simulate one beta-binomial 4PL dataset
+#' Simulate one 4PL dataset (binomial or beta-binomial likelihood)
 #'
 #' Generates `n_reps` replicate cups per (temperature × duration) cell, each
-#' with `N` individuals drawn uniformly from `n_ind_range`. Survival counts are
-#' drawn from a beta-binomial with the truth's $p$ and dispersion $\phi$.
+#' with `N` individuals drawn uniformly from `n_ind_range`. Survival counts
+#' are drawn according to `truth$family`:
+#' \itemize{
+#'   \item `"beta_binomial"`: per-cup probability `p^{(b)}` is drawn from
+#'         Beta(p·φ, (1−p)·φ); the survivor count is then Binomial(N, p^{(b)}).
+#'         Captures cup-to-cup overdispersion at the same (T, t) cell.
+#'   \item `"binomial"`: the survivor count is Binomial(N, p) directly. No
+#'         overdispersion. Used for the strict-equivalence baseline.
+#' }
 #'
 #' @param n_reps      Replicate cups per cell.
 #' @param n_ind_range Length-2 integer vector — discrete-uniform range for
@@ -220,10 +239,19 @@ sim_twostage_dataset <- function(n_reps,
 
   n      <- sample(seq(n_ind_range[1], n_ind_range[2]),
                    size = nrow(design), replace = TRUE)
-  alpha  <- p_true * truth$phi
-  beta   <- (1 - p_true) * truth$phi
-  p_draw <- stats::rbeta(nrow(design), shape1 = alpha, shape2 = beta)
-  y      <- stats::rbinom(nrow(design), size = n, prob = p_draw)
+  fam    <- if (!is.null(truth$family)) truth$family else "beta_binomial"
+  if (fam == "beta_binomial") {
+    alpha  <- p_true * truth$phi
+    beta_  <- (1 - p_true) * truth$phi
+    p_draw <- stats::rbeta(nrow(design), shape1 = alpha, shape2 = beta_)
+    y      <- stats::rbinom(nrow(design), size = n, prob = p_draw)
+  } else if (fam == "binomial") {
+    p_draw <- p_true  # no cup-level draw; rbinom uses p_true directly
+    y      <- stats::rbinom(nrow(design), size = n, prob = p_true)
+  } else {
+    stop("Unknown family '", fam, "'. Use 'beta_binomial' or 'binomial'.",
+         call. = FALSE)
+  }
 
   design$n      <- n
   design$y      <- y
@@ -339,6 +367,109 @@ fit_two_stage_classical <- function(data, t_ref_min = 60) {
   )
 }
 
+# ----- patched two-stage pipeline (beta-binomial Stage 1) ---------------------
+
+#' Patched two-stage TDT estimator (beta-binomial GLM per T + OLS)
+#'
+#' Same architecture as [fit_two_stage_classical()] — per-temperature Stage-1
+#' GLM with logit link, then unweighted Stage-2 OLS — except Stage 1 uses a
+#' beta-binomial likelihood (via `glmmTMB`) instead of binomial. This addresses
+#' overdispersion at the Stage-1 level while keeping the rest of the pipeline
+#' identical to the field default.
+#'
+#' Purpose: isolate the *likelihood* component of the field-default's deficit
+#' from the *shape / architecture* component. Cls-vs-Pch within a scenario =
+#' pure likelihood cost; Pch-vs-joint-4PL = pure shape / architecture cost.
+#'
+#' @param data Output of [sim_twostage_dataset()].
+#' @param t_ref_min Reference exposure time, in minutes. Default 60.
+#' @return Same list shape as [fit_two_stage_classical()] — `$success`, `$z`,
+#'         `$CTmax_1hr`, `$stage1`.
+#' @export
+fit_two_stage_betabin <- function(data, t_ref_min = 60) {
+  if (!requireNamespace("glmmTMB", quietly = TRUE)) {
+    stop("fit_two_stage_betabin() needs the glmmTMB package; install it ",
+         "or skip the patched variant.", call. = FALSE)
+  }
+  temps <- sort(unique(data$T))
+
+  per_temp <- lapply(temps, function(T_value) {
+    d <- subset(data, T == T_value)
+    d$n_surv <- d$y
+    d$n_dead <- d$n - d$y
+    fit <- tryCatch(
+      suppressWarnings(suppressMessages(
+        glmmTMB::glmmTMB(cbind(n_surv, n_dead) ~ log10_t,
+                         data   = d,
+                         family = glmmTMB::betabinomial(link = "logit"))
+      )),
+      error = function(e) e
+    )
+    if (inherits(fit, "error") || !inherits(fit, "glmmTMB")) {
+      return(list(T = T_value, log10_LT50 = NA_real_,
+                  se_log10_LT50 = NA_real_, success = FALSE))
+    }
+    co <- tryCatch(glmmTMB::fixef(fit)$cond, error = function(e) NULL)
+    V  <- tryCatch(stats::vcov(fit)$cond,    error = function(e) NULL)
+    if (is.null(co) || is.null(V) || any(!is.finite(co))) {
+      return(list(T = T_value, log10_LT50 = NA_real_,
+                  se_log10_LT50 = NA_real_, success = FALSE))
+    }
+    if (co[["log10_t"]] >= 0 || !is.finite(co[["log10_t"]]) ||
+        !is.finite(co[["(Intercept)"]])) {
+      return(list(T = T_value, log10_LT50 = NA_real_,
+                  se_log10_LT50 = NA_real_, success = FALSE))
+    }
+    b0 <- co[["(Intercept)"]]; b1 <- co[["log10_t"]]
+    log10_LT50 <- -b0 / b1
+    g <- c(-1 / b1, b0 / b1^2)
+    se_log10_LT50 <- sqrt(as.numeric(t(g) %*% V %*% g))
+    list(T = T_value, log10_LT50 = log10_LT50,
+         se_log10_LT50 = se_log10_LT50, success = TRUE)
+  })
+
+  s1 <- do.call(rbind.data.frame, per_temp)
+  if (!all(s1$success) || sum(is.finite(s1$log10_LT50)) < 3L) {
+    return(list(success = FALSE, stage1 = s1,
+                z = list(point = NA_real_, lower = NA_real_, upper = NA_real_),
+                CTmax_1hr = list(point = NA_real_, lower = NA_real_,
+                                 upper = NA_real_)))
+  }
+
+  # Stage 2: unweighted OLS, identical to fit_two_stage_classical().
+  s2 <- stats::lm(log10_LT50 ~ T, data = s1)
+  co <- stats::coef(s2)
+  V2 <- stats::vcov(s2)
+  b0 <- co[["(Intercept)"]]; b1 <- co[["T"]]
+  if (!is.finite(b1) || b1 >= 0) {
+    return(list(success = FALSE, stage1 = s1,
+                z = list(point = NA_real_, lower = NA_real_, upper = NA_real_),
+                CTmax_1hr = list(point = NA_real_, lower = NA_real_,
+                                 upper = NA_real_)))
+  }
+
+  z_point <- -1 / b1
+  z_se    <- abs(1 / b1^2) * sqrt(V2["T", "T"])
+  log10_tref <- log10(t_ref_min)
+  CTmax_pt   <- (log10_tref - b0) / b1
+  g          <- c(-1 / b1, -(log10_tref - b0) / b1^2)
+  CTmax_se   <- sqrt(as.numeric(t(g) %*% V2 %*% g))
+
+  z_thr <- stats::qnorm(0.975)
+  list(
+    success = TRUE,
+    stage1  = s1,
+    z = list(point = z_point,
+             lower = z_point - z_thr * z_se,
+             upper = z_point + z_thr * z_se,
+             se    = z_se),
+    CTmax_1hr = list(point = CTmax_pt,
+                     lower = CTmax_pt - z_thr * CTmax_se,
+                     upper = CTmax_pt + z_thr * CTmax_se,
+                     se    = CTmax_se)
+  )
+}
+
 # ----- joint-4PL wrapper for the simulation (no caching) ----------------------
 
 #' Joint Bayesian 4PL fit + extract for one simulated dataset
@@ -420,9 +551,22 @@ fit_joint_4pl_sim <- function(data,
     dplyr::inner_join(c_d, by = ".draw") |>
     dplyr::inner_join(t_d, by = ".draw")
 
+  # Capture the full diagnostic row, not just rhat + divergences. The
+  # individual columns and the combined all_pass flag let the aggregator
+  # build per-cell pass-rate summaries and split bias/coverage into
+  # "all fits" vs "convergent fits only" downstream.
   diag_tbl <- tryCatch(diagnose_tdt_fit(wf), error = function(e) NULL)
-  rhat_max <- if (is.null(diag_tbl)) NA_real_ else diag_tbl$rhat_max
-  divergences <- if (is.null(diag_tbl)) NA_integer_ else diag_tbl$divergences
+  diag_default <- tibble::tibble(
+    rhat_max        = NA_real_,
+    ess_bulk_min    = NA_real_,
+    ess_tail_min    = NA_real_,
+    divergences     = NA_integer_,
+    treedepth_hits  = NA_integer_,
+    bfmi_min        = NA_real_,
+    rhat_pass       = NA, ess_pass = NA, divergence_pass = NA,
+    treedepth_pass  = NA, bfmi_pass = NA, all_pass = NA
+  )
+  diag_row <- if (is.null(diag_tbl)) diag_default else diag_tbl
 
   list(
     success = TRUE,
@@ -436,30 +580,36 @@ fit_joint_4pl_sim <- function(data,
                      lower = et$T_crit$summary$temp_lower,
                      upper = et$T_crit$summary$temp_upper),
     draws = draws_df,
-    diagnostics = list(rhat_max = rhat_max, divergences = divergences)
+    diagnostics = diag_row
   )
 }
 
 # ----- per-simulation result extractor ----------------------------------------
 
-#' Tidy one (joint 4PL, two-stage) pair against the truth
+#' Tidy three-estimator results against the truth
 #'
-#' Computes signed bias, interval coverage, and interval width for both
-#' estimators and both quantities ($z$, $CT_{max_{1hr}}$). Returns a long-format
-#' tibble — one row per (method, quantity).
+#' Computes signed bias, interval coverage, and interval width for all three
+#' estimators (joint 4PL, classical two-stage, patched two-stage) and both
+#' quantities ($z$, $CT_{max_{1hr}}$). Returns a long-format tibble — one row
+#' per (method, quantity).
 #'
-#' @param joint Output of [fit_joint_4pl_sim()].
-#' @param ts    Output of [fit_two_stage_classical()].
-#' @param truth Output of [sim_twostage_truth()].
+#' Method labels: `"joint_4pl"`, `"two_stage_bin"` (binomial Stage-1 GLM —
+#' the field default), `"two_stage_bb"` (beta-binomial Stage-1 GLM — the
+#' patched variant).
+#'
+#' @param joint  Output of [fit_joint_4pl_sim()].
+#' @param ts_bin Output of [fit_two_stage_classical()] (binomial Stage-1).
+#' @param ts_bb  Output of [fit_two_stage_betabin()] (beta-binomial Stage-1).
+#' @param truth  Output of [sim_twostage_truth()].
 #' @param sim_id Integer simulation index.
-#' @param scenario Character scenario label (e.g. `"n3"`, `"n5"`).
+#' @param scenario Character scenario label.
 #' @param runtime_sec Numeric — wall time spent on the joint 4PL fit.
 #' @return Tibble with columns `sim_id`, `scenario`, `method`, `quantity`,
 #'         `truth`, `estimate`, `bias`, `lower`, `upper`, `covered`,
 #'         `width`, `success`.
 #' @export
-sim_twostage_result_row <- function(joint, ts, truth, sim_id, scenario,
-                                    runtime_sec = NA_real_) {
+sim_twostage_result_row <- function(joint, ts_bin, ts_bb, truth, sim_id,
+                                    scenario, runtime_sec = NA_real_) {
   pack <- function(method, q_name, est, lo, hi, true_val, success) {
     tibble::tibble(
       sim_id   = sim_id,
@@ -484,12 +634,18 @@ sim_twostage_result_row <- function(joint, ts, truth, sim_id, scenario,
     pack("joint_4pl", "CTmax_1hr",
          joint$CTmax_1hr$point, joint$CTmax_1hr$lower, joint$CTmax_1hr$upper,
          truth$CTmax_1hr_true, joint$success),
-    pack("two_stage", "z",
-         ts$z$point, ts$z$lower, ts$z$upper,
-         truth$z_true, ts$success),
-    pack("two_stage", "CTmax_1hr",
-         ts$CTmax_1hr$point, ts$CTmax_1hr$lower, ts$CTmax_1hr$upper,
-         truth$CTmax_1hr_true, ts$success)
+    pack("two_stage_bin", "z",
+         ts_bin$z$point, ts_bin$z$lower, ts_bin$z$upper,
+         truth$z_true, ts_bin$success),
+    pack("two_stage_bin", "CTmax_1hr",
+         ts_bin$CTmax_1hr$point, ts_bin$CTmax_1hr$lower, ts_bin$CTmax_1hr$upper,
+         truth$CTmax_1hr_true, ts_bin$success),
+    pack("two_stage_bb", "z",
+         ts_bb$z$point, ts_bb$z$lower, ts_bb$z$upper,
+         truth$z_true, ts_bb$success),
+    pack("two_stage_bb", "CTmax_1hr",
+         ts_bb$CTmax_1hr$point, ts_bb$CTmax_1hr$lower, ts_bb$CTmax_1hr$upper,
+         truth$CTmax_1hr_true, ts_bb$success)
   )
   rows$runtime_sec <- runtime_sec
   rows
