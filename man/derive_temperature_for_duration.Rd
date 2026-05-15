@@ -8,7 +8,7 @@ derive_temperature_for_duration(
   workflow,
   exposure_duration,
   temp_grid,
-  target_surv = 0.5,
+  target_surv = "relative",
   ndraws = 1000,
   probs = c(0.025, 0.5, 0.975)
 )
@@ -20,22 +20,33 @@ derive_temperature_for_duration(
 
 \item{temp_grid}{Numeric vector of temperatures to search over.}
 
-\item{target_surv}{Survival probability to invert at. Default 0.5.}
+\item{target_surv}{Threshold mode. \code{"relative"} (default), \code{"absolute"},
+or a numeric in \verb{(0, 1)}.}
 
 \item{ndraws}{Posterior draws. Default 1000.}
 
 \item{probs}{Quantile probabilities. Default \code{c(0.025, 0.5, 0.975)}.}
 }
 \value{
-A list with \code{draws} (per-draw threshold temperatures), \code{summary}
-(quantile summary), \code{exposure_duration}, \code{target_surv}.
+A list with \code{draws} (per-draw threshold temperatures; \code{target_surv}
+column is a character label), \code{summary} (quantile summary),
+\code{exposure_duration}, \code{target_surv} (the label).
 }
 \description{
 The \strong{vertical} read of the survival surface: fix an exposure duration,
-invert numerically over temperature to find where survival crosses
-\code{target_surv}. Returns one temperature per posterior draw.
+find the temperature at which the posterior survival reaches the chosen
+threshold. Returns one temperature per posterior draw.
 }
 \details{
-This is the primitive used by \code{\link[=extract_tdt]{extract_tdt()}} to derive CTmax (at
-\code{target_surv = 0.5}) and T_crit (at \code{target_surv = 1 - TC_thresh}).
+Threshold modes (via \code{target_surv}) match \code{\link[=derive_tdt_curve]{derive_tdt_curve()}}:
+\itemize{
+\item \code{"relative"} (default) → temperature at which \code{mid(T) = log10(exposure_duration)}
+per draw. The inversion is done analytically per draw: extract
+\code{posterior_linpred(nlpar = "mid")} over \code{temp_grid}, then \code{approx()} to
+the target log10-time.
+\item \code{"absolute"} (= 0.5) or numeric \code{p} in \verb{(0, 1)} → existing numerical
+inversion of the 4PL survival surface at the literal probability \code{p}.
+}
+
+This is the primitive used by \code{\link[=extract_tdt]{extract_tdt()}} to derive CTmax at \code{t_ref}.
 }

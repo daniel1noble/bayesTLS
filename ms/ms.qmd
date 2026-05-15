@@ -202,36 +202,29 @@ $$
 \text{mid}_{ij} = \beta_0 + \beta_1\,(T_{ij} - \bar{T}),
 $$ {#eq-mid-temp}
 
-where $\text{mid}_{ij}$ is the midpoint ($\log_{10}$-time at 50% survival between $\text{low}$ and $\text{up}$) for trial $j$ at assay temperature $T_{ij}$ (°C); $\beta_0$ is the intercept giving the midpoint at the grand mean temperature $\bar{T}$; $\beta_1$ is the slope describing how the midpoint changes per °C increase in $T_{ij}$; and $\bar{T}$ is the grand mean of assay temperatures used to mean-centre $T_{ij}$, which decorrelates $\beta_0$ from $\beta_1$ and improves parameter estimation and interpretation [@schielzeth_centering_2010]. 
+where $\text{mid}_{ij}$ is the $\log_{10}$-time at which survival equals the midpoint between the lower and upper asymptotes for trial $j$ at assay temperature $T_{ij}$ (°C); $\beta_0$ is the intercept giving the midpoint at the grand mean temperature $\bar{T}$; $\beta_1$ is the slope describing how the midpoint changes per °C increase in $T_{ij}$; and $\bar{T}$ is the grand mean of assay temperatures used to mean-centre $T_{ij}$, which decorrelates $\beta_0$ from $\beta_1$ and improves parameter estimation and interpretation [@schielzeth_centering_2010]. When the experimental design anchors $\text{low}$ and $\text{up}$ near 0 and 1, the midpoint coincides with the classical $t_{50}$; when intrinsic background mortality pulls $\text{up}$ below 1, $\text{mid}$ remains the dose-response midpoint and isolates the *shape* of the temperature × duration response from the group-level ceiling.
 
-Setting $p_{ij} = 0.5$ in @eq-4pl, isolating the exponential, and taking natural logs gives $\log_{10}t_{50}(T) = \text{mid}(T) + (1/k)\log[(\text{up} - 0.5)/(0.5 - \text{low})]$. Substituting into @eq-mid-temp and grouping all terms that do not depend on $T$ into an intercept, $\alpha$, recovers the classical TDT linear relation:
+Because $\text{mid}$ is by construction the $\log_{10}$-time on the survival curve at temperature $T$, the regression in @eq-mid-temp *is* the classical TDT line on the mean-centred temperature axis. The classical TLS quantities fall out directly: thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = \bar{T} + (\log_{10} t_\text{ref} - \beta_0)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each quantity can be estimated separately for different strata (sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\text{low}$, $\text{up}$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
 
-$$
-\log_{10} t_{50}(T) \;=\; \underbrace{\left[\beta_0 + \tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}} - \beta_1\bar{T}\right]}_{\alpha} \;+\; \beta_1\,T,
-$$ {#eq-t50}
-
-Note that @eq-t50 subtracts $\beta_1\bar{T}$ in $\alpha$ because we mean-centred $T$. With this subtraction, the intercept estimates $\log_{10}t_{50}$ at the average temperature ($\bar{T}$); without it, the intercept estimates $\log_{10}t_{50}$ at $T = 0$°C. From @eq-t50, the classical TLS quantities fall out directly. Thermal sensitivity is $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). Each of these quantities can be estimated separately for different strata (e.g., sex, population, species) by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\text{low}$, $\text{up}$, and $k$, each of which is modelled separately in the joint Bayesian fit (see @eq-linpred below).
-
-
-The same derivation generalises beyond the median: the Bayesian dose-response fit gives access to *any* mortality percentile, not just $t_{50}$ [@rezende_drosophila_mortality_2020; @jorgensen_unifying_2021]. Setting $p_{ij} = x/100$ in @eq-4pl and following the same algebra used for $t_{50}$, the posterior samples of $(\text{low}, \text{up}, k, m(T))$ deliver the time at which $x\%$ of the population reaches the assayed endpoint:
+For applications anchored to a specific absolute survival probability — e.g., operational thresholds such as $t_{50}$ where exactly half the cohort survives, or risk-management thresholds such as $t_{10}$ marking the onset of mortality — the same posterior delivers the corresponding time once an asymmetry correction is added to $\text{mid}$. Setting $p_{ij} = x/100$ in @eq-4pl and following the same algebra used at the midpoint gives
 
 $$
-\log_{10} t_x(T) \;=\; m(T) \;-\; \frac{1}{k}\,\ln\!\frac{\text{up} - x/100}{x/100 - \text{low}},
+\log_{10} t_x(T) \;=\; \text{mid}(T) \;-\; \frac{1}{k}\,\ln\!\frac{\text{up} - x/100}{x/100 - \text{low}},
 $$ {#eq-LTx}
 
-Varying $x$ in @eq-LTx then yields any threshold of interest. For instance, $t_{10}$ marks the onset of early mortality — useful for risk management — while $t_{90}$ is closer to a population-collapse threshold. As with $t_{50}$, every prediction inherits the joint posterior, so uncertainty bands can be reported alongside the population-level median.
-
-Importantly, the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \text{low}}$ does not depend on $T$. Instead, it shifts $\log_{10}t_{50}$ vertically without changing the slope. In contrast, threshold summaries are not robust in this way; when partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, the asymmetry correction must be retained — added to the naive $\log_{10}t_{50}$ (@eq-t50-corrected) and subtracted, after division by the slope (to convert the vertical shift in $\log_{10}t_{50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
+so that any absolute percentile is recovered from the same fit by varying $x$. The correction vanishes when $\text{low} \to 0$ and $\text{up} \to 1$, recovering $\text{mid}$; it grows whenever an asymptote is pulled away from its anchor. In particular, for the classical absolute $t_{50}$ ($x = 50$),
 
 $$
-\log_{10}t_{50}(T) \;=\; \underbrace{\beta_0 + \beta_1(T - \bar{T})}_{\text{naive estimate}} \;+\; \underbrace{\tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}}}_{\text{correction}},
-$$ {#eq-t50-corrected}
+\log_{10} t_{50}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}},
+$$ {#eq-t50}
+
+and the corresponding critical thermal limit shifts by the same correction divided by $\beta_1$:
 
 $$
-CT_{max}(t_\text{ref}) \;=\; \underbrace{\frac{\log_{10}t_\text{ref} - \beta_0 + \beta_1\bar{T}}{\beta_1}}_{\text{naive estimate}} \;-\; \underbrace{\tfrac{1}{\beta_1}\cdot\tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}}}_{\text{correction}}.
+CT_{max}(t_\text{ref}) \;=\; \bar{T} + \frac{\log_{10} t_\text{ref} - \beta_0}{\beta_1} \;-\; \frac{1}{\beta_1}\cdot\tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}}.
 $$ {#eq-ctmax-corrected}
 
-In practice, however, these corrections may not be needed so long as the experimental design includes treatments that span the full mortality range which anchors $\text{low}$ and $\text{up}$ tightly near 1 and 0 and makes the correction term effectively zero. When this is the case, $\log_{10}t_{50}$ and $CT_{max}$ can be read directly from the naive forms in @eq-t50-corrected and @eq-ctmax-corrected. Regardless, we recommend using the correction factor as a safeguard. However, computing both the naive and corrected estimates and comparing them is a useful sensitivity check for whether the correction is needed in any given dataset.
+Two practical points. First, because $\text{mid}$ is one of the four sub-parameters the joint Bayesian fit estimates directly, $z$ is read off the slope of @eq-mid-temp with no asymptote arithmetic — there is no "naïve" form to correct, and the slope is by construction robust to changes in the estimated asymptotes whenever $\text{low}$, $\text{up}$, and $k$ are constants in $T$. Second, the absolute correction in @eq-t50 is itself a function of $T$ when any of $\text{low}$, $\text{up}$, or $k$ depends on temperature, so absolute $t_{50}$ and $CT_{max}$ can differ slightly in *shape* from the midpoint line; comparing the midpoint regression and the absolute form is a useful sensitivity check when intrinsic background mortality is suspected.
 
 # Predicting heat injury and survival under dynamic thermal environments
 

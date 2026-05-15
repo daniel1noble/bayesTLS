@@ -6,6 +6,7 @@
 \usage{
 extract_tdt(
   workflow,
+  target_surv = "relative",
   t_ref = 60,
   TC_rate_range = c(0.1, 1),
   temp_grid = NULL,
@@ -19,10 +20,14 @@ extract_tdt(
 \arguments{
 \item{workflow}{Fitted \code{bayes_tls}.}
 
+\item{target_surv}{Threshold mode. \code{"relative"} (default; threshold =
+\code{(low + up)/2} per draw, computed from \code{mid}),
+\code{"absolute"} (= 0.5), or a numeric in \verb{(0, 1)}.}
+
 \item{t_ref}{Reference exposure duration for CTmax, in the
 \code{output_time_unit} (default \code{"min"}). Default 60.}
 
-\item{TC_rate_range}{Numeric length-2: HI-rate floor range, in \% LT50-dose
+\item{TC_rate_range}{Numeric length-2: HI-rate floor range, in \% LT-dose
 per hour, used to derive T_crit (only when
 \code{lethal = TRUE}). Default \code{c(0.1, 1)}. Sampled uniformly
 on \code{log10(r/100)}, which is the natural scale for a
@@ -55,7 +60,7 @@ A list with elements:
 \item \code{CTmax}: list with \code{draws} (per-draw temperature) and \code{summary}.
 \item \code{T_crit}: list with \code{draws} and \code{summary} when \code{lethal = TRUE};
 \code{NULL} otherwise.
-\item \code{lt50_curve}: output of \code{\link[=derive_ltx_curve]{derive_ltx_curve()}} (intermediate).
+\item \code{lt50_curve}: output of \code{\link[=derive_tdt_curve]{derive_tdt_curve()}} (intermediate).
 \item \code{meta}: list of inputs used (\code{t_ref}, \code{TC_rate_range}, \code{lethal},
 \code{output_time_unit}).
 }
@@ -66,11 +71,20 @@ Always returns:
 \details{
 \itemize{
 \item \strong{z} — thermal sensitivity, derived by per-draw log-linear regression of
-\code{log10(LT50)} on temperature (see \code{\link[=derive_tdt_parameters]{derive_tdt_parameters()}}).
-\item \strong{CTmax} — temperature at which survival = 0.5 after \code{t_ref} exposure;
-the temperature where the LT_50 curve crosses \code{t_ref}. Computed by
-inverting the 4PL surface at fixed exposure duration.
+\code{log10(LT_x)} on temperature (see \code{\link[=derive_tdt_parameters]{derive_tdt_parameters()}}). The
+threshold defining the LT_x curve is controlled by \code{target_surv}.
+\item \strong{CTmax} — temperature at which survival reaches the chosen threshold
+after \code{t_ref} exposure; the temperature where the LT_x curve crosses
+\code{t_ref}.
 }
+
+By default (\code{target_surv = "relative"}), the threshold is the per-draw
+midpoint between the fitted lower and upper asymptotes (\code{(low + up)/2}).
+This is the most biologically meaningful threshold when the upper asymptote
+is below 1 (e.g., when there is intrinsic background mortality unrelated to
+heat stress). When \verb{low ≈ 0} and \verb{up ≈ 1}, this coincides with the
+classical absolute 50 \% LT50. Pass \code{target_surv = "absolute"} (or any
+numeric in \verb{(0, 1)}) to recover the absolute threshold.
 
 When \code{lethal = TRUE} it \emph{also} returns \strong{T_crit}, the rate-multiplier
 critical temperature: for each posterior draw,

@@ -53,44 +53,57 @@ extract_4pl_pars <- function(workflow) {
 #' Analytical inverse 4PL: duration to reach a target survival at a given temperature
 #'
 #' For each `temp`, computes the exposure duration at which the 4PL gives
-#' `survival_target`. This is the analytical inverse of
-#' `p = low + (up - low) / (1 + exp(k * (log10 t - mid(T))))` solved for `t`.
+#' the chosen survival threshold. In `"relative"` mode the threshold is the
+#' per-draw midpoint between the asymptotes, which collapses to the bare 4PL
+#' `mid` parameter on the natural time axis. In absolute mode it is the
+#' literal probability `survival_target`.
 #'
 #' @param temp           Numeric vector of temperatures (°C).
-#' @param survival_target Survival probability to invert at. Must lie strictly
-#'                       between `low` and `up`.
+#' @param survival_target Either the literal probability to invert at (must
+#'                       lie strictly between `low` and `up`), or the string
+#'                       `"relative"` to use `(low + up)/2`.
 #' @param low,up,k       Scalar (or per-temp) 4PL parameters.
 #' @param mid_int,mid_temp Midpoint sub-model coefficients.
 #' @param temp_mean      Centring temperature used by the model.
 #' @return Numeric vector of durations in the model's time units. `NA` where
-#'         `survival_target` is outside `(low, up)`.
+#'         the threshold is outside `(low, up)` in absolute mode.
 #' @keywords internal
 time_to_surv_threshold_4pl <- function(temp, survival_target,
                                        low, up, k,
                                        mid_int, mid_temp, temp_mean) {
+  temp_c <- temp - temp_mean
+  mid    <- mid_int + mid_temp * temp_c
+  if (is.character(survival_target) && length(survival_target) == 1L &&
+      survival_target == "relative") {
+    return(10 ^ mid)
+  }
   if (survival_target <= low || survival_target >= up)
     return(rep(NA_real_, length(temp)))
-  temp_c   <- temp - temp_mean
-  mid      <- mid_int + mid_temp * temp_c
   log_term <- log((up - survival_target) / (survival_target - low))
   10 ^ (mid + log_term / k)
 }
 
 #' Survival corresponding to an accumulated dose
 #'
-#' Inverts the dose interpretation: at `dose = 1`, survival equals
-#' `target_surv` by construction. The 4PL maps dose smoothly to survival
-#' on the reference dose-response curve.
+#' Inverts the dose interpretation: at `dose = 1`, survival equals the
+#' threshold by construction. The 4PL maps dose smoothly to survival on the
+#' reference dose-response curve.
 #'
 #' @param dose Numeric vector of cumulative doses (in units where 1 dose =
-#'             1 LT-dose at target_surv).
+#'             1 LT-dose at the chosen threshold).
 #' @param low,up,k 4PL parameters at the reference (centring) temperature.
-#' @param target_surv Survival probability that defines "1 dose". Default 0.5.
+#' @param target_surv Either the literal probability defining "1 dose" or the
+#'                    string `"relative"` for the `(low + up)/2` threshold.
 #' @return Numeric vector of predicted survival probabilities.
 #' @keywords internal
-survival_from_dose <- function(dose, low, up, k, target_surv = 0.5) {
+survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
   dose_use <- pmax(dose, 1e-12)
-  c_target <- log((up - target_surv) / (target_surv - low)) / k
+  if (is.character(target_surv) && length(target_surv) == 1L &&
+      target_surv == "relative") {
+    c_target <- 0
+  } else {
+    c_target <- log((up - target_surv) / (target_surv - low)) / k
+  }
   low + (up - low) / (1 + exp(k * (log10(dose_use) + c_target)))
 }
 
@@ -112,9 +125,12 @@ survival_from_dose <- function(dose, low, up, k, target_surv = 0.5) {
 #' @param trace        Tibble with columns `time_h` (numeric, hours from start)
 #'                     and `temp` (°C), in time order. Requires ≥ 2 rows.
 #' @param workflow     Fitted `bayes_tls`.
-#' @param target_surv  Survival probability defining "1 dose". Default 0.5
-#'                     (LT50). Other values (e.g. 0.95 for T_crit framing) are
-#'                     mechanically valid but reinterpret what HI = 100% means.
+#' @param target_surv  Threshold defining "1 dose". `"relative"` (default;
+#'                     `(low + up)/2`), `"absolute"` (= 0.5), or a numeric in
+#'                     `(0, 1)`. The default coincides with the classical LT50
+#'                     when `low ≈ 0` and `up ≈ 1`; with sub-unit asymptotes
+#'                     the relative threshold is the more biologically
+#'                     meaningful anchor for dose accounting.
 #' @param T_c          Optional damage-accumulation threshold (°C). When
 #'                     supplied, the damage rate is forced to zero at
 #'                     `temp <= T_c` (matches Equation 7 of the manuscript).
@@ -148,7 +164,7 @@ survival_from_dose <- function(dose, low, up, k, target_surv = 0.5) {
 #' }
 #' @export
 predict_heat_injury <- function(trace, workflow,
-                                target_surv = 0.5,
+                                target_surv = "relative",
                                 T_c         = NULL,
                                 ndraws      = 500,
                                 repair      = FALSE,
@@ -164,6 +180,11 @@ predict_heat_injury <- function(trace, workflow,
   if (repair && is.null(repair_pars))
     stop("Supply repair_pars when repair = TRUE.", call. = FALSE)
 
+  # Normalise the threshold up front so we can pass either the literal
+  # probability or the sentinel string "relative" down to the helpers.
+  ts <- resolve_target_surv(target_surv)
+  ts_arg <- if (ts$mode == "relative") "relative" else ts$prob
+
   trace     <- trace[order(trace$time_h), , drop = FALSE]
   n         <- nrow(trace)
   dt        <- if (n >= 2L) diff(trace$time_h)[1] else 1
@@ -177,7 +198,7 @@ predict_heat_injury <- function(trace, workflow,
   for (i in seq_len(nrow(pars))) {
 
     tau <- time_to_surv_threshold_4pl(
-      temp = trace$temp, survival_target = target_surv,
+      temp = trace$temp, survival_target = ts_arg,
       low = pars$low[i], up = pars$up[i], k = pars$k[i],
       mid_int = pars$mid_int[i], mid_temp = pars$mid_temp[i],
       temp_mean = temp_mean
@@ -213,7 +234,7 @@ predict_heat_injury <- function(trace, workflow,
       new_dose <- max(0, prev_dose + dmg[j] * dt - rep_j)
       surv_raw <- survival_from_dose(
         new_dose, low = pars$low[i], up = pars$up[i], k = pars$k[i],
-        target_surv = target_surv
+        target_surv = ts_arg
       )
       surv_new <- if (irreversible_mortality) min(prev_surv, surv_raw) else surv_raw
 
@@ -255,7 +276,8 @@ predict_heat_injury <- function(trace, workflow,
 
   out <- list(
     summary = summary,
-    meta    = list(target_surv = target_surv, T_c = T_c, repair = repair,
+    meta    = list(target_surv = ts$label, target_mode = ts$mode,
+                   target_prob = ts$prob, T_c = T_c, repair = repair,
                    repair_pars = repair_pars, ndraws = nrow(pars))
   )
   if (save_draws) out$draws <- draws

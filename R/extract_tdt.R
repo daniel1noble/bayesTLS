@@ -1,13 +1,60 @@
 # Classical TDT quantities (z, CTmax, T_crit) derived from a fitted 4PL via
-# numerical inversion of the posterior survival surface. Three primitives plus
-# a bundling wrapper.
+# either the 4PL `mid` parameter directly (relative threshold; default) or
+# numerical inversion of the posterior survival surface at an absolute
+# survival probability.
 
-#' Posterior LT_x curve: time to reach a given survival target at each temperature
+#' Normalise a `target_surv` argument
 #'
-#' For each posterior draw and each temperature in `temp_grid`, finds the
-#' duration at which population-level survival crosses `target_surv`. The
-#' inversion is numerical — predict survival on a dense duration grid, then
-#' `approx()` through `target_surv`.
+#' Accepts the user-facing argument (string `"relative"`/`"absolute"` or
+#' numeric in `(0, 1)`) and returns a list describing the chosen threshold
+#' mode plus a character label suitable for embedding in result tibbles.
+#'
+#' - `"relative"` (default) → threshold = `(low + up)/2` per posterior draw.
+#'   The 4PL `mid` parameter is the log10-time at this threshold, so no
+#'   numerical inversion is needed.
+#' - `"absolute"` → threshold = 0.5 (literal survival probability).
+#' - numeric `p` in `(0, 1)` → threshold = `p` (literal survival probability).
+#'
+#' @keywords internal
+resolve_target_surv <- function(target_surv) {
+  if (is.character(target_surv) && length(target_surv) == 1L) {
+    if (target_surv == "relative") {
+      return(list(mode = "relative", prob = NA_real_,
+                  label = "(low+up)/2"))
+    }
+    if (target_surv == "absolute") {
+      return(list(mode = "absolute", prob = 0.5,
+                  label = sprintf("p=%.3f", 0.5)))
+    }
+    stop("target_surv must be \"relative\", \"absolute\", or a numeric in (0, 1).",
+         call. = FALSE)
+  }
+  if (is.numeric(target_surv) && length(target_surv) == 1L &&
+      is.finite(target_surv) && target_surv > 0 && target_surv < 1) {
+    return(list(mode = "absolute", prob = as.numeric(target_surv),
+                label = sprintf("p=%.3f", as.numeric(target_surv))))
+  }
+  stop("target_surv must be \"relative\", \"absolute\", or a numeric in (0, 1).",
+       call. = FALSE)
+}
+
+#' Posterior LT_x curve: time to reach a survival target at each temperature
+#'
+#' Returns the per-draw duration at which population-level survival crosses
+#' the chosen threshold, at each temperature in `temp_grid`.
+#'
+#' Two threshold modes are supported via `target_surv`:
+#'
+#' - `"relative"` (default): the duration at which survival reaches the
+#'   midpoint between the fitted lower and upper asymptotes, i.e.
+#'   `(low + up)/2`. This is the 4PL `mid` parameter on the natural time
+#'   axis, returned directly from `posterior_linpred(nlpar = "mid")` — no
+#'   numerical inversion. When `low ≈ 0` and `up ≈ 1` it coincides with
+#'   the classical LT50.
+#' - `"absolute"` (or a numeric `p` in `(0, 1)`): the duration at which
+#'   survival crosses the literal probability `p` (0.5 by default). The
+#'   inversion is numerical — predict survival on a dense duration grid,
+#'   then `approx()` through `p`.
 #'
 #' This is the **horizontal** read of the survival surface: fix a survival
 #' threshold, read off the time required to reach it at each temperature.
@@ -15,23 +62,26 @@
 #' @param workflow         Fitted `bayes_tls`.
 #' @param temp_grid        Numeric vector of temperatures (°C).
 #' @param duration_grid    Numeric vector of durations along which to search.
-#'                         Default: 350 log-spaced values spanning 0.2× to 5×
-#'                         the training data's duration range.
-#' @param target_surv      Survival probability to invert at. Default 0.5.
+#'                         Only used in `"absolute"` mode. Default: 350
+#'                         log-spaced values spanning 0.2× to 5× the training
+#'                         data's duration range.
+#' @param target_surv      Threshold mode. `"relative"` (default), `"absolute"`
+#'                         (= 0.5), or a numeric in `(0, 1)`.
 #' @param ndraws           Posterior draws to use. Default 1000.
 #' @param probs            Quantile probabilities for the summary. Default
 #'                         `c(0.025, 0.5, 0.975)`.
 #' @param time_multiplier  Multiplier from model time units to output time
 #'                         units (e.g. 60 for hours → min). Default 60.
 #' @param output_time_unit Label for the output time unit. Default `"min"`.
-#' @return A list with `draws` (per-draw threshold durations), `summary`
-#'         (quantile summary by temperature), `target_surv`, `time_multiplier`,
+#' @return A list with `draws` (per-draw threshold durations; `target_surv`
+#'         column is a character label), `summary` (quantile summary by
+#'         temperature), `target_surv` (the label), `time_multiplier`,
 #'         `output_time_unit`.
 #' @export
-derive_ltx_curve <- function(workflow,
+derive_tdt_curve <- function(workflow,
                              temp_grid,
                              duration_grid    = NULL,
-                             target_surv      = 0.5,
+                             target_surv      = "relative",
                              ndraws           = 1000,
                              probs            = c(0.025, 0.5, 0.975),
                              time_multiplier  = 60,
@@ -39,30 +89,56 @@ derive_ltx_curve <- function(workflow,
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
-  if (is.null(duration_grid)) {
-    drange <- range(workflow$data$duration, na.rm = TRUE)
-    duration_grid <- 10 ^ seq(log10(drange[1] / 5),
-                              log10(drange[2] * 5),
-                              length.out = 350)
-  }
+  ts <- resolve_target_surv(target_surv)
 
-  nd   <- new_tdt_grid(workflow, temps = temp_grid, durations = duration_grid)
-  pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws, re_formula = NA)
+  if (ts$mode == "relative") {
+    # Direct shortcut: log10(t_relative) = mid(T) per draw. No grid search.
+    nd <- new_tdt_grid(workflow, temps = temp_grid, durations = 1)
+    pp_mid <- brms::posterior_linpred(workflow$fit, newdata = nd,
+                                       nlpar = "mid", re_formula = NA,
+                                       ndraws = ndraws)
+    # pp_mid is [ndraws x length(temp_grid)] of log10(t) in model time units.
+    duration_model_mat <- 10 ^ pp_mid
 
-  draw_list <- vector("list", length(temp_grid))
-  for (i in seq_along(temp_grid)) {
-    t_i <- temp_grid[i]
-    idx <- nd$temp == t_i
-    thr <- threshold_x_by_draw(pred_mat = pred[, idx, drop = FALSE],
-                               x        = nd$duration[idx],
-                               target   = target_surv)
-    draw_list[[i]] <- data.frame(
-      .draw            = seq_along(thr),
-      temp             = t_i,
-      target_surv      = target_surv,
-      duration_model   = thr,
-      duration_out     = thr * time_multiplier
-    )
+    draw_list <- vector("list", length(temp_grid))
+    for (i in seq_along(temp_grid)) {
+      t_i  <- temp_grid[i]
+      dmod <- duration_model_mat[, i]
+      draw_list[[i]] <- data.frame(
+        .draw            = seq_along(dmod),
+        temp             = t_i,
+        target_surv      = ts$label,
+        duration_model   = dmod,
+        duration_out     = dmod * time_multiplier,
+        stringsAsFactors = FALSE
+      )
+    }
+  } else {
+    if (is.null(duration_grid)) {
+      drange <- range(workflow$data$duration, na.rm = TRUE)
+      duration_grid <- 10 ^ seq(log10(drange[1] / 5),
+                                log10(drange[2] * 5),
+                                length.out = 350)
+    }
+    nd   <- new_tdt_grid(workflow, temps = temp_grid, durations = duration_grid)
+    pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws,
+                                   re_formula = NA)
+    draw_list <- vector("list", length(temp_grid))
+    for (i in seq_along(temp_grid)) {
+      t_i <- temp_grid[i]
+      idx <- nd$temp == t_i
+      thr <- threshold_x_by_draw(pred_mat = pred[, idx, drop = FALSE],
+                                 x        = nd$duration[idx],
+                                 target   = ts$prob)
+      draw_list[[i]] <- data.frame(
+        .draw            = seq_along(thr),
+        temp             = t_i,
+        target_surv      = ts$label,
+        duration_model   = thr,
+        duration_out     = thr * time_multiplier,
+        stringsAsFactors = FALSE
+      )
+    }
   }
 
   draws <- dplyr::bind_rows(draw_list) |>
@@ -79,7 +155,9 @@ derive_ltx_curve <- function(workflow,
 
   list(draws            = draws,
        summary          = summary,
-       target_surv      = target_surv,
+       target_surv      = ts$label,
+       target_mode      = ts$mode,
+       target_prob      = ts$prob,
        time_multiplier  = time_multiplier,
        output_time_unit = output_time_unit)
 }
@@ -87,48 +165,78 @@ derive_ltx_curve <- function(workflow,
 #' Temperature at which survival equals a target after a fixed exposure
 #'
 #' The **vertical** read of the survival surface: fix an exposure duration,
-#' invert numerically over temperature to find where survival crosses
-#' `target_surv`. Returns one temperature per posterior draw.
+#' find the temperature at which the posterior survival reaches the chosen
+#' threshold. Returns one temperature per posterior draw.
 #'
-#' This is the primitive used by [extract_tdt()] to derive CTmax (at
-#' `target_surv = 0.5`) and T_crit (at `target_surv = 1 - TC_thresh`).
+#' Threshold modes (via `target_surv`) match [derive_tdt_curve()]:
+#'
+#' - `"relative"` (default) → temperature at which `mid(T) = log10(exposure_duration)`
+#'   per draw. The inversion is done analytically per draw: extract
+#'   `posterior_linpred(nlpar = "mid")` over `temp_grid`, then `approx()` to
+#'   the target log10-time.
+#' - `"absolute"` (= 0.5) or numeric `p` in `(0, 1)` → existing numerical
+#'   inversion of the 4PL survival surface at the literal probability `p`.
+#'
+#' This is the primitive used by [extract_tdt()] to derive CTmax at `t_ref`.
 #'
 #' @param workflow         Fitted `bayes_tls`.
 #' @param exposure_duration Numeric scalar — the fixed duration (model units).
 #' @param temp_grid        Numeric vector of temperatures to search over.
-#' @param target_surv      Survival probability to invert at. Default 0.5.
+#' @param target_surv      Threshold mode. `"relative"` (default), `"absolute"`,
+#'                         or a numeric in `(0, 1)`.
 #' @param ndraws           Posterior draws. Default 1000.
 #' @param probs            Quantile probabilities. Default `c(0.025, 0.5, 0.975)`.
-#' @return A list with `draws` (per-draw threshold temperatures), `summary`
-#'         (quantile summary), `exposure_duration`, `target_surv`.
+#' @return A list with `draws` (per-draw threshold temperatures; `target_surv`
+#'         column is a character label), `summary` (quantile summary),
+#'         `exposure_duration`, `target_surv` (the label).
 #' @export
 derive_temperature_for_duration <- function(workflow,
                                             exposure_duration,
                                             temp_grid,
-                                            target_surv = 0.5,
+                                            target_surv = "relative",
                                             ndraws      = 1000,
                                             probs       = c(0.025, 0.5, 0.975)) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
-  nd   <- new_tdt_grid(workflow, temps = temp_grid,
-                       durations = exposure_duration)
-  pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws, re_formula = NA)
+  ts <- resolve_target_surv(target_surv)
 
-  thr <- threshold_x_by_draw(pred_mat = pred,
-                             x        = nd$temp,
-                             target   = target_surv)
+  if (ts$mode == "relative") {
+    # Per-draw inversion of mid(T) = log10(exposure_duration) in model time.
+    nd_mid <- new_tdt_grid(workflow, temps = temp_grid, durations = 1)
+    pp_mid <- brms::posterior_linpred(workflow$fit, newdata = nd_mid,
+                                       nlpar = "mid", re_formula = NA,
+                                       ndraws = ndraws)
+    target_logd <- log10(exposure_duration)
+    # pp_mid is [ndraws x length(temp_grid)] of mid(T) per draw.
+    thr <- vapply(seq_len(nrow(pp_mid)), function(d) {
+      mid_vec <- pp_mid[d, ]
+      if (!any(is.finite(mid_vec))) return(NA_real_)
+      ord <- order(mid_vec)
+      suppressWarnings(
+        stats::approx(mid_vec[ord], temp_grid[ord], xout = target_logd)$y
+      )
+    }, numeric(1))
+  } else {
+    nd   <- new_tdt_grid(workflow, temps = temp_grid,
+                         durations = exposure_duration)
+    pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws,
+                                   re_formula = NA)
+    thr  <- threshold_x_by_draw(pred_mat = pred,
+                                x        = nd$temp,
+                                target   = ts$prob)
+  }
 
   draws <- tibble::tibble(
     .draw       = seq_along(thr),
-    target_surv = target_surv,
+    target_surv = ts$label,
     temp        = thr
   ) |>
     dplyr::filter(is.finite(temp))
 
   summary <- draws |>
     dplyr::summarise(
-      target_surv = target_surv[1],
+      target_surv = ts$label,
       temp_lower  = stats::quantile(temp, probs[1], na.rm = TRUE),
       temp_median = stats::quantile(temp, probs[2], na.rm = TRUE),
       temp_upper  = stats::quantile(temp, probs[3], na.rm = TRUE)
@@ -137,7 +245,9 @@ derive_temperature_for_duration <- function(workflow,
   list(draws             = draws,
        summary           = summary,
        exposure_duration = exposure_duration,
-       target_surv       = target_surv)
+       target_surv       = ts$label,
+       target_mode       = ts$mode,
+       target_prob       = ts$prob)
 }
 
 #' Per-draw z and CTmax from an LT_x curve via per-draw log-linear regression
@@ -150,7 +260,7 @@ derive_temperature_for_duration <- function(workflow,
 #' - `CTmax = (log10(t_ref) - intercept) / slope` — temperature at which
 #'   LT_x equals the reference time.
 #'
-#' @param ltx_curve  Output of [derive_ltx_curve()].
+#' @param ltx_curve  Output of [derive_tdt_curve()].
 #' @param t_ref      Reference time (in `output_time_unit` of `ltx_curve`) for
 #'                   computing CTmax. Default 60 (i.e. CTmax_1hr in min units).
 #' @param min_points Minimum number of temperatures a draw must have to be
@@ -205,10 +315,19 @@ derive_tdt_parameters <- function(ltx_curve,
 #' Always returns:
 #'
 #' - **z** — thermal sensitivity, derived by per-draw log-linear regression of
-#'   `log10(LT50)` on temperature (see [derive_tdt_parameters()]).
-#' - **CTmax** — temperature at which survival = 0.5 after `t_ref` exposure;
-#'   the temperature where the LT_50 curve crosses `t_ref`. Computed by
-#'   inverting the 4PL surface at fixed exposure duration.
+#'   `log10(LT_x)` on temperature (see [derive_tdt_parameters()]). The
+#'   threshold defining the LT_x curve is controlled by `target_surv`.
+#' - **CTmax** — temperature at which survival reaches the chosen threshold
+#'   after `t_ref` exposure; the temperature where the LT_x curve crosses
+#'   `t_ref`.
+#'
+#' By default (`target_surv = "relative"`), the threshold is the per-draw
+#' midpoint between the fitted lower and upper asymptotes (`(low + up)/2`).
+#' This is the most biologically meaningful threshold when the upper asymptote
+#' is below 1 (e.g., when there is intrinsic background mortality unrelated to
+#' heat stress). When `low ≈ 0` and `up ≈ 1`, this coincides with the
+#' classical absolute 50 % LT50. Pass `target_surv = "absolute"` (or any
+#' numeric in `(0, 1)`) to recover the absolute threshold.
 #'
 #' When `lethal = TRUE` it *also* returns **T_crit**, the rate-multiplier
 #' critical temperature: for each posterior draw,
@@ -231,9 +350,12 @@ derive_tdt_parameters <- function(ltx_curve,
 #' `lethal = TRUE` and are reminded by a startup message.
 #'
 #' @param workflow    Fitted `bayes_tls`.
+#' @param target_surv Threshold mode. `"relative"` (default; threshold =
+#'                    `(low + up)/2` per draw, computed from `mid`),
+#'                    `"absolute"` (= 0.5), or a numeric in `(0, 1)`.
 #' @param t_ref       Reference exposure duration for CTmax, in the
 #'                    `output_time_unit` (default `"min"`). Default 60.
-#' @param TC_rate_range Numeric length-2: HI-rate floor range, in % LT50-dose
+#' @param TC_rate_range Numeric length-2: HI-rate floor range, in % LT-dose
 #'                    per hour, used to derive T_crit (only when
 #'                    `lethal = TRUE`). Default `c(0.1, 1)`. Sampled uniformly
 #'                    on `log10(r/100)`, which is the natural scale for a
@@ -257,7 +379,7 @@ derive_tdt_parameters <- function(ltx_curve,
 #'   - `CTmax`: list with `draws` (per-draw temperature) and `summary`.
 #'   - `T_crit`: list with `draws` and `summary` when `lethal = TRUE`;
 #'     `NULL` otherwise.
-#'   - `lt50_curve`: output of [derive_ltx_curve()] (intermediate).
+#'   - `lt50_curve`: output of [derive_tdt_curve()] (intermediate).
 #'   - `meta`: list of inputs used (`t_ref`, `TC_rate_range`, `lethal`,
 #'     `output_time_unit`).
 #' @examples
@@ -275,6 +397,7 @@ derive_tdt_parameters <- function(ltx_curve,
 #' }
 #' @export
 extract_tdt <- function(workflow,
+                        target_surv      = "relative",
                         t_ref            = 60,
                         TC_rate_range    = c(0.1, 1),
                         temp_grid        = NULL,
@@ -292,18 +415,23 @@ extract_tdt <- function(workflow,
     stop("TC_rate_range must be c(low, high) with 0 < low < high (% HI/hour).",
          call. = FALSE)
 
+  # Validate up front so both helpers receive a normalised label.
+  ts <- resolve_target_surv(target_surv)
+
   data <- workflow$data
   if (is.null(temp_grid)) {
     trange   <- range(data$temp, na.rm = TRUE)
     temp_grid <- seq(trange[1] - 2, trange[2] + 2, by = 0.05)
   }
 
-  # LT50 curve → z + CTmax via per-draw log-linear regression
-  lt50_curve <- derive_ltx_curve(
+  # LT_x curve → z + CTmax via per-draw log-linear regression. The threshold
+  # for the curve is set by target_surv; `"relative"` (default) returns mid(T)
+  # directly.
+  lt50_curve <- derive_tdt_curve(
     workflow         = workflow,
     temp_grid        = temp_grid,
     duration_grid    = duration_grid,
-    target_surv      = 0.5,
+    target_surv      = target_surv,
     ndraws           = ndraws,
     time_multiplier  = time_multiplier,
     output_time_unit = output_time_unit
@@ -318,7 +446,7 @@ extract_tdt <- function(workflow,
     workflow          = workflow,
     exposure_duration = exposure_in_model_units,
     temp_grid         = temp_grid,
-    target_surv       = 0.5,
+    target_surv       = target_surv,
     ndraws            = ndraws
   )
 
@@ -366,7 +494,10 @@ extract_tdt <- function(workflow,
                       summary = ctmax$summary),
     T_crit     = t_crit_block,
     lt50_curve = lt50_curve,
-    meta       = list(t_ref            = t_ref,
+    meta       = list(target_surv      = ts$label,
+                      target_mode      = ts$mode,
+                      target_prob      = ts$prob,
+                      t_ref            = t_ref,
                       TC_rate_range    = TC_rate_range,
                       lethal           = isTRUE(lethal),
                       output_time_unit = output_time_unit)

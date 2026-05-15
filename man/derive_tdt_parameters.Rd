@@ -7,7 +7,7 @@
 derive_tdt_parameters(ltx_curve, t_ref = 60, min_points = 5)
 }
 \arguments{
-\item{ltx_curve}{Output of \code{\link[=derive_ltx_curve]{derive_ltx_curve()}}.}
+\item{ltx_curve}{Output of \code{\link[=derive_tdt_curve]{derive_tdt_curve()}}.}
 
 \item{t_ref}{Reference time (in \code{output_time_unit} of \code{ltx_curve}) for
 computing CTmax. Default 60 (i.e. CTmax_1hr in min units).}

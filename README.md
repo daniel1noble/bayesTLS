@@ -181,12 +181,12 @@ Coding, writing, testing, and collaboration conventions live in [CLAUDE.md](CLAU
 - [x] `make_4pl_priors()` — disjoint-bounds priors for proportion data; bounds adjustable via `lower` / `upper` for sublethal/PSII-style data.
 - [x] `fit_4pl()` — joint Bayesian wrapper with `beta_binomial(link = "identity")` (default; `binomial(link = "identity")` available for no-overdispersion), disjoint-bounds reparameterisation, default `~ temp_c` slope on all four 4PL sub-parameters, mean-centred temperature, random intercepts on `mid` via `random_effects = c(...)`, brms `file_refit = "on_change"` caching.
 - [x] `extract_tdt()` — z (per-draw OLS of $\log_{10}\text{LT50}$ on T), CTmax (per-draw 4PL inversion at $t_\text{ref}$), T_crit (rate-multiplier definition from Faber et al.: $T_{crit} = CT_{max,1hr} + z \cdot \log_{10}(r^*/100)$, $r^*$ sampled uniformly on $\log_{10}$ across `TC_rate_range`, default $[0.1, 1]$ %/hr).
-- [x] `derive_ltx_curve()`, `derive_temperature_for_duration()`, `derive_tdt_parameters()`, `derive_tdt_landscape()` — the primitives behind `extract_tdt()`, exported so users can call them directly.
+- [x] `derive_tdt_curve()`, `derive_temperature_for_duration()`, `derive_tdt_parameters()`, `derive_tdt_landscape()` — the primitives behind `extract_tdt()`, exported so users can call them directly.
 - [x] `predict_survival_curves()` — posterior survival curves on a (temp × duration) grid.
 - [x] `predict_heat_injury()` — HI accumulation under any temperature trace; optional Sharpe-Schoolfield repair (`repair_rate_schoolfield()`), Kelvin internally, irreversible-mortality option, save-draws option.
 - [x] `make_temperature_scenarios()` — four reference traces (flat / single-spike / multi-spike / diurnal). Single-spike is calibrated so a 1-hour spike at `CTmax_1hr` delivers ~100% LT50 dose by construction. Diurnal is multi-day with day-to-day variability in peak temperature.
 - [x] `planted_dose_from_trace()` — analytical HI integral truth for validation.
-- [x] Plotting helpers — `plot_survival_curves()` (default linear time + viridis temperature; classical log-time via `log_time = TRUE`), `plot_ltx_curve()`, `plot_tdt_landscape()` (default linear time), `plot_temperature_density()`, `plot_temperature_scenarios()`, `plot_heat_injury()`, `plot_repair_rate()`. Shared `theme_tdt()` for visual consistency.
+- [x] Plotting helpers — `plot_survival_curves()` (default linear time + viridis temperature; classical log-time via `log_time = TRUE`), `plot_tdt_curve()`, `plot_tdt_landscape()` (default linear time), `plot_temperature_density()`, `plot_temperature_scenarios()`, `plot_heat_injury()`, `plot_repair_rate()`. Shared `theme_tdt()` for visual consistency.
 
 **Validation & supplement content:**
 

@@ -176,16 +176,16 @@ tdt_function_tour <- tibble::tribble(
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z).",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands.",
   "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap.",
-  "TDT quantities",   "derive_ltx_curve()",                 "Time-to-x-survival across temperature (per-draw inversion).",
-  "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at survival = X for a fixed exposure duration.",
+  "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` or a numeric for an absolute probability.",
+  "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes).",
   "TDT quantities",   "derive_tdt_parameters()",            "Per-draw log-linear regression of LT_x on temperature; z + CTmax.",
-  "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only).",
+  "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only). Same `target_surv` argument as the primitives above.",
   "Heat injury",      "make_temperature_scenarios()",       "Three reference traces (flat / single spike / multi-spike).",
   "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
   "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace.",
   "Heat injury",      "repair_rate_schoolfield()",          "Sharpe-Schoolfield repair TPC (Kelvin internally).",
   "Plotting",         "plot_survival_curves()",             "Posterior curves with observed proportion overlay.",
-  "Plotting",         "plot_ltx_curve()",                   "LT_x curve on a log-time axis (classical TDT view).",
+  "Plotting",         "plot_tdt_curve()",                   "LT_x curve on a log-time axis (classical TDT view).",
   "Plotting",         "plot_tdt_landscape()",               "Survival heatmap with contour overlay.",
   "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95-percent CrI bar.",
   "Plotting",         "plot_temperature_scenarios()",       "Three traces stacked vertically.",
@@ -649,8 +649,10 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities fall out as transformations of the posterior we just fit — no second regression, no bootstrap. `extract_tdt()` always returns the first two and, opt-in via `lethal = TRUE`, also returns the third:
 
-- **$z$** — thermal sensitivity, derived by a per-draw log-linear regression of $\log_{10}\text{LT50}$ on temperature (Equation 7 of the manuscript).
-- **$CT_{max_{1hr}}$** — temperature at 50% survival after 1 hour exposure, obtained by inverting the fitted 4PL at the reference time, per posterior draw.
+- **$z$** — thermal sensitivity, derived by a per-draw log-linear regression of $\log_{10}\text{LT}_{\text{threshold}}$ on temperature (Equation 7 of the manuscript).
+- **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 hour exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
+
+The threshold is set by the `target_surv` argument. The default `"relative"` evaluates at $(\text{low} + \text{up})/2$ per draw, which reduces to the classical absolute 50 % survival when the asymptotes are anchored at 0 and 1 but is robust to sub-unit upper asymptotes (e.g. intrinsic background mortality unrelated to heat stress; see @sec-zebrafish-relative-ltx). Passing `target_surv = "absolute"` (or any numeric in $(0, 1)$) recovers the classical absolute threshold. The simulation in this section uses asymptotes anchored near 0 and 1, so the two definitions coincide here and the numbers below are unaffected by the choice.
 - **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
 
 $$
@@ -677,7 +679,7 @@ $$
 \log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{u(T) - 0.5}{0.5 - \ell(T)}.
 $$ {#eq-lt50-tvarying}
 
-`extract_tdt()` requires no special handling in either regime, because both of its primitives operate on the *fitted 4PL surface* rather than on a closed-form expression: $CT_{max_{1hr}}$ is obtained by inverting the surface at the reference duration $t_\text{ref}$ per posterior draw (`derive_temperature_for_duration()`), and the per-draw OLS regression that yields $z$ runs over the per-draw $\log_{10}\text{LT50}(T)$ curve recovered numerically by `derive_ltx_curve()`. When the curve is straight, the OLS slope returns the closed-form $z$; when it is bent, the same OLS returns the *average local slope* across the assay grid — a sensible single-summary $z$, with the per-temperature local values accessible from the underlying $\text{LT50}(T)$ curve when needed. The worked example in @sec-joint-extend demonstrates this explicitly with a simulation where $u$ and $k$ carry strong $T$ effects.
+`extract_tdt()` requires no special handling in either regime, because both of its primitives operate on the *fitted 4PL surface* rather than on a closed-form expression: $CT_{max_{1hr}}$ is obtained by inverting the surface at the reference duration $t_\text{ref}$ per posterior draw (`derive_temperature_for_duration()`), and the per-draw OLS regression that yields $z$ runs over the per-draw $\log_{10}\text{LT50}(T)$ curve recovered numerically by `derive_tdt_curve()`. When the curve is straight, the OLS slope returns the closed-form $z$; when it is bent, the same OLS returns the *average local slope* across the assay grid — a sensible single-summary $z$, with the per-temperature local values accessible from the underlying $\text{LT50}(T)$ curve when needed. The worked example in @sec-joint-extend demonstrates this explicitly with a simulation where $u$ and $k$ carry strong $T$ effects.
 :::
 
 ```{r derive-tls}
@@ -1141,7 +1143,7 @@ tibble::tibble(
 
 Both posteriors comfortably cover their analytical truth. The single-summary $z$ is the OLS slope across the assay grid — which, on a bent curve, estimates the *average* local slope (truth = `r round(true_mean_local_z, 2)` °C, posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). $CT_{max_{1hr}}$ is recovered by direct 4PL inversion at the reference duration and lands on the truth (`r round(true_CTmax_1hr, 2)` °C → posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C); the numerical inversion does not depend on the asymmetry correction being constant in $T$.
 
-The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both quantities are built from; it lives in `et_ext$lt50_curve` (the output of `derive_ltx_curve()`) and can be plotted directly (@fig-lt50-curve-ext).
+The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both quantities are built from; it lives in `et_ext$lt50_curve` (the output of `derive_tdt_curve()`) and can be plotted directly (@fig-lt50-curve-ext).
 
 ::: {#fig-lt50-curve-ext}
 
@@ -1157,14 +1159,14 @@ truth_overlay <- {
                                                numeric(1)))
 }
 
-plot_ltx_curve(et_ext$lt50_curve) +
+plot_tdt_curve(et_ext$lt50_curve) +
   ggplot2::geom_line(data = truth_overlay,
                      ggplot2::aes(x = temp, y = duration_median),
                      linetype = "dashed", colour = "black",
                      inherit.aes = FALSE)
 ```
 
-Posterior $\text{LT50}(T)$ curve (median + 95% CrI, blue) recovered by `derive_ltx_curve()` from the T-varying fit, with the analytical truth overlaid (dashed black). The curve is visibly bent rather than straight in $T$, and the posterior tracks the truth.
+Posterior $\text{LT50}(T)$ curve (median + 95% CrI, blue) recovered by `derive_tdt_curve()` from the T-varying fit, with the analytical truth overlaid (dashed black). The curve is visibly bent rather than straight in $T$, and the posterior tracks the truth.
 :::
 
 We can also drop down to the per-draw level and compute a *local* $z(T)$ at each assay temperature from the same `et_ext$lt50_curve` posterior — a finite difference of $\log_{10}\text{LT50}$ around $T$ per draw, summarised across draws (@fig-local-z-ext).
@@ -1553,34 +1555,37 @@ lsp_shrimp <- derive_tdt_landscape(wf_shrimp,
 plot_tdt_landscape(lsp_shrimp, observed = shrimp_std)
 ```
 
-## TDT line: time to 50 % survival vs temperature {#sec-shrimp-tdt-line}
+## TDT line: time to the threshold vs temperature {#sec-shrimp-tdt-line}
 
 The TDT landscape conveys the full 2-D survival surface, but a more
 familiar summary in the thermal-tolerance literature is the
-one-dimensional **TDT line** — the predicted time to 50 % survival as a
-function of temperature. Reading this off the fitted 4PL is exactly
-`derive_ltx_curve(workflow, target_surv = 0.5)`: a horizontal cut of
-the survival surface at $S = 0.5$, returned as a posterior of
-durations at each temperature. We plot it on two side-by-side panels —
-linear time on the left, $\log_{10}$ time on the right — so the same
-relationship can be read either as the absolute hours of exposure that
-half the animals tolerate (more intuitive for ecological
-interpretation) or as the canonical TDT straight line on $\log_{10}$
-time (where the slope is $-1/z$).
+one-dimensional **TDT line** — the predicted time to the survival
+threshold as a function of temperature. We use the package-default
+threshold $(\text{low} + \text{up})/2$, which for the shrimp fit
+coincides numerically with the classical absolute 50 % survival
+(asymptotes are anchored near 0 and 1). Pass
+`derive_tdt_curve(workflow, target_surv = "absolute")` to enforce the
+absolute 50 % target explicitly. We plot it on two side-by-side
+panels — linear time on the left, $\log_{10}$ time on the right — so
+the same relationship can be read either as the absolute hours of
+exposure that half the animals tolerate (more intuitive for
+ecological interpretation) or as the canonical TDT straight line on
+$\log_{10}$ time (where the slope is $-1/z$).
 
 ```{r shrimp-tdt-line}
 #| label: shrimp-tdt-line
 #| echo: true
 
-# Posterior LT50 curve across the assayed temperature range, slightly
-# extended for visualisation. Using time_multiplier = 1 and
-# output_time_unit = "h" keeps the output in hours so `plot_ltx_curve()`
+# Posterior LT_(low+up)/2 curve across the assayed temperature range,
+# slightly extended for visualisation. target_surv = "relative" is the
+# default; spelled out here for clarity. time_multiplier = 1 and
+# output_time_unit = "h" keep the output in hours so `plot_tdt_curve()`
 # can label and clip the y-axis directly in hours.
-ltx_shrimp <- derive_ltx_curve(
+ltx_shrimp <- derive_tdt_curve(
   wf_shrimp,
-  temp_grid        = seq(min(shrimp_std$temp) - 2,
-                         max(shrimp_std$temp) + 2, by = 0.05),
-  target_surv      = 0.5,
+  temp_grid        = seq(min(shrimp_std$temp) - 1.5,
+                         max(shrimp_std$temp) + 1.5, by = 0.05),
+  target_surv      = "relative",
   ndraws           = 500,
   time_multiplier  = 1,
   output_time_unit = "h"
@@ -1589,11 +1594,11 @@ ltx_shrimp <- derive_ltx_curve(
 
 ```{r plot-shrimp-tdt-line}
 #| label: fig-shrimp-tdt-line
-#| fig-cap: "Brown shrimp posterior TDT line: predicted time to 50 % survival vs assay temperature, with 95 % credible band. Linear-time panel on the left makes the rapid drop in survival time as temperature rises immediately visible; $\\log_{10}$-time panel on the right linearises the relationship, so the slope is the classical $-1/z$ summary of thermal sensitivity. Both panels share the same posterior. Produced by `plot_ltx_curve()` (two-panel default, y-axis capped at 48 h)."
+#| fig-cap: "Brown shrimp posterior TDT line: predicted time to the package-default threshold ($(\\text{low}+\\text{up})/2$ per draw; coincides with absolute 50 % survival for the shrimp fit) vs assay temperature, with 95 % credible band. Linear-time panel on the left makes the rapid drop in survival time as temperature rises immediately visible; $\\log_{10}$-time panel on the right linearises the relationship, so the slope is the classical $-1/z$ summary of thermal sensitivity. Both panels share the same posterior. Produced by `plot_tdt_curve()` (two-panel default, y-axis capped at 48 h)."
 #| fig-width: 9
 #| fig-height: 4
 
-plot_ltx_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
+plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 ```
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-shrimp-extract}
@@ -2112,7 +2117,7 @@ lin_pred <- tibble::tibble(
 )
 
 # 4PL model: per-draw log10(LT50) curve from extract_tdt
-ltx_sub <- derive_ltx_curve(
+ltx_sub <- derive_tdt_curve(
   wf_sub_4pl,
   temp_grid       = temp_grid_sub,
   target_surv     = 0.5,
@@ -2383,7 +2388,7 @@ patchwork::wrap_plots(zf_sep_landplots, ncol = 3) +
 
 ### TDT lines from the separate fits {#sec-zebrafish-sep-tdt-lines}
 
-The classical TDT plot — predicted time to 50 % survival as a function of temperature — comes from `derive_ltx_curve()`. We compute it on a common temperature grid for each life stage, then plot all three on the same axes for easy comparison.
+The classical TDT plot — predicted time to the survival threshold as a function of temperature — comes from `derive_tdt_curve()`. We use the package default `target_surv = "relative"` (i.e. `(low + up)/2` per draw), which coincides with the conventional LT50 when the lower and upper asymptotes are anchored at 0 and 1 but is robust to the sub-unit upper asymptote that affects young embryos. We compute it on a common temperature grid for each life stage, then plot all three on the same axes for easy comparison. The absolute-0.5 variant is reproduced in @sec-zebrafish-relative-ltx.
 
 ```{r zebrafish-sep-ltx}
 #| label: zebrafish-sep-ltx
@@ -2394,10 +2399,12 @@ zf_temp_grid <- seq(min(zf$assay_temp) - 0.25,
                     max(zf$assay_temp) + 0.25, by = 0.05)
 
 zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
-  ltx <- derive_ltx_curve(
+  ltx <- derive_tdt_curve(
     zf_fits_sep[[s]],
     temp_grid       = zf_temp_grid,
-    target_surv     = 0.5,
+    # target_surv = "relative" is the package default; spelled out here for
+    # clarity. Pass "absolute" or a numeric in (0, 1) to override.
+    target_surv     = "relative",
     ndraws          = 500,
     time_multiplier = 60,                  # hours → minutes for output
     output_time_unit = "min"
@@ -2416,7 +2423,7 @@ zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 ```{r zebrafish-sep-tdt-line-plot}
 #| label: fig-zebrafish-sep-tdt-line
 #| cache: false
-#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits. Time to 50 % survival vs assay temperature, on linear (left) and $\\log_{10}$ (right) y-axes. Lines are posterior medians; shaded bands are 95 % credible intervals. The same posterior is shown on both panels — the linear panel highlights the absolute drop in tolerance at higher temperatures; the $\\log_{10}$ panel reveals the classical near-linear TDT relationship, with slope $-1/z$. The y-axis is capped at 48 h via `coord_cartesian()`; the larvae line uses a darker orange (inferno end) to avoid the pale viridis yellow."
+#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits, under the package-default relative threshold (`(low + up)/2` per draw). Time to threshold vs assay temperature, on linear (left) and $\\log_{10}$ (right) y-axes. Lines are posterior medians; shaded bands are 95 % credible intervals. The same posterior is shown on both panels — the linear panel highlights the absolute drop in tolerance at higher temperatures; the $\\log_{10}$ panel reveals the classical near-linear TDT relationship, with slope $-1/z$. The y-axis is capped at 48 h via `coord_cartesian()`; the larvae line uses a darker orange (inferno end) to avoid the pale viridis yellow."
 #| fig-width: 10
 #| fig-height: 4.5
 
@@ -2440,7 +2447,7 @@ p_lin_sep <- ggplot2::ggplot(zf_sep_ltx,
   ggplot2::scale_fill_manual(values   = zf_palette) +
   ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
   ggplot2::labs(x = "Assay temperature (°C)",
-                y = "Time to 50 % survival (min)",
+                y = "Time to 50% survival (min)",
                 colour = "Life stage", fill = "Life stage") +
   ggplot2::theme_classic() +
   ggplot2::theme(panel.border = ggplot2::element_rect(colour = "black",
@@ -2459,7 +2466,8 @@ p_log_sep <- ggplot2::ggplot(zf_sep_ltx,
   ggplot2::scale_y_log10() +
   ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
   ggplot2::labs(x = "Assay temperature (°C)",
-                y = expression(log[10] * " time to 50 % survival (min)")) +
+                y = expression(log[10] *
+                                " time to 50% survival (min)")) +
   ggplot2::theme_classic() +
   ggplot2::theme(legend.position = "none",
                  panel.border = ggplot2::element_rect(colour = "black",
@@ -2473,7 +2481,7 @@ patchwork::wrap_plots(p_lin_sep, p_log_sep, ncol = 2) +
 
 ### TDT-quantity posteriors per life stage {#sec-zebrafish-sep-tdt}
 
-`extract_tdt()` summarises the joint posterior of $z$ and $CT_{max_{1hr}}$ from each separate fit. We set `lethal = TRUE` so $T_{crit}$ is also returned (the zebrafish endpoint is mortality).
+`extract_tdt()` summarises the joint posterior of $z$ and $CT_{max_{1hr}}$ from each separate fit. By default, the threshold is the per-draw relative midpoint `(low + up)/2`; with `lethal = TRUE` it additionally returns $T_{crit}$ (the zebrafish endpoint is mortality). @sec-zebrafish-relative-ltx reruns the same call with `target_surv = "absolute"` for sensitivity.
 
 ```{r zebrafish-sep-extract}
 #| label: zebrafish-sep-extract
@@ -2493,7 +2501,7 @@ names(zf_et_sep) <- zf_stages
 ```{r zebrafish-sep-extract-table}
 #| label: tbl-zebrafish-sep-extract
 #| cache: false
-#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from the three separate zebrafish 4PL fits. Medians with 95 % credible intervals. $T_{crit}$ is integrated over $r^* \\in [0.1, 1]$ % HI per hour, as in Case Study 1."
+#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from the three separate zebrafish 4PL fits, under the package-default relative threshold (`(low + up)/2` per draw). Absolute-threshold values are tabulated in @sec-zebrafish-relative-ltx. Medians with 95 % credible intervals. $T_{crit}$ is integrated over $r^* \\in [0.1, 1]$ % HI per hour, as in Case Study 1."
 
 zf_sep_tdt_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   et <- zf_et_sep[[s]]
@@ -2717,16 +2725,19 @@ tibble::tibble(
 
 ### TDT lines: independent vs joint fit {#sec-zebrafish-tdt-overlay}
 
-To compare the two approaches we extract the posterior $\log_{10}\text{LT50}(T)$ curve from the joint fit per life stage and overlay it on the separate-fit lines from @fig-zebrafish-sep-tdt-line. The joint prediction uses `brms::posterior_linpred()` on each of the four 4PL sub-parameters, then reconstructs the survival curve and inverts it for the LT50 duration per draw — the same operation `derive_ltx_curve()` does internally for the package-fitted workflows.
+To compare the two approaches we extract the posterior $\log_{10}\text{LT}_{(\text{low}+\text{up})/2}(T)$ curve from the joint fit per life stage and overlay it on the separate-fit lines from @fig-zebrafish-sep-tdt-line. The joint fit was assembled by hand from `brms::bf()`, so `derive_tdt_curve()` cannot be called on it directly. Instead we apply the same shortcut the package uses internally in `"relative"` mode: predict the per-stage `mid` parameter directly and exponentiate. The auxiliary asymptote/slope matrices are also assembled here because the absolute-threshold sensitivity check in @sec-zebrafish-relative-ltx needs them.
 
 ```{r zebrafish-joint-ltx}
 #| label: zebrafish-joint-ltx
 #| echo: true
 #| cache: false
 
-# Posterior LT50 curve from the joint fit, per life stage. We grid temp x
-# life_stage, predict each non-linear sub-parameter, reconstruct the 4PL
-# surface and solve survival = 0.5 for log10(time) per draw.
+# Posterior LT_(low+up)/2 curve from the joint fit, per life stage. We grid
+# temp x life_stage and predict the four non-linear sub-parameters; the
+# relative-threshold time is just 10^mid(T) per draw (no inversion). The
+# disjoint-bounds back-transforms of low, up, k are also stored — the
+# absolute-threshold sensitivity check in §[Sensitivity check: absolute
+# survival thresholds](#sec-zebrafish-relative-ltx) consumes them.
 ndraws_joint <- 500
 
 zf_joint_pred_grid <- tidyr::expand_grid(
@@ -2758,14 +2769,9 @@ up_mat  <- zf_bounds$up_min  + plogis(pp_up)  * zf_bounds$up_w
 k_mat   <- exp(pp_lk)
 mid_mat <- pp_mid
 
-# Solve survival = 0.5 for log10(time) per draw: when up > 0.5 > low,
-# log10(t_50) = mid + log((up - 0.5) / (0.5 - low)) / k. Anywhere the 0.5
-# threshold is outside [low, up] (no LT50 is reachable), the entry becomes
-# non-finite and is dropped from the posterior summary.
-arg   <- ifelse(up_mat > 0.5 & low_mat < 0.5,
-                (up_mat - 0.5) / (0.5 - low_mat), NA_real_)
-log10_t_h <- mid_mat + log(arg) / k_mat
-t_min <- 60 * 10 ^ log10_t_h                       # model time = hours → min
+# Relative-threshold inversion is closed-form: at p = (low + up)/2 the
+# exponential term is 1, so log10(t_rel) = mid(T) directly per draw.
+t_min <- 60 * 10 ^ mid_mat                         # model time = hours → min
 
 zf_joint_summary <- zf_joint_pred_grid |>
   dplyr::mutate(
@@ -2783,7 +2789,7 @@ zf_joint_summary <- zf_joint_pred_grid |>
 ```{r zebrafish-overlay-tdt-line}
 #| label: fig-zebrafish-overlay-tdt-line
 #| cache: false
-#| fig-cap: "TDT lines for zebrafish, comparing the three independent per-life-stage fits (dashed lines, lighter ribbons) with the joint 4PL fit (solid lines, darker ribbons). 95 % credible bands shown for both methods. Linear-time panel on the left, $\\log_{10}$-time panel on the right. Each life stage carries the same hue across methods; the lighter ribbon and dashed line mark the separate fits, the darker ribbon and solid line mark the joint fit. The y-axis is capped at 48 h via `coord_cartesian()`. The joint fit's bands are typically narrower than the separate-fit bands thanks to partial pooling of the asymptote and slope priors and the shared $\\phi$."
+#| fig-cap: "TDT lines for zebrafish under the package-default *relative* threshold ($(low+up)/2$ per draw), comparing the three independent per-life-stage fits (dashed lines, lighter ribbons) with the joint 4PL fit (solid lines, darker ribbons). 95 % credible bands shown for both methods. Linear-time panel on the left, $\\log_{10}$-time panel on the right. Each life stage carries the same hue across methods; the lighter ribbon and dashed line mark the separate fits, the darker ribbon and solid line mark the joint fit. The y-axis is capped at 48 h via `coord_cartesian()`. The joint fit's bands are typically narrower than the separate-fit bands thanks to partial pooling of the asymptote and slope priors and the shared $\\phi$. See @sec-zebrafish-relative-ltx for the same overlay under the absolute 0.5 threshold."
 #| fig-width: 10
 #| fig-height: 4.5
 
@@ -2828,10 +2834,11 @@ build_overlay <- function(y_log = FALSE) {
   if (y_log) {
     p + ggplot2::scale_y_log10() +
       ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
-      ggplot2::labs(y = expression(log[10] * " time to 50 % survival (min)"))
+      ggplot2::labs(y = expression(log[10] *
+                                    " time to 50% survival (min)"))
   } else {
     p + ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
-      ggplot2::labs(y = "Time to 50 % survival (min)")
+      ggplot2::labs(y = "Time to 50% survival (min)")
   }
 }
 
@@ -2842,14 +2849,14 @@ patchwork::wrap_plots(build_overlay(FALSE), build_overlay(TRUE), ncol = 2) +
 
 ### TDT quantities from the joint fit
 
-We can reuse `derive_tdt_parameters()` per life stage by feeding it the per-stage LT50 curve we just built. The result is a posterior of $z$ and $CT_{max_{1hr}}$ per life stage drawn from the *joint* fit's posterior, with all life-stage covariation correctly propagated.
+We can reuse `derive_tdt_parameters()` per life stage by feeding it the per-stage relative-LT line we just built. The result is a posterior of $z$ and $CT_{max_{1hr}}$ per life stage drawn from the *joint* fit's posterior, with all life-stage covariation correctly propagated. Under the relative threshold (`(low + up)/2`), $\log_{10}\text{LT}(T) = \text{mid}(T)$, so $z$ is read directly from the slope posterior and $CT_{max_{1hr}}$ comes from per-draw OLS of $\text{mid}(T)$ on $T$ across the assay grid. Section @sec-zebrafish-relative-ltx reproduces the same quantities under the *absolute* 0.5 threshold for comparison.
 
 ```{r zebrafish-joint-extract}
 #| label: zebrafish-joint-extract
 #| echo: true
 #| cache: false
 
-# Build a derive_ltx_curve()-like object per life stage from the joint
+# Build a derive_tdt_curve()-like object per life stage from the joint
 # posterior, then pass it to derive_tdt_parameters() to get z + CTmax. We
 # also compute the rate-multiplier T_crit per draw, using the same
 # r* in [0.1, 1] % HI per hour integration as in Case Study 1.
@@ -2862,7 +2869,7 @@ zf_joint_tdt <- lapply(zf_stages, function(s) {
   draws <- as.data.frame(t(t_min[, idx, drop = FALSE]))
   colnames(draws) <- paste0("V", seq_len(ncol(draws)))
   draws$temp        <- zf_joint_pred_grid$assay_temp[idx]
-  draws$target_surv <- 0.5
+  draws$target_surv <- "(low+up)/2"
   long <- tidyr::pivot_longer(draws,
                                cols = -c(temp, target_surv),
                                names_to = ".draw_id",
@@ -2872,7 +2879,7 @@ zf_joint_tdt <- lapply(zf_stages, function(s) {
     dplyr::filter(is.finite(duration_out), duration_out > 0) |>
     dplyr::select(.draw, temp, target_surv, duration_model, duration_out)
 
-  ltx_obj <- list(draws = long, target_surv = 0.5,
+  ltx_obj <- list(draws = long, target_surv = "(low+up)/2",
                   time_multiplier = 60, output_time_unit = "min")
   zct  <- derive_tdt_parameters(ltx_obj, t_ref = 60)
 
@@ -2907,7 +2914,7 @@ names(zf_joint_tdt) <- zf_stages
 ```{r zebrafish-joint-extract-table}
 #| label: tbl-zebrafish-joint-extract
 #| cache: false
-#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint 4PL fit, per life stage. Medians with 95 % credible intervals, derived from the per-draw $\\log_{10}\\text{LT50}(T)$ curve reconstructed from the joint posterior. $T_{crit}$ uses the same rate-multiplier integration ($r^* \\in [0.1, 1]$ % HI per hour) as Case Study 1."
+#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint 4PL fit, per life stage. Medians with 95 % credible intervals. Threshold = $(low+up)/2$ per draw (the package default; equivalent to LT50 when the asymptotes are anchored near 0 and 1). $T_{crit}$ uses the same rate-multiplier integration ($r^* \\in [0.1, 1]$ % HI per hour) as Case Study 1. See @sec-zebrafish-relative-ltx for the same quantities under the absolute 0.5 threshold."
 
 zf_joint_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   z_summary  <- zf_joint_tdt[[s]]$z$summary
@@ -2933,7 +2940,7 @@ tinytable::tt(zf_joint_table, escape = TRUE)
 ```{r zebrafish-compare-table}
 #| label: tbl-zebrafish-compare
 #| cache: false
-#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ posteriors from the three independent per-life-stage fits (Approach 1) and the joint 4PL with `life_stage` as a covariate (Approach 2). The joint fit's credible intervals are typically narrower thanks to partial pooling of the asymptote and slope priors and a single shared dispersion $\\phi$, while medians are similar — the two approaches agree on the *direction* of life-stage effects."
+#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ posteriors from the three independent per-life-stage fits (Approach 1) and the joint 4PL with `life_stage` as a covariate (Approach 2). All four columns use the package-default relative threshold (`(low + up)/2` per draw; @sec-zebrafish-relative-ltx shows the same comparison under the absolute 0.5 threshold). The joint fit's credible intervals are typically narrower thanks to partial pooling of the asymptote and slope priors and a single shared dispersion $\\phi$, while medians are similar — the two approaches agree on the *direction* of life-stage effects."
 
 zf_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   et   <- zf_et_sep[[s]]
@@ -3043,16 +3050,18 @@ ggplot2::ggplot(zf_post_long,
 
 The joint approach is the recommended default when the dataset spans an identifiable grouping factor (life stage here, but it could equally be population, sex, or species). It is the natural extension of the workflow in §[Joint Bayesian 4PL] from a single 4PL surface to a *family* of 4PL surfaces tied together by shared priors and (where the design allows) shared random-effect grouping.
 
-## Defining LT50 relative to the upper asymptote {#sec-zebrafish-relative-ltx}
+## Sensitivity check: an absolute survival threshold {#sec-zebrafish-relative-ltx}
 
-The LT50 curves in @fig-zebrafish-sep-tdt-line and @fig-zebrafish-overlay-tdt-line, and the $CT_{max_{1hr}}$ posteriors in @tbl-zebrafish-sep-extract, @tbl-zebrafish-joint-extract, and @tbl-zebrafish-compare, are all **absolute**: at each temperature $T$, they ask when the model's predicted survival probability crosses 0.5. That definition is simple and standard, but it implicitly assumes the modelled 4PL upper asymptote is close to 1 — otherwise, "50 % survival" sits much closer to the bottom of the survival curve for one group than for another, and the resulting LT50s are not strictly comparable across groups.
+The LT curves in @fig-zebrafish-sep-tdt-line and @fig-zebrafish-overlay-tdt-line, and the $CT_{max_{1hr}}$ posteriors in @tbl-zebrafish-sep-extract, @tbl-zebrafish-joint-extract, and @tbl-zebrafish-compare, all use the package default threshold: the per-draw midpoint between the lower and upper asymptotes, $(low + up)/2$. This threshold is read directly off the fitted `mid` parameter — no asymptote arithmetic — and coincides with the classical LT50 whenever the asymptotes are anchored near 0 and 1. When intrinsic background mortality pulls the upper asymptote below 1, the relative threshold isolates the dose-response *shape* from the group-level ceiling, which is generally the quantity we want to compare across stages.
 
-The joint fit makes the problem concrete. Reading the back-transformed upper-asymptote intercept off the joint posterior, one life stage stands apart from the others.
+There are nevertheless situations where the *absolute* 50 % threshold is what matters — operational decisions anchored to "no more than half the cohort survives" rather than to a model-fitted relative midpoint. The `extract_tdt()` and `derive_tdt_curve()` functions accept `target_surv = "absolute"` (= 0.5) or any numeric in $(0, 1)$ to swap the threshold without refitting. This section reproduces the zebrafish $z$ and $CT_{max_{1hr}}$ at `target_surv = 0.5` and compares them to the default-relative numbers in @tbl-zebrafish-compare.
+
+The joint fit makes the contrast concrete: the three life stages have very different upper asymptotes.
 
 ```{r zebrafish-upper-asymptote-table}
 #| label: tbl-zebrafish-upper-asymptote
 #| cache: false
-#| tbl-cap: "Posterior summary of the 4PL **upper asymptote** $\\alpha_{\\text{up}}$ at $\\texttt{temp\\_c} = 0$ (the grand-mean centring temperature), per life stage, from the joint fit. Medians and 95 % credible intervals on the natural survival scale, obtained by back-transforming the cell-means intercept on `upraw` through the disjoint-bounds parameterisation $\\alpha_{\\text{up}} = \\text{low}_{\\min} + \\text{plogis}(\\beta_{\\texttt{upraw}}) \\cdot (\\text{up}_{\\max} - \\text{low}_{\\min})$. Values markedly below 1 indicate that a stage cannot reach saturating survival even at near-zero exposure, which biases absolute-LT50 comparisons across stages."
+#| tbl-cap: "Posterior summary of the 4PL **upper asymptote** $\\alpha_{\\text{up}}$ at the grand-mean centring temperature (mean-centred temperature equal to zero), per life stage, from the joint fit. Medians and 95 % credible intervals on the natural survival scale, obtained by back-transforming the cell-means intercept on the `upraw` sub-parameter through the disjoint-bounds parameterisation $\\alpha_{\\text{up}} = \\text{low}_{\\min} + \\mathrm{plogis}(\\beta_{\\text{up}}) \\cdot (\\text{up}_{\\max} - \\text{low}_{\\min})$. Values markedly below 1 indicate that a stage cannot reach saturating survival even at near-zero exposure, which biases absolute-LT50 comparisons across stages."
 
 zf_joint_post <- brms::as_draws_df(fit_zf_joint)
 
@@ -3077,39 +3086,75 @@ zf_up_intercepts <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 tinytable::tt(zf_up_intercepts, escape = TRUE)
 ```
 
-`young_embryos` has an upper asymptote near 0.76 at the grand-mean temperature, with the 95 % credible interval not overlapping the other two stages' near-saturating values (~0.96 and ~0.97). Biologically, this means that even at very short exposures around the mean assay temperature, a substantial fraction of young embryos do not survive the experimental procedure — base mortality is non-negligible for this stage and the 4PL ceiling reflects it. The implication for the absolute-LT50 definition is that *50 % survival sits proportionally lower on the young-embryo survival curve* than on the other two stages' curves: it is "halfway to the floor" for embryos rather than "halfway from the top".
+The young-embryo upper asymptote, ~0.76 at the grand-mean temperature, does not overlap the near-saturating values for the other two stages. Biologically, this means substantial intrinsic mortality unrelated to heat stress in that life stage; statistically, it means absolute 0.5 sits proportionally lower on the young-embryo survival curve than on the others. The mapping below makes the difference visible.
 
-An alternative, often used in dose-response work where the maximum response is not anchored at 1, is to define the threshold *relative to the per-temperature upper asymptote*:
+### Recomputing the per-stage quantities with `target_surv = "absolute"`
 
-$$
-\text{target}_{\text{rel}}(T) \;=\; 0.5 \cdot \alpha_{\text{up}}(T),
-$$
-
-so the LT50 becomes the duration at which survival has fallen to half of what the model predicts at near-zero exposure for that same temperature. If $\alpha_{\text{up}}(T) = 1$ the criterion reduces to the standard LT50; if $\alpha_{\text{up}}(T) = 0.8$ the target becomes 0.4. This re-normalises out the stage-level ceiling so that LT50 measures the same fractional drop for each stage. We reuse the joint-fit posterior matrices `up_mat`, `low_mat`, `k_mat`, `mid_mat` already built in §[TDT lines: independent vs joint fit](#sec-zebrafish-tdt-overlay) — no refitting required.
-
-```{r zebrafish-joint-ltx-relative}
-#| label: zebrafish-joint-ltx-relative
+```{r zebrafish-sep-extract-abs}
+#| label: zebrafish-sep-extract-abs
 #| echo: true
 #| cache: false
 
-# Per-draw, per-grid-point target: 50% of the local upper asymptote.
-target_rel_mat <- 0.5 * up_mat
+zf_et_sep_abs <- lapply(zf_stages, function(s) {
+  extract_tdt(zf_fits_sep[[s]],
+              target_surv   = "absolute",   # = 0.5
+              t_ref         = 60,
+              TC_rate_range = c(0.1, 1),
+              ndraws        = 500,
+              lethal        = TRUE)
+})
+names(zf_et_sep_abs) <- zf_stages
+```
 
-# Solve survival = target_rel(T) for log10(time). Inversion is well-defined
-# whenever the lower asymptote sits below the target (otherwise the curve
-# never crosses it from above).
-arg_rel <- ifelse(low_mat < target_rel_mat,
-                  (up_mat - target_rel_mat) / (target_rel_mat - low_mat),
-                  NA_real_)
-log10_t_h_rel <- mid_mat + log(arg_rel) / k_mat
-t_min_rel     <- 60 * 10 ^ log10_t_h_rel
+```{r zebrafish-sep-extract-abs-table}
+#| label: tbl-zebrafish-sep-extract-abs
+#| cache: false
+#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from the three separate zebrafish 4PL fits, under the **absolute 50 % survival** threshold (`target_surv = \"absolute\"`). Medians with 95 % credible intervals. Compare row-by-row with @tbl-zebrafish-sep-extract (relative threshold)."
 
-zf_joint_summary_rel <- zf_joint_pred_grid |>
+zf_sep_tdt_table_abs <- dplyr::bind_rows(lapply(zf_stages, function(s) {
+  et <- zf_et_sep_abs[[s]]
+  tibble::tibble(
+    `Life stage`        = s,
+    `z (°C)`            = format_interval(et$z$summary$z_median,
+                                          et$z$summary$z_lower,
+                                          et$z$summary$z_upper, digits = 2),
+    `CTmax_1hr (°C)`    = format_interval(et$CTmax$summary$temp_median,
+                                          et$CTmax$summary$temp_lower,
+                                          et$CTmax$summary$temp_upper, digits = 2),
+    `T_crit (°C)`       = format_interval(et$T_crit$summary$temp_median,
+                                          et$T_crit$summary$temp_lower,
+                                          et$T_crit$summary$temp_upper, digits = 2)
+  )
+}))
+tinytable::tt(zf_sep_tdt_table_abs, escape = TRUE)
+```
+
+### Joint-fit absolute-threshold posterior
+
+The joint fit was hand-coded from `brms::bf()` and lives outside the `bayes_tls` workflow class, so we cannot point `extract_tdt()` at it directly. We reuse the posterior matrices `up_mat`, `low_mat`, `k_mat`, `mid_mat` built in @sec-zebrafish-tdt-overlay and apply the analytical inverse of the 4PL at survival = 0.5 per draw:
+
+$$
+\log_{10} t_{0.5}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{\text{up}(T)-0.5}{0.5-\text{low}(T)}.
+$$
+
+```{r zebrafish-joint-ltx-absolute}
+#| label: zebrafish-joint-ltx-absolute
+#| echo: true
+#| cache: false
+
+# Analytical t_0.5 per draw. NA when up <= 0.5 (target not reachable from
+# above) or low >= 0.5 (target below the floor).
+arg_abs <- ifelse(up_mat > 0.5 & low_mat < 0.5,
+                  (up_mat - 0.5) / (0.5 - low_mat), NA_real_)
+log10_t_h_abs <- mid_mat + log(arg_abs) / k_mat
+t_min_abs     <- 60 * 10 ^ log10_t_h_abs
+
+zf_joint_summary_abs <- zf_joint_pred_grid |>
   dplyr::mutate(
-    time_med_min = apply(t_min_rel, 2, stats::median, na.rm = TRUE),
-    time_lo_min  = apply(t_min_rel, 2, stats::quantile, 0.025,
+    time_med_min = apply(t_min_abs, 2, stats::median, na.rm = TRUE),
+    time_lo_min  = apply(t_min_abs, 2, stats::quantile, 0.025,
                          na.rm = TRUE, names = FALSE),
-    time_hi_min  = apply(t_min_rel, 2, stats::quantile, 0.975,
+    time_hi_min  = apply(t_min_abs, 2, stats::quantile, 0.975,
                          na.rm = TRUE, names = FALSE)
   ) |>
   dplyr::filter(is.finite(time_med_min)) |>
@@ -3117,28 +3162,26 @@ zf_joint_summary_rel <- zf_joint_pred_grid |>
                 time_med_min, time_lo_min, time_hi_min)
 ```
 
-```{r zebrafish-relative-tdt-line-plot}
-#| label: fig-zebrafish-relative-tdt-line
+```{r zebrafish-threshold-tdt-line-plot}
+#| label: fig-zebrafish-threshold-tdt-line
 #| cache: false
-#| fig-cap: "TDT lines for zebrafish from the joint 4PL fit under two threshold definitions. **Solid lines, darker ribbons:** absolute 50 % survival (the conventional LT50, repeating the joint-fit curves from @fig-zebrafish-overlay-tdt-line). **Dashed lines, lighter ribbons:** 50 % of the local upper asymptote $\\alpha_{\\text{up}}(T)$ — i.e.\\ a 50 % reduction from each stage's modelled optimum survival at that temperature. Linear-time panel on the left, $\\log_{10}$-time panel on the right; the y-axis is capped at 48 h. The two definitions are nearly identical for `old_embryos` and `larvae` (whose upper asymptotes sit close to 1) but diverge for `young_embryos` (asymptote near 0.76; see @tbl-zebrafish-upper-asymptote), where the relative threshold is reached *later* than the absolute one — relevant because the absolute-50 % criterion for embryos sits much closer to the floor of the survival curve."
+#| fig-cap: "Zebrafish TDT lines from the joint 4PL fit under the two threshold definitions. **Solid lines, darker ribbons:** package-default relative threshold (`(low + up)/2` per draw), repeating the joint curves from @fig-zebrafish-overlay-tdt-line. **Dashed lines, lighter ribbons:** absolute 50 % survival, recomputed here via the analytical 4PL inverse. Linear-time panel on the left, $\\log_{10}$-time on the right; the y-axis is capped at 48 h. The two definitions are nearly indistinguishable for `old_embryos` and `larvae` (whose upper asymptotes sit close to 1) and diverge for `young_embryos` (asymptote ~0.76, see @tbl-zebrafish-upper-asymptote), where the absolute target is reached *earlier* in time — the relative line is the line we recommend for cross-stage comparisons of dose-response *shape*; the absolute line is the line for operational decisions anchored to a fixed mortality fraction."
 #| fig-width: 10
 #| fig-height: 4.5
 
-zf_rel_overlay <- dplyr::bind_rows(
-  dplyr::mutate(zf_joint_summary,     threshold = "Absolute 50 %"),
-  dplyr::mutate(zf_joint_summary_rel, threshold = "50 % of upper asymptote")
+zf_threshold_overlay <- dplyr::bind_rows(
+  dplyr::mutate(zf_joint_summary,     threshold = "Relative (default)"),
+  dplyr::mutate(zf_joint_summary_abs, threshold = "Absolute 50 %")
 ) |>
   dplyr::mutate(threshold = factor(threshold,
-                                   levels = c("Absolute 50 %",
-                                              "50 % of upper asymptote")))
+                                   levels = c("Relative (default)",
+                                              "Absolute 50 %")))
 
-rel_alphas    <- c("Absolute 50 %" = 0.32,
-                   "50 % of upper asymptote" = 0.12)
-rel_linetypes <- c("Absolute 50 %" = "solid",
-                   "50 % of upper asymptote" = "dashed")
+thr_alphas    <- c("Relative (default)" = 0.32, "Absolute 50 %" = 0.12)
+thr_linetypes <- c("Relative (default)" = "solid", "Absolute 50 %" = "dashed")
 
-build_rel_overlay <- function(y_log = FALSE) {
-  p <- ggplot2::ggplot(zf_rel_overlay,
+build_thr_overlay <- function(y_log = FALSE) {
+  p <- ggplot2::ggplot(zf_threshold_overlay,
                        ggplot2::aes(x = assay_temp, y = time_med_min,
                                     colour = life_stage,
                                     fill   = life_stage,
@@ -3151,10 +3194,8 @@ build_rel_overlay <- function(y_log = FALSE) {
     ggplot2::geom_line(linewidth = 1) +
     ggplot2::scale_colour_manual(values = zf_palette) +
     ggplot2::scale_fill_manual(values   = zf_palette) +
-    ggplot2::scale_alpha_manual(values  = rel_alphas,
-                                name    = "Threshold") +
-    ggplot2::scale_linetype_manual(values = rel_linetypes,
-                                    name   = "Threshold") +
+    ggplot2::scale_alpha_manual(values  = thr_alphas,    name = "Threshold") +
+    ggplot2::scale_linetype_manual(values = thr_linetypes, name = "Threshold") +
     ggplot2::labs(x = "Assay temperature (°C)",
                   colour = "Life stage", fill = "Life stage") +
     ggplot2::theme_classic() +
@@ -3171,116 +3212,48 @@ build_rel_overlay <- function(y_log = FALSE) {
   }
 }
 
-patchwork::wrap_plots(build_rel_overlay(FALSE),
-                       build_rel_overlay(TRUE), ncol = 2) +
+patchwork::wrap_plots(build_thr_overlay(FALSE),
+                      build_thr_overlay(TRUE), ncol = 2) +
   patchwork::plot_layout(guides = "collect") &
   ggplot2::theme(legend.position = "bottom")
 ```
 
-To obtain $z$ and $CT_{max_{1hr}}$ under the relative threshold, we wrap the per-draw, per-temperature `t_min_rel` matrix into the same draws-tibble shape that `derive_tdt_parameters()` expects, then summarise. $T_{crit}$ is built the same way as in the absolute case (rate-multiplier integration over $r^* \in [0.1, 1]$ % HI per hour). The reported quantities are conceptually distinct from the absolute ones: $z$ is now the slope of $\log_{10}\!\left(\text{time-to-50 \%-of-}\alpha_{\text{up}}\right)$ on temperature (units unchanged: °C per $\log_{10}$ time), and $CT_{max_{1hr}}$ is the temperature at which this duration crosses 1 hour.
+### Side-by-side comparison: relative vs absolute
 
-```{r zebrafish-joint-extract-relative}
-#| label: zebrafish-joint-extract-relative
-#| echo: true
-#| cache: false
-
-zf_joint_tdt_rel <- lapply(zf_stages, function(s) {
-  idx <- zf_joint_pred_grid$life_stage == s
-  draws <- as.data.frame(t(t_min_rel[, idx, drop = FALSE]))
-  colnames(draws) <- paste0("V", seq_len(ncol(draws)))
-  draws$temp        <- zf_joint_pred_grid$assay_temp[idx]
-  draws$target_surv <- 0.5  # placeholder grouping key; threshold is "relative"
-  long <- tidyr::pivot_longer(draws,
-                               cols = -c(temp, target_surv),
-                               names_to = ".draw_id",
-                               values_to = "duration_out") |>
-    dplyr::mutate(.draw = as.integer(sub("V", "", .draw_id)),
-                  duration_model = duration_out / 60) |>      # min → hours
-    dplyr::filter(is.finite(duration_out), duration_out > 0) |>
-    dplyr::select(.draw, temp, target_surv, duration_model, duration_out)
-
-  ltx_obj <- list(draws = long, target_surv = 0.5,
-                  time_multiplier = 60, output_time_unit = "min")
-  zct  <- derive_tdt_parameters(ltx_obj, t_ref = 60)
-
-  # Per-draw T_crit: same rate-multiplier integration as the absolute case.
-  per_draw <- zct$draws |>
-    dplyr::select(.draw, z, CTmax) |>
-    dplyr::filter(is.finite(z), is.finite(CTmax)) |>
-    dplyr::mutate(log10_rate = stats::runif(dplyr::n(),
-                                            min = log10_low_zf,
-                                            max = log10_high_zf),
-                  T_crit     = CTmax + z * log10_rate)
-  q_tc <- stats::quantile(per_draw$T_crit,
-                          c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
-  T_crit_block <- list(
-    draws   = tibble::tibble(.draw = per_draw$.draw,
-                             temp  = per_draw$T_crit,
-                             log10_rate = per_draw$log10_rate),
-    summary = tibble::tibble(TC_rate_low  = TC_rate_range_zf[1],
-                             TC_rate_high = TC_rate_range_zf[2],
-                             temp_lower   = q_tc[1],
-                             temp_median  = q_tc[2],
-                             temp_upper   = q_tc[3])
-  )
-
-  list(z = zct, summary = zct$summary, T_crit = T_crit_block)
-})
-names(zf_joint_tdt_rel) <- zf_stages
-```
-
-```{r zebrafish-joint-extract-relative-table}
-#| label: tbl-zebrafish-joint-extract-relative
-#| cache: false
-#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint 4PL fit, per life stage, under the **relative threshold** $0.5 \\cdot \\alpha_{\\text{up}}(T)$. Medians with 95 % credible intervals. Compare against @tbl-zebrafish-joint-extract (absolute 50 %). Differences are largest for `young_embryos`, whose upper asymptote sits furthest from 1."
-
-zf_joint_table_rel <- dplyr::bind_rows(lapply(zf_stages, function(s) {
-  z_summary  <- zf_joint_tdt_rel[[s]]$z$summary
-  tc_summary <- zf_joint_tdt_rel[[s]]$T_crit$summary
-  tibble::tibble(
-    `Life stage`     = s,
-    `z (°C)`         = format_interval(z_summary$z_median,
-                                       z_summary$z_lower,
-                                       z_summary$z_upper, digits = 2),
-    `CTmax_1hr (°C)` = format_interval(z_summary$CTmax_median,
-                                       z_summary$CTmax_lower,
-                                       z_summary$CTmax_upper, digits = 2),
-    `T_crit (°C)`    = format_interval(tc_summary$temp_median,
-                                       tc_summary$temp_lower,
-                                       tc_summary$temp_upper, digits = 2)
-  )
-}))
-tinytable::tt(zf_joint_table_rel, escape = TRUE)
-```
+For the separate fits we can put the two `extract_tdt()` outputs next to each other.
 
 ```{r zebrafish-threshold-compare-table}
 #| label: tbl-zebrafish-threshold-compare
 #| cache: false
-#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ from the joint 4PL fit under the two threshold definitions: absolute 50 % survival vs.\\ 50 % of the local upper asymptote. The relative threshold shifts $CT_{max_{1hr}}$ upward for `young_embryos` (whose upper asymptote sits well below 1) but leaves the other two stages essentially unchanged. $z$ — a slope quantity — is less affected than $CT_{max_{1hr}}$, which is a level."
+#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ from the three separate zebrafish 4PL fits under the two threshold definitions: the package-default relative threshold (`(low + up)/2` per draw) and the absolute 50 % survival threshold. Absolute-50 % shifts $CT_{max_{1hr}}$ downward for `young_embryos` (whose upper asymptote sits well below 1) but leaves the other two stages essentially unchanged. $z$ is essentially identical under either definition for these data because the per-draw correction term $\\tfrac{1}{k}\\log\\!\\tfrac{\\text{up}-0.5}{0.5-\\text{low}}$ varies only weakly with temperature in the fitted models."
 
 zf_threshold_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
-  abs_s <- zf_joint_tdt[[s]]$z$summary
-  rel_s <- zf_joint_tdt_rel[[s]]$z$summary
+  rel_s <- zf_et_sep[[s]]
+  abs_s <- zf_et_sep_abs[[s]]
   tibble::tibble(
-    `Life stage`             = s,
-    `z (abs, °C)`            = format_interval(abs_s$z_median,
-                                                abs_s$z_lower,
-                                                abs_s$z_upper, digits = 2),
-    `z (rel, °C)`            = format_interval(rel_s$z_median,
-                                                rel_s$z_lower,
-                                                rel_s$z_upper, digits = 2),
-    `CTmax_1hr (abs, °C)`    = format_interval(abs_s$CTmax_median,
-                                                abs_s$CTmax_lower,
-                                                abs_s$CTmax_upper, digits = 2),
-    `CTmax_1hr (rel, °C)`    = format_interval(rel_s$CTmax_median,
-                                                rel_s$CTmax_lower,
-                                                rel_s$CTmax_upper, digits = 2)
+    `Life stage`           = s,
+    `z (rel, °C)`          = format_interval(rel_s$z$summary$z_median,
+                                              rel_s$z$summary$z_lower,
+                                              rel_s$z$summary$z_upper,
+                                              digits = 2),
+    `z (abs, °C)`          = format_interval(abs_s$z$summary$z_median,
+                                              abs_s$z$summary$z_lower,
+                                              abs_s$z$summary$z_upper,
+                                              digits = 2),
+    `CTmax_1hr (rel, °C)`  = format_interval(rel_s$CTmax$summary$temp_median,
+                                              rel_s$CTmax$summary$temp_lower,
+                                              rel_s$CTmax$summary$temp_upper,
+                                              digits = 2),
+    `CTmax_1hr (abs, °C)`  = format_interval(abs_s$CTmax$summary$temp_median,
+                                              abs_s$CTmax$summary$temp_lower,
+                                              abs_s$CTmax$summary$temp_upper,
+                                              digits = 2)
   )
 }))
 tinytable::tt(zf_threshold_compare, escape = TRUE)
 ```
 
-The pattern in @tbl-zebrafish-threshold-compare is exactly what the upper-asymptote summary in @tbl-zebrafish-upper-asymptote predicts: stages with $\alpha_{\text{up}} \approx 1$ (`old_embryos`, `larvae`) give nearly identical $z$ and $CT_{max_{1hr}}$ under either threshold, because *halving the asymptote* and *crossing 0.5* converge when the asymptote is near 1; the stage with a substantially sub-unit asymptote (`young_embryos`) sees its $CT_{max_{1hr}}$ shift upward when the threshold is re-anchored to the local optimum. The relative threshold is the better choice when the goal is to compare the *shape* of the temperature × duration mortality response across groups whose baseline survival differs — it isolates the temperature × duration kinetics from the group-level intercept. The absolute threshold is the better choice when the question is *operational* — at what temperature × duration combination does at most half the cohort survive? — because that judgement is properly anchored to absolute outcomes, not to a model-fitted asymptote.
+The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summary in @tbl-zebrafish-upper-asymptote: stages with $\alpha_{\text{up}} \approx 1$ (`old_embryos`, `larvae`) give essentially identical $z$ and $CT_{max_{1hr}}$ under either threshold, because *crossing 0.5* and *crossing $(low + up)/2$* coincide when the asymptotes are anchored near 0 and 1; the stage with a substantially sub-unit asymptote (`young_embryos`) sees $CT_{max_{1hr}}$ shift by a few tenths of a °C when the threshold is switched from relative to absolute. The relative threshold is the recommended default for cross-stage comparisons because it isolates the dose-response *shape* from the group-level ceiling. The absolute threshold is the right choice for *operational* questions anchored to a fixed mortality fraction.
 
 # **References**
 

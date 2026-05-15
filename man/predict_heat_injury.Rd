@@ -7,7 +7,7 @@
 predict_heat_injury(
   trace,
   workflow,
-  target_surv = 0.5,
+  target_surv = "relative",
   T_c = NULL,
   ndraws = 500,
   repair = FALSE,
@@ -23,9 +23,12 @@ and \code{temp} (°C), in time order. Requires ≥ 2 rows.}
 
 \item{workflow}{Fitted \code{bayes_tls}.}
 
-\item{target_surv}{Survival probability defining "1 dose". Default 0.5
-(LT50). Other values (e.g. 0.95 for T_crit framing) are
-mechanically valid but reinterpret what HI = 100\% means.}
+\item{target_surv}{Threshold defining "1 dose". \code{"relative"} (default;
+\code{(low + up)/2}), \code{"absolute"} (= 0.5), or a numeric in
+\verb{(0, 1)}. The default coincides with the classical LT50
+when \verb{low ≈ 0} and \verb{up ≈ 1}; with sub-unit asymptotes
+the relative threshold is the more biologically
+meaningful anchor for dose accounting.}
 
 \item{T_c}{Optional damage-accumulation threshold (°C). When
 supplied, the damage rate is forced to zero at

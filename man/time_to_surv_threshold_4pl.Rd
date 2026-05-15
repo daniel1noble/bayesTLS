@@ -18,8 +18,9 @@ time_to_surv_threshold_4pl(
 \arguments{
 \item{temp}{Numeric vector of temperatures (°C).}
 
-\item{survival_target}{Survival probability to invert at. Must lie strictly
-between \code{low} and \code{up}.}
+\item{survival_target}{Either the literal probability to invert at (must
+lie strictly between \code{low} and \code{up}), or the string
+\code{"relative"} to use \code{(low + up)/2}.}
 
 \item{low, up, k}{Scalar (or per-temp) 4PL parameters.}
 
@@ -29,11 +30,13 @@ between \code{low} and \code{up}.}
 }
 \value{
 Numeric vector of durations in the model's time units. \code{NA} where
-\code{survival_target} is outside \verb{(low, up)}.
+the threshold is outside \verb{(low, up)} in absolute mode.
 }
 \description{
 For each \code{temp}, computes the exposure duration at which the 4PL gives
-\code{survival_target}. This is the analytical inverse of
-\verb{p = low + (up - low) / (1 + exp(k * (log10 t - mid(T))))} solved for \code{t}.
+the chosen survival threshold. In \code{"relative"} mode the threshold is the
+per-draw midpoint between the asymptotes, which collapses to the bare 4PL
+\code{mid} parameter on the natural time axis. In absolute mode it is the
+literal probability \code{survival_target}.
 }
 \keyword{internal}

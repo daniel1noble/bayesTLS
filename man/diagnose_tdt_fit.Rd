@@ -14,9 +14,23 @@ A tibble with one row of diagnostic statistics.
 }
 \description{
 Returns a tibble with the per-fit summary numbers a reviewer will want at
-a glance: max Rhat, minimum bulk and tail ESS, divergent transitions, and
-tree-depth saturations. Healthy values: Rhat < 1.01, ESS > 400, zero
-divergences and treedepth hits.
+a glance: max Rhat, minimum bulk and tail ESS, divergent transitions,
+tree-depth saturations, minimum BFMI per chain, and pass flags for each
+criterion plus a combined \code{all_pass}. Healthy values:
+\itemize{
+\item Rhat < 1.01
+\item ESS bulk and tail > 400
+\item zero divergent transitions
+\item zero tree-depth saturations
+\item BFMI > 0.3 per chain
+}
+}
+\details{
+The \code{treedepth_max_attempted} field is the model's \code{max_treedepth} setting
+(passed to \code{brms::brm()}); a saturation is a post-warmup transition where
+the sampler hit that ceiling. Per-chain BFMI is computed from the energy
+diagnostic in \code{brms::nuts_params(.)} following the standard Stan
+definition (Var(ΔE)/Var(E)).
 }
 \examples{
 \dontrun{

@@ -13,9 +13,11 @@ get_ctmax_draws(et)
 A tibble with columns \code{.draw} and \code{CTmax}.
 }
 \description{
-Pulls the per-draw CTmax temperature (the temperature at which
-\code{target_surv = 0.5} is reached at the \code{\link[=extract_tdt]{extract_tdt()}} \code{t_ref}, default 60
-min).
+Pulls the per-draw CTmax temperature: the temperature at which the
+\code{\link[=extract_tdt]{extract_tdt()}} threshold is reached after \code{t_ref} exposure (default 60
+min). The threshold itself follows the \code{target_surv} argument of
+\code{\link[=extract_tdt]{extract_tdt()}} — \code{(low + up)/2} per draw by default, absolute 0.5 if
+\code{target_surv = "absolute"}.
 }
 \examples{
 \dontrun{

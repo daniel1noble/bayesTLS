@@ -28,9 +28,11 @@ get_z_draws <- function(et) {
 
 #' Posterior draws of CTmax at the reference duration
 #'
-#' Pulls the per-draw CTmax temperature (the temperature at which
-#' `target_surv = 0.5` is reached at the [extract_tdt()] `t_ref`, default 60
-#' min).
+#' Pulls the per-draw CTmax temperature: the temperature at which the
+#' [extract_tdt()] threshold is reached after `t_ref` exposure (default 60
+#' min). The threshold itself follows the `target_surv` argument of
+#' [extract_tdt()] — `(low + up)/2` per draw by default, absolute 0.5 if
+#' `target_surv = "absolute"`.
 #'
 #' @param et The list returned by [extract_tdt()].
 #' @return A tibble with columns `.draw` and `CTmax`.

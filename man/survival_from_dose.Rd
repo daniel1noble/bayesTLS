@@ -4,22 +4,23 @@
 \alias{survival_from_dose}
 \title{Survival corresponding to an accumulated dose}
 \usage{
-survival_from_dose(dose, low, up, k, target_surv = 0.5)
+survival_from_dose(dose, low, up, k, target_surv = "relative")
 }
 \arguments{
 \item{dose}{Numeric vector of cumulative doses (in units where 1 dose =
-1 LT-dose at target_surv).}
+1 LT-dose at the chosen threshold).}
 
 \item{low, up, k}{4PL parameters at the reference (centring) temperature.}
 
-\item{target_surv}{Survival probability that defines "1 dose". Default 0.5.}
+\item{target_surv}{Either the literal probability defining "1 dose" or the
+string \code{"relative"} for the \code{(low + up)/2} threshold.}
 }
 \value{
 Numeric vector of predicted survival probabilities.
 }
 \description{
-Inverts the dose interpretation: at \code{dose = 1}, survival equals
-\code{target_surv} by construction. The 4PL maps dose smoothly to survival
-on the reference dose-response curve.
+Inverts the dose interpretation: at \code{dose = 1}, survival equals the
+threshold by construction. The 4PL maps dose smoothly to survival on the
+reference dose-response curve.
 }
 \keyword{internal}

@@ -1,0 +1,103 @@
+---
+title: "Proposed `ms.qmd` edits after switching the default threshold to relative"
+date: 2026-05-15
+author: "PP / DN audit"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+bibliography: ../bib/tdt_problems.bib
+---
+
+## Why this note exists
+
+The `bayesTLS` package now defaults `target_surv = "relative"` in `derive_ltx_curve()`, `derive_temperature_for_duration()`, `extract_tdt()`, and `predict_heat_injury()`. The relative threshold is the per-draw midpoint of the fitted asymptotes, $(\text{low} + \text{up})/2$, read directly off the 4PL `mid` parameter. When the asymptotes are anchored near 0 and 1, the relative threshold reduces to the classical LT50; with sub-unit upper asymptotes (intrinsic background mortality), it isolates the dose-response *shape* from the group-level ceiling, which is the quantity we want to compare across stages or species. Passing `target_surv = "absolute"` (or any numeric in $(0, 1)$) recovers the classical absolute threshold for one-off operational questions.
+
+`ms.qmd` currently presents every TDT derivation under the absolute 0.5 framing, with the asymmetry correction factor
+
+$$
+\Delta(\text{low}, \text{up}, k) \;=\; \tfrac{1}{k}\,\log\!\tfrac{\text{up}-0.5}{0.5-\text{low}}
+$$
+
+introduced as a *safeguard* applied to a "naive" LT50 read off `mid`. With the new default that framing is inverted: `mid` is the canonical quantity, and $\Delta$ is the *opt-in* correction users apply when they want absolute 50 % survival instead.
+
+This note lists every edit the manuscript should accommodate. **No file in `ms/` has been modified**; the changes below are a review object.
+
+## Proposed edits
+
+### 1. Equation @eq-t50 (currently the absolute-LT50 line)
+
+`ms.qmd:209-211` derives $\log_{10} t_{50}(T)$ by setting $p = 0.5$ in the 4PL and isolating the exponential. The supplement now defaults to the *relative* threshold, where the 4PL `mid` is itself $\log_{10}\,t_{(\text{low}+\text{up})/2}$. The cleanest re-presentation is to make `mid(T)` the headline equation and *introduce* the absolute-50 % correction as the second step:
+
+::: {.callout-note}
+**Proposed replacement of the paragraph leading into @eq-t50** (`ms.qmd:207-213`):
+
+> Setting $p_{ij}$ equal to the midpoint between the asymptotes, $(\text{low} + \text{up})/2$, in @eq-4pl gives $\log_{10} t_{\text{rel}}(T) = \text{mid}(T)$ directly — the 4PL `mid` parameter is the time at which survival has dropped halfway from its modelled ceiling to its floor at temperature $T$. Substituting into @eq-mid-temp gives the threshold-on-temperature line we use as the canonical TDT line:
+>
+> $$
+> \log_{10} t_{\text{rel}}(T) \;=\; \underbrace{\bigl[\beta_0 - \beta_1 \bar T\bigr]}_{\alpha_{\text{rel}}} \;+\; \beta_1 T.
+> $$ {#eq-t-rel}
+>
+> The classical TLS quantities fall out directly: thermal sensitivity is $z = -1/\beta_1$, and the relative critical thermal limit at reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = (\log_{10} t_\text{ref} - \alpha_{\text{rel}})/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). This is the threshold returned by default in `bayesTLS` because it isolates the dose-response shape from the asymptote level — a property that matters when intrinsic background mortality pulls the upper asymptote below 1 in some groups but not others.
+>
+> When operational decisions require the absolute 50 % survival threshold, we add the correction factor
+>
+> $$
+> \Delta(T) \;=\; \tfrac{1}{k(T)}\log\!\tfrac{\text{up}(T) - 0.5}{0.5 - \text{low}(T)},
+> $$
+>
+> giving $\log_{10} t_{50}(T) = \text{mid}(T) + \Delta(T)$. When the asymptotes are anchored near 0 and 1, $\Delta \approx 0$ and the relative and absolute thresholds coincide. When they are not, $\Delta$ rebases the relative line at $\log_{10} t_{0.5}$ at the cost of letting the group-level asymptote re-enter both the level and (if $k$, $\text{low}$ or $\text{up}$ depend on $T$) the slope.
+
+The existing @eq-t50 then becomes the *second* equation in the section, presented as the correction applied for the operational case, not the canonical line.
+:::
+
+### 2. @eq-t50-corrected and @eq-ctmax-corrected (`ms.qmd:227-232`)
+
+These two equations currently frame the correction as a *fix* applied to a naive estimate when asymptotes are not anchored at 0 and 1. The text justifying them at `ms.qmd:234` ("In practice, however, these corrections may not be needed so long as the experimental design includes treatments that span the full mortality range … We recommend using the correction factor as a safeguard.") should be inverted:
+
+> In practice, the default relative threshold avoids the correction entirely. When the experimental design includes treatments that span the full mortality range and the fitted asymptotes are anchored tightly near 0 and 1, the relative and absolute thresholds coincide and the correction makes no difference. When intrinsic background mortality pulls the upper asymptote below 1, applying the correction translates the relative threshold to the absolute one but at the cost of conflating the dose-response shape with the asymptote level. We default to the relative threshold for cross-group comparisons, and recommend computing both as a sensitivity check.
+
+### 3. @eq-LTx (`ms.qmd:216-220`)
+
+The generalised LT_x equation is parameterised as an absolute survival percentile ($p = x/100$). It can stay as-is — it is the *opt-in* form. A one-line tag is enough:
+
+> When the goal is an absolute survival percentile (e.g. $t_{10}$ as the onset-of-mortality threshold or $t_{90}$ as a population-collapse threshold) rather than the dose-response midpoint, pass `target_surv = x/100` to `derive_ltx_curve()`. @eq-LTx is the analytical inverse the function evaluates.
+
+### 4. The "$z$ is robust to estimated asymptotes" passage (`ms.qmd:224`)
+
+> "Importantly, the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \text{low}}$ does not depend on $T$. Instead, it shifts $\log_{10}t_{50}$ vertically without changing the slope."
+
+This is true *only* when low, up, and $k$ are constants in $T$. The package default `fit_4pl()` puts a temperature slope on all four sub-parameters, so $\Delta(T)$ is itself temperature-dependent in general. With the relative threshold this concern disappears because `mid(T)` is, by construction, the linear-in-$T$ line whose slope is $-1/z$. Suggested replacement:
+
+> Importantly, under the relative threshold `mid(T)` *is* $\log_{10} t_{\text{rel}}(T)$, so the slope $\beta_1$ — and hence $z$ — is read directly from the `mid ~ temp_c` posterior, with no asymptote arithmetic. Under the absolute threshold the slope of $\log_{10} t_{50}(T)$ equals $\beta_1$ only when $\text{low}$, $\text{up}$, and $k$ are constant in $T$; if they are not, the temperature dependence of $\Delta(T)$ contributes a (typically small) additional slope to $\log_{10} t_{50}(T)$, leaving the absolute $z$ slightly less stable across model specifications than the relative $z$.
+
+### 5. Abstract and Introduction
+
+No structural change needed. The wording in `ms.qmd:33` ("median times to lethal or sublethal endpoints ($t_{50}$)") and `ms.qmd:166` ("most often $t_{50}$, the time required to reach 50% mortality") describe the *classical* two-step pipeline — which is correctly absolute. Both passages remain accurate; the relative-threshold framing belongs in §"Deriving key thermal load sensitivity parameters" where `target_surv` is introduced.
+
+### 6. §"Deriving key thermal load sensitivity parameters" header (`ms.qmd:195-197`)
+
+The line "We can easily derive thermal sensitivity (*z*) and $CT_{max_{1hr}}$ by modelling the effect of temperature on midpoints" is *more* natural under the relative-threshold framing than under the absolute one — `mid(T)` *is* the relative-LT line, so $z$ and $CT_{max_{1hr}}$ come straight off it. Suggested one-paragraph footnote-style addition right after this sentence:
+
+> The choice of survival threshold defining "LT" matters when the fitted asymptotes are not anchored at 0 and 1. By default `bayesTLS` uses the *relative* threshold $(\text{low} + \text{up})/2$, which equals the `mid` parameter on the natural time axis and reduces to the classical absolute LT50 when the asymptotes are tight near 0 and 1. The supplement (§4.4) compares the two definitions on the zebrafish panel, where one life stage has a substantially sub-unit upper asymptote.
+
+### 7. References
+
+No changes — the citations already cover the classical TDT pipeline and the asymptote-correction discussion (e.g. `@orsted_finding_2022`, `@rezende_landscapes_2014`, `@jorgensen_unifying_2021`).
+
+## Things to be careful about during the rewrite
+
+- **Don't change @eq-likelihood, @eq-4pl, @eq-mid-temp, @eq-linpred** — these describe the model itself, not the LT extraction. They are unchanged.
+- **Don't remove the correction factor entirely.** The user wanted us to keep the correction factor visible so readers can implement absolute thresholds when they need to. The proposed edits keep $\Delta(T)$ in the text (renumbered or inlined) but reframe it as opt-in rather than default.
+- **Symbol consistency.** If the manuscript adopts `t_{\text{rel}}` and `t_{0.5}` (or `t_{50}`), use the same symbols throughout. The supplement currently writes the relative threshold as `(low + up)/2` in inline math; the manuscript could use a shorter symbol like $\tilde t$ or keep the explicit form.
+- **No new figures required.** The relative-vs-absolute comparison plot lives in the supplement (@fig-zebrafish-threshold-tdt-line). The manuscript can reference it by plain-text page number per the project's cross-document convention.
+- **Keep the discussion of the relative-vs-absolute trade-off brief** (~one paragraph at most in §"Deriving key thermal load sensitivity parameters"; one sentence in the Discussion if at all). The full treatment lives in the supplement.
+
+## Numerical impact on existing manuscript figures
+
+Two of the three case studies have asymptotes anchored near 0 and 1, so relative and absolute thresholds coincide numerically and the manuscript's headline numbers are unchanged. The zebrafish case-study contrast (young embryos vs. the other two stages) is where the difference is visible: $CT_{max_{1hr}}$ for young embryos shifts by roughly +0.2 °C under the relative default (the absolute value is lower because absolute 50 % is reached earlier in time when the upper asymptote sits below 1). The supplement's comparison tables make this concrete; if any of those young-embryo numbers appear in the manuscript prose or figures, they need a refresh.

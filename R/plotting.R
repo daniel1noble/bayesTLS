@@ -104,28 +104,46 @@ plot_survival_curves <- function(pred, observed = NULL,
 #' a data-driven range. Callers can override either way by appending their
 #' own `+ ggplot2::coord_cartesian(ylim = ...)` to the returned plot.
 #'
-#' @param ltx           Output of [derive_ltx_curve()].
+#' @param ltx           Output of [derive_tdt_curve()].
 #' @param panels        One of `"both"` (default), `"linear"`, or `"log"`.
 #' @param colour        Line/ribbon colour. Default `"#146C7C"`.
 #' @return A ggplot object (single panel) or patchwork composition (two panels).
 #' @examples
 #' \dontrun{
-#' ltx <- derive_ltx_curve(wf, temp_grid = seq(29, 37, by = 0.5))
-#' plot_ltx_curve(ltx)                  # two-panel default
-#' plot_ltx_curve(ltx, panels = "log")  # classical TDT view only
+#' ltx <- derive_tdt_curve(wf, temp_grid = seq(29, 37, by = 0.5))
+#' plot_tdt_curve(ltx)                  # two-panel default
+#' plot_tdt_curve(ltx, panels = "log")  # classical TDT view only
 #'
 #' # Override the internal 48-h cap by appending a coord_cartesian:
-#' plot_ltx_curve(ltx) +
+#' plot_tdt_curve(ltx) +
 #'   ggplot2::coord_cartesian(ylim = c(0, 240))
 #' }
 #' @export
-plot_ltx_curve <- function(ltx,
+plot_tdt_curve <- function(ltx,
                            panels = c("both", "linear", "log"),
                            colour = "#146C7C") {
   panels <- match.arg(panels)
   df <- ltx$summary
 
-  target_lab <- paste0(round(100 * unique(df$target_surv)), "% survival")
+  target_raw <- unique(df$target_surv)
+  target_lab <- if (length(target_raw) == 1L &&
+                    is.character(target_raw) &&
+                    target_raw == "(low+up)/2") {
+    "(low + up) / 2 survival"
+  } else {
+    # Try the legacy numeric path first; fall back to the raw label if the
+    # column carries an "p=X.XXX" string from resolve_target_surv().
+    num <- suppressWarnings(as.numeric(target_raw))
+    if (length(num) == 1L && is.finite(num)) {
+      paste0(round(100 * num), "% survival")
+    } else if (length(target_raw) == 1L && is.character(target_raw) &&
+               grepl("^p=", target_raw)) {
+      paste0(round(100 * as.numeric(sub("^p=", "", target_raw))),
+             "% survival")
+    } else {
+      paste0("survival = ", target_raw)
+    }
+  }
   unit_label <- if (is.null(ltx$output_time_unit)) "min" else ltx$output_time_unit
 
   # Convert the hard internal 48-hour ceiling to the ltx output unit. If the
