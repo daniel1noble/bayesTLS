@@ -230,7 +230,7 @@ A powerful aspect of the Bayesian modelling approach described above is that unc
 
 # Predicting heat injury and survival under dynamic thermal environments
 
-A particularly powerful aspect of TLS models are their ability to translate dynamic temperature times series' from nature to predict heat injury (HI) accumulation and thus population survival probability [@jorgensen_unifying_2021; @orsted_suzukii_2024; @li2023; @orsted_finding_2022; @rezende_drosophila_mortality_2020]. Heat injury accumulates as the time spent at a given temperature divided by the median lethal time at that temperature, integrated across the temperature trajectory $T(i)$ as follows:
+A particularly powerful aspect of TDT/TLS models are their ability to translate dynamic temperature times series' from nature to predict heat injury (HI) accumulation and thus population survival probability [@jorgensen_unifying_2021; @orsted_suzukii_2024; @li2023; @orsted_finding_2022; @rezende_drosophila_mortality_2020]. Heat injury accumulates as the time spent at a given temperature divided by the median lethal time at that temperature, integrated across the temperature trajectory $T(i)$ as follows:
 
 $$
 HI(t) \;=\; 100 \int_0^t 10^{\,\big(T(i)\,-\,CT_{max_{1\text{hr}}}\big)/z} \,di,
