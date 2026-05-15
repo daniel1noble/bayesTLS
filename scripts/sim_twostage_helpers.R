@@ -502,6 +502,13 @@ fit_joint_4pl_sim <- function(data,
                           temp = "T", duration = "t",
                           n_total = "n", n_surv = "y",
                           duration_unit = "minutes")
+  # Note on sampler tuning: max_treedepth 14 (rather than the brms default 10
+  # or the fit_4pl default 12) is set because Scenario 1's truth (u=0.999,
+  # ell=0.001) sits at the inv_logit-reparameterised asymptote bound, where
+  # the posterior is flat and the sampler needs more integration steps. Higher
+  # treedepth costs wall time per iteration but is necessary for clean
+  # diagnostics in the strict-equivalence scenario. adapt_delta 0.95 matches
+  # the package default.
   wf <- tryCatch(
     fit_4pl(std,
             chains     = chains,
@@ -511,7 +518,7 @@ fit_joint_4pl_sim <- function(data,
             refresh    = 0,
             silent     = 2,
             backend    = "cmdstanr",
-            control    = list(adapt_delta = 0.9, max_treedepth = 12)),
+            control    = list(adapt_delta = 0.95, max_treedepth = 14)),
     error = function(e) e
   )
   if (inherits(wf, "error")) {
