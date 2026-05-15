@@ -1439,7 +1439,7 @@ shrimp_std <- standardize_data(
 
 ```{r shrimp-summary-table}
 #| label: tbl-shrimp-summary
-#| tbl-cap: "Summary of the shrimp lethal-TDT dataset after standardisation. Temperature centre is the grand mean used by the model for `temp_c`."
+#| tbl-cap: "Summary of the shrimp lethal-TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
 
 shrimp_summary <- tibble::tibble(
   `n trials`              = nrow(shrimp_std),
@@ -1456,7 +1456,7 @@ tinytable::tt(shrimp_summary, digits = 2, escape = TRUE)
 
 ## Fitting the joint Bayesian 4PL {#sec-shrimp-fit}
 
-We fit the default `fit_4pl()` model — beta-binomial likelihood, identity link, the disjoint-bounds asymptote reparameterisation, and `temp_c` slopes on all four 4PL sub-parameters — with random intercepts on `mid` for `Date` and `Tank`. The fit takes a few minutes on first render; subsequent renders reload it from disk because `file_refit = "on_change"`.
+`fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL with sensible defaults: a beta-binomial likelihood, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter. We add random intercepts on `mid` for `Date` and `Tank` to absorb the day-to-day and tank-to-tank variation that would otherwise contaminate the dose-response surface.
 
 ```{r shrimp-fit}
 #| label: shrimp-fit
@@ -1482,11 +1482,11 @@ wf_shrimp <- fit_4pl(
 tinytable::tt(diagnose_tdt_fit(wf_shrimp), digits = 3, escape = TRUE)
 ```
 
-The summary diagnostics above are a one-line snapshot; the canonical visual check is the chain trace ("fuzzy caterpillar" plot). Healthy chains overlap and explore the same posterior support; chains that diverge, drift, or hang in different regions are a red flag. We pull the five fixed-effect 4PL parameters (asymptotes, slope, intercept, and temperature slope) plus the beta-binomial dispersion via `brms::mcmc_plot()` on the `brmsfit` object exposed by `workflow$fit`.
+The diagnostics table is a numerical pass/fail summary. The canonical visual check is the chain trace ("fuzzy caterpillar"): healthy chains overlap and explore the same posterior support; chains that drift, diverge, or hang in different regions signal a problem with the fit.
 
 ```{r shrimp-trace-plot}
 #| label: fig-shrimp-trace
-#| fig-cap: "Posterior chain traces for the shrimp 4PL fixed-effect parameters and the beta-binomial dispersion `phi`. Each panel overlays four chains; well-mixed chains overlap throughout. Generated with `brms::mcmc_plot(workflow$fit, type = 'trace', variable = ...)`."
+#| fig-cap: "Posterior chain traces for the shrimp 4PL fixed-effect parameters and the beta-binomial dispersion $\\phi$. Each panel overlays four chains; well-mixed chains overlap throughout."
 #| fig-width: 9
 #| fig-height: 6
 #| cache: false
@@ -1513,11 +1513,11 @@ tinytable::tt(tdt_parameter_table(wf_shrimp), digits = 3, escape = TRUE)
 
 ## Survival curves with observed overlay {#sec-shrimp-survival-curves}
 
-We predict survival probability across the observed temperature × duration grid and overlay the observed proportions per replicate. The fitted curves should track the observed clouds at every temperature.
+`predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and exposure durations and returns posterior survival probabilities. Overlaying the per-replicate observed proportions gives a visual check that the fitted curves track the data at every temperature.
 
 ```{r shrimp-survival-curves}
 #| label: fig-shrimp-survival-curves
-#| fig-cap: "Posterior survival curves for brown shrimp at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate survival proportions. Population-level prediction (random effects marginalised). Exposure duration on the natural (linear) scale; viridis temperature colour mapping is the default of `plot_survival_curves()`."
+#| fig-cap: "Posterior survival curves for brown shrimp at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate survival proportions."
 #| fig-width: 8
 #| fig-height: 5
 
@@ -1533,7 +1533,7 @@ plot_survival_curves(psc_shrimp, observed = shrimp_std) +
 
 ## TDT landscape {#sec-shrimp-landscape}
 
-A dense 2-D view of survival across the entire (temperature, duration) plane shows the dose-response surface as a heatmap with overlaid contours at 25, 50, and 75% survival.
+`derive_tdt_landscape()` evaluates the fitted 4PL on a dense (temperature, duration) grid and `plot_tdt_landscape()` renders it as a heatmap with overlaid contours at 25, 50, and 75% survival. This is the two-dimensional view of the dose-response surface that the TDT line summarises with one number per temperature.
 
 ```{r shrimp-landscape}
 #| label: fig-shrimp-landscape
@@ -1542,13 +1542,8 @@ A dense 2-D view of survival across the entire (temperature, duration) plane sho
 #| fig-height: 6
 #| cache: false
 
-# Linear-spaced duration grid (the derive_tdt_landscape default is
-# log-spaced, which works for narrow duration ranges but here produces
-# subpixel cells at the short-exposure end on the linear y-axis used by
-# plot_tdt_landscape, leaving only the observed points visible).
-shrimp_dur_range <- range(shrimp_std$duration, na.rm = TRUE)
-shrimp_dur_grid  <- seq(shrimp_dur_range[1], shrimp_dur_range[2],
-                         length.out = 120)
+shrimp_dur_grid <- seq(min(shrimp_std$duration), max(shrimp_std$duration),
+                        length.out = 120)
 lsp_shrimp <- derive_tdt_landscape(wf_shrimp,
                                    duration_grid = shrimp_dur_grid,
                                    ndraws        = 500)
@@ -1557,35 +1552,16 @@ plot_tdt_landscape(lsp_shrimp, observed = shrimp_std)
 
 ## TDT line: time to the threshold vs temperature {#sec-shrimp-tdt-line}
 
-The TDT landscape conveys the full 2-D survival surface, but a more
-familiar summary in the thermal-tolerance literature is the
-one-dimensional **TDT line** — the predicted time to the survival
-threshold as a function of temperature. We use the package-default
-threshold $(\text{low} + \text{up})/2$, which for the shrimp fit
-coincides numerically with the classical absolute 50 % survival
-(asymptotes are anchored near 0 and 1). Pass
-`derive_tdt_curve(workflow, target_surv = "absolute")` to enforce the
-absolute 50 % target explicitly. We plot it on two side-by-side
-panels — linear time on the left, $\log_{10}$ time on the right — so
-the same relationship can be read either as the absolute hours of
-exposure that half the animals tolerate (more intuitive for
-ecological interpretation) or as the canonical TDT straight line on
-$\log_{10}$ time (where the slope is $-1/z$).
+The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "hours of exposure half the animals tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. The default threshold is $\text{mid}$ (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for the classical absolute-$t_{50}$ definition. For the shrimp data the two coincide because the asymptotes are anchored near 0 and 1.
 
 ```{r shrimp-tdt-line}
 #| label: shrimp-tdt-line
 #| echo: true
 
-# Posterior LT_(low+up)/2 curve across the assayed temperature range,
-# slightly extended for visualisation. target_surv = "relative" is the
-# default; spelled out here for clarity. time_multiplier = 1 and
-# output_time_unit = "h" keep the output in hours so `plot_tdt_curve()`
-# can label and clip the y-axis directly in hours.
 ltx_shrimp <- derive_tdt_curve(
   wf_shrimp,
   temp_grid        = seq(min(shrimp_std$temp) - 1.5,
                          max(shrimp_std$temp) + 1.5, by = 0.05),
-  target_surv      = "relative",
   ndraws           = 500,
   time_multiplier  = 1,
   output_time_unit = "h"
@@ -1594,7 +1570,7 @@ ltx_shrimp <- derive_tdt_curve(
 
 ```{r plot-shrimp-tdt-line}
 #| label: fig-shrimp-tdt-line
-#| fig-cap: "Brown shrimp posterior TDT line: predicted time to the package-default threshold ($(\\text{low}+\\text{up})/2$ per draw; coincides with absolute 50 % survival for the shrimp fit) vs assay temperature, with 95 % credible band. Linear-time panel on the left makes the rapid drop in survival time as temperature rises immediately visible; $\\log_{10}$-time panel on the right linearises the relationship, so the slope is the classical $-1/z$ summary of thermal sensitivity. Both panels share the same posterior. Produced by `plot_tdt_curve()` (two-panel default, y-axis capped at 48 h)."
+#| fig-cap: "Brown shrimp posterior TDT line: predicted time to threshold vs assay temperature, with 95 % credible band. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Both panels share the same posterior."
 #| fig-width: 9
 #| fig-height: 4
 
@@ -1603,7 +1579,7 @@ plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-shrimp-extract}
 
-`extract_tdt()` returns $z$ (from per-draw log-linear regression of the LT50 curve) and $CT_{max_{1hr}}$ (4PL inversion at the 60-minute reference for 50% survival) by default; passing `lethal = TRUE` additionally returns $T_{crit}$ (the rate-multiplier damage-threshold, integrated over $r^* \in [0.1, 1]$ % HI per hour — see @eq-tcrit). The shrimp lethal-TDT dataset measures mortality counts, so we opt in to $T_{crit}$ here. Every output inherits the model's posterior, so all three quantities come with calibrated credible intervals.
+`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature, derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion). Passing `lethal = TRUE` additionally returns $T_{crit}$ under the rate-multiplier definition; this only makes sense when the endpoint is mortality (see @eq-tcrit), so we opt in for the shrimp data.
 
 ```{r shrimp-extract}
 #| label: shrimp-extract
@@ -1611,10 +1587,10 @@ plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 
 et_shrimp <- extract_tdt(
   wf_shrimp,
-  t_ref         = 60,            # CTmax defined at 1-hour exposure
-  TC_rate_range = c(0.1, 1),     # T_crit integrated over r* in % HI/hr
+  t_ref         = 60,
+  TC_rate_range = c(0.1, 1),
   ndraws        = 500,
-  lethal        = TRUE           # mortality counts ⇒ opt-in to T_crit
+  lethal        = TRUE
 )
 ```
 
@@ -1640,13 +1616,10 @@ tinytable::tt(shrimp_extract, digits = 2, escape = TRUE)
 
 ```{r shrimp-tcrit-ctmax-plot}
 #| label: fig-shrimp-tcrit-ctmax
-#| fig-cap: "Posterior densities of $z$ (left), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for brown shrimp. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The 5–6 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ represents the sub-lethal window between the onset of detectable injury and the LT50 limit; the $z$ posterior shows the thermal sensitivity (°C per order of magnitude) on the same plotting machinery."
+#| fig-cap: "Posterior densities of $z$ (left), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for brown shrimp. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The ~5 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ is the window between the onset of detectable damage accumulation and the LT50 temperature at 1 h."
 #| fig-width: 11
 #| fig-height: 3.5
 
-# Wrap the per-draw z posterior in the (draws, summary) shape that
-# `plot_temperature_density()` expects, so the same plotting helper can be
-# reused for z (despite z being a slope rather than a temperature).
 z_draws_shrimp   <- tibble::tibble(temp = et_shrimp$z$draws$z)
 z_q <- stats::quantile(z_draws_shrimp$temp,
                        c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
@@ -1670,87 +1643,60 @@ patchwork::wrap_plots(
 
 ## Heat injury under reference traces {#sec-shrimp-hi}
 
-We now project the fitted shrimp model through four temperature traces — flat baseline, single 1-hour spike, three 1-hour spikes, and a multi-day diurnal cycle — and predict cumulative heat-injury (HI) and survival under each. The damage threshold $T_c$ passed to `predict_heat_injury()` is the posterior median of $T_{crit}$ from `extract_tdt()` (model-derived, not hand-picked). The single-spike scenario is deliberately calibrated as an analytical sanity check: the spike temperature is set to the posterior median of $CT_{max_{1hr}}$, so the 1-hour spike is — by definition — a 1-hour exposure at the LT50 temperature and should accumulate ~100% LT50-dose (≈ 50% mortality) by the end of the spike hour.
+`predict_heat_injury()` projects the fitted dose-response surface through a temperature trace and returns cumulative heat injury (HI) and the resulting survival fraction at each time step. The damage threshold $T_c$ below which injury does not accumulate is taken from the posterior median of $T_{crit}$ extracted above, so the threshold is model-derived rather than hand-picked. We illustrate the function on four reference traces built by `make_temperature_scenarios()`: a flat baseline at the shrimp's natural holding temperature, a single one-hour spike, three one-hour spikes, and a four-day diurnal cycle that mimics a clustered coastal heatwave. The single-spike trace is calibrated as an analytical sanity check — its spike temperature is set to the posterior median of $CT_{max_{1hr}}$, so by definition the trace delivers approximately one LT50 dose by the end of the spike hour.
 
 ```{r shrimp-hi}
 #| label: shrimp-hi
 #| echo: true
 
-# Damage threshold = posterior median of T_crit from the fit. Model-derived.
 shrimp_T_c       <- et_shrimp$T_crit$summary$temp_median
 shrimp_CTmax_med <- et_shrimp$CTmax$summary$temp_median
 
 shrimp_scens <- make_temperature_scenarios(
-  baseline   = 17,                  # shrimp natural holding temperature
-  spike_temp = shrimp_CTmax_med,    # 1-hr spike at LT50-temperature → 100% HI
-  n_hours    = 96,                  # 4 days; matches diurnal length below
+  baseline   = 17,
+  spike_temp = shrimp_CTmax_med,
+  n_hours    = 96,
   spike_times_single = 24,
   spike_times_multi  = c(24, 48, 72),
-  # Diurnal: 4 days designed to mimic a clustered heat wave on a temperate
-  # coastal shrimp habitat. Day 1 is cool (peak below T_crit, no injury);
-  # the next three days build a heatwave with progressively higher peaks and
-  # warmer nights — the canonical "warm days come in runs, with warm nights"
-  # pattern of temporal autocorrelation. Calibrated so the two hottest days
-  # each deliver roughly 50–60 % LT50-dose, bringing cumulative HI past 150 %
-  # and predicted survival down to ~20 % by day 4.
   diurnal_n_days     = 4,
   diurnal_day_peaks  = c(22.0, 27.0, 30.0, 30.5),
   diurnal_night_temp = c(18.0, 19.5, 21.5, 22.0),
-  diurnal_peak_fwhm  = 5,           # ~4–5 h near the daily peak
+  diurnal_peak_fwhm  = 5,
   diurnal_noise_sd   = 0.3,
   diurnal_seed       = 1L
 )
 
-# Predict HI + survival under each scenario, without repair.
 shrimp_hi <- purrr::map(shrimp_scens, function(sc) {
-  predict_heat_injury(
-    trace       = sc,
-    workflow    = wf_shrimp,
-    target_surv = 0.5,
-    T_c         = shrimp_T_c,
-    ndraws      = 500
-  )
+  predict_heat_injury(trace = sc, workflow = wf_shrimp,
+                      T_c = shrimp_T_c, ndraws = 500)
 })
+```
 
-# Sharpe-Schoolfield repair parameters tuned to shrimp: optimum ~17 °C,
-# r_ref = 0.05 → 5% LT50-dose repaired per hour at TREF (≈ 50% HI cleared
-# in 10 hours of permissive temperature).
+Setting `repair = TRUE` adds a temperature-dependent Sharpe-Schoolfield repair kernel so injury accumulated at hot temperatures can be partially cleared during cooler intervals. Here we re-run only the two scenarios that accrue meaningful HI without repair — the multi-spike and the diurnal traces.
+
+```{r shrimp-hi-repair}
+#| label: shrimp-hi-repair
+#| echo: true
+
 shrimp_repair_pars <- list(
-  TA   = 14065,
-  TAL  = 50000,
-  TAH  = 120000,
-  TL   = 10.5 + 273.15,
-  TH   = 22.5 + 273.15,
-  TREF = 17   + 273.15,
+  TA = 14065, TAL = 50000, TAH = 120000,
+  TL = 10.5 + 273.15, TH = 22.5 + 273.15, TREF = 17 + 273.15,
   r_ref = 0.05
 )
 
-# Re-run with repair on the two scenarios that produce non-trivial HI:
-# the multi-spike and the diurnal trace.
 shrimp_hi_multi_rep <- predict_heat_injury(
-  trace       = shrimp_scens$multi_spike,
-  workflow    = wf_shrimp,
-  target_surv = 0.5,
-  T_c         = shrimp_T_c,
-  ndraws      = 500,
-  repair      = TRUE,
-  repair_pars = shrimp_repair_pars
+  shrimp_scens$multi_spike, wf_shrimp, T_c = shrimp_T_c, ndraws = 500,
+  repair = TRUE, repair_pars = shrimp_repair_pars
 )
-
 shrimp_hi_diurnal_rep <- predict_heat_injury(
-  trace       = shrimp_scens$diurnal,
-  workflow    = wf_shrimp,
-  target_surv = 0.5,
-  T_c         = shrimp_T_c,
-  ndraws      = 500,
-  repair      = TRUE,
-  repair_pars = shrimp_repair_pars
+  shrimp_scens$diurnal, wf_shrimp, T_c = shrimp_T_c, ndraws = 500,
+  repair = TRUE, repair_pars = shrimp_repair_pars
 )
 ```
 
 ```{r shrimp-hi-traces}
 #| label: fig-shrimp-hi-traces
-#| fig-cap: "The four reference temperature traces used for the shrimp heat-injury prediction, all 96 hours long. Baseline 17 °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ (LT50 temperature) so each spike delivers a full LT50 dose by construction. The diurnal scenario simulates a clustered 4-day heatwave: a cool day with a peak below $T_{crit}$, then three progressively hotter days whose nights also warm with the daytime peaks (warm days come in autocorrelated runs in nature). The two hottest days deliver roughly 50–60 % LT50-dose each. The dashed line marks the model-derived damage threshold $T_c = T_{crit}$."
+#| fig-cap: "The four reference temperature traces used for the shrimp heat-injury prediction. Baseline 17 °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ so each spike delivers approximately one LT50 dose. The diurnal scenario is a clustered 4-day heatwave: a cool day below $T_{crit}$ followed by three progressively hotter days. The dashed line marks the damage threshold $T_c = T_{crit}$."
 #| fig-width: 7
 #| fig-height: 9
 
@@ -1759,7 +1705,7 @@ plot_temperature_scenarios(shrimp_scens, T_c = shrimp_T_c)
 
 ```{r shrimp-hi-single-noreapair}
 #| label: fig-shrimp-hi-single-norep
-#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, the analytical expectation is ~100% LT50-dose by the end of hour 24, which produces ~50% mortality. The posterior median tracks this prediction. Posterior 95% credible band shown."
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, ~100% LT50-dose accrues by the end of the spike hour, producing ~50% mortality."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -1768,7 +1714,7 @@ plot_heat_injury(shrimp_hi$single_spike)
 
 ```{r shrimp-hi-multi-noreapair}
 #| label: fig-shrimp-hi-multi-norep
-#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver ~3 × LT50-dose, driving cumulative HI well past 100% and survival to near zero."
+#| fig-cap: "**Multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver ~3 × LT50-dose, driving cumulative HI well past 100% and survival to near zero."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -1777,18 +1723,18 @@ plot_heat_injury(shrimp_hi$multi_spike)
 
 ```{r shrimp-hi-multi-rep}
 #| label: fig-shrimp-hi-multi-rep
-#| fig-cap: "Same multi-spike trace, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.05` doses per hour at 17 °C — ≈ 50% repair in 10 hours of permissive temperature). Repair clears most of the dose between spikes, leaving residual injury but stopping the runaway accumulation seen without repair."
+#| fig-cap: "Same multi-spike trace, **with Sharpe-Schoolfield repair active**. Repair clears most of the dose between spikes, stopping the runaway accumulation seen without repair."
 #| fig-width: 7
 #| fig-height: 5
 
 plot_heat_injury(shrimp_hi_multi_rep)
 ```
 
-The diurnal scenario (@fig-shrimp-hi-diurnal-norep, @fig-shrimp-hi-diurnal-rep) is the closest to a real coastal record: a clustered 4-day heatwave. Day 1 stays below $T_{crit}$ and accumulates no injury. Days 2–4 form an autocorrelated run of progressively hotter days, with the hot afternoons coupled to warmer nights (a common natural pattern set by the same synoptic conditions that drive the warm days themselves). The no-repair trajectory shows the expected morphology: a flat first day, then three injury-accumulating bouts whose magnitude scales with the daily peak — by the end of day 4 cumulative HI is well past 100 % and predicted survival has dropped to ~20 %. With repair on, the off-peak hours and the cool first day act as recovery phases, partially offsetting the warm-day damage; the final trajectory is set by the net balance between daily accrual at sub-$CT_{max_{1hr}}$ peaks and overnight + cool-day repair.
+The diurnal scenario (@fig-shrimp-hi-diurnal-norep, @fig-shrimp-hi-diurnal-rep) is closer to a real coastal record. Day 1 stays below $T_{crit}$ and accrues no injury; days 2–4 each contribute an injury bout that scales with the daily peak. Without repair, cumulative HI is well past 100 % by the end of day 4 and predicted survival has dropped to ~20 %. With repair on, off-peak hours and the cool first day act as recovery phases; the final trajectory is set by the net balance between daily accrual at sub-$CT_{max_{1hr}}$ peaks and overnight/cool-day repair.
 
 ```{r shrimp-hi-diurnal-noreapair}
 #| label: fig-shrimp-hi-diurnal-norep
-#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) for brown shrimp under the **4-day diurnal heatwave** trace, **no repair**. The cool first day flat-lines below $T_{crit}$; days 2–4 each accrue an injury bout that scales with the daily peak. By the end of day 4 cumulative HI is well past 100 % and predicted survival has fallen to ~20 %. Posterior median + 95 % credible band."
+#| fig-cap: "**4-day diurnal heatwave** trace, **no repair**. The cool first day flat-lines below $T_{crit}$; days 2–4 each accrue an injury bout scaling with the daily peak."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -1797,7 +1743,7 @@ plot_heat_injury(shrimp_hi$diurnal)
 
 ```{r shrimp-hi-diurnal-rep}
 #| label: fig-shrimp-hi-diurnal-rep
-#| fig-cap: "Same 4-day heatwave trace, this time **with Sharpe-Schoolfield repair** active (`r_ref = 0.05` doses per hour at 17 °C). The cool first day and overnight troughs now act as recovery phases. The trajectory is dominated by the net balance between daily injury accrual at sub-$CT_{max_{1hr}}$ peaks and recovery during cool intervals."
+#| fig-cap: "Same 4-day heatwave trace, **with Sharpe-Schoolfield repair active**. The cool first day and overnight troughs now act as recovery phases."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -1839,17 +1785,15 @@ shrimp_hi_table <- dplyr::bind_rows(
 tinytable::tt(shrimp_hi_table, escape = TRUE)
 ```
 
-The shrimp case study shows the complete loop: raw counts → fitted model → classical TDT quantities (with credible intervals on every one of them) → heat-injury predictions under fluctuating field traces (with and without repair). Every quantity reported here inherits the joint posterior of the single 4PL fit — there is no second-stage regression, no point-estimate-then-bootstrap, no separate ramping-rate experiment. The same machinery applies to any TDT-style proportion dataset by changing only `standardize_data()`'s column-name arguments.
+The shrimp case study covers the complete loop: raw counts → fitted joint 4PL → classical TDT quantities with calibrated uncertainty → heat-injury predictions under fluctuating field traces, with and without repair. Every quantity inherits the posterior of the same single fit. The same machinery applies to any TDT-style proportion dataset by changing only the column-name arguments passed to `standardize_data()`.
 
 ## Sublethal time-to-knockdown data {#sec-shrimp-sublethal}
 
-So far the brown-shrimp analysis has used the lethal TDT dataset, which records mortality counts at fixed (temperature × duration) cells. The same animals can also be analysed via a **sublethal** endpoint — loss of response to touch — where each cup contributes a single time-to-knockdown observation rather than a binary survival count at a pre-specified duration. This sublethal dataset (shipped as `data/data_sublethal_TDT_brown_shrimp.csv`) covers five assay temperatures from 31 to 33 °C, distributed across three experimental dates and six holding tanks; the exact cup counts per temperature are reported in @tbl-shrimp-sub-summary below.
-
-The classical analysis of time-to-event sublethal data is a log-linear regression of $\log_{10}(\text{time to event})$ on temperature, giving $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$ directly from the regression coefficients [@jorgensen_unifying_2021; @orsted_finding_2022]. Below we reproduce that classical analysis in a Bayesian framework (with the same hierarchical structure as the joint 4PL above), then re-cast the *same* time-to-event data as a proportion-knocked-down 4PL fit [@orsted_suzukii_2024], and finally compare the two pipelines' TDT lines and posterior summaries.
+The shrimp data also include a **sublethal** endpoint, time to loss of response to touch, where each cup contributes one observation of when its individuals were knocked down rather than a binary survival count at a pre-specified duration. The classical analysis fits a log-linear regression of $\log_{10}(\text{time to event})$ on temperature and reads $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$ off the coefficients [@jorgensen_unifying_2021; @orsted_finding_2022]. Below we reproduce that classical analysis as a hierarchical Bayesian model, then re-cast the same observations as proportion-knocked-down counts and fit the joint 4PL on them [@orsted_suzukii_2024], and finally compare the two pipelines' TDT lines and posterior summaries.
 
 ### Data preparation {#sec-shrimp-sub-data}
 
-The raw sublethal sheet records one row per cup, with the time when the cup's individuals lost response to touch. We parse the time-of-day strings, restrict to non-excluded rows, and add the grouping factors used as random intercepts (`date_experiment`, `tank_ID`, `cup_ID`).
+The raw sublethal sheet records one row per cup with the time when its individuals lost response to touch. We parse the time-of-day strings into minutes, restrict to non-excluded rows, and attach grouping factors for date, tank, and cup.
 
 ```{r shrimp-sublethal-data}
 #| label: shrimp-sublethal-data
@@ -1860,9 +1804,6 @@ sublethal_raw <- readr::read_csv(
   show_col_types = FALSE
 )
 
-# Starting_time and Time_to_death are 12-hour clock strings like
-# "10:10:55 AM". Parse both as time-of-day, then take the difference in
-# minutes to get exposure duration per cup.
 parse_time_min <- function(s) {
   t <- lubridate::parse_date_time(s, orders = c("I:M:S p", "H:M:S"),
                                    quiet = TRUE)
@@ -1888,7 +1829,7 @@ tdt_sub <- sublethal_raw |>
   )
 ```
 
-@tbl-shrimp-sub-summary summarises the sublethal panel: five assay temperatures spanning the sublethal-to-lethal transition.
+@tbl-shrimp-sub-summary summarises the sublethal panel.
 
 ```{r shrimp-sublethal-summary-table}
 #| label: tbl-shrimp-sub-summary
@@ -1935,14 +1876,14 @@ fit_sub_lin <- brms::brm(
   prior      = priors_sub_lin,
   chains     = 4,
   cores      = 4,
-  iter       = 8000,                     # 4 chains x 4000 post-warmup = 16000 draws
+  iter       = 8000,
   warmup     = 4000,
   init       = 0,
   control    = list(adapt_delta = 0.995, max_treedepth = 14),
   backend    = "cmdstanr",
   seed       = 123,
-  silent     = 2,                        # hide cmdstanr chain trace
-  refresh    = 0,                        # hide per-iteration progress
+  silent     = 2,
+  refresh    = 0,
   file       = file.path(models_dir, "fit_shrimp_sublethal_linear"),
   file_refit = "on_change"
 )
@@ -1985,19 +1926,17 @@ tibble::tibble(
 
 ### Joint 4PL on proportion knocked-down {#sec-shrimp-sub-4pl}
 
-Following @orsted_suzukii_2024, the *same* time-to-knockdown data can be re-cast as proportion-alive observations. At each assay temperature, the fraction of cups that have *not yet* been knocked down by time $t$ defines a cumulative survival curve; that curve is the canonical 4PL input. Concretely, for each $(\text{date} \times \text{tank} \times \text{temperature})$ trial we count cups at a grid of evaluation times — when $t$ is short, most cups are still alive; when $t$ is long, almost none are. The resulting $(n_{\text{total}}, n_{\text{alive}})$ panel is then fed straight into `standardize_data()` and `fit_4pl()`.
+Following @orsted_suzukii_2024, the same time-to-knockdown observations can be re-cast as proportion-alive counts: at each assay temperature, the fraction of cups not yet knocked down by time $t$ is a cumulative survival curve, the canonical 4PL input. For each (date × tank × temperature) trial we count cups still responding at a grid of evaluation times, then feed the resulting $(n_{\text{total}}, n_{\text{alive}})$ panel through `standardize_data()` and `fit_4pl()`.
 
 ```{r shrimp-sublethal-4pl-panel}
 #| label: shrimp-sublethal-4pl-panel
 #| echo: true
 
-# Evaluation grid: log-spaced, covering the observed knockdown-time range.
 ttd_range <- range(tdt_sub$time_to_event, na.rm = TRUE)
 eval_times_min <- 10 ^ seq(log10(max(0.2, ttd_range[1] * 0.5)),
                             log10(ttd_range[2] * 1.5),
                             length.out = 18)
 
-# For each (Date, Tank, Temp) trial, count cups still alive at each eval_time.
 sub_4pl_panel <- tdt_sub |>
   dplyr::group_by(date_experiment, tank_ID, assay_temp) |>
   dplyr::summarise(n_total = dplyr::n(),
@@ -2036,17 +1975,17 @@ wf_sub_4pl <- fit_4pl(
   std_sub_4pl,
   random_effects = c("date_experiment", "tank_ID"),
   chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-  silent  = 2, refresh = 0,                            # hide chain trace
+  silent  = 2, refresh = 0,
   file    = file.path(models_dir, "fit_shrimp_sublethal_4pl"),
   file_refit = "on_change"
 )
 ```
 
-To make the joint 4PL on proportion-knocked-down data interpretable on the same axes as the lethal-TDT analysis, we plot the predicted survival ("proportion still alive") curves at each assay temperature with the observed cup counts overlaid. The 4PL aggregation pools cups into a $(\text{date} \times \text{tank} \times \text{temperature})$ count at each evaluation time, so each open point below is one such aggregated count plotted as a survival proportion.
+The fitted survival curves below are on the same axes as the lethal analysis — proportion still alive vs exposure duration — with the aggregated per-trial proportions overlaid.
 
 ```{r shrimp-sublethal-4pl-survcurves}
 #| label: fig-shrimp-sublethal-4pl-survcurves
-#| fig-cap: "Posterior 4PL survival ('proportion still alive') curves for the brown-shrimp sublethal knockdown data at each assay temperature, with 95 % credible bands. Overlaid points are the aggregated proportion still alive per (date × tank × temperature) trial at each evaluation time. Population-level prediction (random effects marginalised); duration on the natural (linear) scale; viridis temperature colour mapping."
+#| fig-cap: "Posterior 4PL survival ('proportion still alive') curves for the brown-shrimp sublethal knockdown data at each assay temperature, with 95 % credible bands. Points are the aggregated proportion still alive per (date × tank × temperature) trial at each evaluation time."
 #| fig-width: 8
 #| fig-height: 5
 
@@ -2061,18 +2000,14 @@ plot_survival_curves(psc_sub_4pl, observed = std_sub_4pl) +
   ggplot2::coord_cartesian(xlim = c(0, 600)) 
 ```
 
-::: {.callout-note}
-The 4PL aggregation pools cups within each $(\text{date} \times \text{tank} \times \text{temperature})$ trial, so `cup_ID` is no longer a grouping variable; cup-level dispersion is instead absorbed by the beta-binomial precision parameter $\phi$. The 4PL therefore uses two random intercepts (`date_experiment`, `tank_ID`) — one fewer than the cup-level linear fit above — plus $\phi$ to capture the extra-binomial variance.
-:::
+The 4PL aggregation pools cups within each (date × tank × temperature) trial, so `cup_ID` is no longer needed as a grouping variable — the cup-level dispersion is absorbed by the beta-binomial precision parameter $\phi$. The 4PL therefore uses two random intercepts (`date_experiment`, `tank_ID`) — one fewer than the cup-level linear fit above.
+
+We then call `extract_tdt()` to summarise $z$ and $CT_{max_{1hr}}$. We leave `lethal = FALSE` because the knockdown endpoint is sublethal: the fitted $z$ measures the slope of performance reduction rather than damage accumulation, and the rate-multiplier $T_{crit}$ formula is not interchangeable between the two (see the callout in @sec-joint-derive).
 
 ```{r shrimp-sublethal-4pl-extract}
 #| label: shrimp-sublethal-4pl-extract
 #| echo: true
 
-# Sublethal endpoint (knockdown): leave `lethal = FALSE` so that T_crit is
-# not derived. The fitted z for knockdown data measures performance-reduction
-# slope rather than damage-accumulation slope, and the two are not
-# interchangeable — see the warning callout in @sec-joint-derive.
 et_sub_4pl <- extract_tdt(
   wf_sub_4pl,
   t_ref           = 60,
@@ -2095,7 +2030,7 @@ tibble::tribble(
 
 ### Comparing the two sublethal pipelines {#sec-shrimp-sub-compare}
 
-The two pipelines analyse the *same* knockdown observations through different statistical structures: the linear model regresses individual log-times on temperature, the 4PL fits a sigmoidal cumulative-knockdown curve at each temperature and reads off $\log_{10}\text{LT50}$ from each posterior draw. Their posteriors of $z$ and $CT_{max_{1hr}}$ should agree to within the data's information content. @fig-shrimp-sub-compare overlays the two TDT lines (predicted $\log_{10}(\text{time to 50\% knockdown})$ versus assay temperature), and @tbl-shrimp-sub-compare puts the posterior summaries side-by-side.
+The two pipelines analyse the same knockdown observations through different statistical structures: the linear model regresses individual log-times on temperature, while the 4PL fits a sigmoidal cumulative-knockdown curve at each temperature and reads $\log_{10}\text{LT50}$ from each posterior draw. Their posteriors of $z$ and $CT_{max_{1hr}}$ should agree to within the data's information content.
 
 ```{r shrimp-sublethal-compare-data}
 #| label: shrimp-sublethal-compare-data
@@ -2104,7 +2039,6 @@ The two pipelines analyse the *same* knockdown observations through different st
 temp_grid_sub <- seq(min(tdt_sub$assay_temp) - 0.25,
                      max(tdt_sub$assay_temp) + 0.25, by = 0.05)
 
-# Linear model: predicted log10(time) from the population-level posterior
 lin_grid <- tibble::tibble(temp_c = temp_grid_sub - temp_mean_sub)
 lin_lp   <- brms::posterior_linpred(fit_sub_lin, newdata = lin_grid,
                                      re_formula = NA)
@@ -2116,11 +2050,9 @@ lin_pred <- tibble::tibble(
   method         = "Linear Bayesian"
 )
 
-# 4PL model: per-draw log10(LT50) curve from extract_tdt
 ltx_sub <- derive_tdt_curve(
   wf_sub_4pl,
   temp_grid       = temp_grid_sub,
-  target_surv     = 0.5,
   ndraws          = 1000,
   time_multiplier = 1
 )
@@ -2196,11 +2128,11 @@ compare_sub <- tibble::tibble(
 tinytable::tt(compare_sub, digits = 3, escape = TRUE)
 ```
 
-The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}}$ on this dataset (medians within their mutual credible intervals; see @tbl-shrimp-sub-compare). The 4PL on proportion-knocked-down data has the practical advantage that the *same* `extract_tdt()` workflow used for the lethal counts produces a posterior $\log_{10}\text{LT50}(T)$ curve and a posterior $CT_{max_{1hr}}$ — quantities the linear time-to-event model does not produce directly. $T_{crit}$, however, is not derived from the sublethal fit: as discussed in @sec-joint-derive, the rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as a damage-accumulation slope, which the sublethal $z$ is not. The empirical estimate of $T_{crit}$ for shrimp instead comes from the lethal-TDT fit in @sec-shrimp-extract, where the rate-multiplier interpretation is meaningful.
+The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}}$ on this dataset (medians within their mutual credible intervals; see @tbl-shrimp-sub-compare). The 4PL has the practical advantage that the same `extract_tdt()` workflow used on the lethal counts also produces a posterior TDT curve and $CT_{max_{1hr}}$ — quantities the linear time-to-event model does not deliver directly. $T_{crit}$, however, should be read from the lethal fit, not the sublethal one (@sec-joint-derive).
 
 ### A caution on cross-endpoint comparison of $T_{crit}$ {#sec-shrimp-tcrit-endpoint-caveat}
 
-The sublethal $T_{crit}$ on this dataset sits ~3.5 °C above the lethal $T_{crit}$ reported in @tbl-shrimp-extract, and their 95 % credible intervals do not overlap. This is *not* a sign that damage starts accumulating at a higher temperature for the sublethal endpoint — biologically that is impossible, since loss of response to touch manifests before death. The discrepancy is mechanical and traces to the rate-multiplier formula $T_{crit} = CT_{max_{1hr}} + z \cdot \log_{10}(r^*/100)$, which inherits a 2.5× sensitivity to $z$ in the centre of the integrated $r^*$ range. On the shrimp panel $CT_{max_{1hr}}$ for the two endpoints is essentially identical (~31.4–31.6 °C), but $z$ is more than halved for the sublethal endpoint ($\approx 1.1$ vs $\approx 2.6$ °C); $2.5 \times (2.6 - 1.1) \approx 3.7$ °C of $T_{crit}$ gap follows from that alone. The lethal and sublethal TDT lines therefore cross at $\approx CT_{max_{1hr}}$ and the steeper sublethal line, extrapolated below the 31–33 °C assay window, predicts times to knockdown that exceed times to death — biologically impossible and a sign that the linearity assumption is breaking down outside the assay range. The rate-multiplier $T_{crit}$ is therefore best read as an **endpoint-conditional operational summary** of where the *fitted TDT line* crosses a low-rate floor, not as the universal physiological threshold of **havro_faber_2023** or @jorgensen_unifying_2021. The same-species $T_{crit}^{(\text{lethal})}$ and $T_{crit}^{(\text{sublethal})}$ should not be compared directly. See [notes/2026-05-13-tcrit-lethal-vs-sublethal.qmd](../notes/2026-05-13-tcrit-lethal-vs-sublethal.qmd) for the TDT-line comparison plot, the full derivation, and a discussion of two cleaner alternatives — an empirical Q$_{10}$-breakpoint of **havro_faber_2023** per posterior draw (requires permissive-range data this panel does not have) and an absolute-damage-units rescaling (requires a species-specific calibration between endpoints).
+If $T_{crit}$ is derived from both the lethal and the sublethal fit on this dataset, the sublethal value sits ~3.5 °C above the lethal one and their 95 % credible intervals do not overlap. This is *not* a biological signal — loss of response to touch precedes death — but a mechanical consequence of the rate-multiplier formula $T_{crit} = CT_{max_{1hr}} + z \cdot \log_{10}(r^*/100)$, which inherits a 2.5× sensitivity to $z$ around the centre of the integrated $r^*$ range. $CT_{max_{1hr}}$ is similar across endpoints (~31.4–31.6 °C), but $z$ for the sublethal fit ($\approx 1.1$ °C) is less than half the lethal value ($\approx 2.6$ °C); the resulting $T_{crit}$ gap of $\approx 2.5 \times (2.6 - 1.1)$ follows entirely from that. The lethal and sublethal TDT lines therefore cross near $CT_{max_{1hr}}$ and diverge sharply outside the assay window — the steeper sublethal line, extrapolated, predicts times to knockdown longer than times to death, which is biologically impossible. The rate-multiplier $T_{crit}$ is best read as an **endpoint-conditional operational summary** of where the fitted TDT line crosses a low-rate floor, not as a universal physiological threshold [@faber2026; @jorgensen_unifying_2021], and lethal and sublethal $T_{crit}$ should not be compared directly.
 
 
 
@@ -2261,7 +2193,7 @@ zf |>
   tinytable::tt(escape = TRUE)
 ```
 
-We then build a standardised dataset per life stage. All three subsets share the same `temp_mean` (the grand mean across the full panel) so that `temp_c` is on a common scale — important for the joint model below, and helpful for comparability when reading off intercepts from the three separate fits.
+We build one standardised dataset per life stage, sharing the same `temp_mean` (the grand mean across the full panel) so that mean-centred temperature is on a common scale across stages. This makes the three separate-fit intercepts comparable and aligns them with the joint model below.
 
 ```{r zebrafish-standardise}
 #| label: zebrafish-standardise
@@ -2286,7 +2218,7 @@ names(zf_std_by_stage) <- zf_stages
 
 ## Approach 1: A separate 4PL model per life stage {#sec-zebrafish-separate}
 
-The simplest path is to repeat the shrimp pipeline three times — one `fit_4pl()` per life stage, each with the default beta-binomial likelihood and a `(1 | Date_experiment)` random intercept on `mid`. Each fit is then summarised with `extract_tdt()`. The fits are independent: the asymptote, slope, and midpoint posteriors for one stage carry no information about the others.
+The simplest option is to repeat the shrimp pipeline three times — one `fit_4pl()` per life stage with a random intercept on `mid` for `Date_experiment`, then one `extract_tdt()` per fit. The three fits are independent: each stage's posterior carries no information about the others.
 
 ```{r zebrafish-fit-separate}
 #| label: zebrafish-fit-separate
@@ -2329,7 +2261,7 @@ tinytable::tt(zf_sep_diag, digits = 3, escape = TRUE)
 ```{r zebrafish-sep-survcurves}
 #| label: fig-zebrafish-sep-survcurves
 #| cache: false
-#| fig-cap: "Posterior survival curves for each zebrafish life stage from the three independent 4PL fits, with 95% credible bands. One panel per life stage; coloured points are observed per-replicate survival proportions. Exposure duration is constrained to the first 10 hours via `coord_cartesian()`. The temperature legend is suppressed because temperature is encoded redundantly on the panel position (each panel covers a different life stage) and reading off individual temperature lines is not the message here — the focus is on the shape of the curves and how observations cluster on them."
+#| fig-cap: "Posterior survival curves for each zebrafish life stage from the three independent 4PL fits, with 95% credible bands. One panel per stage; coloured points are observed per-replicate survival proportions."
 #| fig-width: 11
 #| fig-height: 4.5
 
@@ -2352,19 +2284,10 @@ patchwork::wrap_plots(zf_sep_survplots, ncol = 3)
 ```{r zebrafish-sep-landscape}
 #| label: fig-zebrafish-sep-landscape
 #| cache: false
-#| fig-cap: "TDT landscape for each zebrafish life stage from the three independent 4PL fits. Heatmap shows posterior median predicted survival on the temperature × duration grid; white contours mark 25, 50, and 75 % survival isolines; overlaid points are raw observed proportions. All three panels share the same temperature × duration ranges (drawn from the combined zebrafish panel) so the surfaces can be compared directly across life stages. Same linear-axis convention as the shrimp landscape (@fig-shrimp-landscape)."
+#| fig-cap: "TDT landscape for each zebrafish life stage from the three independent 4PL fits. Heatmap shows posterior median predicted survival across temperature × duration; white contours mark 25, 50, and 75 % survival; points are observed proportions. All three panels share the same axis ranges so the surfaces can be compared directly."
 #| fig-width: 11
 #| fig-height: 4.5
 
-# Shared temperature × duration grid drawn from the combined zebrafish panel,
-# so the three life-stage landscapes share x and y axes and can be visually
-# compared.
-#
-# Both grids are LINEAR-spaced. The duration grid in particular must be
-# linear here, not log-spaced (the derive_tdt_landscape default), because
-# the y-axis is linear (matching the shrimp landscape). A log-spaced grid
-# on a linear axis collapses the short-duration cells of geom_raster to
-# subpixel widths, leaving only the contours and points visible.
 zf_temp_range <- range(zf$assay_temp, na.rm = TRUE)
 zf_dur_range  <- range(zf$duration_h, na.rm = TRUE)
 zf_shared_temp_grid <- seq(zf_temp_range[1], zf_temp_range[2],
@@ -2388,7 +2311,7 @@ patchwork::wrap_plots(zf_sep_landplots, ncol = 3) +
 
 ### TDT lines from the separate fits {#sec-zebrafish-sep-tdt-lines}
 
-The classical TDT plot — predicted time to the survival threshold as a function of temperature — comes from `derive_tdt_curve()`. We use the package default `target_surv = "relative"` (i.e. `(low + up)/2` per draw), which coincides with the conventional LT50 when the lower and upper asymptotes are anchored at 0 and 1 but is robust to the sub-unit upper asymptote that affects young embryos. We compute it on a common temperature grid for each life stage, then plot all three on the same axes for easy comparison. The absolute-0.5 variant is reproduced in @sec-zebrafish-relative-ltx.
+`derive_tdt_curve()` returns the predicted time to the survival threshold at each temperature; computed for each life stage on a common temperature grid, the three lines can be overlaid on the same axes for direct comparison. We use the package-default threshold (`mid`), which coincides with the conventional absolute LT50 when the asymptotes are anchored near 0 and 1 and remains meaningful when intrinsic background mortality pulls the upper asymptote below 1 — as it does for one of the zebrafish life stages (see @sec-zebrafish-relative-ltx for the absolute-0.5 comparison).
 
 ```{r zebrafish-sep-ltx}
 #| label: zebrafish-sep-ltx
@@ -2402,11 +2325,8 @@ zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   ltx <- derive_tdt_curve(
     zf_fits_sep[[s]],
     temp_grid       = zf_temp_grid,
-    # target_surv = "relative" is the package default; spelled out here for
-    # clarity. Pass "absolute" or a numeric in (0, 1) to override.
-    target_surv     = "relative",
     ndraws          = 500,
-    time_multiplier = 60,                  # hours → minutes for output
+    time_multiplier = 60,
     output_time_unit = "min"
   )
   ltx$summary |>
@@ -2423,7 +2343,7 @@ zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 ```{r zebrafish-sep-tdt-line-plot}
 #| label: fig-zebrafish-sep-tdt-line
 #| cache: false
-#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits, under the package-default relative threshold (`(low + up)/2` per draw). Time to threshold vs assay temperature, on linear (left) and $\\log_{10}$ (right) y-axes. Lines are posterior medians; shaded bands are 95 % credible intervals. The same posterior is shown on both panels — the linear panel highlights the absolute drop in tolerance at higher temperatures; the $\\log_{10}$ panel reveals the classical near-linear TDT relationship, with slope $-1/z$. The y-axis is capped at 48 h via `coord_cartesian()`; the larvae line uses a darker orange (inferno end) to avoid the pale viridis yellow."
+#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits, using the package-default threshold. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Lines are posterior medians; shaded bands are 95 % credible intervals."
 #| fig-width: 10
 #| fig-height: 4.5
 
@@ -2481,7 +2401,7 @@ patchwork::wrap_plots(p_lin_sep, p_log_sep, ncol = 2) +
 
 ### TDT-quantity posteriors per life stage {#sec-zebrafish-sep-tdt}
 
-`extract_tdt()` summarises the joint posterior of $z$ and $CT_{max_{1hr}}$ from each separate fit. By default, the threshold is the per-draw relative midpoint `(low + up)/2`; with `lethal = TRUE` it additionally returns $T_{crit}$ (the zebrafish endpoint is mortality). @sec-zebrafish-relative-ltx reruns the same call with `target_surv = "absolute"` for sensitivity.
+`extract_tdt()` summarises $z$ and $CT_{max_{1hr}}$ from each separate fit. We set `lethal = TRUE` because the zebrafish endpoint is mortality, which adds $T_{crit}$ to the output (the absolute-threshold sensitivity check in @sec-zebrafish-relative-ltx reruns the same call with `target_surv = "absolute"`).
 
 ```{r zebrafish-sep-extract}
 #| label: zebrafish-sep-extract
@@ -2523,15 +2443,13 @@ tinytable::tt(zf_sep_tdt_table, escape = TRUE)
 
 ### Pairwise life-stage contrasts (separate fits)
 
-Because the three fits are independent, their posteriors are *independent*: a pairwise contrast $\Delta_{ij} = q^{(i)} - q^{(j)}$ at the draw level is straightforward — sample-with-replacement-and-subtract is unnecessary because each draw of $q^{(i)}$ is already from the marginal posterior. Below we compute the difference distribution per draw of two stages by aligning their draw indices.
+Because the three fits are independent, pairwise contrasts $\Delta_{ij} = q^{(i)} - q^{(j)}$ can be computed at the draw level: subtracting matched draws gives a per-draw difference distribution that carries the joint uncertainty in both fits.
 
 ```{r zebrafish-sep-contrasts}
 #| label: tbl-zebrafish-sep-contrasts
 #| cache: false
-#| tbl-cap: "Pairwise differences in $z$ and $CT_{max_{1hr}}$ across zebrafish life stages, computed by subtracting draw-aligned posteriors from the three separate 4PL fits. Positive values mean the first-listed stage has the larger value of the quantity."
+#| tbl-cap: "Pairwise differences in $z$ and $CT_{max_{1hr}}$ across zebrafish life stages from the three separate 4PL fits. Positive values mean the first-listed stage has the larger value."
 
-# Draw-level contrast helper. The .draw index is shared across the three fits
-# (same chains / iter), so pairing by .draw gives well-defined per-draw deltas.
 make_contrast <- function(a, b, var) {
   da <- zf_et_sep[[a]][[var]]$draws
   db <- zf_et_sep[[b]][[var]]$draws
@@ -2565,29 +2483,20 @@ tinytable::tt(zf_sep_contrasts, escape = TRUE)
 
 ## Approach 2: A joint 4PL with `life_stage` as a covariate {#sec-zebrafish-joint}
 
-The three independent fits are a fine starting point, but they leave information on the table: the (small) date-to-date variability captured by `(1 | Date_experiment)` is estimated from each stage's dates in isolation, even though the *same* sampling-day variability process plausibly applies to all stages; the beta-binomial dispersion $\phi$ is similarly re-estimated three times. A **joint model** fits all three stages together and lets every 4PL sub-parameter depend on `life_stage`, with shared $\phi$ and a shared $\sigma_{\text{date}}$ pooled across stages. Practical motivations:
+A **joint model** fits all three life stages together and lets every 4PL sub-parameter depend on `life_stage`, with the dispersion $\phi$ and the date random-intercept variance $\sigma_{\text{date}}$ pooled across stages. The advantages over separate fits are:
 
-- **Non-independence across trials on the same date.** Even though the present panel does not have the same date appearing across stages (each date contributes to exactly one stage), a single $\sigma_{\text{date}}$ is estimated from all 8 dates, which is more informative than 2–3 dates per stage.
-- **Partial pooling of the asymptote and slope priors.** With life-stage-specific coefficients on `lowraw`, `upraw`, `logk`, and `mid`, the *priors* on those coefficients are still shared across stages, so each stage's posterior leans gently on the others where data are sparse.
-- **Direct life-stage contrasts from a single posterior.** Differences between stages are linear combinations of draws from the same fit — no cross-fit alignment needed.
+- $\sigma_{\text{date}}$ is estimated from all eight experimental dates rather than from 2–3 dates per stage, giving more information about the random-effect scale.
+- The priors on the per-stage asymptote and slope coefficients are shared, so each stage's posterior is gently regularised by the others where data are sparse.
+- Pairwise life-stage contrasts are linear combinations of draws from a single posterior, with no cross-fit alignment to worry about.
 
-We write the formula by hand, mirroring the disjoint-bounds asymptote reparameterisation used by `make_4pl_formula()` so the joint model and the separate fits use the same parameterisation. The life-stage covariate enters via **cell-means coding** — `~ 0 + life_stage + temp_c:life_stage` — rather than the standard `temp_c * life_stage` (treatment-contrast) coding. Both parameterisations describe the same likelihood, but they place priors on different sets of coefficients:
+We write the formula by hand to keep the same disjoint-bounds reparameterisation used by `make_4pl_formula()`. The life-stage covariate enters via **cell-means coding** (`~ 0 + life_stage + temp_c:life_stage`) rather than treatment-contrast coding. Cell-means estimates each stage's intercept and slope directly, with the same prior width on every stage's coefficient. Treatment contrasts (`temp_c * life_stage`) would place asymmetric priors on the non-reference stages — the effective slope for a non-reference stage is the sum of two `normal(0, 0.5)` coefficients, with implicit SD $\sqrt{2} \cdot 0.5 \approx 0.71$, $\sqrt{2}\times$ wider than the reference stage. Zebrafish life stages are biologically distinct enough that we do not want one of them designated as a "baseline".
 
-- *Treatment-contrast* (`temp_c * life_stage`) estimates one reference-stage slope and two deviations from it; the *effective* per-stage slopes for non-reference stages are sums of two coefficients, and with `normal(0, 0.5)` priors on each, the implicit prior on those sums has $\text{SD} = \sqrt{2} \cdot 0.5 \approx 0.71$. This makes non-reference stages' slope posteriors $\sqrt{2}\times$ wider than the reference stage's a priori, an asymmetric partial-pooling that we don't want here.
-- *Cell-means* (`0 + life_stage + temp_c:life_stage`) estimates each stage's intercept and slope directly. Every per-stage coefficient receives the same `normal(0, 0.5)` (slopes) or sub-parameter-appropriate (intercepts) prior, so no stage is implicitly privileged. The choice is principled for this case: zebrafish life stages are biologically distinct enough that we don't believe any one of them is a "baseline" from which the others deviate.
-
-The four 4PL sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) all receive this cell-means structure. **No observation-level random effect is included**: the beta-binomial family already estimates extra-binomial variance via $\phi$, and an additional obs-level random intercept would be redundant.
+All four sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) receive this cell-means structure. No observation-level random effect is included: the beta-binomial family already absorbs the extra-binomial variance via $\phi$.
 
 ```{r zebrafish-joint-spec}
 #| label: zebrafish-joint-spec
 #| echo: true
 
-# Build the same disjoint-bounds 4PL surface as make_4pl_formula() uses,
-# with cell-means coding on life_stage for every sub-parameter:
-# `0 + life_stage` gives one intercept per stage, `temp_c:life_stage` gives
-# one slope per stage. Each per-stage coefficient is its own degree of
-# freedom — no privileged reference stage, no treatment-contrast prior
-# inflation on non-reference slopes.
 zf_bounds <- bayesTLS:::compute_4pl_bounds(lower = 0, upper = 1)
 low_expr  <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)",
                      zf_bounds$low_min, zf_bounds$low_w)
@@ -2607,7 +2516,7 @@ f_zf_joint <- brms::bf(
 )
 ```
 
-We assemble the standardised data for all three stages back into a single tibble for the joint fit, retaining the centred `temp_c` aligned to `zf_temp_mean`.
+We assemble the standardised per-stage datasets back into a single tibble for the joint fit, keeping the shared mean-centring.
 
 ```{r zebrafish-joint-data}
 #| label: zebrafish-joint-data
@@ -2620,16 +2529,12 @@ zf_joint_data <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 }))
 ```
 
-Priors mirror those used by `make_4pl_priors()` for the per-stage fits, with one structural difference forced by the cell-means coding. With no `Intercept` coefficient (the global intercept is suppressed by `0 +`), each *per-stage intercept* — `life_stage<stage>` — needs its own prior centred on the appropriate sub-parameter value. The per-stage *slopes* — `life_stage<stage>:temp_c` — are picked up by the general `class = "b", nlpar = "<sub-par>"` priors (the same widths `make_4pl_priors()` uses for non-Intercept slopes).
+Priors mirror those used by `make_4pl_priors()`. Cell-means coding suppresses the global intercept, so each per-stage intercept (`life_stage<stage>`) receives its own prior centred on a plausible value for the corresponding sub-parameter; per-stage slopes pick up the general `class = "b"` priors.
 
 ```{r zebrafish-joint-priors}
 #| label: zebrafish-joint-priors
 #| echo: true
 
-# Centres for each sub-parameter's per-stage intercept prior, derived the
-# same way as in make_4pl_priors() (low_target = 2%, up_target = 98%,
-# log(k) ~ log(2) at temp_c = 0, mid centred on the median observed
-# log10(duration)).
 low_target  <- 0 + 0.02 * 1
 up_target   <- 0 + 0.98 * 1
 lowraw_loc  <- stats::qlogis((low_target - zf_bounds$low_min) / zf_bounds$low_w)
@@ -2637,8 +2542,6 @@ upraw_loc   <- stats::qlogis((up_target  - zf_bounds$up_min)  / zf_bounds$up_w)
 logk_loc    <- log(2)
 mid_loc     <- stats::median(zf_joint_data$logd, na.rm = TRUE)
 
-# Helper: three identical per-stage intercept priors (one per life_stage
-# level) on the requested sub-parameter.
 per_stage_intercept_priors <- function(centre, sigma, nlpar) {
   do.call(c, lapply(zf_stages, function(s) {
     brms::set_prior(
@@ -2650,18 +2553,14 @@ per_stage_intercept_priors <- function(centre, sigma, nlpar) {
 }
 
 zf_joint_priors <- c(
-  # Per-stage intercept priors (3 per sub-parameter)
   per_stage_intercept_priors(lowraw_loc, 1.0, "lowraw"),
   per_stage_intercept_priors(upraw_loc,  1.0, "upraw"),
   per_stage_intercept_priors(logk_loc,   1.0, "logk"),
   per_stage_intercept_priors(mid_loc,    1.5, "mid"),
-  # General `b` priors covering the per-stage slope coefficients
-  # (`life_stage<stage>:temp_c`) on each sub-parameter
   brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "lowraw"),
   brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "upraw"),
   brms::set_prior("normal(0, 0.3)", class = "b", nlpar = "logk"),
   brms::set_prior("normal(0, 0.6)", class = "b", nlpar = "mid"),
-  # Random-effect SD on `mid` and beta-binomial dispersion
   brms::set_prior("exponential(2)", class = "sd", nlpar = "mid",
                   group = "Date_experiment"),
   brms::set_prior("gamma(2, 0.1)",  class = "phi")
@@ -2678,12 +2577,6 @@ fit_zf_joint <- brms::brm(
   data       = zf_joint_data,
   prior      = zf_joint_priors,
   chains     = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-  # adapt_delta = 0.995 + max_treedepth = 15 is the cheaper of the two
-  # tunings considered: adapt_delta is the dominant cost driver (it sets
-  # the step size used by every warmup AND sampling iteration), while
-  # max_treedepth only costs extra on iterations that actually saturate.
-  # If treedepth hits reappear in the diagnostics table, bump treedepth
-  # to 20 first before raising adapt_delta further.
   control    = list(adapt_delta = 0.995, max_treedepth = 15),
   init       = 0,
   backend    = "cmdstanr",
@@ -2700,9 +2593,6 @@ fit_zf_joint <- brms::brm(
 #| tbl-cap: "Sampling diagnostics for the joint zebrafish 4PL fit (one model, all three life stages). Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
 #| cache: false
 
-# The joint fit was constructed by hand from brms::bf() rather than through
-# fit_4pl(), so we can't pass it to diagnose_tdt_fit() (which expects a
-# bayes_tls workflow). Pull the same numbers directly from the brmsfit.
 np_zj      <- brms::nuts_params(fit_zf_joint)
 divs_zj    <- sum(subset(np_zj, Parameter == "divergent__")$Value)
 td_max_zj  <- max(np_zj$Value[np_zj$Parameter == "treedepth__"], na.rm = TRUE)
@@ -2725,19 +2615,13 @@ tibble::tibble(
 
 ### TDT lines: independent vs joint fit {#sec-zebrafish-tdt-overlay}
 
-To compare the two approaches we extract the posterior $\log_{10}\text{LT}_{(\text{low}+\text{up})/2}(T)$ curve from the joint fit per life stage and overlay it on the separate-fit lines from @fig-zebrafish-sep-tdt-line. The joint fit was assembled by hand from `brms::bf()`, so `derive_tdt_curve()` cannot be called on it directly. Instead we apply the same shortcut the package uses internally in `"relative"` mode: predict the per-stage `mid` parameter directly and exponentiate. The auxiliary asymptote/slope matrices are also assembled here because the absolute-threshold sensitivity check in @sec-zebrafish-relative-ltx needs them.
+To compare the two approaches we build a per-stage TDT curve from the joint fit's posterior. The joint model is a hand-coded `brms::bf()` rather than a `bayes_tls` workflow, so we apply the same shortcut `derive_tdt_curve()` uses internally for the default (mid-based) threshold: extract the per-stage `mid` posterior and exponentiate. We also store the asymptote and slope posteriors here because the absolute-threshold sensitivity check in @sec-zebrafish-relative-ltx consumes them.
 
 ```{r zebrafish-joint-ltx}
 #| label: zebrafish-joint-ltx
 #| echo: true
 #| cache: false
 
-# Posterior LT_(low+up)/2 curve from the joint fit, per life stage. We grid
-# temp x life_stage and predict the four non-linear sub-parameters; the
-# relative-threshold time is just 10^mid(T) per draw (no inversion). The
-# disjoint-bounds back-transforms of low, up, k are also stored — the
-# absolute-threshold sensitivity check in §[Sensitivity check: absolute
-# survival thresholds](#sec-zebrafish-relative-ltx) consumes them.
 ndraws_joint <- 500
 
 zf_joint_pred_grid <- tidyr::expand_grid(
@@ -2745,9 +2629,9 @@ zf_joint_pred_grid <- tidyr::expand_grid(
   life_stage = factor(zf_stages, levels = zf_stages)
 ) |>
   dplyr::mutate(
-    temp_c = assay_temp - zf_temp_mean,
-    logd   = 0,                                  # placeholder for predict
-    n_total = 1L                                 # placeholder for trials()
+    temp_c  = assay_temp - zf_temp_mean,
+    logd    = 0,
+    n_total = 1L
   )
 
 pp_low <- brms::posterior_linpred(fit_zf_joint, newdata = zf_joint_pred_grid,
@@ -2763,15 +2647,14 @@ pp_mid <- brms::posterior_linpred(fit_zf_joint, newdata = zf_joint_pred_grid,
                                    nlpar = "mid",    re_formula = NA,
                                    ndraws = ndraws_joint)
 
-# Disjoint-bounds back-transform, identical to make_4pl_formula().
 low_mat <- zf_bounds$low_min + plogis(pp_low) * zf_bounds$low_w
 up_mat  <- zf_bounds$up_min  + plogis(pp_up)  * zf_bounds$up_w
 k_mat   <- exp(pp_lk)
 mid_mat <- pp_mid
 
-# Relative-threshold inversion is closed-form: at p = (low + up)/2 the
-# exponential term is 1, so log10(t_rel) = mid(T) directly per draw.
-t_min <- 60 * 10 ^ mid_mat                         # model time = hours → min
+# At the mid-based threshold the exponential term vanishes, so
+# log10(t_mid) = mid(T) directly. Convert hours -> minutes for plotting.
+t_min <- 60 * 10 ^ mid_mat
 
 zf_joint_summary <- zf_joint_pred_grid |>
   dplyr::mutate(
@@ -2789,12 +2672,10 @@ zf_joint_summary <- zf_joint_pred_grid |>
 ```{r zebrafish-overlay-tdt-line}
 #| label: fig-zebrafish-overlay-tdt-line
 #| cache: false
-#| fig-cap: "TDT lines for zebrafish under the package-default *relative* threshold ($(low+up)/2$ per draw), comparing the three independent per-life-stage fits (dashed lines, lighter ribbons) with the joint 4PL fit (solid lines, darker ribbons). 95 % credible bands shown for both methods. Linear-time panel on the left, $\\log_{10}$-time panel on the right. Each life stage carries the same hue across methods; the lighter ribbon and dashed line mark the separate fits, the darker ribbon and solid line mark the joint fit. The y-axis is capped at 48 h via `coord_cartesian()`. The joint fit's bands are typically narrower than the separate-fit bands thanks to partial pooling of the asymptote and slope priors and the shared $\\phi$. See @sec-zebrafish-relative-ltx for the same overlay under the absolute 0.5 threshold."
+#| fig-cap: "TDT lines for zebrafish comparing the three independent per-life-stage fits (dashed, lighter ribbons) with the joint 4PL fit (solid, darker ribbons); 95 % credible bands shown for both. Linear-time panel on the left, $\\log_{10}$-time panel on the right. Same hue per life stage across methods. The joint-fit bands are typically narrower thanks to partial pooling of the priors and the shared $\\phi$. See @sec-zebrafish-relative-ltx for the same overlay under the absolute 0.5 threshold."
 #| fig-width: 10
 #| fig-height: 4.5
 
-# Tag each posterior with its method so we can map both ribbons and lines
-# from a single long tibble.
 zf_overlay_df <- dplyr::bind_rows(
   dplyr::mutate(zf_sep_ltx,        method = "Separate fits"),
   dplyr::mutate(zf_joint_summary,  method = "Joint fit")
@@ -2802,8 +2683,6 @@ zf_overlay_df <- dplyr::bind_rows(
   dplyr::mutate(method = factor(method,
                                 levels = c("Separate fits", "Joint fit")))
 
-# Same hue per life stage across methods; method is encoded by ribbon alpha
-# (lighter for separate, darker for joint) and by linetype.
 overlay_alphas    <- c("Separate fits" = 0.12, "Joint fit" = 0.32)
 overlay_linetypes <- c("Separate fits" = "dashed", "Joint fit" = "solid")
 
@@ -2856,10 +2735,6 @@ We can reuse `derive_tdt_parameters()` per life stage by feeding it the per-stag
 #| echo: true
 #| cache: false
 
-# Build a derive_tdt_curve()-like object per life stage from the joint
-# posterior, then pass it to derive_tdt_parameters() to get z + CTmax. We
-# also compute the rate-multiplier T_crit per draw, using the same
-# r* in [0.1, 1] % HI per hour integration as in Case Study 1.
 TC_rate_range_zf <- c(0.1, 1)
 log10_low_zf     <- log10(TC_rate_range_zf[1] / 100)
 log10_high_zf    <- log10(TC_rate_range_zf[2] / 100)
@@ -2875,7 +2750,7 @@ zf_joint_tdt <- lapply(zf_stages, function(s) {
                                names_to = ".draw_id",
                                values_to = "duration_out") |>
     dplyr::mutate(.draw = as.integer(sub("V", "", .draw_id)),
-                  duration_model = duration_out / 60) |>      # min → hours
+                  duration_model = duration_out / 60) |>
     dplyr::filter(is.finite(duration_out), duration_out > 0) |>
     dplyr::select(.draw, temp, target_surv, duration_model, duration_out)
 
@@ -2883,9 +2758,6 @@ zf_joint_tdt <- lapply(zf_stages, function(s) {
                   time_multiplier = 60, output_time_unit = "min")
   zct  <- derive_tdt_parameters(ltx_obj, t_ref = 60)
 
-  # Per-draw T_crit via rate-multiplier integration. Pair z and CTmax from
-  # the same posterior draw and sample r* uniformly on log10 across the
-  # default range to propagate operational uncertainty in the damage rate.
   per_draw <- zct$draws |>
     dplyr::select(.draw, z, CTmax) |>
     dplyr::filter(is.finite(z), is.finite(CTmax)) |>
@@ -2914,7 +2786,7 @@ names(zf_joint_tdt) <- zf_stages
 ```{r zebrafish-joint-extract-table}
 #| label: tbl-zebrafish-joint-extract
 #| cache: false
-#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint 4PL fit, per life stage. Medians with 95 % credible intervals. Threshold = $(low+up)/2$ per draw (the package default; equivalent to LT50 when the asymptotes are anchored near 0 and 1). $T_{crit}$ uses the same rate-multiplier integration ($r^* \\in [0.1, 1]$ % HI per hour) as Case Study 1. See @sec-zebrafish-relative-ltx for the same quantities under the absolute 0.5 threshold."
+#| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint 4PL fit, per life stage. Medians with 95 % credible intervals. $T_{crit}$ uses the same rate-multiplier integration ($r^* \\in [0.1, 1]$ % HI per hour) as the shrimp case study. See @sec-zebrafish-relative-ltx for the same quantities under the absolute 0.5 threshold."
 
 zf_joint_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   z_summary  <- zf_joint_tdt[[s]]$z$summary
@@ -2940,7 +2812,7 @@ tinytable::tt(zf_joint_table, escape = TRUE)
 ```{r zebrafish-compare-table}
 #| label: tbl-zebrafish-compare
 #| cache: false
-#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ posteriors from the three independent per-life-stage fits (Approach 1) and the joint 4PL with `life_stage` as a covariate (Approach 2). All four columns use the package-default relative threshold (`(low + up)/2` per draw; @sec-zebrafish-relative-ltx shows the same comparison under the absolute 0.5 threshold). The joint fit's credible intervals are typically narrower thanks to partial pooling of the asymptote and slope priors and a single shared dispersion $\\phi$, while medians are similar — the two approaches agree on the *direction* of life-stage effects."
+#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ from the three separate fits (Approach 1) and the joint 4PL (Approach 2). The joint fit's credible intervals are typically narrower thanks to partial pooling, while medians are similar — the two approaches agree on the direction of life-stage effects."
 
 zf_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   et   <- zf_et_sep[[s]]
@@ -2965,11 +2837,11 @@ zf_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 tinytable::tt(zf_compare, escape = TRUE)
 ```
 
-@fig-zebrafish-method-densities visualises the same comparison at the posterior level: one row per life stage, one column per TDT quantity ($z$, $CT_{max_{1hr}}$, $T_{crit}$), with the separate-fit and joint-fit posterior densities overlaid in every panel. Solid vertical lines mark the posterior median for each method; dashed lines mark the 2.5th and 97.5th percentiles (95 % CrI). The narrowing of the joint posteriors relative to the separate ones is visible in nearly every panel — the partial-pooling story from @tbl-zebrafish-compare made explicit on the natural scale.
+@fig-zebrafish-method-densities visualises the same comparison at the posterior level: one row per life stage, one column per TDT quantity, with separate-fit and joint-fit posterior densities overlaid. The joint posteriors are typically narrower than the separate ones, while medians agree closely — partial pooling makes the joint fit more precise without changing the location of each quantity.
 
 ```{r zebrafish-method-densities}
 #| label: fig-zebrafish-method-densities
-#| fig-cap: "Posterior densities of $z$ (left column), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for each zebrafish life stage (rows), overlaid for the three separate per-stage 4PL fits (blue) and the joint 4PL with `life_stage` as a covariate (orange). Solid vertical lines mark the posterior median for each method; dashed lines mark the 2.5th and 97.5th percentiles (95 % CrI). The joint posteriors are typically narrower than the separate ones thanks to partial pooling of asymptotes / slope priors and a single shared dispersion $\\phi$, while medians track each other closely — the two approaches agree on the *location* of each quantity but the joint fit is more precise."
+#| fig-cap: "Posterior densities of $z$ (left), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for each zebrafish life stage, separate-fit (blue) vs joint-fit (orange). Solid vertical lines mark the posterior median; dashed lines mark the 95 % credible interval."
 #| fig-width: 10
 #| fig-height: 7
 #| cache: false
@@ -3052,16 +2924,14 @@ The joint approach is the recommended default when the dataset spans an identifi
 
 ## Sensitivity check: an absolute survival threshold {#sec-zebrafish-relative-ltx}
 
-The LT curves in @fig-zebrafish-sep-tdt-line and @fig-zebrafish-overlay-tdt-line, and the $CT_{max_{1hr}}$ posteriors in @tbl-zebrafish-sep-extract, @tbl-zebrafish-joint-extract, and @tbl-zebrafish-compare, all use the package default threshold: the per-draw midpoint between the lower and upper asymptotes, $(low + up)/2$. This threshold is read directly off the fitted `mid` parameter — no asymptote arithmetic — and coincides with the classical LT50 whenever the asymptotes are anchored near 0 and 1. When intrinsic background mortality pulls the upper asymptote below 1, the relative threshold isolates the dose-response *shape* from the group-level ceiling, which is generally the quantity we want to compare across stages.
-
-There are nevertheless situations where the *absolute* 50 % threshold is what matters — operational decisions anchored to "no more than half the cohort survives" rather than to a model-fitted relative midpoint. The `extract_tdt()` and `derive_tdt_curve()` functions accept `target_surv = "absolute"` (= 0.5) or any numeric in $(0, 1)$ to swap the threshold without refitting. This section reproduces the zebrafish $z$ and $CT_{max_{1hr}}$ at `target_surv = 0.5` and compares them to the default-relative numbers in @tbl-zebrafish-compare.
+All TDT curves and $CT_{max_{1hr}}$ posteriors above use the package-default threshold (the per-draw `mid` parameter, the midpoint between the fitted asymptotes). This coincides with the classical LT50 whenever the asymptotes are anchored near 0 and 1; it diverges from absolute LT50 when intrinsic background mortality pulls the upper asymptote below 1. For operational questions framed as "no more than half the cohort survives", an absolute 50 % survival threshold is the right anchor. Pass `target_surv = "absolute"` to `extract_tdt()` or `derive_tdt_curve()` (or any numeric in $(0, 1)$ for other percentiles) to swap the threshold without refitting. This section reruns the zebrafish analyses at the absolute threshold and compares the result to the default.
 
 The joint fit makes the contrast concrete: the three life stages have very different upper asymptotes.
 
 ```{r zebrafish-upper-asymptote-table}
 #| label: tbl-zebrafish-upper-asymptote
 #| cache: false
-#| tbl-cap: "Posterior summary of the 4PL **upper asymptote** $\\alpha_{\\text{up}}$ at the grand-mean centring temperature (mean-centred temperature equal to zero), per life stage, from the joint fit. Medians and 95 % credible intervals on the natural survival scale, obtained by back-transforming the cell-means intercept on the `upraw` sub-parameter through the disjoint-bounds parameterisation $\\alpha_{\\text{up}} = \\text{low}_{\\min} + \\mathrm{plogis}(\\beta_{\\text{up}}) \\cdot (\\text{up}_{\\max} - \\text{low}_{\\min})$. Values markedly below 1 indicate that a stage cannot reach saturating survival even at near-zero exposure, which biases absolute-LT50 comparisons across stages."
+#| tbl-cap: "Posterior summary of the 4PL upper asymptote $\\alpha_{\\text{up}}$ at the grand-mean temperature, per life stage, from the joint fit. Medians with 95 % credible intervals on the natural survival scale. Values markedly below 1 indicate that a stage cannot reach saturating survival even at near-zero exposure, which biases absolute-LT50 comparisons across stages."
 
 zf_joint_post <- brms::as_draws_df(fit_zf_joint)
 
@@ -3142,8 +3012,6 @@ $$
 #| echo: true
 #| cache: false
 
-# Analytical t_0.5 per draw. NA when up <= 0.5 (target not reachable from
-# above) or low >= 0.5 (target below the floor).
 arg_abs <- ifelse(up_mat > 0.5 & low_mat < 0.5,
                   (up_mat - 0.5) / (0.5 - low_mat), NA_real_)
 log10_t_h_abs <- mid_mat + log(arg_abs) / k_mat
@@ -3165,7 +3033,7 @@ zf_joint_summary_abs <- zf_joint_pred_grid |>
 ```{r zebrafish-threshold-tdt-line-plot}
 #| label: fig-zebrafish-threshold-tdt-line
 #| cache: false
-#| fig-cap: "Zebrafish TDT lines from the joint 4PL fit under the two threshold definitions. **Solid lines, darker ribbons:** package-default relative threshold (`(low + up)/2` per draw), repeating the joint curves from @fig-zebrafish-overlay-tdt-line. **Dashed lines, lighter ribbons:** absolute 50 % survival, recomputed here via the analytical 4PL inverse. Linear-time panel on the left, $\\log_{10}$-time on the right; the y-axis is capped at 48 h. The two definitions are nearly indistinguishable for `old_embryos` and `larvae` (whose upper asymptotes sit close to 1) and diverge for `young_embryos` (asymptote ~0.76, see @tbl-zebrafish-upper-asymptote), where the absolute target is reached *earlier* in time — the relative line is the line we recommend for cross-stage comparisons of dose-response *shape*; the absolute line is the line for operational decisions anchored to a fixed mortality fraction."
+#| fig-cap: "Zebrafish TDT lines from the joint 4PL fit under the two threshold definitions. **Solid, darker ribbons:** package-default mid-based threshold, repeated from @fig-zebrafish-overlay-tdt-line. **Dashed, lighter ribbons:** absolute 50 % survival. The two definitions are nearly indistinguishable for `old_embryos` and `larvae` (asymptotes close to 1) and diverge for `young_embryos` (asymptote ~0.76, see @tbl-zebrafish-upper-asymptote), where the absolute target is reached earlier in time."
 #| fig-width: 10
 #| fig-height: 4.5
 
@@ -3225,7 +3093,7 @@ For the separate fits we can put the two `extract_tdt()` outputs next to each ot
 ```{r zebrafish-threshold-compare-table}
 #| label: tbl-zebrafish-threshold-compare
 #| cache: false
-#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ from the three separate zebrafish 4PL fits under the two threshold definitions: the package-default relative threshold (`(low + up)/2` per draw) and the absolute 50 % survival threshold. Absolute-50 % shifts $CT_{max_{1hr}}$ downward for `young_embryos` (whose upper asymptote sits well below 1) but leaves the other two stages essentially unchanged. $z$ is essentially identical under either definition for these data because the per-draw correction term $\\tfrac{1}{k}\\log\\!\\tfrac{\\text{up}-0.5}{0.5-\\text{low}}$ varies only weakly with temperature in the fitted models."
+#| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ from the three separate zebrafish 4PL fits under the two threshold definitions: package-default mid-based and absolute 50 % survival. Absolute-50 % shifts $CT_{max_{1hr}}$ downward for `young_embryos` (whose upper asymptote sits well below 1) but leaves the other two stages essentially unchanged. $z$ is essentially identical under either definition for these data."
 
 zf_threshold_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   rel_s <- zf_et_sep[[s]]
@@ -3253,7 +3121,7 @@ zf_threshold_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 tinytable::tt(zf_threshold_compare, escape = TRUE)
 ```
 
-The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summary in @tbl-zebrafish-upper-asymptote: stages with $\alpha_{\text{up}} \approx 1$ (`old_embryos`, `larvae`) give essentially identical $z$ and $CT_{max_{1hr}}$ under either threshold, because *crossing 0.5* and *crossing $(low + up)/2$* coincide when the asymptotes are anchored near 0 and 1; the stage with a substantially sub-unit asymptote (`young_embryos`) sees $CT_{max_{1hr}}$ shift by a few tenths of a °C when the threshold is switched from relative to absolute. The relative threshold is the recommended default for cross-stage comparisons because it isolates the dose-response *shape* from the group-level ceiling. The absolute threshold is the right choice for *operational* questions anchored to a fixed mortality fraction.
+The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summary in @tbl-zebrafish-upper-asymptote: stages whose asymptote is near 1 (`old_embryos`, `larvae`) give essentially identical $z$ and $CT_{max_{1hr}}$ under either threshold, while the stage with a substantially sub-unit asymptote (`young_embryos`) sees $CT_{max_{1hr}}$ shift by a few tenths of a °C when the threshold is switched. The mid-based default is the right choice for cross-group comparisons because it isolates the dose-response shape from the group-level ceiling; the absolute threshold is the right choice for operational questions anchored to a fixed mortality fraction.
 
 # **References**
 
