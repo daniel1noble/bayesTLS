@@ -50,8 +50,12 @@ option_list <- list(
                         help = "DGP preset: baseline, sym_ul, asym_u, or varying_k."),
   optparse::make_option("--design",   type = "character", default = "full",
                         help = "Design grid: 'full' (5T x 6t) or 'sparse' (3T x 4t)."),
+  optparse::make_option("--family",   type = "character", default = "beta_binomial",
+                        help = "DGP likelihood: 'beta_binomial' (overdispersed; default) or 'binomial'."),
   optparse::make_option("--u_0",       type = "double", default = NA_real_,
                         help = "Override upper asymptote at T_bar. Default = DGP preset."),
+  optparse::make_option("--ell_0",     type = "double", default = NA_real_,
+                        help = "Override lower asymptote at T_bar. Default = DGP preset."),
   optparse::make_option("--u_beta1",   type = "double", default = NA_real_,
                         help = "Override temperature slope of u. Default = DGP preset."),
   optparse::make_option("--ell_beta1", type = "double", default = NA_real_,
@@ -76,6 +80,7 @@ opt <- optparse::parse_args(optparse::OptionParser(option_list = option_list))
 
 stopifnot(opt$dgp %in% c("baseline", "sym_ul", "asym_u", "varying_k"))
 stopifnot(opt$design %in% c("full", "sparse"))
+stopifnot(opt$family %in% c("beta_binomial", "binomial"))
 
 # Resolve n_reps. --n_reps overrides --scenario; otherwise --scenario must be
 # n3/n5. Both routes set scen_id (used to keep simulation seeds disjoint).
@@ -97,10 +102,12 @@ to_null <- function(x) if (is.na(x)) NULL else x
 truth  <- sim_twostage_truth(
   dgp       = opt$dgp,
   u_0       = to_null(opt$u_0),
+  ell_0     = to_null(opt$ell_0),
   u_beta1   = to_null(opt$u_beta1),
   ell_beta1 = to_null(opt$ell_beta1),
   k_beta1   = to_null(opt$k_beta1),
-  design    = opt$design
+  design    = opt$design,
+  family    = opt$family
 )
 
 # Output label: explicit --label wins; else built from the DGP + scenario.
@@ -129,11 +136,12 @@ cat(sprintf("  out_dir:     %s\n", opt$out_dir))
 cat(sprintf("  raw_dir:     %s\n", raw_dir))
 cat(sprintf("  master seed: %d\n", master))
 cat(sprintf("  force:       %s\n\n", opt$force))
+cat(sprintf("  family:      %s\n", truth$family))
 cat(sprintf("  truth: u_0=%g  ell_0=%g  k_0=%g\n",
             truth$u, truth$ell, truth$k))
 cat(sprintf("  truth slopes: u_beta1=%g  ell_beta1=%g  k_beta1=%g\n",
             truth$u_beta1, truth$ell_beta1, truth$k_beta1))
-cat(sprintf("  OLS-derived: z_true = %.4f °C, CTmax_1hr_true = %.4f °C\n\n",
+cat(sprintf("  true z = %.4f °C, true CTmax_1hr = %.4f °C\n\n",
             truth$z_true, truth$CTmax_1hr_true))
 
 # ---- one simulation ----------------------------------------------------------
@@ -145,7 +153,14 @@ run_one <- function(sim_id) {
   if (!opt$force && file.exists(result_file)) return(invisible(NULL))
 
   seed_sim <- master + 1000L * scen_id + sim_id
-  data <- sim_twostage_dataset(n_reps = n_reps, seed = seed_sim)
+  # `truth` MUST be passed explicitly. sim_twostage_dataset()'s signature
+  # defaults `truth = sim_twostage_truth()` (baseline DGP); omitting this
+  # argument silently generates baseline data regardless of CLI overrides
+  # (--dgp / --u_0 / --u_beta1 / --ell_beta1 / --k_beta1 / --design).
+  # Original simulations 2026-05-13 through 2026-05-15 hit this bug — every
+  # cell was scored against a shifted truth while the data stayed baseline.
+  # See feedback_sim_preflight.md (2026-05-15 update) for the lesson.
+  data <- sim_twostage_dataset(n_reps = n_reps, seed = seed_sim, truth = truth)
 
   t0 <- Sys.time()
   joint <- tryCatch(
@@ -153,24 +168,47 @@ run_one <- function(sim_id) {
     error = function(e) list(success = FALSE, error = conditionMessage(e),
                               z = list(point = NA_real_, lower = NA_real_, upper = NA_real_),
                               CTmax_1hr = list(point = NA_real_, lower = NA_real_,
-                                               upper = NA_real_))
+                                               upper = NA_real_),
+                              T_crit    = list(point = NA_real_, lower = NA_real_,
+                                               upper = NA_real_),
+                              draws = NULL, diagnostics = NULL)
   )
   joint_sec <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
 
-  ts <- fit_two_stage_classical(data)
+  ts_bin <- fit_two_stage_classical(data)
+  ts_bb  <- tryCatch(
+    fit_two_stage_betabin(data),
+    error = function(e) list(success = FALSE, error = conditionMessage(e),
+                              z = list(point = NA_real_, lower = NA_real_, upper = NA_real_),
+                              CTmax_1hr = list(point = NA_real_, lower = NA_real_,
+                                               upper = NA_real_))
+  )
 
-  row  <- sim_twostage_result_row(joint, ts, truth, sim_id, path_label,
-                                  runtime_sec = joint_sec)
+  row <- sim_twostage_result_row(joint, ts_bin, ts_bb, truth, sim_id,
+                                 path_label, runtime_sec = joint_sec)
+
+  # Diagnostics row: capture all columns produced by diagnose_tdt_fit(), not
+  # just rhat_max + divergences. The per-cell aggregator builds pass-rate
+  # summaries and a convergent-only bias/coverage table from these.
+  diag_row <- if (isTRUE(joint$success) && !is.null(joint$diagnostics)) {
+    joint$diagnostics
+  } else {
+    tibble::tibble(rhat_max = NA_real_, ess_bulk_min = NA_real_,
+                   ess_tail_min = NA_real_, divergences = NA_integer_,
+                   treedepth_hits = NA_integer_, bfmi_min = NA_real_,
+                   rhat_pass = NA, ess_pass = NA, divergence_pass = NA,
+                   treedepth_pass = NA, bfmi_pass = NA, all_pass = NA)
+  }
   meta <- tibble::tibble(
     sim_id      = sim_id,
     scenario    = path_label,
     seed        = seed_sim,
     joint_sec   = joint_sec,
-    joint_ok    = joint$success,
-    ts_ok       = ts$success,
-    rhat_max    = if (joint$success) joint$diagnostics$rhat_max else NA_real_,
-    divergences = if (joint$success) joint$diagnostics$divergences else NA_integer_
-  )
+    joint_ok    = isTRUE(joint$success),
+    ts_bin_ok   = isTRUE(ts_bin$success),
+    ts_bb_ok    = isTRUE(ts_bb$success)
+  ) |>
+    dplyr::bind_cols(diag_row)
 
   # Full per-draw joint-4PL posterior (z, CTmax_1hr, T_crit). Tagged with
   # sim_id so downstream code can pool draws across sims without losing
@@ -246,67 +284,129 @@ if (nrow(per_sim) == 0L) {
 }
 
 # ---- summary with Monte Carlo standard errors --------------------------------
+# Two parallel summaries:
+#   mcse_summary       — every successful fit, regardless of joint-4PL
+#                        convergence. Reflects realistic use of the
+#                        recommended pipeline with default sampler settings.
+#   mcse_summary_conv  — restricted to sims where the joint-4PL all_pass
+#                        diagnostic is TRUE. If the two summaries diverge,
+#                        pathological MCMC fits are biasing the headline.
 
-mcse_summary <- per_sim |>
-  dplyr::filter(success) |>
-  dplyr::group_by(scenario, method, quantity) |>
+mcse_aggregator <- function(df) {
+  df |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n            = dplyr::n(),
+      mean_bias    = mean(bias, na.rm = TRUE),
+      mcse_bias    = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      rmse         = sqrt(mean(bias^2, na.rm = TRUE)),
+      mcse_rmse    = stats::sd(bias^2, na.rm = TRUE) /
+                      (2 * sqrt(mean(bias^2, na.rm = TRUE)) * sqrt(dplyr::n())),
+      coverage     = mean(covered, na.rm = TRUE),
+      mcse_cov     = sqrt(mean(covered, na.rm = TRUE) *
+                           (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
+      med_width    = stats::median(width, na.rm = TRUE),
+      .groups      = "drop"
+    ) |>
+    dplyr::mutate(dplyr::across(c(mean_bias, mcse_bias, rmse, mcse_rmse,
+                                   coverage, mcse_cov, med_width),
+                                ~ round(.x, 4)))
+}
+
+mcse_summary <- mcse_aggregator(dplyr::filter(per_sim, success))
+
+# Convergent-fits-only summary: sims where the joint-4PL diagnostic
+# all_pass is TRUE. (Used for all three estimators on those sims so the
+# comparison is on the same sims.)
+convergent_sim_ids <- meta |>
+  dplyr::filter(isTRUE(joint_ok), all_pass %in% TRUE) |>
+  dplyr::pull(sim_id)
+mcse_summary_conv <- if (length(convergent_sim_ids) > 0L) {
+  per_sim |>
+    dplyr::filter(success, sim_id %in% convergent_sim_ids) |>
+    mcse_aggregator()
+} else {
+  mcse_summary[0, ]
+}
+
+# ---- per-cell joint-4PL diagnostic summary ----------------------------------
+# One row per cell — median + worst-case of each diagnostic statistic and
+# pass rate for each criterion across joint-4PL fits that succeeded.
+diag_summary <- meta |>
+  dplyr::filter(joint_ok) |>
   dplyr::summarise(
-    n            = dplyr::n(),
-    mean_bias    = mean(bias, na.rm = TRUE),
-    mcse_bias    = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
-    rmse         = sqrt(mean(bias^2, na.rm = TRUE)),
-    mcse_rmse    = stats::sd(bias^2, na.rm = TRUE) /
-                    (2 * sqrt(mean(bias^2, na.rm = TRUE)) * sqrt(dplyr::n())),
-    coverage     = mean(covered, na.rm = TRUE),
-    mcse_cov     = sqrt(mean(covered, na.rm = TRUE) *
-                         (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
-    med_width    = stats::median(width, na.rm = TRUE),
-    .groups      = "drop"
+    n_total           = dplyr::n(),
+    n_joint_ok        = sum(joint_ok, na.rm = TRUE),
+    n_ts_bin_ok       = sum(ts_bin_ok, na.rm = TRUE),
+    n_ts_bb_ok        = sum(ts_bb_ok, na.rm = TRUE),
+    rhat_max_p50      = stats::median(rhat_max, na.rm = TRUE),
+    rhat_max_p100     = max(rhat_max, na.rm = TRUE),
+    ess_bulk_min_p50  = stats::median(ess_bulk_min, na.rm = TRUE),
+    ess_bulk_min_p0   = suppressWarnings(min(ess_bulk_min, na.rm = TRUE)),
+    ess_tail_min_p50  = stats::median(ess_tail_min, na.rm = TRUE),
+    ess_tail_min_p0   = suppressWarnings(min(ess_tail_min, na.rm = TRUE)),
+    bfmi_min_p50      = stats::median(bfmi_min, na.rm = TRUE),
+    bfmi_min_p0       = suppressWarnings(min(bfmi_min, na.rm = TRUE)),
+    n_div_total       = sum(divergences, na.rm = TRUE),
+    n_sims_with_div   = sum(divergences > 0, na.rm = TRUE),
+    n_treedepth_total = sum(treedepth_hits, na.rm = TRUE),
+    n_sims_with_td    = sum(treedepth_hits > 0, na.rm = TRUE),
+    rhat_pass_rate    = mean(rhat_pass, na.rm = TRUE),
+    ess_pass_rate     = mean(ess_pass, na.rm = TRUE),
+    divergence_pass_rate = mean(divergence_pass, na.rm = TRUE),
+    treedepth_pass_rate  = mean(treedepth_pass, na.rm = TRUE),
+    bfmi_pass_rate    = mean(bfmi_pass, na.rm = TRUE),
+    all_pass_rate     = mean(all_pass, na.rm = TRUE),
+    .groups           = "drop"
   ) |>
-  dplyr::mutate(dplyr::across(c(mean_bias, mcse_bias, rmse, mcse_rmse,
-                                 coverage, mcse_cov, med_width),
-                              ~ round(.x, 4)))
+  dplyr::mutate(scenario = path_label, .before = 1)
 
-# ---- paired method-difference summary (joint_4pl - two_stage per sim) -------
-# These come straight from the per-sim table by pivoting on `method` and
-# subtracting. Captures whether the two methods agree on each individual
-# dataset (different from comparing aggregate biases, which marginalise out
-# the per-sim correlation).
+# ---- paired method-difference summary --------------------------------------
+# All three pairwise diffs (joint_4pl - two_stage_bin, joint_4pl - two_stage_bb,
+# two_stage_bb - two_stage_bin). Captures whether methods agree on individual
+# datasets, which is the within-sim contrast that the across-sim mcse_summary
+# marginalises out.
 
-# Paired diff: keep only sims where BOTH methods succeeded (otherwise the
-# pivot is missing a column and a per-sim contrast is undefined). When the
-# data are very sparse (e.g. sparse design x n_reps=1) all two-stage fits
-# may fail; in that case `diffs` stays empty and we record a placeholder.
 both_ok <- per_sim |>
   dplyr::select(sim_id, scenario, method, quantity, estimate, success) |>
   tidyr::pivot_wider(names_from  = method,
                      values_from = c(estimate, success),
                      names_sep   = "_")
 
-needed_cols <- c("estimate_joint_4pl", "estimate_two_stage",
-                 "success_joint_4pl",  "success_two_stage")
-diffs <- if (all(needed_cols %in% names(both_ok))) {
+pair_diff <- function(both_ok, m1, m2) {
+  needed <- c(paste0("estimate_", m1), paste0("estimate_", m2),
+              paste0("success_",  m1), paste0("success_",  m2))
+  if (!all(needed %in% names(both_ok))) {
+    return(tibble::tibble(sim_id = integer(0), scenario = character(0),
+                          quantity = character(0), m1 = character(0),
+                          m2 = character(0), est_m1 = numeric(0),
+                          est_m2 = numeric(0), diff = numeric(0)))
+  }
   both_ok |>
-    dplyr::filter(success_joint_4pl, success_two_stage) |>
+    dplyr::filter(.data[[paste0("success_", m1)]],
+                  .data[[paste0("success_", m2)]]) |>
     dplyr::transmute(sim_id, scenario, quantity,
-                     joint_4pl = estimate_joint_4pl,
-                     two_stage = estimate_two_stage,
-                     diff      = joint_4pl - two_stage)
-} else {
-  tibble::tibble(sim_id = integer(0), scenario = character(0),
-                 quantity = character(0),
-                 joint_4pl = numeric(0), two_stage = numeric(0),
-                 diff = numeric(0))
+                     m1 = m1, m2 = m2,
+                     est_m1 = .data[[paste0("estimate_", m1)]],
+                     est_m2 = .data[[paste0("estimate_", m2)]],
+                     diff   = est_m1 - est_m2)
 }
 
+diffs <- dplyr::bind_rows(
+  pair_diff(both_ok, "joint_4pl",     "two_stage_bin"),
+  pair_diff(both_ok, "joint_4pl",     "two_stage_bb"),
+  pair_diff(both_ok, "two_stage_bb",  "two_stage_bin")
+)
+
 diff_summary <- if (nrow(diffs) == 0L) {
-  tibble::tibble(scenario = character(0), quantity = character(0),
-                 n = integer(0), mean_diff = numeric(0),
-                 mcse_diff = numeric(0), median_diff = numeric(0),
-                 diff_q025 = numeric(0), diff_q975 = numeric(0))
+  tibble::tibble(scenario = character(0), m1 = character(0), m2 = character(0),
+                 quantity = character(0), n = integer(0),
+                 mean_diff = numeric(0), mcse_diff = numeric(0),
+                 median_diff = numeric(0), diff_q025 = numeric(0),
+                 diff_q975 = numeric(0))
 } else {
   diffs |>
-    dplyr::group_by(scenario, quantity) |>
+    dplyr::group_by(scenario, m1, m2, quantity) |>
     dplyr::summarise(
       n            = dplyr::n(),
       mean_diff    = mean(diff, na.rm = TRUE),
@@ -321,28 +421,45 @@ diff_summary <- if (nrow(diffs) == 0L) {
                                 ~ round(.x, 4)))
 }
 
-out_per_sim <- file.path(opt$out_dir, sprintf("per_sim_%s.rds", path_label))
-out_meta    <- file.path(opt$out_dir, sprintf("meta_%s.rds",    path_label))
-out_draws   <- file.path(opt$out_dir, sprintf("draws_%s.rds",   path_label))
-out_summary <- file.path(opt$out_dir, sprintf("summary_%s.rds", path_label))
-out_diffs   <- file.path(opt$out_dir, sprintf("diffs_%s.rds",   path_label))
-saveRDS(per_sim,      out_per_sim)
-saveRDS(meta,         out_meta)
-saveRDS(draws,        out_draws)
-saveRDS(mcse_summary, out_summary)
-saveRDS(diffs,        out_diffs)
+out_per_sim       <- file.path(opt$out_dir, sprintf("per_sim_%s.rds", path_label))
+out_meta          <- file.path(opt$out_dir, sprintf("meta_%s.rds",    path_label))
+out_draws         <- file.path(opt$out_dir, sprintf("draws_%s.rds",   path_label))
+out_summary       <- file.path(opt$out_dir, sprintf("summary_%s.rds", path_label))
+out_summary_conv  <- file.path(opt$out_dir, sprintf("summary_conv_%s.rds", path_label))
+out_diag          <- file.path(opt$out_dir, sprintf("diag_%s.rds",    path_label))
+out_diffs         <- file.path(opt$out_dir, sprintf("diffs_%s.rds",   path_label))
+saveRDS(per_sim,           out_per_sim)
+saveRDS(meta,              out_meta)
+saveRDS(draws,             out_draws)
+saveRDS(mcse_summary,      out_summary)
+saveRDS(mcse_summary_conv, out_summary_conv)
+saveRDS(diag_summary,      out_diag)
+saveRDS(diffs,             out_diffs)
 cat(sprintf("\n  Saved %s (%d rows)\n", out_per_sim, nrow(per_sim)))
 cat(sprintf("  Saved %s (%d rows)\n", out_meta, nrow(meta)))
 cat(sprintf("  Saved %s (%d rows of per-draw joint-4PL posterior)\n",
             out_draws, nrow(draws)))
-cat(sprintf("  Saved %s\n", out_summary))
-cat(sprintf("  Saved %s (per-sim joint-vs-two-stage differences)\n", out_diffs))
+cat(sprintf("  Saved %s (all fits)\n", out_summary))
+cat(sprintf("  Saved %s (convergent fits only)\n", out_summary_conv))
+cat(sprintf("  Saved %s (joint-4PL per-cell diagnostic summary)\n", out_diag))
+cat(sprintf("  Saved %s (pairwise method differences)\n", out_diffs))
 
-cat("\n=== Joint-4PL minus Two-stage paired difference ===\n")
+cat("\n=== Pairwise method differences (per-sim diffs aggregated) ===\n")
 print(as.data.frame(diff_summary))
 
-cat("\n=== Summary with Monte Carlo SEs ===\n")
+cat("\n=== Joint-4PL diagnostic summary ===\n")
+print(as.data.frame(diag_summary))
+if (isTRUE(diag_summary$all_pass_rate < 0.95)) {
+  cat(sprintf("\n  WARNING: joint-4PL all_pass rate %.1f%% is below 95%%. ",
+              100 * diag_summary$all_pass_rate))
+  cat("Investigate convergence before trusting the all-fits summary.\n")
+}
+
+cat("\n=== Bias/coverage — all fits ===\n")
 print(as.data.frame(mcse_summary))
+
+cat("\n=== Bias/coverage — convergent fits only (joint-4PL all_pass = TRUE) ===\n")
+print(as.data.frame(mcse_summary_conv))
 
 # ---- MCSE decision rule ------------------------------------------------------
 

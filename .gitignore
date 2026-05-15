@@ -19,8 +19,6 @@ smoke*
 # Output files from R CMD check
 /*.Rcheck/
 
-sim_twostage/
-
 # RStudio files
 .Rproj.user/
 
@@ -31,10 +29,14 @@ vignettes/*.pdf
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
 
-# Sims — ignore the per-sim raw files (1000s of small RDS files,
-# regeneratable from scripts/sim_twostage_bias.R). Track only the aggregated
-# outputs the supplement loads at render time (per_sim, draws, summary, diffs).
-output/sim_twostage/raw/
+# Sims — ignore ALL simulation .rds outputs (per-sim raw files AND aggregates).
+# They are regeneratable from scripts/sim_twostage_bias.R. The mock_sim and
+# *_buggy_* sibling directories are also ignored.
+output/sim_twostage/
+output/sim_twostage_*/
+output/sim_twostage_buggy_*/
+output/mock_sim/
+output/figs/sim_twostage/
 
 # knitr and R markdown default cache directories
 *_cache/
@@ -86,7 +88,6 @@ ms/.quarto/
 *_cache/
 bib/tdt_problems.bib.before-bbt-migration.20260507
 index.log
-.gitignore
 ms/ms.log
 ms/supplement.tex
 ms/ms_supp.tex
@@ -101,13 +102,3 @@ scripts/smoke-test-phase1d.R
 
 # testthat-built fixture (cached small brms fit; auto-rebuilds on first run)
 tests/testthat/fixtures/sim_fit_small.rds
-output/sim_twostage/diffs_n5.rds
-.gitignore
-.gitignore
-output/sim_twostage/meta_n5.rds
-output/sim_twostage/per_sim_n5.rds
-output/sim_twostage/summary_n5.rds
-.gitignore
-.gitignore
-output/sim_twostage/draws_n5.rds
-scripts/run_sweep_queue.sh

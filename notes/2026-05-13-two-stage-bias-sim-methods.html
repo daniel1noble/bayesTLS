@@ -9,7 +9,7 @@
 <meta name="author" content="Daniel Noble (with Claude assistance)">
 <meta name="dcterms.date" content="2026-05-13">
 
-<title>Methods — joint-4PL vs.&nbsp;classical two-stage bias simulation</title>
+<title>Methods — joint-4PL vs.&nbsp;two-stage bias simulation</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -77,24 +77,29 @@ window.Quarto = {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#data-generating-process" id="toc-data-generating-process" class="nav-link active" data-scroll-target="#data-generating-process"><span class="header-section-number">1</span> Data-generating process</a></li>
-  <li><a href="#two-design-points" id="toc-two-design-points" class="nav-link" data-scroll-target="#two-design-points"><span class="header-section-number">2</span> Two design points</a></li>
-  <li><a href="#estimators" id="toc-estimators" class="nav-link" data-scroll-target="#estimators"><span class="header-section-number">3</span> Estimators</a>
-  <ul class="collapse">
-  <li><a href="#joint-bayesian-4pl" id="toc-joint-bayesian-4pl" class="nav-link" data-scroll-target="#joint-bayesian-4pl"><span class="header-section-number">3.1</span> Joint Bayesian 4PL</a></li>
-  <li><a href="#classical-two-stage" id="toc-classical-two-stage" class="nav-link" data-scroll-target="#classical-two-stage"><span class="header-section-number">3.2</span> Classical two-stage</a></li>
+  <li><a href="#estimators" id="toc-estimators" class="nav-link active" data-scroll-target="#estimators"><span class="header-section-number">1</span> Estimators</a>
+  <ul>
+  <li><a href="#two-stage-binomial-the-field-default" id="toc-two-stage-binomial-the-field-default" class="nav-link" data-scroll-target="#two-stage-binomial-the-field-default"><span class="header-section-number">1.1</span> Two-stage (binomial) — the field default</a></li>
+  <li><a href="#two-stage-beta-binomial-the-patched-variant" id="toc-two-stage-beta-binomial-the-patched-variant" class="nav-link" data-scroll-target="#two-stage-beta-binomial-the-patched-variant"><span class="header-section-number">1.2</span> Two-stage (beta-binomial) — the patched variant</a></li>
+  <li><a href="#joint-bayesian-4pl" id="toc-joint-bayesian-4pl" class="nav-link" data-scroll-target="#joint-bayesian-4pl"><span class="header-section-number">1.3</span> Joint Bayesian 4PL</a></li>
   </ul></li>
-  <li><a href="#sec-mcse" id="toc-sec-mcse" class="nav-link" data-scroll-target="#sec-mcse"><span class="header-section-number">4</span> Sample size adequacy</a></li>
-  <li><a href="#diagnostic-and-reproducibility-checks" id="toc-diagnostic-and-reproducibility-checks" class="nav-link" data-scroll-target="#diagnostic-and-reproducibility-checks"><span class="header-section-number">5</span> Diagnostic and reproducibility checks</a></li>
-  <li><a href="#open-scope" id="toc-open-scope" class="nav-link" data-scroll-target="#open-scope"><span class="header-section-number">6</span> Open scope</a></li>
+  <li><a href="#performance-metrics" id="toc-performance-metrics" class="nav-link" data-scroll-target="#performance-metrics"><span class="header-section-number">2</span> Performance metrics</a>
+  <ul>
+  <li><a href="#sample-size-adequacy" id="toc-sample-size-adequacy" class="nav-link" data-scroll-target="#sample-size-adequacy"><span class="header-section-number">2.1</span> Sample-size adequacy</a></li>
+  </ul></li>
+  <li><a href="#truth" id="toc-truth" class="nav-link" data-scroll-target="#truth"><span class="header-section-number">3</span> Truth</a></li>
+  <li><a href="#design-grid" id="toc-design-grid" class="nav-link" data-scroll-target="#design-grid"><span class="header-section-number">4</span> Design grid</a></li>
+  <li><a href="#scenarios" id="toc-scenarios" class="nav-link" data-scroll-target="#scenarios"><span class="header-section-number">5</span> Scenarios</a></li>
+  <li><a href="#diagnostic-checks" id="toc-diagnostic-checks" class="nav-link" data-scroll-target="#diagnostic-checks"><span class="header-section-number">6</span> Diagnostic checks</a></li>
+  <li><a href="#reproducibility" id="toc-reproducibility" class="nav-link" data-scroll-target="#reproducibility"><span class="header-section-number">7</span> Reproducibility</a></li>
   </ul>
 </nav>
 </div>
-<main class="content" id="quarto-document-content">
+<main class="content page-columns page-full" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Methods — joint-4PL vs.&nbsp;classical two-stage bias simulation</h1>
+<h1 class="title">Methods — joint-4PL vs.&nbsp;two-stage bias simulation</h1>
 </div>
 
 
@@ -115,6 +120,12 @@ window.Quarto = {
     </div>
   </div>
   
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 15, 2026</p>
+    </div>
+  </div>
     
   </div>
   
@@ -123,75 +134,266 @@ window.Quarto = {
 </header>
 
 
-<p>Draft methods section for a controlled simulation that compares the joint Bayesian 4PL estimator developed in this paper against the classical two-stage TDT pipeline that is the field’s current default. This note documents exactly what has been done — DGP, estimators, sample sizes, and the diagnostic checks — so the text can be moved into <code>ms/supplement.qmd</code> after review. It deliberately does <strong>not</strong> make claims about which estimator is preferable; the results and their interpretation are reported elsewhere.</p>
-<section id="data-generating-process" class="level2" data-number="1">
-<h2 data-number="1" class="anchored" data-anchor-id="data-generating-process"><span class="header-section-number">1</span> Data-generating process</h2>
-<p>Each simulated dataset is one factorial experiment with five assay temperatures (<span class="math inline">\(T \in \{30, 32, 34, 36, 38\}\,^\circ\text{C}\)</span>) and six exposure durations (<span class="math inline">\(t \in \{1, 5, 15, 45, 135, 405\}\)</span> minutes). Each (temperature × duration) cell is replicated by <span class="math inline">\(n_\text{reps}\)</span> independent cups. The per-cup sample size <span class="math inline">\(N\)</span> is drawn from a discrete uniform on <span class="math inline">\(\{10, 11, \dots, 20\}\)</span>, capturing the modest, unbalanced replication typical of empirical TDT assays.</p>
-<p>The latent survival probability follows a beta-binomial 4PL with temperature acting only on the midpoint:</p>
-<p><span class="math display">\[
-p(T, t) \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl[k\bigl(\log_{10} t - m(T)\bigr)\bigr]},
-\qquad m(T) = \beta_0 + \beta_1\,(T - \bar T).
-\]</span></p>
-<p>Truth parameters were fixed at <span class="math inline">\(\ell = 0.05\)</span>, <span class="math inline">\(u = 0.92\)</span>, <span class="math inline">\(k = 8\)</span>, <span class="math inline">\(\beta_0 = 1.5\)</span>, <span class="math inline">\(\beta_1 = -0.15\)</span>, <span class="math inline">\(\bar T = 34\,^\circ\text{C}\)</span>, and beta-binomial dispersion <span class="math inline">\(\phi = 5\)</span>. The corresponding analytical targets, derived in closed form from the DGP, are</p>
-<p><span class="math display">\[
-z_\text{true} \;=\; -\frac{1}{\beta_1} \;=\; 6.667\,^\circ\text{C},
-\qquad
-\text{CT}_{\max,\,1\text{h}}^{\text{true}} \;=\; \bar T \;+\; \frac{\log_{10} 60 - \beta_0 - k^{-1}\log\!\bigl[(u - 0.5)/(0.5 - \ell)\bigr]}{\beta_1}
-\;=\; 32.094\,^\circ\text{C}.
-\]</span></p>
-<p>These are the per-simulation reference values against which both estimators are scored. Survival counts are drawn beta-binomially: for each cell, the cup-level probability <span class="math inline">\(p^{(b)}\)</span> is drawn from a <span class="math inline">\(\text{Beta}(p\phi, (1-p)\phi)\)</span> distribution and the observed survivor count from a <span class="math inline">\(\text{Binomial}(N, p^{(b)})\)</span>. The data generator is in <a href="../scripts/sim_twostage_helpers.R"><code>scripts/sim_twostage_helpers.R</code></a>.</p>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>Updated 2026-05-15.</strong> The previous design was scrapped after two bugs in the simulation harness were discovered and one structural omission was added by Daniel:</p>
+<ol type="1">
+<li>Several <code>Sweep A</code> cells in the original sensitivity-sweep design were running with infeasible DGPs (<code>u_T &gt; 1</code> at the cold end of the design grid), producing NaN survival probabilities for ~50% of cups at low temperatures. The OLS-truth function had no upper-bound check; the simulation kept running.</li>
+<li>The driver omitted <code>truth = truth</code> when calling the dataset generator, so every cell — across the main DGP study and all three sweeps — was silently generating data from the baseline DGP regardless of CLI overrides. ~28 hr of compute was thrown away. See <code>feedback_sim_preflight.md</code> for the institutional fixes that now prevent both classes of bug.</li>
+<li>The design adds a third estimator — a <em>patched</em> two-stage that uses a beta-binomial Stage-1 GLM rather than the binomial GLM used by the field default. With three estimators per scenario, the contrast between classical and patched isolates the <em>likelihood</em> cost of the field default; the contrast between patched and joint 4PL isolates the <em>shape / architecture</em> cost.</li>
+</ol>
+<p>The redesign below supersedes the original eight-cell design. All results notes that depended on the buggy outputs (<code>2026-05-14-two-stage-bias-sim-results.qmd</code>, <code>2026-05-15-sensitivity-sweeps.qmd</code>) are stale and need to be regenerated once the corrected simulation completes.</p>
+</div>
+</div>
+<p>Methods section for a controlled simulation that compares three TDT estimators side-by-side: the field-default two-stage pipeline (binomial GLM Stage 1), a patched two-stage pipeline (beta-binomial GLM Stage 1) that addresses likelihood misspecification without changing the architecture, and the joint Bayesian 4PL developed in this paper.</p>
+<section id="estimators" class="level2" data-number="1">
+<h2 data-number="1" class="anchored" data-anchor-id="estimators"><span class="header-section-number">1</span> Estimators</h2>
+<p>All three estimators are fit to every simulated dataset.</p>
+<section id="two-stage-binomial-the-field-default" class="level3" data-number="1.1">
+<h3 data-number="1.1" class="anchored" data-anchor-id="two-stage-binomial-the-field-default"><span class="header-section-number">1.1</span> Two-stage (binomial) — the field default</h3>
+<p><strong>Stage 1.</strong> For each temperature independently, a binomial GLM with logit link is fitted to survivor counts as a function of <span class="math inline">\(\log_{10} t\)</span>. The per-temperature <span class="math inline">\(\log_{10} \text{LT}_{50}\)</span> is read off as <span class="math inline">\(-\hat\beta_0/\hat\beta_1\)</span> with delta-method standard error from the Stage-1 covariance.</p>
+<p><strong>Stage 2.</strong> An unweighted ordinary least squares regression of the five <span class="math inline">\(\log_{10} \text{LT}_{50}\)</span> values on temperature gives slope and intercept estimates from which <span class="math inline">\(z = -1/\hat\beta_1^{(2)}\)</span> and <span class="math inline">\(\text{CT}_{\max,1\text{h}} = (\log_{10} 60 - \hat\beta_0^{(2)}) /
+\hat\beta_1^{(2)}\)</span> follow. The 95% confidence interval comes from the delta method on the Stage-2 covariance. A dataset is marked as a two-stage success only when every temperature delivers a finite, negative-slope Stage-1 fit and the Stage-2 slope is itself finite and negative.</p>
+<p>Unweighted Stage-2 OLS is retained deliberately — it matches the version of the pipeline most commonly reported in the empirical TDT literature and is the comparator the reader will be familiar with.</p>
 </section>
-<section id="two-design-points" class="level2" data-number="2">
-<h2 data-number="2" class="anchored" data-anchor-id="two-design-points"><span class="header-section-number">2</span> Two design points</h2>
-<p>We ran the full simulation under two replication budgets, chosen to bracket realistic small-to-moderate field designs:</p>
+<section id="two-stage-beta-binomial-the-patched-variant" class="level3" data-number="1.2">
+<h3 data-number="1.2" class="anchored" data-anchor-id="two-stage-beta-binomial-the-patched-variant"><span class="header-section-number">1.2</span> Two-stage (beta-binomial) — the patched variant</h3>
+<p>Same two-stage architecture, but Stage 1 swaps the binomial GLM for a beta-binomial GLM (logit link) fitted via <code>glmmTMB::glmmTMB(..., family = betabinomial())</code>. The dispersion parameter is estimated per temperature. Stage 2 remains unweighted OLS on the resulting per-T <span class="math inline">\(\log_{10} \text{LT}_{50}\)</span> estimates.</p>
+<p>This variant exists for one reason: to disentangle the <em>likelihood</em> component of the field default’s deficit from the <em>shape / architecture</em> component. The contrast between the binomial two-stage and the patched two-stage isolates the likelihood effect (both have the same two-stage architecture; only the Stage-1 likelihood differs). The contrast between the patched two-stage and the joint 4PL isolates the shape / architecture effect (both have the correct likelihood for the beta-binomial scenarios; only the architecture differs).</p>
+</section>
+<section id="joint-bayesian-4pl" class="level3" data-number="1.3">
+<h3 data-number="1.3" class="anchored" data-anchor-id="joint-bayesian-4pl"><span class="header-section-number">1.3</span> Joint Bayesian 4PL</h3>
+<p>The joint model is the estimator developed in this paper. It is a non-linear <code>brms</code> formula with a <code>beta_binomial(link = "identity")</code> family in which all four 4PL sub-parameters — the reparameterised lower asymptote, upper asymptote, slope, and midpoint — carry a centred- temperature slope:</p>
+<p><span class="math display">\[
+p(T, t) = \ell(T) + \frac{u(T) - \ell(T)}{1 + \exp\!\bigl[k(T) \cdot (\log_{10} t - \text{mid}(T))\bigr]}
+\]</span></p>
+<p>with <span class="math inline">\(u, \ell, k, \text{mid}\)</span> each modelled as <span class="math inline">\(\beta_0 + \beta_1 \cdot
+(T - \bar T)\)</span>. Default priors from <code>bayesTLS::make_4pl_priors()</code> are used. Samples are drawn with <code>cmdstanr</code> (2 chains × 2,000 iterations, half discarded as warm-up; <code>adapt_delta = 0.9</code>, <code>max_treedepth = 12</code>). Post-fit, <span class="math inline">\(z\)</span> and <span class="math inline">\(\text{CT}_{\max,1\text{h}}\)</span> are extracted with <code>bayesTLS::extract_tdt(..., lethal = TRUE)</code> using the rate-multiplier definition of <span class="math inline">\(T_{\text{crit}}\)</span>. We report the posterior median and 2.5 % / 97.5 % quantiles.</p>
+</section>
+</section>
+<section id="performance-metrics" class="level2" data-number="2">
+<h2 data-number="2" class="anchored" data-anchor-id="performance-metrics"><span class="header-section-number">2</span> Performance metrics</h2>
+<p>For each estimator and each output quantity (<span class="math inline">\(z\)</span>, <span class="math inline">\(\text{CT}_{\max,1\text{h}}\)</span>), each simulated dataset contributes one row with signed bias, squared bias (for RMSE aggregation), 95 % CI lower / upper, coverage indicator, and CI width. Per-cell summaries report:</p>
+<ul>
+<li>Mean signed bias and Monte-Carlo SE of the bias</li>
+<li>RMSE and Monte-Carlo SE</li>
+<li>Empirical 95 % coverage rate and Monte-Carlo SE (binomial proportion)</li>
+<li>Median 95 % CI width</li>
+</ul>
+<p>These are reported twice per cell — once for <em>all fits</em>, once for <em>fits that pass all joint-4PL convergence diagnostics</em> (see <a href="#diagnostic-checks">Diagnostic checks</a>).</p>
+<section id="sample-size-adequacy" class="level3" data-number="2.1">
+<h3 data-number="2.1" class="anchored" data-anchor-id="sample-size-adequacy"><span class="header-section-number">2.1</span> Sample-size adequacy</h3>
+<p>Monte-Carlo standard error thresholds: 0.05 °C for bias, 0.015 for coverage. At <span class="math inline">\(N_{\text{sim}} = 1000\)</span> (Scenarios 1–5) these thresholds are comfortably met for all method × quantity combinations under the baseline DGP. At <span class="math inline">\(N_{\text{sim}} = 500\)</span> (Scenarios 6–8) the MCSE is <span class="math inline">\(\sqrt{2}\approx 1.41 \times\)</span> larger; for the sensitivity sweeps this is an accepted trade-off for halving the per-cell compute time. The driver auto-checks both thresholds at every cell and prints a warning if either is exceeded.</p>
+</section>
+</section>
+<section id="truth" class="level2" data-number="3">
+<h2 data-number="3" class="anchored" data-anchor-id="truth"><span class="header-section-number">3</span> Truth</h2>
+<p>For each simulated dataset, the true <span class="math inline">\(z\)</span> and <span class="math inline">\(\text{CT}_{\max,1\text{h}}\)</span> are computed analytically from the data-generating curve. The procedure: evaluate the true <span class="math inline">\(\log_{10} \text{LT}_{50}\)</span> at every design temperature; fit a line through those values; read off <span class="math inline">\(z = -1 / \text{slope}\)</span> and <span class="math inline">\(\text{CT}_{\max,1\text{h}} = (\log_{10} 60 - \text{intercept}) /
+\text{slope}\)</span>. For the baseline shape (only midpoint varying with <span class="math inline">\(T\)</span>), <span class="math inline">\(\log_{10}\text{LT}_{50}(T)\)</span> is exactly linear in <span class="math inline">\(T\)</span> and the procedure is an analytical identity. For shape-perturbing scenarios, the fitted line is the linear projection of the (non-linear) true <span class="math inline">\(\log_{10}\text{LT}_{50}(T)\)</span> curve onto the design grid — which is the target both estimators converge to, by construction of the OLS at Stage 2.</p>
+<p>The implementation lives in <code>compute_ols_truth()</code> in <a href="../scripts/sim_twostage_helpers.R"><code>scripts/sim_twostage_helpers.R</code></a> and is checked for feasibility before any data is simulated: the function rejects DGPs whose <span class="math inline">\(u_T\)</span>, <span class="math inline">\(\ell_T\)</span>, or <span class="math inline">\(k_T\)</span> leave <span class="math inline">\(0 &lt; \ell &lt; 0.5 &lt; u &lt; 1\)</span> or <span class="math inline">\(k &gt; 0\)</span> at any design temperature.</p>
+</section>
+<section id="design-grid" class="level2" data-number="4">
+<h2 data-number="4" class="anchored" data-anchor-id="design-grid"><span class="header-section-number">4</span> Design grid</h2>
+<p>The default design grid is five assay temperatures <span class="math inline">\(T \in \{30, 32, 34, 36, 38\}\,^\circ\text{C}\)</span> × six exposure durations <span class="math inline">\(t \in \{1, 5, 15, 45, 135, 405\}\)</span> minutes — 30 cells per dataset. Scenario 8 explicitly varies this between the full grid and a sparse grid (three temperatures <span class="math inline">\(\{30, 34, 38\}\,^\circ\text{C}\)</span> × four durations <span class="math inline">\(\{1, 15, 135, 405\}\)</span> minutes — 12 cells per dataset).</p>
+<p>Each (temperature × duration) cell is replicated by <span class="math inline">\(n_{\text{reps}}\)</span> independent cups (the number varies by scenario). Each cup contains <span class="math inline">\(N\)</span> individuals, <span class="math inline">\(N\)</span> drawn from a discrete uniform on <span class="math inline">\(\{10, 11, \ldots, 20\}\)</span> — capturing the modest, unbalanced replication typical of empirical TDT assays. So a Scenario-1 dataset with <span class="math inline">\(n_{\text{reps}} = 5\)</span> contains <span class="math inline">\(5 \text{ T} \times 6 \text{ durations}
+\times 5 \text{ reps} = 150 \text{ cups}\)</span>, each with 10–20 individuals, for a total of roughly 1,500–3,000 individuals per simulated experiment.</p>
+</section>
+<section id="scenarios" class="level2 page-columns page-full" data-number="5">
+<h2 data-number="5" class="anchored" data-anchor-id="scenarios"><span class="header-section-number">5</span> Scenarios</h2>
+<p>Eight scenarios. Scenarios 1–2 establish equivalence and isolate the likelihood effect; Scenarios 3–5 introduce qualitatively different shape perturbations; Scenarios 6–8 are sensitivity sweeps that map the dose-response of the comparison against parameters varied within a scenario.</p>
+<p><strong>Truth column notation.</strong> <code>param ~ 1: value</code> means the parameter is constant across temperature at that value. <code>param ~ 1 + T_c: (β_0, β_1)</code> means the parameter equals <span class="math inline">\(\beta_0 + \beta_1 \cdot T_c\)</span> where <span class="math inline">\(T_c = T - 34\)</span>.</p>
+<p><strong>Default biological parameters</strong> (overridden where the row says so): <span class="math inline">\(u = 0.92\)</span>, <span class="math inline">\(\ell = 0.05\)</span>, <span class="math inline">\(k = 8\)</span>, <span class="math inline">\(\text{mid}_0 = 1.5\)</span>, <span class="math inline">\(m_{\beta_1} = -0.15\)</span>, <span class="math inline">\(\phi = 5\)</span> (beta-binomial dispersion).</p>
+<div class="column-screen-inset">
 <table class="caption-top table">
+<colgroup>
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+<col style="width: 10%">
+</colgroup>
 <thead>
 <tr class="header">
-<th>Design</th>
-<th><span class="math inline">\(n_\text{reps}\)</span> per cell</th>
-<th>Total cups per dataset</th>
+<th>#</th>
+<th>Name</th>
+<th>Truth</th>
+<th>DGP lik.</th>
+<th>TS lik. (Cls / Pch)</th>
+<th>4PL lik.</th>
+<th>Replication (cups + N per cup)</th>
+<th>n_sims</th>
+<th>Why</th>
+<th>Prediction</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>n3</td>
-<td>3</td>
-<td>90</td>
+<td>1</td>
+<td>Strict equivalence baseline</td>
+<td>u ~ 1: 0.999<br>ell ~ 1: 0.001<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br><strong>true z = 6.67, true CTmax_1hr = 32.15</strong></td>
+<td>Bin</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td>5T × 6 durations = <strong>30 cells</strong> per dataset<br><strong>n_reps ∈ {3, 5}</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 90 or 150 cups, ~1,200 or ~2,000 individuals per dataset<br><strong>2 simulation cells (n_reps levels)</strong></td>
+<td>1000</td>
+<td>All three estimators correctly specified (BB-4PL collapses to Bin via φ → ∞). Floor — divergence here would signal a bug.</td>
+<td>All 3 unbiased; coverage ≈ 0.95. Cls TS wider CIs (Stage-2 OLS on 5 LD50 points only). Pch TS ≈ Cls (no overdispersion to exploit). 4PL narrowest CIs (joint fit shares info across T).</td>
 </tr>
 <tr class="even">
-<td>n5</td>
+<td>2</td>
+<td>Likelihood misspec only</td>
+<td>Same as Scen 1</td>
+<td>BB (φ=5)</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td>5T × 6 durations = <strong>30 cells</strong> per dataset<br><strong>n_reps ∈ {3, 5}</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 90 or 150 cups<br><strong>2 simulation cells</strong></td>
+<td>1000</td>
+<td>Same shape, overdispersion added. Isolates the cost of the classical TS’s binomial-likelihood assumption.</td>
+<td>All 3 unbiased. Cls TS: wider CIs than Pch (efficiency loss); coverage ~ nominal via Stage-2 OLS residual variance. Pch TS: narrower CIs, calibrated. 4PL: narrowest CIs, calibrated. <strong>Cls vs Pch = pure likelihood cost.</strong></td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Heat lowers max survival</td>
+<td>u ~ 1 + T_c: (0.92, −0.01)<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br><strong>true z = 6.54, true CTmax_1hr = 32.12</strong></td>
+<td>BB (φ=5)</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td>5T × 6 durations = <strong>30 cells</strong> per dataset<br><strong>n_reps ∈ {3, 5}</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 90 or 150 cups<br><strong>2 simulation cells</strong></td>
+<td>1000</td>
+<td>TS architectures have no asymptote parameter; heat-induced u-drop must be absorbed into the slope, biasing z.</td>
+<td>Cls and Pch TS: both biased (same shape misspec). Cls wider CIs (may accidentally cover); Pch narrower CIs (coverage drops more sharply around the biased point). 4PL: bias ≈ 0, calibrated. <strong>Pch vs 4PL = pure shape / architecture cost.</strong></td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Asymptotes compress</td>
+<td>u ~ 1 + T_c: (0.92, −0.01)<br>ell ~ 1 + T_c: (0.05, +0.01)<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br><strong>true z = 6.66, true CTmax_1hr = 32.09</strong></td>
+<td>BB (φ=5)</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td>5T × 6 durations = <strong>30 cells</strong> per dataset<br><strong>n_reps ∈ {3, 5}</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 90 or 150 cups<br><strong>2 simulation cells</strong></td>
+<td>1000</td>
+<td>Both asymptotes move toward each other; true z barely shifts because the log-ratio is nearly preserved. Stresses joint 4PL’s u + ell parametrisation more than its midpoint estimation.</td>
+<td>Cls and Pch: small bias (smaller than Scen 3 because true z perturbation is smaller). 4PL: bias ≈ 0, calibrated.</td>
+</tr>
+<tr class="odd">
 <td>5</td>
-<td>150</td>
+<td>Heat sharpens curve</td>
+<td>u ~ 1: 0.92<br>ell ~ 1: 0.05<br>k ~ 1 + T_c: (8, +0.25)<br>mid ~ 1 + T_c: (1.5, −0.15)<br><strong>true z = 6.68, true CTmax_1hr = 32.08</strong></td>
+<td>BB (φ=5)</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td>5T × 6 durations = <strong>30 cells</strong> per dataset<br><strong>n_reps ∈ {3, 5}</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 90 or 150 cups<br><strong>2 simulation cells</strong></td>
+<td>1000</td>
+<td>TS Stage-1 GLMs allow slope to vary across T (separate fit per T), but Stage-2 OLS assumes linear log10(LD50)(T). Varying k breaks linearity subtly.</td>
+<td>Smallest bias of the shape-perturbing scenarios. Cls and Pch: slight bias, coverage near nominal. 4PL: bias ≈ 0, calibrated.</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Sensitivity: strength of u drift</td>
+<td>u ~ 1 + T_c: u_0 = 0.92, <strong>β_u ∈ {−0.005, −0.010, −0.015, −0.019}</strong><br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br><strong>true z ∈ [6.42, 6.60]</strong><br><strong>true CTmax_1hr ∈ [32.11, 32.15]</strong></td>
+<td>BB (φ=5)</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td>5T × 6 durations = <strong>30 cells</strong> per dataset<br><strong>n_reps = 5</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br><strong>4 simulation cells (one per β_u)</strong></td>
+<td>500</td>
+<td>Maps the dose-response: how does the TS shape bias scale with the strength of the asymptote drift?</td>
+<td>Cls and Pch: bias monotonically increasing in |β_u|; coverage drops correspondingly. 4PL: bias ≈ 0 throughout.</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Sensitivity: level of upper asymptote</td>
+<td>u ~ 1: <strong>u_0 ∈ {0.65, 0.75, 0.85, 0.95, 0.99}</strong><br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br><strong>true z = 6.67 (constant)</strong><br><strong>true CTmax_1hr ∈ [31.23, 32.22]</strong></td>
+<td>BB (φ=5)</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td>5T × 6 durations = <strong>30 cells</strong> per dataset<br><strong>n_reps = 5</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br><strong>5 simulation cells (one per u_0)</strong></td>
+<td>500</td>
+<td>TS GLM extrapolates to u → 1. Sublethal endpoints (PSII, fertility, knockdown) rarely reach 1. Tests cost of the forced-asymptote assumption.</td>
+<td>Cls and Pch: z bias small (constant asymptote bias across T cancels in Stage-2 slope); CTmax_1hr bias grows as u_0 drops below 1. 4PL: bias ≈ 0 throughout.</td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td>Sensitivity: design intensity</td>
+<td>u ~ 1: 0.92<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br><strong>true z = 6.67, true CTmax_1hr = 32.09</strong></td>
+<td>BB (φ=5)</td>
+<td>Bin / BB</td>
+<td>BB</td>
+<td><strong>Full design</strong> (5T × 6 dur = 30 cells per dataset) <strong>or sparse</strong> (3T × 4 dur = 12 cells per dataset)<br><strong>n_reps ∈ {1, 3, 5}</strong> cups per cell<br><strong>N ~ U(10, 20)</strong> individuals per cup<br>⇒ 12 to 150 cups, ~160 to ~2,000 individuals per dataset<br><strong>6 simulation cells (design × n_reps)</strong></td>
+<td>500</td>
+<td>When does each method’s overhead pay off? At what budget can a study get away with the two-stage?</td>
+<td>All methods: wider CIs as data sparsens. 4PL has smallest inflation (info shared across T). At sparse × 1-rep (12 cups total, 4 unique LD50 points), TS variants may fail or carry severe bias.</td>
 </tr>
 </tbody>
 </table>
-<p>For each design we ran <span class="math inline">\(N_\text{sim} = 1000\)</span> datasets. The number of simulations was set so that Monte Carlo standard errors (MCSEs) on the performance summaries fell below pre-specified thresholds (see <a href="#sec-mcse">Sample size adequacy</a>).</p>
+</div>
+<p><strong>Totals.</strong> 23 simulation cells, ~16,500 fits total. Wall time on the project’s 5-worker PSOCK setup: approximately 32 hours.</p>
 </section>
-<section id="estimators" class="level2" data-number="3">
-<h2 data-number="3" class="anchored" data-anchor-id="estimators"><span class="header-section-number">3</span> Estimators</h2>
-<p>Both estimators were applied to every simulated dataset, scored against the same analytical truth, and summarised on the same basis (signed bias of the point estimate, root-mean-square error, empirical 95% interval coverage, and median 95% interval width).</p>
-<section id="joint-bayesian-4pl" class="level3" data-number="3.1">
-<h3 data-number="3.1" class="anchored" data-anchor-id="joint-bayesian-4pl"><span class="header-section-number">3.1</span> Joint Bayesian 4PL</h3>
-<p>The joint model is the estimator developed in this paper. It is a non-linear <code>brms</code> formula with a <code>beta_binomial(link = "identity")</code> family in which all four 4PL sub-parameters — the reparameterised lower asymptote, upper asymptote, slope, and midpoint — carry a centred-temperature slope. Default priors from <code>bayesTLS::make_4pl_priors()</code> were used (weakly informative; specified in the supplement). Samples were drawn with <code>cmdstanr</code> (2 chains × 2,000 iterations, half discarded as warm-up; <code>adapt_delta = 0.9</code>, <code>max_treedepth = 12</code>). Post-fit, <code>z</code> and <span class="math inline">\(\text{CT}_{\max,\,1\text{h}}\)</span> were extracted with <code>bayesTLS::extract_tdt(..., lethal = TRUE)</code> using the standard rate-multiplier definition of <span class="math inline">\(T_\text{crit}\)</span>; we report the posterior median and 2.5% / 97.5% quantiles.</p>
+<section id="diagnostic-checks" class="level2" data-number="6">
+<h2 data-number="6" class="anchored" data-anchor-id="diagnostic-checks"><span class="header-section-number">6</span> Diagnostic checks</h2>
+<p>Every joint-4PL fit logs:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Statistic</th>
+<th>Threshold</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Maximum R̂ across parameters</td>
+<td>&lt; 1.01</td>
+</tr>
+<tr class="even">
+<td>Minimum bulk ESS</td>
+<td>&gt; 400</td>
+</tr>
+<tr class="odd">
+<td>Minimum tail ESS</td>
+<td>&gt; 400</td>
+</tr>
+<tr class="even">
+<td>Divergent transitions (post-warmup)</td>
+<td>= 0</td>
+</tr>
+<tr class="odd">
+<td>Tree-depth saturations (post-warmup)</td>
+<td>= 0</td>
+</tr>
+<tr class="even">
+<td>BFMI (per chain)</td>
+<td>&gt; 0.3</td>
+</tr>
+<tr class="odd">
+<td>Combined <code>all_pass</code> flag</td>
+<td>all of the above</td>
+</tr>
+</tbody>
+</table>
+<p>Per-cell summary reports: pass rate for each individual criterion, the overall <code>all_pass</code> rate, and median + worst-case of each statistic across the 500–1000 fits in the cell. Cells with <code>all_pass</code> rate &lt; 95 % are flagged for review.</p>
+<p>The bias / coverage summary is reported twice per cell:</p>
+<ul>
+<li><strong>All fits</strong> — every simulated dataset where the estimator produced finite point estimates. Reflects the realistic experience of running the recommended pipeline with default sampler settings.</li>
+<li><strong>Convergent fits only</strong> — restricted to fits where the joint 4PL satisfies all diagnostic criteria. If the two summaries diverge, pathological fits are biasing the headline numbers and sampler settings need to be revisited before the simulation is interpretable.</li>
+</ul>
 </section>
-<section id="classical-two-stage" class="level3" data-number="3.2">
-<h3 data-number="3.2" class="anchored" data-anchor-id="classical-two-stage"><span class="header-section-number">3.2</span> Classical two-stage</h3>
-<p>The two-stage pipeline implements the field-standard recipe. Stage 1: for each temperature independently, a binomial GLM with logit link is fitted to the survivor counts as a function of <span class="math inline">\(\log_{10} t\)</span>; the per-temperature <span class="math inline">\(\log_{10} \text{LT}_{50}\)</span> is read off as <span class="math inline">\(-\hat\beta_0/\hat\beta_1\)</span> with standard error supplied by the delta method from the Stage-1 covariance. Stage 2: an unweighted ordinary least-squares regression of those <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span> values on temperature gives slope and intercept estimates from which <span class="math inline">\(z = -1/\hat\beta_1^{(2)}\)</span> and <span class="math inline">\(\text{CT}_{\max,\,1\text{h}} = (\log_{10} 60 - \hat\beta_0^{(2)})/\hat\beta_1^{(2)}\)</span> follow. The 95% confidence interval is obtained by the delta method applied to the Stage-2 covariance. A simulated dataset is marked as two-stage success only when every temperature delivered a finite, negative-slope Stage-1 fit and the Stage-2 slope itself was finite and negative.</p>
-<p>Unweighted OLS at Stage 2 was retained deliberately, matching the version of the pipeline most commonly reported in the empirical TDT literature. SE-weighted alternatives were not assessed in this run.</p>
-</section>
-</section>
-<section id="sec-mcse" class="level2" data-number="4">
-<h2 data-number="4" class="anchored" data-anchor-id="sec-mcse"><span class="header-section-number">4</span> Sample size adequacy</h2>
-<p>Each performance summary <span class="math inline">\(\widehat{Q}\)</span> was reported with a Monte Carlo standard error: <span class="math inline">\(\text{MCSE}(\widehat{\text{bias}}) = s_b / \sqrt{N_\text{sim}}\)</span> for mean bias, <span class="math inline">\(\sqrt{p(1-p)/N_\text{sim}}\)</span> for coverage, and the standard delta-method form for RMSE. We pre-specified MCSE thresholds of 0.05 °C for bias and 0.015 for coverage. At <span class="math inline">\(N_\text{sim} = 1000\)</span> both designs met the thresholds for every method × quantity combination, so we did not extend the simulation.</p>
-</section>
-<section id="diagnostic-and-reproducibility-checks" class="level2" data-number="5">
-<h2 data-number="5" class="anchored" data-anchor-id="diagnostic-and-reproducibility-checks"><span class="header-section-number">5</span> Diagnostic and reproducibility checks</h2>
-<p>Each joint-4PL fit logs maximum <span class="math inline">\(\hat R\)</span> and divergent-transition count post-warm-up. Across all 2,000 fits (n3 + n5) no fit exceeded the standard <span class="math inline">\(\hat R &lt; 1.05\)</span> threshold, and ≥ 95 % of fits returned zero divergences.</p>
-<p>The full set of per-simulation results, including all <span class="math inline">\(1{,}000\)</span> posterior draws for <span class="math inline">\(z\)</span>, <span class="math inline">\(\text{CT}_{\max,\,1\text{h}}\)</span> and <span class="math inline">\(T_\text{crit}\)</span> per simulation, is stored as resume-safe per-sim RDS files under <code>output/sim_twostage/raw/&lt;design&gt;/</code> and rolled up into <code>summary_&lt;design&gt;.rds</code>, <code>meta_&lt;design&gt;.rds</code>, and <code>diffs_&lt;design&gt;.rds</code> at the end of each run. The driver is <a href="../scripts/sim_twostage_bias.R"><code>scripts/sim_twostage_bias.R</code></a>; the data-generating helpers and the two estimator wrappers live in <a href="../scripts/sim_twostage_helpers.R"><code>scripts/sim_twostage_helpers.R</code></a>. Parallelism uses a PSOCK cluster (<code>parallel::makeCluster</code> + <code>parLapply</code>) with five workers; a PSOCK cluster (rather than <code>mclapply</code>) is required because <code>cmdstanr</code> launches Stan executables via <code>processx</code>, which is not fork-safe under macOS.</p>
-</section>
-<section id="open-scope" class="level2" data-number="6">
-<h2 data-number="6" class="anchored" data-anchor-id="open-scope"><span class="header-section-number">6</span> Open scope</h2>
-<p>This first simulation block holds the data-generating process fixed in two respects: (i) temperature acts only on the 4PL midpoint, leaving the asymptotes (<span class="math inline">\(\ell\)</span>, <span class="math inline">\(u\)</span>) and slope (<span class="math inline">\(k\)</span>) constant in <span class="math inline">\(T\)</span>; and (ii) the joint-4PL estimator uses the package’s default priors, with no sensitivity analysis. Both restrictions are deliberate first-pass simplifications. Extensions that vary the DGP (temperature acting on <span class="math inline">\(\ell\)</span>, <span class="math inline">\(u\)</span>, or <span class="math inline">\(k\)</span>, with or without midpoint preservation) and that vary the joint-4PL priors are the natural next steps.</p>
+<section id="reproducibility" class="level2" data-number="7">
+<h2 data-number="7" class="anchored" data-anchor-id="reproducibility"><span class="header-section-number">7</span> Reproducibility</h2>
+<p>The full set of per-simulation results — point estimates, CIs, all posterior draws of <span class="math inline">\(z\)</span>, <span class="math inline">\(\text{CT}_{\max,1\text{h}}\)</span> and <span class="math inline">\(T_{\text{crit}}\)</span> per dataset, and the full diagnostic row per fit — is stored as resume- safe per-sim RDS files under <code>output/sim_twostage/raw/&lt;scenario_label&gt;/</code> and rolled up into <code>summary_&lt;label&gt;.rds</code>, <code>meta_&lt;label&gt;.rds</code>, <code>draws_&lt;label&gt;.rds</code>, and <code>diffs_&lt;label&gt;.rds</code> at the end of each cell.</p>
+<p>The driver is <a href="../scripts/sim_twostage_bias.R"><code>scripts/sim_twostage_bias.R</code></a>; the data-generating helpers and the three estimator wrappers live in <a href="../scripts/sim_twostage_helpers.R"><code>scripts/sim_twostage_helpers.R</code></a>. The queue dispatcher is <a href="../scripts/run_sweep_queue.sh"><code>scripts/run_sweep_queue.sh</code></a>; it runs a pre-flight pass over every planned cell before any compute starts (see <code>feedback_sim_preflight.md</code> for what the pre-flight checks).</p>
+<p>Parallelism uses a PSOCK cluster (<code>parallel::makeCluster</code> + <code>parallel::parLapply</code>) with five workers; a PSOCK cluster (rather than <code>mclapply</code>) is required because <code>cmdstanr</code> launches Stan executables via <code>processx</code>, which is not fork-safe under macOS.</p>
 </section>
 
 </main>
