@@ -145,7 +145,14 @@ run_one <- function(sim_id) {
   if (!opt$force && file.exists(result_file)) return(invisible(NULL))
 
   seed_sim <- master + 1000L * scen_id + sim_id
-  data <- sim_twostage_dataset(n_reps = n_reps, seed = seed_sim)
+  # `truth` MUST be passed explicitly. sim_twostage_dataset()'s signature
+  # defaults `truth = sim_twostage_truth()` (baseline DGP); omitting this
+  # argument silently generates baseline data regardless of CLI overrides
+  # (--dgp / --u_0 / --u_beta1 / --ell_beta1 / --k_beta1 / --design).
+  # Original simulations 2026-05-13 through 2026-05-15 hit this bug — every
+  # cell was scored against a shifted truth while the data stayed baseline.
+  # See feedback_sim_preflight.md (2026-05-15 update) for the lesson.
+  data <- sim_twostage_dataset(n_reps = n_reps, seed = seed_sim, truth = truth)
 
   t0 <- Sys.time()
   joint <- tryCatch(

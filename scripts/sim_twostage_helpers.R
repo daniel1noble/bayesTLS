@@ -185,15 +185,22 @@ sim_twostage_grid <- function(design = "full") {
 #' @param n_ind_range Length-2 integer vector — discrete-uniform range for
 #'                    `N` per cup. Default `c(10, 20)`.
 #' @param seed        Integer seed for reproducibility.
-#' @param truth       Optional truth-parameter list (defaults to
-#'                    [sim_twostage_truth()]).
+#' @param truth       Required truth-parameter list (output of
+#'                    [sim_twostage_truth()]). No default — callers must pass
+#'                    the truth explicitly so a forgotten CLI override can't
+#'                    silently fall back to the baseline DGP (see 2026-05-15
+#'                    incident logged in feedback_sim_preflight.md).
 #' @return Tibble with one row per cup: `T`, `t`, `log10_t`, `T_c`, `rep`,
 #'         `n`, `y` (alive count), `p_true`.
 #' @export
 sim_twostage_dataset <- function(n_reps,
                                  n_ind_range = c(10, 20),
                                  seed,
-                                 truth = sim_twostage_truth()) {
+                                 truth) {
+  if (missing(truth))
+    stop("sim_twostage_dataset(): `truth` is required; pass the output of ",
+         "sim_twostage_truth(...). Default-baseline fallback was removed ",
+         "2026-05-15 — see feedback_sim_preflight.md.", call. = FALSE)
   set.seed(seed)
   # The truth list carries the design label (set inside sim_twostage_truth);
   # use it so the (temp, duration) grid matches the design the OLS truth was
