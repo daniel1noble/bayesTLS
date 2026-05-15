@@ -206,13 +206,13 @@ where $\text{mid}_{ij}$ is the $\log_{10}$-time at which survival equals the mid
 
 When the experimental design estimates upper and lower limits of the response (i.e., $\text{low}$ and $\text{up}$) near 0 and 1, the midpoint coincides with the classical $t_{50}$ (time to reach 50% survival). Therefore, the regression in @eq-mid-temp directly provides thermal sensitivity as $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = \bar{T} + (\log_{10} t_\text{ref} - \beta_0)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). 
 
-The slope $\beta_1$ — and hence $z$ — is robust to changes in asymptotes. However, threshold summaries, such as $CT_{max}$ and $\log_{10}t_{50}$, are not. When partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, an asymmetry correction must be added to estimate these threshold summaries when using survival thresholds. For $\log_{10}t_{50}$ this involves adding the correction factor (@eq-t50): 
+The slope $\beta_1$ — and hence $z$ — is robust to changes in asymptotes. However, threshold summaries, such as $CT_{max}$ and $\log_{10}t_{50}$, are not. When partial mortality or sparse data do not estimate the asymptotes to be around 0 and 1, an asymmetry correction must be added to estimate these threshold summaries when using survival thresholds. For $\log_{10}t_{50}$ this involves adding the following correction factor (@eq-t50): 
 
 $$
 \log_{10} t_{50}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}},
 $$ {#eq-t50}
 
-While for $CT_{max}$, the correction factor must be subtracted, after division by the slope (to convert the vertical shift in $\log_{10}t_{50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
+For $CT_{max}$, the correction factor must be subtracted, after division by the slope (to convert the vertical shift in $\log_{10}t_{50}$ into the corresponding shift in temperature), from the naive $CT_{max}$ (@eq-ctmax-corrected):
 
 $$
 CT_{max}(t_\text{ref}) \;=\; \bar{T} + \frac{\log_{10} t_\text{ref} - \beta_0}{\beta_1} \;-\; \frac{1}{\beta_1}\cdot\tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}}.
@@ -224,7 +224,7 @@ $$
 \log_{10} t_x(T) \;=\; \text{mid}(T) \;-\; \frac{1}{k}\,\ln\!\frac{\text{up} - x/100}{x/100 - \text{low}},
 $$ {#eq-LTx}
 
-Importantly, there may be situations where computing absolute $\log_{10} t_{x}$ based on a sample reaching a given probability threshold is less ideal because of differences in baseline survival at the start of experiments. Instead, one might be interested in calculating what we refer to as 'relative $t_{50}$'.  Relative $t_{50}$ is defined as the survival when there has been a 50% drop in survival relative to starting survival. When intrinsic background mortality pulls upper bounds below 1, $\text{mid}$ remains the dose-response midpoint and so captures relative $t_{50}$ exactly. No correction factors are needed. Any calculations of $CT_{max}$ will then be based on relative $t_{50}$ and not absolute $t_{50}$.
+Importantly, there may be situations where computing absolute $\log_{10} t_{x}$ based on a sample reaching a given probability threshold is less ideal because of differences in baseline survival at the start of experiments. Instead, one might be interested in calculating what we refer to as 'relative $t_{50}$'.  Relative $t_{50}$ is defined as the time to a 50% drop in survival relative to starting survival. When intrinsic background mortality pulls upper bounds below 1, $\text{mid}$ remains the dose-response midpoint and so captures relative $t_{50}$ exactly. No correction factors are needed. Any calculations of $CT_{max}$ will then be based on relative $t_{50}$ and not absolute $t_{50}$.
 
 A powerful aspect of the Bayesian modelling approach described above is that uncertainty in all of the estimated quantities can be derived. Additinally, each of parameters in the model (an therefore *z* and $CT_{max}$) can be estimated separately for different strata (e.g., sex, population, species) in a single joint model by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\text{low}$, $\text{up}$, and $k$ (see @eq-linpred below).
 
