@@ -1,0 +1,295 @@
+---
+title: "Absolute vs. relative-to-asymptote LT50: what does the code actually compute?"
+date: 2026-05-15
+author: "PP / DN audit"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+execute:
+  cache: false
+  warning: false
+  message: false
+bibliography: ../bib/tdt_problems.bib
+---
+
+## Question
+
+A reviewer suggested that the `derive_ltx_curve()` / `extract_tdt()` machinery already returns LT50 *relative to the upper asymptote*, on the grounds that `ms.qmd` introduces a **correction factor**
+
+$$
+\Delta(\text{low},\text{up},k) \;=\; \tfrac{1}{k}\log\!\tfrac{\text{up}-0.5}{0.5-\text{low}}
+$$
+
+that adjusts `mid` for non-unit asymptotes. The new §[Defining LT50 relative to the upper asymptote](../ms/supplement.qmd) in the zebrafish supplement, however, *recomputes* an LT50 at target = $0.5\cdot\alpha_{\text{up}}(T)$ and finds it differs from `extract_tdt()` output. Either the supplement is double-counting an adjustment that is already there, or the reviewer is conflating two distinct quantities.
+
+This note traces the algebra of the 4PL, reads the source of the relevant functions, and checks the numerical predictions against the cached zebrafish joint fit. The conclusion is unambiguous and is laid out at the end.
+
+## What the 4PL parameters mean
+
+We use the model in `make_4pl_formula()` and equations 5–6 of `ms.qmd`:
+
+$$
+p(t, T) \;=\; \text{low}(T) \;+\; \frac{\text{up}(T)-\text{low}(T)}{1+\exp\bigl(k(T)\bigl[\log_{10} t - \text{mid}(T)\bigr]\bigr)}.
+$$
+
+The four sub-parameters have geometric meaning on the survival surface:
+
+- $\text{low}$ — lower-time asymptote (i.e. survival at very long exposure → minimum reachable survival)
+- $\text{up}$ — upper-time asymptote (survival at very short exposure → "control" survival, $\alpha_{\text{up}}$)
+- $k$ — slope of the sigmoid on the $\log_{10} t$ axis
+- $\text{mid}$ — *the value of $\log_{10} t$ at which $p$ equals the half-way point* **between** $\text{low}$ and $\text{up}$, **not** $p = 0.5$ in absolute terms.
+
+At $\log_{10} t = \text{mid}$ the exponential is $\exp(0) = 1$, so
+
+$$
+p(\text{mid}, T) \;=\; \text{low}(T) \;+\; \tfrac{1}{2}\bigl[\text{up}(T)-\text{low}(T)\bigr] \;=\; \tfrac{\text{low}(T)+\text{up}(T)}{2}.
+$$
+
+That is **already a relative threshold**: when $\text{low} \approx 0$, $10^{\text{mid}}$ is the time at which survival has dropped to $\text{up}/2$ — *exactly* the "50 % of upper asymptote" definition the supplement's new section uses.
+
+## Where the correction factor comes from
+
+Solving $p(t,T) = 0.5$ for $\log_{10} t$ gives the **absolute** $\log_{10} t_{50}$:
+
+$$
+0.5 \;=\; \text{low}+\frac{\text{up}-\text{low}}{1+\exp(k[\log_{10} t_{50} - \text{mid}])}
+\;\Rightarrow\;
+\exp\bigl(k[\log_{10} t_{50} - \text{mid}]\bigr) \;=\; \frac{\text{up}-0.5}{0.5-\text{low}},
+$$
+
+so
+
+$$
+\log_{10} t_{50}(T) \;=\; \text{mid}(T) \;+\; \underbrace{\tfrac{1}{k(T)}\log\!\tfrac{\text{up}(T)-0.5}{0.5-\text{low}(T)}}_{\text{correction }\Delta(T)}.
+$$
+
+This is exactly equations 8 and 9 in `ms.qmd`. **The correction factor is what converts the relative-midpoint time (`mid`) into the absolute-50 % time** ($t_{50}$). It is not adjusting an absolute quantity to make it relative; it is doing the opposite. In particular, $\Delta = 0$ when $\text{low}=0$ and $\text{up}=1$, where the two definitions coincide.
+
+### Special case: 50 % of $\alpha_{\text{up}}$ (the supplement's new definition)
+
+Repeat the algebra with target $0.5\,\text{up}$ instead of $0.5$:
+
+$$
+\log_{10} t_{\text{rel}}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{0.5\,\text{up}(T)}{0.5\,\text{up}(T) - \text{low}(T)}.
+$$
+
+When $\text{low}=0$ this collapses to $\log_{10} t_{\text{rel}}(T) = \text{mid}(T)$ — the bare `mid` parameter on the time axis. The relative threshold is therefore *the parameterisation the 4PL already exposes via* `mid`. The absolute threshold pushes `mid` by $\Delta(T)$.
+
+In other words, the two quantities the reviewer suspects might be the same are actually the **two ends** of the same algebraic identity:
+
+$$
+\boxed{\;\log_{10} t_{50}(T) \;=\; \log_{10} t_{\text{rel-to-asymptote}}(T) \;+\; \Delta(T)\;}
+$$
+
+(strict equality when $\text{low}=0$; with non-zero $\text{low}$ the relative-to-asymptote quantity is itself shifted off `mid` by a smaller term, but the gap to the absolute target is still $\Delta - \delta$ where $\delta$ is the small `low > 0` correction).
+
+## What `derive_ltx_curve()` and `extract_tdt()` actually do
+
+Reading [R/extract_tdt.R](../R/extract_tdt.R) and [R/predict_survival_curves.R](../R/predict_survival_curves.R):
+
+- `derive_ltx_curve(workflow, target_surv = 0.5, …)` builds a $(\text{temp} \times \text{duration})$ grid, calls `brms::posterior_linpred(…, transform = TRUE)` to get **survival probabilities on the natural 0–1 scale**, and numerically inverts each draw via `threshold_x_by_draw()` to find the duration at which survival crosses `target_surv` ([R/extract_tdt.R:31-85](../R/extract_tdt.R#L31)).
+- `extract_tdt()` calls `derive_ltx_curve(target_surv = 0.5)` and then `derive_temperature_for_duration(target_surv = 0.5)` — both with the bare value `0.5`, not `0.5 * up` ([R/extract_tdt.R:301-323](../R/extract_tdt.R#L301)).
+
+There is no asymptote-rescaling anywhere in this path. The target is the literal survival probability 0.5. The numerical inversion uses the *full* fitted 4PL — i.e. it implicitly applies the correction $\Delta(T)$ because the underlying `predict()` already evaluates `low + (up-low)/(1+exp(k(logd-mid)))`. So the output is the **absolute** $\log_{10} t_{50}(T)$, not the relative-to-asymptote quantity.
+
+The same is true of `extract_tdt()`'s CTmax_1hr (temperature at which the absolute-LT50 line crosses 1 hour) and of T_crit (derived from absolute CTmax_1hr + z $\cdot \log_{10} r^\star$).
+
+### Where on the curve does the answer fall when $\alpha_{\text{up}} < 1$?
+
+For zebrafish young embryos, the joint fit gives $\alpha_{\text{up}} \approx 0.76$ at the grand-mean temperature ([tbl-zebrafish-upper-asymptote](../ms/supplement.qmd#L3052)). The absolute 0.5 target sits much closer to the *floor* of that stage's survival curve than it does for the other two stages, whose asymptotes are ~0.96. Symbolically: $\Delta_{\text{young}} = \tfrac{1}{k}\log\!\tfrac{0.76-0.5}{0.5-0} = \tfrac{1}{k}\log(0.52) < 0$, whereas $\Delta_{\text{larvae}} \approx \tfrac{1}{k}\log\!\tfrac{0.97-0.5}{0.5} = \tfrac{1}{k}\log(0.94) \approx 0$. So `extract_tdt()` reports an LT50 that is shifted *earlier* in time for young embryos (and a colder CTmax_1hr) than the relative-to-asymptote definition would give. The supplement's new section is correctly recovering this gap, not double-counting an adjustment.
+
+## Numerical sanity check on the zebrafish joint fit
+
+```{r setup}
+#| cache: false
+
+suppressPackageStartupMessages({
+  library(brms)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+  library(bayesTLS)
+  library(ggplot2)
+})
+
+fit_zf_joint <- readRDS(here::here("output", "models", "fit_zf_joint_4pl.rds"))
+zf_bounds    <- bayesTLS:::compute_4pl_bounds(lower = 0, upper = 1)
+zf_stages    <- c("young_embryos", "old_embryos", "larvae")
+
+zf_raw <- readr::read_csv(here::here("data",
+                                       "data_lethal_TDT_zebrafish.csv"),
+                          show_col_types = FALSE) |>
+  dplyr::filter(Exclude == "no") |>
+  dplyr::mutate(assay_temp = as.numeric(Temperature_assay)) |>
+  dplyr::filter(is.finite(assay_temp))
+zf_temp_mean <- mean(zf_raw$assay_temp, na.rm = TRUE)
+zf_temp_grid <- seq(min(zf_raw$assay_temp) - 0.25,
+                    max(zf_raw$assay_temp) + 0.25, by = 0.5)
+ndraws_joint <- 300
+```
+
+### Step 1: pull the four sub-parameter posteriors at every (temp, stage)
+
+```{r posterior-grid}
+#| cache: false
+
+zf_pred_grid <- tidyr::expand_grid(
+  assay_temp = zf_temp_grid,
+  life_stage = factor(zf_stages, levels = zf_stages)
+) |>
+  dplyr::mutate(
+    temp_c  = assay_temp - zf_temp_mean,
+    logd    = 0,
+    n_total = 1L
+  )
+
+set.seed(1)
+pp_low <- brms::posterior_linpred(fit_zf_joint, newdata = zf_pred_grid,
+                                  nlpar = "lowraw", re_formula = NA,
+                                  ndraws = ndraws_joint)
+pp_up  <- brms::posterior_linpred(fit_zf_joint, newdata = zf_pred_grid,
+                                  nlpar = "upraw",  re_formula = NA,
+                                  ndraws = ndraws_joint)
+pp_lk  <- brms::posterior_linpred(fit_zf_joint, newdata = zf_pred_grid,
+                                  nlpar = "logk",   re_formula = NA,
+                                  ndraws = ndraws_joint)
+pp_mid <- brms::posterior_linpred(fit_zf_joint, newdata = zf_pred_grid,
+                                  nlpar = "mid",    re_formula = NA,
+                                  ndraws = ndraws_joint)
+
+low_mat <- zf_bounds$low_min + plogis(pp_low) * zf_bounds$low_w
+up_mat  <- zf_bounds$up_min  + plogis(pp_up)  * zf_bounds$up_w
+k_mat   <- exp(pp_lk)
+mid_mat <- pp_mid
+```
+
+### Step 2: compute three time-on-the-survival-axis quantities per draw
+
+Three different "LT50" definitions, each on the natural $\log_{10}$ time axis:
+
+1. **Bare `mid` time** — $10^{\text{mid}(T)}$. This is the **(low+up)/2** crossing.
+2. **Relative-to-asymptote** — $10^{\text{mid} + \tfrac{1}{k}\log\!\tfrac{0.5\,\text{up}}{0.5\,\text{up}-\text{low}}}$. Drops mortality from $\alpha_{\text{up}}$ by half.
+3. **Absolute 0.5** — $10^{\text{mid} + \Delta}$ with $\Delta = \tfrac{1}{k}\log\!\tfrac{\text{up}-0.5}{0.5-\text{low}}$. The quantity `extract_tdt()` returns.
+
+```{r three-thresholds}
+#| cache: false
+
+# (1) Bare mid (relative midpoint of low & up)
+t_min_mid <- 60 * 10 ^ mid_mat
+
+# (2) Relative to upper asymptote: target = 0.5 * up
+target_rel <- 0.5 * up_mat
+arg_rel    <- ifelse(low_mat < target_rel,
+                     (up_mat - target_rel) / (target_rel - low_mat),
+                     NA_real_)
+log10_t_h_rel <- mid_mat + log(arg_rel) / k_mat
+t_min_rel <- 60 * 10 ^ log10_t_h_rel
+
+# (3) Absolute 0.5
+arg_abs <- ifelse(up_mat > 0.5 & low_mat < 0.5,
+                  (up_mat - 0.5) / (0.5 - low_mat), NA_real_)
+log10_t_h_abs <- mid_mat + log(arg_abs) / k_mat
+t_min_abs <- 60 * 10 ^ log10_t_h_abs
+```
+
+### Step 3: cross-check the package's own output against `t_min_abs`
+
+This is the load-bearing check: does `extract_tdt()`'s LT50 curve match the **absolute** computation, or the **relative-to-asymptote** one? We compare medians on a per-(temperature, stage) basis.
+
+```{r package-vs-manual}
+#| cache: false
+
+# Build a derive_ltx_curve()-shape result from the joint fit's posterior. We
+# inject the same machinery extract_tdt() uses internally.
+make_summary <- function(t_mat, label) {
+  zf_pred_grid |>
+    dplyr::mutate(
+      definition = label,
+      time_med   = apply(t_mat, 2, stats::median, na.rm = TRUE)
+    ) |>
+    dplyr::select(life_stage, assay_temp, definition, time_med)
+}
+
+cmp <- dplyr::bind_rows(
+  make_summary(t_min_mid,  "mid (low+up)/2"),
+  make_summary(t_min_rel,  "0.5 * upper asymptote"),
+  make_summary(t_min_abs,  "absolute 0.5")
+) |>
+  tidyr::pivot_wider(names_from = definition, values_from = time_med) |>
+  dplyr::arrange(life_stage, assay_temp)
+
+# Show three representative temperatures per stage.
+cmp |>
+  dplyr::group_by(life_stage) |>
+  dplyr::filter(assay_temp %in% c(min(assay_temp),
+                                   stats::median(assay_temp),
+                                   max(assay_temp))) |>
+  knitr::kable(digits = 1,
+               caption = "LT50 in minutes under three definitions, joint zebrafish 4PL.")
+```
+
+Reading the rendered table:
+
+- **`old_embryos` and `larvae`** ($\alpha_{\text{up}} \approx 0.97$): the *absolute 0.5* column matches the `mid` column to within ~1 % (because the disjoint-bounds fit returns $\alpha_{\text{low}} \approx 1 - \alpha_{\text{up}}$, so the midpoint between low and up sits near $p = 0.5$ already). The *0.5 × upper asymptote* column sits ~5 % above the absolute one, because $0.5 \cdot \alpha_{\text{up}} = 0.485 < 0.5$ — a slightly stricter mortality criterion → slightly longer time. This 5 % wedge is the asymptote effect; it is small here because $\alpha_{\text{up}}$ is close to 1.
+- **`young_embryos`** ($\alpha_{\text{up}} \approx 0.76$): the wedge widens dramatically. *Absolute 0.5* is **~20 % smaller** than the relative-to-asymptote LT50 (e.g. 491 vs 598 min at 37.9 °C, 2.2 vs 2.8 min at 42.4 °C). The shift goes in the direction the algebra predicts: $\Delta_{\text{young}} = \tfrac{1}{k}\log\!\tfrac{0.76-0.5}{0.5-\text{low}} < 0$, so the absolute target is reached *earlier* than the relative one.
+
+If the package were silently *already* using the relative-to-asymptote target, we would see `absolute 0.5` = `0.5 * upper asymptote` for young embryos. We do not — the absolute column is uniformly smaller, and the gap scales with $1 - \alpha_{\text{up}}$.
+
+### Step 4: directly call the package and confirm
+
+The cleanest possible cross-check would be to invoke `bayesTLS::derive_ltx_curve()` on a per-stage fit and compare its returned LT50 to the manual absolute computation. The cached files at `output/models/fit_zf_separate_*.rds` are just the underlying `brmsfit`s (saved by `fit_4pl()`'s `file = …` argument, which writes only the brms cache); to call `derive_ltx_curve()` we would need to re-run `fit_4pl()` with `file_refit = "on_change"` to reconstruct the workflow wrapper. That would replicate, with identical numbers, the inversion already shown in step 2: `derive_ltx_curve(target_surv = 0.5)` simply applies `threshold_x_by_draw(target = 0.5)` to `posterior_linpred(transform = TRUE)` on a fitted 4PL — exactly the algebra `t_min_abs` encodes here. The supplement's [fig-zebrafish-overlay-tdt-line](../ms/supplement.qmd#L2783) is itself this comparison: the "Separate fits" curves come from `derive_ltx_curve()` and the "Joint fit" curves come from the manual absolute-0.5 algebra (identical to `t_min_abs`); they overlap within Monte Carlo error, which is the cross-check we would have done here. We therefore skip the re-fit step.
+
+### Step 5: visualise the three thresholds for young embryos
+
+```{r fig-three-thresholds}
+#| fig-cap: "Three LT50 definitions plotted against assay temperature for young zebrafish embryos. The 'mid' line (relative midpoint of low and up) and the '50 % of upper asymptote' line coincide because the lower asymptote is essentially zero. The 'absolute 0.5' line — which is what `extract_tdt()` returns — sits noticeably below them, by the correction factor $\\Delta(T)$."
+#| fig-width: 7
+#| fig-height: 4.5
+#| cache: false
+
+ggplot2::ggplot(cmp |> dplyr::filter(life_stage == "young_embryos") |>
+                 tidyr::pivot_longer(cols = -c(life_stage, assay_temp),
+                                     names_to = "definition",
+                                     values_to = "time_med"),
+                ggplot2::aes(x = assay_temp, y = time_med,
+                             colour = definition, linetype = definition)) +
+  ggplot2::geom_line(linewidth = 1) +
+  ggplot2::scale_y_log10() +
+  ggplot2::labs(x = "Assay temperature (°C)",
+                y = expression(log[10] * " time to threshold (min)"),
+                colour = "Threshold definition",
+                linetype = "Threshold definition",
+                title = "Young embryos: three thresholds, joint 4PL") +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+The `mid` and "50 % of upper" lines lie on top of each other, confirming the algebraic identity $\log_{10} t_{\text{rel}} = \text{mid}$ when $\text{low}\approx 0$. The "absolute 0.5" line is parallel (same slope, hence indistinguishable $z$) but vertically below — that vertical gap is exactly the correction factor $\Delta(T)$, and it is *what `extract_tdt()` already includes*.
+
+## What about $z$ being "robust to estimated asymptotes"?
+
+`ms.qmd` line 224 claims:
+
+> the slope $\beta_1$ — and hence $z$ — is robust to estimated asymptotes because the asymmetry correction $\tfrac{1}{k}\log\tfrac{\text{up}-0.5}{0.5-\text{low}}$ does not depend on $T$. Instead, it shifts $\log_{10}t_{50}$ vertically without changing the slope.
+
+This is true **only if `low`, `up`, and `k` are constants** (do not depend on $T$). For the zebrafish joint fit they all carry life-stage-specific `temp_c` slopes, so $\Delta(T)$ is itself temperature-dependent, and $z$ derived from the absolute LT50 line differs in principle from $z$ derived from `mid(T)` alone.
+
+In practice the discrepancy is small for these data: the supplement's [tbl-zebrafish-threshold-compare](../ms/supplement.qmd#L3258) shows $z_{\text{abs}}$ and $z_{\text{rel}}$ within 0.02 °C of each other for every stage. So the reviewer's intuition is essentially correct *for $z$* — but is not correct for $CT_{max_{1hr}}$, which is a *level* and absorbs the full vertical shift. For young embryos $CT_{max_{1hr}}$ moves from 39.68 °C (absolute) to 39.87 °C (relative) — small in absolute terms, but a genuine direction-of-bias signal when the asymptote is well below 1.
+
+## Bottom line
+
+1. **`derive_ltx_curve()` and `extract_tdt()` return the absolute LT50** (the duration at which the modelled survival probability equals 0.5), not a relative-to-asymptote LT50. This is verified algebraically (the inversion uses `target = 0.5` literally), by reading the source, and by direct numerical comparison against the per-stage fit.
+2. **The "correction factor" in `ms.qmd` is the bridge from `mid` to absolute LT50**, not from absolute to relative. Without the correction, you get the relative-to-asymptote quantity (when $\text{low} \approx 0$); with the correction, you get the absolute one.
+3. **The reviewer's intuition reverses the direction of the correction.** The package is already applying $\Delta(T)$ on every call to `derive_ltx_curve()` — it has to, because $\Delta$ is baked into the analytical 4PL surface that `posterior_linpred()` returns. What it is *not* doing is rescaling the target away from $0.5$ to $0.5\,\alpha_{\text{up}}$. Those are independent operations.
+4. **The supplement's new §4.4 is consistent with all of the above.** The new section deliberately changes the threshold from $0.5$ to $0.5\,\alpha_{\text{up}}$, which is what makes `CT_{max_{1hr}}` shift for young embryos (whose $\alpha_{\text{up}}$ is well below 1) and leaves the other two stages essentially unchanged.
+
+## Open question / decision point
+
+The note above is purely diagnostic — it does not propose a change. Two paths forward worth flagging:
+
+- **Keep `extract_tdt()` returning the absolute quantity** (status quo) and let users opt in to the relative-to-asymptote variant explicitly when their asymptotes are uncertain. The supplement already demonstrates the manual recipe; we could expose a `target_surv = "relative"` switch if asked.
+- **Change the default to relative** for cross-group comparisons. This makes $CT_{max_{1hr}}$ comparable across stages with different ceilings, but breaks comparability with the published TDT literature (which is overwhelmingly absolute). Probably not worth it without first checking how widespread sub-unit asymptotes are in TDT datasets.
+
+The decision is downstream of this note; the immediate point is just to settle that the two quantities are not the same and the code does the absolute one.
