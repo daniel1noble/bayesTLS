@@ -176,21 +176,21 @@ We show how classical TLS quantities, such as thermal sensitivity ($z$), thermal
 
 ## Model specification
 
-Assuming we have mortality data for different times and temperatures, let $y_{ij}$ denote the number of survivors out of $n_{ij}$ individuals in trial $j$ exposed for time $t_{ij}$ (e.g., minutes) at assay temperature $T_{ij}$ (°C). We can model the counts directly with a binomial likelihood (but a beta-binomial likelihood function can also be used and controls for overdispersion):
+Assuming we have mortality data for different times and temperatures, let $y$ denote the number of survivors out of $n$ individuals exposed for time $t$ (e.g., minutes) at assay temperature $T$ (°C). We can model the counts directly with a binomial likelihood (but a beta-binomial likelihood function can also be used and controls for overdispersion):
 
 $$
-y_{ij} \mid n_{ij}, p_{ij} \;\sim\; \text{Binomial}(n_{ij},\, p_{ij}),
+y \mid n, p \;\sim\; \text{Binomial}(n,\, p),
 $$ {#eq-likelihood}
 
-with survival probability $p_{ij}$ given by a four-parameter logistic (4PL) function of $\log_{10}$-exposure time,
+with survival probability $p$ given by a four-parameter logistic (4PL) function of $\log_{10}$-exposure time,
 
 $$
-p_{ij} \;=\; \text{low} \;+\; \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - mid_{ij})\bigr)}.
+p \;=\; \text{low} \;+\; \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k\,(\log_{10} t - \text{mid})\bigr)}.
 $$ {#eq-4pl}
 
-where $\text{low}$ is the lower survival probability asymptote, $\text{up}$ is the upper survival probability asymptote, and $k$ is the slope defining the change in survival probability on the $\log_{10} t$ axis. Larger $k$ gives a sharper decline in survival probability with $\log_{10} t$. $mid_{ij}$ is the value of $\log_{10} t$ at which $p$ falls to the midpoint between $\text{low}$ and $\text{up}$. When asymptotes are near 0 and 1, $mid_{ij}$ coincides with $\log_{10}t_{50}$ at trial $j$. While other logistic forms can be used (e.g., two or 3 parameter logistics), @eq-4pl is the most flexible model that can account for different asymptotic survival probabilities. 
+where $\text{low}$ is the lower survival probability asymptote, $\text{up}$ is the upper survival probability asymptote, and $k$ is the slope defining the change in survival probability on the $\log_{10} t$ axis. Larger $k$ gives a sharper decline in survival probability with $\log_{10} t$. $\text{mid}$ is the value of $\log_{10} t$ at which $p$ falls to the midpoint between $\text{low}$ and $\text{up}$. When asymptotes are near 0 and 1, $\text{mid}$ coincides with $\log_{10}t_{50}$. While other logistic forms can be used (e.g., two or 3 parameter logistics), @eq-4pl is the most flexible model that can account for different asymptotic survival probabilities.
 
-The key parameters of @eq-4pl (i.e., $\text{low}$, $\text{up}$, $k$, $mid_{ij}$), can be fit as a non-linear function within a likelihood or Bayesian framework, which estimates their correlation and allows for fixed or random effects to be estimated to explain variation in these parameters. Such an approach allows for *a priori* comparisons (e.g., do sexes or species differ in midpoints?), with correct inference (e.g., do species differ significantly from each other?) and allows for variance decomposition to help identify key sources of variance in the data (e.g., estimating variances explained across individuals, species, trials etc.). Such models are most flexibly fit within a Bayesian framework with intuitive interpretation of these parameters and a highly flexible path for error propagation. We show below how such a model can be used to derive all thermal load sensitivity parameters of interest to ecophysiologists. 
+The key parameters of @eq-4pl (i.e., $\text{low}$, $\text{up}$, $k$, $\text{mid}$), can be fit as a non-linear function within a likelihood or Bayesian framework, which estimates their correlation and allows for fixed or random effects to be estimated to explain variation in these parameters. Such an approach allows for *a priori* comparisons (e.g., do sexes or species differ in midpoints?), with correct inference (e.g., do species differ significantly from each other?) and allows for variance decomposition to help identify key sources of variance in the data (e.g., estimating variances explained across individuals, species, trials etc.). Such models are most flexibly fit within a Bayesian framework with intuitive interpretation of these parameters and a highly flexible path for error propagation. We show below how such a model can be used to derive all thermal load sensitivity parameters of interest to ecophysiologists. 
 
 # Deriving key thermal load sensitivity parameters 
 
@@ -199,10 +199,10 @@ The TDT/TLS frameworks are elegant in that they derive metrics with clear biolog
 As indicated above, we can model changes in the mean of any of the four parameters in @eq-4pl. Thermal sensitivity (*z*) and $CT_{max_{1hr}}$ can be derived by modelling the effect of temperature on midpoints specifically as follows:
 
 $$
-\text{mid}_{ij} = \beta_0 + \beta_1\,(T_{ij} - \bar{T}),
+\text{mid} = \beta_0 + \beta_1\,(T - \bar{T}),
 $$ {#eq-mid-temp}
 
-where $\text{mid}_{ij}$ is the $\log_{10}$-time at which survival equals the midpoint between the lower and upper asymptotes for trial $j$ at assay temperature $T_{ij}$ (°C); $\beta_0$ is the intercept giving the midpoint at the grand mean temperature $\bar{T}$; $\beta_1$ is the slope describing how the midpoint changes per °C increase in $T_{ij}$; and $\bar{T}$ is the grand mean of assay temperatures used to mean-centre $T_{ij}$, which decorrelates $\beta_0$ from $\beta_1$ and improves parameter estimation and interpretation [@schielzeth_centering_2010]. 
+where $\text{mid}$ is the $\log_{10}$-time at which survival equals the midpoint between the lower and upper asymptotes at assay temperature $T$ (°C); $\beta_0$ is the intercept giving the midpoint at the grand mean temperature $\bar{T}$; $\beta_1$ is the slope describing how the midpoint changes per °C increase in $T$; and $\bar{T}$ is the grand mean of assay temperatures used to mean-centre $T$, which decorrelates $\beta_0$ from $\beta_1$ and improves parameter estimation and interpretation [@schielzeth_centering_2010].
 
 When the experimental design estimates upper and lower limits of the response (i.e., $\text{low}$ and $\text{up}$) near 0 and 1, the midpoint coincides with the classical $t_{50}$ (time to reach 50% survival). Therefore, the regression in @eq-mid-temp directly provides thermal sensitivity as $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = \bar{T} + (\log_{10} t_\text{ref} - \beta_0)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$). 
 
@@ -226,7 +226,7 @@ $$ {#eq-LTx}
 
 $CT_{max}$ is then adjusted in accordance through the correction factor in @eq-ctmax-corrected. Importantly, there may be situations where computing absolute $\log_{10} t_{x}$ based on a sample reaching a given probability threshold is less ideal because of differences in baseline survival at the start of experiments. Instead, one might be interested in calculating what we refer to as 'relative $t_{50}$', which we define as the time at which survival reaches the midpoint between the upper and lower asymptotes (i.e., $p = (\text{up}+\text{low})/2$). By construction, $\text{mid}$ *is* relative $t_{50}$ at every temperature, so no asymmetry correction is needed. $CT_{max}$ is read directly from @eq-mid-temp as $CT_{max}(t_\text{ref}) = \bar{T} + (\log_{10}t_\text{ref}-\beta_0)/\beta_1$. Note that relative and absolute $CT_{max}$ are numerically equal only when $\text{up}=1$ and $\text{low}=0$.
 
-A powerful aspect of the Bayesian modelling approach described above is that uncertainty in all of the estimated quantities can be derived. Additinally, each of parameters in the model (an therefore *z* and $CT_{max}$) can be estimated separately for different strata (e.g., sex, population, species) in a single joint model by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}_{ij}$ — and, if appropriate, in the linear predictors for $\text{low}$, $\text{up}$, and $k$ (see @eq-linpred below).
+A powerful aspect of the Bayesian modelling approach described above is that uncertainty in all of the estimated quantities can be derived. Additinally, each of parameters in the model (an therefore *z* and $CT_{max}$) can be estimated separately for different strata (e.g., sex, population, species) in a single joint model by including the relevant fixed covariates and/or random effects in the linear predictor for $\text{mid}$ — and, if appropriate, in the linear predictors for $\text{low}$, $\text{up}$, and $k$ (see @eq-linpred below).
 
 # Predicting heat injury and survival under dynamic thermal environments
 
@@ -263,7 +263,7 @@ In zebrafish (*Danio rerio*), we show how the 4PL can be used to estimate all pa
 In XXX... 
 
 
-To break the well-known likelihood ridges among $(\text{low}, u, k)$ in unconstrained 4PL fits [@bolker_ecologicalmodels_2008; @gelman_priors_2006], we estimate the identifiable parameterisation
+To break the well-known likelihood ridges among $(\text{low}, \text{up}, k)$ in unconstrained 4PL fits [@bolker_ecologicalmodels_2008; @gelman_priors_2006], we estimate the identifiable parameterisation
 
 $$
 \text{low} = 0.49\,\text{logit}^{-1}(\widetilde{\text{low}}), \qquad
@@ -271,12 +271,12 @@ $$
 k   = \exp(\kappa),
 $$ {#eq-reparam}
 
-with $\widetilde{\text{low}},\widetilde{\text{up}},\kappa \in \mathbb{R}$. This constrains $\text{low} \in [0, 0.49]$ and $\text{up} \in [0.51, 1]$ into disjoint intervals so that $u > \text{low}$ by construction, the curve direction is unambiguous, and $k$ is positive on the natural scale.
+with $\widetilde{\text{low}},\widetilde{\text{up}},\kappa \in \mathbb{R}$. This constrains $\text{low} \in [0, 0.49]$ and $\text{up} \in [0.51, 1]$ into disjoint intervals so that $\text{up} > \text{low}$ by construction, the curve direction is unambiguous, and $k$ is positive on the natural scale.
 
-The inflection point $m_{ij}$ is modelled as a linear function of (mean-centred) assay temperature, with additional fixed covariates and nested random effects:
+Up to this point we have written @eq-likelihood–@eq-mid-temp without indices for clarity. To accommodate replicated, hierarchically structured data, we now index observations by $i$ within group $j$ (e.g., trial, individual, population). The inflection point $\text{mid}_{ij}$ is then modelled as a linear function of (mean-centred) assay temperature, with additional fixed covariates and nested random effects:
 
 $$
-m_{ij} \;=\; \beta_0 \;+\; \beta_1\,(T_{ij} - \bar T) \;+\; \mathbf{x}_{ij}^{\top}\boldsymbol{\gamma} \;+\; b_{j} \;+\; \varepsilon_{ij},
+\text{mid}_{ij} \;=\; \beta_0 \;+\; \beta_1\,(T_{ij} - \bar T) \;+\; \mathbf{x}_{ij}^{\top}\boldsymbol{\gamma} \;+\; b_{j} \;+\; \varepsilon_{ij},
 $$ {#eq-linpred}
 
 where $\bar T$ is the grand mean of assay temperatures (centring stabilises sampling and decorrelates $\beta_0$ from $\beta_1$), $\mathbf{x}_{ij}$ holds any additional fixed covariates with coefficients $\boldsymbol{\gamma}$, $b_{j}$ collects the nested random effects and $\varepsilon_{ij} \sim \mathcal{N}(0, \sigma_\varepsilon^2)$ is an observation-level random effect that absorbs the binomial overdispersion characteristic of replicated count assays [@harrison_olre_2014]. However, we could also remove the observation-level random effect from the model and instead fit a beta-binomial error distribution which estimates a dispersion parameter ($\phi$) more naturally.
