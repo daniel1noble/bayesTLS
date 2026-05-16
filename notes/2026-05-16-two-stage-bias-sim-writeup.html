@@ -1,0 +1,1831 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Daniel Noble (with Claude assistance)">
+<meta name="dcterms.date" content="2026-05-16">
+
+<title>Joint Bayesian 4PL vs two-stage TDT estimators — bias, coverage, and sensitivity</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="2026-05-16-two-stage-bias-sim-writeup_files/libs/clipboard/clipboard.min.js"></script>
+<script src="2026-05-16-two-stage-bias-sim-writeup_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="2026-05-16-two-stage-bias-sim-writeup_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="2026-05-16-two-stage-bias-sim-writeup_files/libs/quarto-html/popper.min.js"></script>
+<script src="2026-05-16-two-stage-bias-sim-writeup_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="2026-05-16-two-stage-bias-sim-writeup_files/libs/quarto-html/anchor.min.js"></script>
+<link href="2026-05-16-two-stage-bias-sim-writeup_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="2026-05-16-two-stage-bias-sim-writeup_files/libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="2026-05-16-two-stage-bias-sim-writeup_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="2026-05-16-two-stage-bias-sim-writeup_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="2026-05-16-two-stage-bias-sim-writeup_files/libs/bootstrap/bootstrap-81267100e462c21b3d6c0d5bf76a3417.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#aim" id="toc-aim" class="nav-link active" data-scroll-target="#aim"><span class="header-section-number">1</span> Aim</a></li>
+  <li><a href="#common-methods" id="toc-common-methods" class="nav-link" data-scroll-target="#common-methods"><span class="header-section-number">2</span> Common methods</a></li>
+  <li><a href="#scenario-1-strict-equivalence-baseline" id="toc-scenario-1-strict-equivalence-baseline" class="nav-link" data-scroll-target="#scenario-1-strict-equivalence-baseline"><span class="header-section-number">3</span> Scenario 1 — Strict equivalence baseline</a></li>
+  <li><a href="#scenario-2-likelihood-misspecification-only" id="toc-scenario-2-likelihood-misspecification-only" class="nav-link" data-scroll-target="#scenario-2-likelihood-misspecification-only"><span class="header-section-number">4</span> Scenario 2 — Likelihood misspecification only</a></li>
+  <li><a href="#scenario-3-heat-lowers-max-survival-asymmetric-u-drift" id="toc-scenario-3-heat-lowers-max-survival-asymmetric-u-drift" class="nav-link" data-scroll-target="#scenario-3-heat-lowers-max-survival-asymmetric-u-drift"><span class="header-section-number">5</span> Scenario 3 — Heat lowers max survival (asymmetric u drift)</a></li>
+  <li><a href="#scenario-4-asymptotes-compress-symmetric-drift" id="toc-scenario-4-asymptotes-compress-symmetric-drift" class="nav-link" data-scroll-target="#scenario-4-asymptotes-compress-symmetric-drift"><span class="header-section-number">6</span> Scenario 4 — Asymptotes compress (symmetric drift)</a></li>
+  <li><a href="#scenario-5-heat-sharpens-curve-varying-k" id="toc-scenario-5-heat-sharpens-curve-varying-k" class="nav-link" data-scroll-target="#scenario-5-heat-sharpens-curve-varying-k"><span class="header-section-number">7</span> Scenario 5 — Heat sharpens curve (varying k)</a></li>
+  <li><a href="#scenario-6-sweep-strength-of-u-drift" id="toc-scenario-6-sweep-strength-of-u-drift" class="nav-link" data-scroll-target="#scenario-6-sweep-strength-of-u-drift"><span class="header-section-number">8</span> Scenario 6 — Sweep: strength of u drift</a></li>
+  <li><a href="#scenario-7-sweep-level-of-upper-asymptote" id="toc-scenario-7-sweep-level-of-upper-asymptote" class="nav-link" data-scroll-target="#scenario-7-sweep-level-of-upper-asymptote"><span class="header-section-number">9</span> Scenario 7 — Sweep: level of upper asymptote</a></li>
+  <li><a href="#scenario-8-sweep-design-intensity" id="toc-scenario-8-sweep-design-intensity" class="nav-link" data-scroll-target="#scenario-8-sweep-design-intensity"><span class="header-section-number">10</span> Scenario 8 — Sweep: design intensity</a></li>
+  <li><a href="#cross-cutting-summary" id="toc-cross-cutting-summary" class="nav-link" data-scroll-target="#cross-cutting-summary"><span class="header-section-number">11</span> Cross-cutting summary</a></li>
+  <li><a href="#joint-4pl-convergence-across-scenarios" id="toc-joint-4pl-convergence-across-scenarios" class="nav-link" data-scroll-target="#joint-4pl-convergence-across-scenarios"><span class="header-section-number">12</span> Joint 4PL convergence across scenarios</a></li>
+  <li><a href="#open-issues" id="toc-open-issues" class="nav-link" data-scroll-target="#open-issues"><span class="header-section-number">13</span> Open issues</a></li>
+  <li><a href="#bottom-line" id="toc-bottom-line" class="nav-link" data-scroll-target="#bottom-line"><span class="header-section-number">14</span> Bottom line</a></li>
+  </ul>
+</nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Joint Bayesian 4PL vs two-stage TDT estimators — bias, coverage, and sensitivity</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Daniel Noble (with Claude assistance) </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 16, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>This note supersedes <a href="2026-05-14-two-stage-bias-sim-results.html"><code>2026-05-14-two-stage-bias-sim-results.qmd</code></a> and <a href="2026-05-15-sensitivity-sweeps.html"><code>2026-05-15-sensitivity-sweeps.qmd</code></a>, both of which were written against pre-bug-fix simulation output and are no longer reliable. The current writeup is built from the on-disk RDS files in <code>output/sim_twostage/</code> produced by the corrected driver (2026-05-15 / 2026-05-16). Methods are documented separately in <a href="2026-05-13-two-stage-bias-sim-methods.qmd"><code>2026-05-13-two-stage-bias-sim-methods.qmd</code></a>; this note refers back rather than restating.</p>
+</div>
+</div>
+<section id="aim" class="level1" data-number="1">
+<h1 data-number="1"><span class="header-section-number">1</span> Aim</h1>
+<p>The thermal-death-time (TDT) framework is overwhelmingly fitted with a two-stage pipeline: per-temperature binomial GLMs estimate <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span>, then those five (or so) point estimates are regressed against temperature with unweighted OLS to extract the classical quantities <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>. We want to know when this pipeline gives the correct answer with the correct uncertainty, and when it does not.</p>
+<p>The joint Bayesian 4PL fits the full dose-response surface in one go. Algebraically it returns the same <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span> when the strict-equivalence assumptions hold (constant asymptotes near 0/1, no overdispersion, common slope across temperature). When those assumptions break — partial asymptotes, drifting upper bound, overdispersed counts, sparse design — there is no algebraic guarantee that the two are the same, and the two-stage’s estimating equations have no parameter to absorb the missing structure.</p>
+<p>The simulation study compares three estimators side-by-side over eight controlled scenarios. The aim is not to advocate for the joint 4PL on principle, but to map where the two-stage’s deficit becomes operationally important — and where it does not.</p>
+</section>
+<section id="common-methods" class="level1" data-number="2">
+<h1 data-number="2"><span class="header-section-number">2</span> Common methods</h1>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Tip
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Full details, including the analytical truth construction, the parameter feasibility check that runs before any compute starts, and the diagnostic-criterion table, are in <a href="2026-05-13-two-stage-bias-sim-methods.qmd"><code>2026-05-13-two-stage-bias-sim-methods.qmd</code></a>. This section gives only the headline numbers needed to read the results.</p>
+</div>
+</div>
+<p><strong>Three estimators per dataset.</strong> (i) <em>Two-stage (binomial)</em> — the field default: per-temperature binomial GLM Stage 1, unweighted OLS Stage 2. (ii) <em>Two-stage (beta-binomial)</em> — same architecture but Stage 1 swaps in <code>glmmTMB</code> with a beta-binomial likelihood, isolating the <em>likelihood</em> component of the field default’s deficit. (iii) <em>Joint 4PL</em> — a <code>brms</code>-fit non-linear <code>beta_binomial(link = "identity")</code> model in which all four 4PL sub-parameters carry a centred-temperature slope; <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span> are extracted from the posterior with <code>bayesTLS::extract_tdt()</code>.</p>
+<p><strong>Design grid.</strong> Five assay temperatures (30, 32, 34, 36, 38 °C) × six exposure durations (1, 5, 15, 45, 135, 405 minutes) = 30 cells per dataset. Each cell is replicated by <span class="math inline">\(n_{\text{reps}}\)</span> independent cups, each with <span class="math inline">\(N \sim \text{Uniform}\{10, \dots, 20\}\)</span> individuals. A Scenario-1 dataset with <span class="math inline">\(n_{\text{reps}}=5\)</span> is therefore 150 cups totalling roughly 2,000 individuals. Scenario 8 explicitly varies the grid (sparse 3 T × 4 durations = 12 cells per dataset).</p>
+<p><strong>Truth.</strong> For every cell, <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span> are computed analytically from the data-generating curve by evaluating the true <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span> at every design temperature and fitting a straight line — the same population target both estimators converge to under their estimating equations.</p>
+<p><strong>Sample sizes.</strong> Scenarios 1–5 use <span class="math inline">\(N_{\text{sim}} = 1000\)</span> datasets per cell; Scenarios 6–8 (sensitivity sweeps) use <span class="math inline">\(N_{\text{sim}} = 500\)</span>. Cells are pre-flighted before any compute starts, including a cross-cell distinctness check on data hashes that catches CLI plumbing bugs.</p>
+<p><strong>Performance metrics.</strong> For each estimator and each output quantity (<span class="math inline">\(z\)</span>, <span class="math inline">\(CT_{\max,1\text{h}}\)</span>): mean signed bias and its Monte-Carlo SE, RMSE, empirical 95% coverage and its MC SE (binomial proportion), and median 95% CI width. All computed across the per-simulation rows in the cell.</p>
+<p><strong>Diagnostics.</strong> Joint 4PL chains: 2 chains × 2,000 iterations (half warm-up), <code>adapt_delta = 0.9</code>, <code>max_treedepth = 12</code>. R̂ &lt; 1.01, ESS &gt; 400, zero divergent transitions, BFMI &gt; 0.3. Per-cell pass rates are reported alongside the bias / coverage tables.</p>
+</section>
+<section id="scenario-1-strict-equivalence-baseline" class="level1" data-number="3">
+<h1 data-number="3"><span class="header-section-number">3</span> Scenario 1 — Strict equivalence baseline</h1>
+<p><strong>Question.</strong> When all strict-equivalence assumptions hold (asymptotes pinned at 0 and 1, no overdispersion, single slope across temperature), do the three estimators agree, and is each calibrated? This is the floor scenario — divergence here would signal a bug.</p>
+<p><strong>Prediction.</strong> All three estimators are correctly specified for this DGP (the joint 4PL’s beta-binomial likelihood collapses to binomial as <span class="math inline">\(\phi \to \infty\)</span>). Bias should be within MC SE and coverage near 0.95 for all three. We expected the joint 4PL to deliver the narrowest CIs (joint fit pools information across temperature), with the two two-stage variants near-identical (no overdispersion to exploit).</p>
+<p><strong>Design.</strong> DGP: <code>low = 0.001</code>, <code>up = 0.999</code>, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>, binomial likelihood. True <span class="math inline">\(z = 6.667\)</span>, true <span class="math inline">\(CT_{\max,1\text{h}} = 32.146\,^\circ\text{C}\)</span>. Two cells: <span class="math inline">\(n_{\text{reps}} \in \{3, 5\}\)</span>. <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="kable-table">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 19%">
+<col style="width: 27%">
+<col style="width: 10%">
+<col style="width: 5%">
+<col style="width: 15%">
+<col style="width: 6%">
+<col style="width: 9%">
+<col style="width: 6%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Cell</th>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Quantity</th>
+<th style="text-align: right;">n_ok</th>
+<th style="text-align: left;">Bias</th>
+<th style="text-align: left;">RMSE</th>
+<th style="text-align: left;">Coverage</th>
+<th style="text-align: left;">Width</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.013 (0.009)</td>
+<td style="text-align: left;">0.281</td>
+<td style="text-align: left;">84.3%</td>
+<td style="text-align: left;">0.91</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">975</td>
+<td style="text-align: left;">+0.035 (0.029)</td>
+<td style="text-align: left;">0.894</td>
+<td style="text-align: left;">84.9%</td>
+<td style="text-align: left;">1.01</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.018 (0.009)</td>
+<td style="text-align: left;">0.269</td>
+<td style="text-align: left;">97.6%</td>
+<td style="text-align: left;">1.29</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.006 (0.004)</td>
+<td style="text-align: left;">0.136</td>
+<td style="text-align: left;">85.1%</td>
+<td style="text-align: left;">0.46</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">975</td>
+<td style="text-align: left;">+0.045 (0.055)</td>
+<td style="text-align: left;">1.724</td>
+<td style="text-align: left;">86.3%</td>
+<td style="text-align: left;">0.51</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.018 (0.004)</td>
+<td style="text-align: left;">0.130</td>
+<td style="text-align: left;">98.5%</td>
+<td style="text-align: left;">0.64</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.026 (0.007)</td>
+<td style="text-align: left;">0.215</td>
+<td style="text-align: left;">83.8%</td>
+<td style="text-align: left;">0.72</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">979</td>
+<td style="text-align: left;">+0.106 (0.108)</td>
+<td style="text-align: left;">3.395</td>
+<td style="text-align: left;">82.0%</td>
+<td style="text-align: left;">0.81</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.021 (0.007)</td>
+<td style="text-align: left;">0.214</td>
+<td style="text-align: left;">96.9%</td>
+<td style="text-align: left;">0.95</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.010 (0.003)</td>
+<td style="text-align: left;">0.105</td>
+<td style="text-align: left;">84.2%</td>
+<td style="text-align: left;">0.37</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">979</td>
+<td style="text-align: left;">+0.011 (0.034)</td>
+<td style="text-align: left;">1.063</td>
+<td style="text-align: left;">85.7%</td>
+<td style="text-align: left;">0.41</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.017 (0.003)</td>
+<td style="text-align: left;">0.102</td>
+<td style="text-align: left;">97.7%</td>
+<td style="text-align: left;">0.47</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen1" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen1-1.png" class="img-fluid figure-img" width="768">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% MC-SE intervals; dashed line at zero. (b) Empirical 95% CI coverage with 95% binomial intervals; dashed line at the nominal 0.95. Top row: <span class="math inline">\(n_{reps}=3\)</span>; bottom row: <span class="math inline">\(n_{reps}=5\)</span>. Both quantities (<span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1h}\)</span>) are within MC SE of zero bias and within MC SE of nominal coverage for all three estimators, as predicted.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> The bias prediction held for all three estimators: signed bias is within MC SE of zero on both quantities in both cells. The coverage prediction <em>did not</em> hold for the two-stage methods: the binomial two-stage covers at 84.2–85.1% on both <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>; the beta-binomial two-stage at 82.0–86.3%. Joint 4PL coverage is 96.9–98.5% (slightly over nominal but within MC SE of 0.95). The CI-width ordering matches prediction (two-stage variants narrowest, joint 4PL wider) — but those narrower two-stage intervals are the source of the under-coverage: Stage-2 OLS on five LT50 points is propagating less variance than the underlying sampling distribution actually has. <strong>The two-stage’s coverage gap is structural and shows up even when its mean structure is correctly specified.</strong> A separate concern: the BB Stage-1 variant has 2.1–2.5% of fits producing degenerate Stage-1 GLM solutions (n_ok = 975 / 979 vs 1000), inflating the unconditional RMSE on <span class="math inline">\(z\)</span> to 0.89–3.40 and on <span class="math inline">\(CT_{\max,1\text{h}}\)</span> to 1.06–1.72. Stripping those fits is open issue 6 below.</p>
+</section>
+<section id="scenario-2-likelihood-misspecification-only" class="level1" data-number="4">
+<h1 data-number="4"><span class="header-section-number">4</span> Scenario 2 — Likelihood misspecification only</h1>
+<p><strong>Question.</strong> With identical curve shape to Scenario 1 but beta-binomial overdispersion (φ = 5) added to the data-generating likelihood, what does the field default lose by ignoring overdispersion?</p>
+<p><strong>Prediction.</strong> All three should remain unbiased — the curve shape is unchanged, so the regression’s mean structure is correct under all three estimators. We expected the binomial two-stage to have wider CIs than the patched (beta-binomial) two-stage, but coverage near nominal because Stage-2 OLS reads the residual variance off the <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span> scatter. The patched two-stage should give narrower, calibrated CIs. The joint 4PL — narrowest, calibrated.</p>
+<p><strong>Design.</strong> Same shape as Scenario 1 (boundary asymptotes), but DGP likelihood is beta-binomial with φ = 5. Two cells: <span class="math inline">\(n_{\text{reps}} \in \{3, 5\}\)</span>. <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="kable-table">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 26%">
+<col style="width: 10%">
+<col style="width: 5%">
+<col style="width: 15%">
+<col style="width: 6%">
+<col style="width: 9%">
+<col style="width: 6%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Cell</th>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Quantity</th>
+<th style="text-align: right;">n_ok</th>
+<th style="text-align: left;">Bias</th>
+<th style="text-align: left;">RMSE</th>
+<th style="text-align: left;">Coverage</th>
+<th style="text-align: left;">Width</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.009 (0.018)</td>
+<td style="text-align: left;">0.552</td>
+<td style="text-align: left;">84.4%</td>
+<td style="text-align: left;">1.81</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">991</td>
+<td style="text-align: left;">-0.004 (0.022)</td>
+<td style="text-align: left;">0.686</td>
+<td style="text-align: left;">84.9%</td>
+<td style="text-align: left;">1.81</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.056 (0.016)</td>
+<td style="text-align: left;">0.515</td>
+<td style="text-align: left;">93.2%</td>
+<td style="text-align: left;">1.90</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.009 (0.008)</td>
+<td style="text-align: left;">0.257</td>
+<td style="text-align: left;">89.5%</td>
+<td style="text-align: left;">0.94</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">991</td>
+<td style="text-align: left;">-0.024 (0.012)</td>
+<td style="text-align: left;">0.387</td>
+<td style="text-align: left;">89.2%</td>
+<td style="text-align: left;">0.93</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.032 (0.007)</td>
+<td style="text-align: left;">0.228</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">0.92</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.010 (0.012)</td>
+<td style="text-align: left;">0.393</td>
+<td style="text-align: left;">86.9%</td>
+<td style="text-align: left;">1.35</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">999</td>
+<td style="text-align: left;">-0.008 (0.014)</td>
+<td style="text-align: left;">0.449</td>
+<td style="text-align: left;">86.9%</td>
+<td style="text-align: left;">1.30</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.035 (0.011)</td>
+<td style="text-align: left;">0.353</td>
+<td style="text-align: left;">95.6%</td>
+<td style="text-align: left;">1.43</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.002 (0.006)</td>
+<td style="text-align: left;">0.196</td>
+<td style="text-align: left;">88.3%</td>
+<td style="text-align: left;">0.69</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">999</td>
+<td style="text-align: left;">+0.005 (0.007)</td>
+<td style="text-align: left;">0.229</td>
+<td style="text-align: left;">87.3%</td>
+<td style="text-align: left;">0.66</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.018 (0.006)</td>
+<td style="text-align: left;">0.179</td>
+<td style="text-align: left;">94.7%</td>
+<td style="text-align: left;">0.71</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen2" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen2-1.png" class="img-fluid figure-img" width="768">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen2-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP). All three estimators stay within MC SE of zero bias on both quantities. Coverage of the two two-stage variants drops to 84–90%, regardless of Stage-1 family; joint 4PL coverage stays near nominal 0.95.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> Bias predictions held: all three estimators are within MC SE of zero on <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>. Coverage predictions did not hold: both two-stage variants drop to 84–90%, regardless of whether Stage 1 is binomial or beta-binomial. The patched Stage 1 does not rescue the architecture under overdispersion — the Stage-2 OLS already reads dispersion off the per-T point spread, but evidently under-propagates it once five (or three) point estimates feed the regression. The joint 4PL keeps coverage at 93–96%.</p>
+</section>
+<section id="scenario-3-heat-lowers-max-survival-asymmetric-u-drift" class="level1" data-number="5">
+<h1 data-number="5"><span class="header-section-number">5</span> Scenario 3 — Heat lowers max survival (asymmetric u drift)</h1>
+<p><strong>Question.</strong> When the upper asymptote drops with temperature (intrinsic heat-induced mortality reduces the proportion of the cohort ever susceptible to the timed exposure) but neither two-stage estimator has an asymptote parameter, does the missing structure get absorbed into Stage 1’s effective midpoint, biasing <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>?</p>
+<p><strong>Prediction.</strong> Both two-stage variants should be biased on at least one quantity, with bias that does not shrink with <span class="math inline">\(n_{\text{reps}}\)</span>. Joint 4PL should be unbiased and calibrated.</p>
+<p><strong>Design.</strong> DGP: <code>up</code> drops 1 pp/°C from baseline 0.92, <code>low</code> constant at 0.05, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>, beta-binomial likelihood (φ = 5). True <span class="math inline">\(z = 6.537\)</span>, true <span class="math inline">\(CT_{\max,1\text{h}} = 32.124\,^\circ\text{C}\)</span>. Two cells: <span class="math inline">\(n_{\text{reps}} \in \{3, 5\}\)</span>. <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="kable-table">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 23%">
+<col style="width: 26%">
+<col style="width: 10%">
+<col style="width: 5%">
+<col style="width: 15%">
+<col style="width: 6%">
+<col style="width: 9%">
+<col style="width: 6%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Cell</th>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Quantity</th>
+<th style="text-align: right;">n_ok</th>
+<th style="text-align: left;">Bias</th>
+<th style="text-align: left;">RMSE</th>
+<th style="text-align: left;">Coverage</th>
+<th style="text-align: left;">Width</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.077 (0.023)</td>
+<td style="text-align: left;">0.742</td>
+<td style="text-align: left;">83.7%</td>
+<td style="text-align: left;">2.40</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.135 (0.026)</td>
+<td style="text-align: left;">0.825</td>
+<td style="text-align: left;">82.9%</td>
+<td style="text-align: left;">2.50</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.097 (0.021)</td>
+<td style="text-align: left;">0.661</td>
+<td style="text-align: left;">95.7%</td>
+<td style="text-align: left;">2.61</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.273 (0.011)</td>
+<td style="text-align: left;">0.450</td>
+<td style="text-align: left;">86.7%</td>
+<td style="text-align: left;">1.35</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.362 (0.014)</td>
+<td style="text-align: left;">0.568</td>
+<td style="text-align: left;">84.5%</td>
+<td style="text-align: left;">1.41</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.000 (0.009)</td>
+<td style="text-align: left;">0.295</td>
+<td style="text-align: left;">94.5%</td>
+<td style="text-align: left;">1.19</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.099 (0.017)</td>
+<td style="text-align: left;">0.554</td>
+<td style="text-align: left;">84.1%</td>
+<td style="text-align: left;">1.85</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.172 (0.019)</td>
+<td style="text-align: left;">0.619</td>
+<td style="text-align: left;">80.4%</td>
+<td style="text-align: left;">1.98</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.060 (0.015)</td>
+<td style="text-align: left;">0.479</td>
+<td style="text-align: left;">96.3%</td>
+<td style="text-align: left;">1.98</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.265 (0.009)</td>
+<td style="text-align: left;">0.388</td>
+<td style="text-align: left;">81.0%</td>
+<td style="text-align: left;">1.04</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.351 (0.010)</td>
+<td style="text-align: left;">0.469</td>
+<td style="text-align: left;">74.9%</td>
+<td style="text-align: left;">1.13</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.033 (0.007)</td>
+<td style="text-align: left;">0.231</td>
+<td style="text-align: left;">95.7%</td>
+<td style="text-align: left;">0.91</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen3" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen3-1.png" class="img-fluid figure-img" width="768">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax bias is systematically negative (~ −0.27 to −0.36 °C) and does not shrink with <span class="math inline">\(n_{reps}\)</span>; coverage on the BB CTmax falls to 75% at <span class="math inline">\(n_{reps}=5\)</span>. Joint 4PL bias is within MC SE on CTmax in both cells; small positive z bias persists (+0.06 to +0.10) but coverage stays at 94–96%.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> The two-stage CTmax bias is systematically negative across both cells (−0.27 °C binomial, −0.36 °C beta-binomial) and does not shrink with <span class="math inline">\(n_{\text{reps}}\)</span>. Coverage on the BB CTmax drops to 75% at <span class="math inline">\(n_{\text{reps}}=5\)</span>. Mechanism: at high temperature the true <code>up</code> is lower, so the per-T binomial GLM (which assumes the curve approaches 1) fits a midpoint that is too late, dragging the Stage-2 intercept upward and CTmax downward. The joint 4PL absorbs the T-varying <code>up</code> and stays near-nominal on coverage; a small positive <span class="math inline">\(z\)</span> bias of +0.06 to +0.10 is the only residual deviation.</p>
+</section>
+<section id="scenario-4-asymptotes-compress-symmetric-drift" class="level1" data-number="6">
+<h1 data-number="6"><span class="header-section-number">6</span> Scenario 4 — Asymptotes compress (symmetric drift)</h1>
+<p><strong>Question.</strong> When <em>both</em> asymptotes drift toward each other symmetrically (<code>up</code> drops, <code>low</code> rises), the logit-difference is nearly preserved but the curve range shrinks. How does each estimator handle this in <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>?</p>
+<p><strong>Prediction.</strong> True <span class="math inline">\(z\)</span> barely changes (the slope around the midpoint is preserved). Two-stage methods should show smaller bias than Scenario 3 because the symmetric perturbation partially cancels at the midpoint. Joint 4PL near-nominal.</p>
+<p><strong>Design.</strong> <code>up</code> drops 1 pp/°C from baseline 0.92; <code>low</code> rises 1 pp/°C from baseline 0.05; <code>k = 8</code>; midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>; beta-binomial likelihood (φ = 5). True <span class="math inline">\(z = 6.658\)</span>, true <span class="math inline">\(CT_{\max,1\text{h}} = 32.090\,^\circ\text{C}\)</span>. Two cells: <span class="math inline">\(n_{\text{reps}} \in \{3, 5\}\)</span>. <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="kable-table">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 18%">
+<col style="width: 27%">
+<col style="width: 10%">
+<col style="width: 5%">
+<col style="width: 15%">
+<col style="width: 6%">
+<col style="width: 9%">
+<col style="width: 6%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Cell</th>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Quantity</th>
+<th style="text-align: right;">n_ok</th>
+<th style="text-align: left;">Bias</th>
+<th style="text-align: left;">RMSE</th>
+<th style="text-align: left;">Coverage</th>
+<th style="text-align: left;">Width</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.391 (0.029)</td>
+<td style="text-align: left;">1.010</td>
+<td style="text-align: left;">84.4%</td>
+<td style="text-align: left;">2.82</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.553 (0.033)</td>
+<td style="text-align: left;">1.186</td>
+<td style="text-align: left;">86.2%</td>
+<td style="text-align: left;">3.29</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.094 (0.022)</td>
+<td style="text-align: left;">0.690</td>
+<td style="text-align: left;">93.7%</td>
+<td style="text-align: left;">2.69</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.382 (0.012)</td>
+<td style="text-align: left;">0.542</td>
+<td style="text-align: left;">84.1%</td>
+<td style="text-align: left;">1.50</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.569 (0.014)</td>
+<td style="text-align: left;">0.717</td>
+<td style="text-align: left;">78.9%</td>
+<td style="text-align: left;">1.74</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.010 (0.009)</td>
+<td style="text-align: left;">0.296</td>
+<td style="text-align: left;">94.1%</td>
+<td style="text-align: left;">1.14</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.395 (0.023)</td>
+<td style="text-align: left;">0.820</td>
+<td style="text-align: left;">82.7%</td>
+<td style="text-align: left;">2.25</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.560 (0.025)</td>
+<td style="text-align: left;">0.978</td>
+<td style="text-align: left;">83.1%</td>
+<td style="text-align: left;">2.55</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.038 (0.016)</td>
+<td style="text-align: left;">0.500</td>
+<td style="text-align: left;">94.3%</td>
+<td style="text-align: left;">1.99</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.387 (0.009)</td>
+<td style="text-align: left;">0.490</td>
+<td style="text-align: left;">75.6%</td>
+<td style="text-align: left;">1.18</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.581 (0.011)</td>
+<td style="text-align: left;">0.678</td>
+<td style="text-align: left;">64.2%</td>
+<td style="text-align: left;">1.35</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.021 (0.007)</td>
+<td style="text-align: left;">0.216</td>
+<td style="text-align: left;">94.5%</td>
+<td style="text-align: left;">0.84</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen4" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen4-1.png" class="img-fluid figure-img" width="768">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign relative to Scenario 3</em>: now positive (+0.39 binomial, +0.55 beta-binomial). CTmax bias remains negative and grows (~ −0.38 to −0.58 °C). Coverage on the BB CTmax falls to 64% at <span class="math inline">\(n_{reps}=5\)</span>. Joint 4PL coverage holds at 94–95%.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> Two-stage CTmax bias is now larger than in Scenario 3 (−0.38 °C binomial, −0.58 °C beta-binomial) and the <span class="math inline">\(z\)</span> bias <em>flips sign</em>: where Scenario 3 had two-stage <span class="math inline">\(z\)</span> biased low (−0.08 to −0.17), Scenario 4 has it biased high (+0.39 to +0.56). Both biases are insensitive to <span class="math inline">\(n_{\text{reps}}\)</span> — they are model misspecification, not sampling noise. Coverage on the BB CTmax drops to 64.2% at <span class="math inline">\(n_{\text{reps}}=5\)</span>, the worst seen in the main scenarios. The patched Stage-1 (BB) is consistently <em>worse</em> than the binomial Stage-1 here, contradicting the prediction that the patch would help. Joint 4PL holds coverage at 94–95% with bias within MC SE on both quantities at <span class="math inline">\(n_{\text{reps}}=5\)</span>.</p>
+</section>
+<section id="scenario-5-heat-sharpens-curve-varying-k" class="level1" data-number="7">
+<h1 data-number="7"><span class="header-section-number">7</span> Scenario 5 — Heat sharpens curve (varying k)</h1>
+<p><strong>Question.</strong> When the slope <span class="math inline">\(k\)</span> varies with temperature (curves get sharper as it gets hotter), the per-T binomial GLM still recovers a midpoint, but the Stage-2 OLS regression of <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span> on <span class="math inline">\(T\)</span> assumes a linear relationship. How robust is the two-stage to T-varying <span class="math inline">\(k\)</span>?</p>
+<p><strong>Prediction.</strong> Smallest bias of the shape-perturbing scenarios. Two stage variants: slight bias, coverage near nominal. Joint 4PL: bias within MC SE, calibrated.</p>
+<p><strong>Design.</strong> <code>up = 0.92</code>, <code>low = 0.05</code>, <span class="math inline">\(k\)</span> linear in <span class="math inline">\(T\)</span> (8 at <span class="math inline">\(T=34\)</span>, slope +0.25 — so k = 7 at T=30, k = 9 at T=38). Midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>. Beta-binomial likelihood (φ = 5). True <span class="math inline">\(z = 6.679\)</span>, true <span class="math inline">\(CT_{\max,1\text{h}} = 32.084\,^\circ\text{C}\)</span>. Two cells: <span class="math inline">\(n_{\text{reps}} \in \{3, 5\}\)</span>. <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="kable-table">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 18%">
+<col style="width: 27%">
+<col style="width: 10%">
+<col style="width: 5%">
+<col style="width: 15%">
+<col style="width: 6%">
+<col style="width: 9%">
+<col style="width: 6%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Cell</th>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Quantity</th>
+<th style="text-align: right;">n_ok</th>
+<th style="text-align: left;">Bias</th>
+<th style="text-align: left;">RMSE</th>
+<th style="text-align: left;">Coverage</th>
+<th style="text-align: left;">Width</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.452 (0.028)</td>
+<td style="text-align: left;">0.986</td>
+<td style="text-align: left;">85.9%</td>
+<td style="text-align: left;">2.93</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.539 (0.033)</td>
+<td style="text-align: left;">1.181</td>
+<td style="text-align: left;">86.8%</td>
+<td style="text-align: left;">3.27</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.019 (0.021)</td>
+<td style="text-align: left;">0.650</td>
+<td style="text-align: left;">95.1%</td>
+<td style="text-align: left;">2.69</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.444 (0.015)</td>
+<td style="text-align: left;">0.647</td>
+<td style="text-align: left;">78.5%</td>
+<td style="text-align: left;">1.56</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.609 (0.018)</td>
+<td style="text-align: left;">0.834</td>
+<td style="text-align: left;">73.0%</td>
+<td style="text-align: left;">1.74</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.026 (0.011)</td>
+<td style="text-align: left;">0.348</td>
+<td style="text-align: left;">93.1%</td>
+<td style="text-align: left;">1.34</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.470 (0.023)</td>
+<td style="text-align: left;">0.861</td>
+<td style="text-align: left;">84.3%</td>
+<td style="text-align: left;">2.43</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.551 (0.027)</td>
+<td style="text-align: left;">1.014</td>
+<td style="text-align: left;">84.2%</td>
+<td style="text-align: left;">2.63</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.008 (0.016)</td>
+<td style="text-align: left;">0.512</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">2.05</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.464 (0.011)</td>
+<td style="text-align: left;">0.589</td>
+<td style="text-align: left;">69.1%</td>
+<td style="text-align: left;">1.25</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.623 (0.013)</td>
+<td style="text-align: left;">0.753</td>
+<td style="text-align: left;">61.6%</td>
+<td style="text-align: left;">1.41</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.057 (0.008)</td>
+<td style="text-align: left;">0.259</td>
+<td style="text-align: left;">94.3%</td>
+<td style="text-align: left;">1.01</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen5" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen5-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen5-1.png" class="img-fluid figure-img" width="768">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen5-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;5: Scenario 5 (varying k). Two-stage z biased high (+0.45 to +0.55), CTmax biased low (−0.44 to −0.62 °C); coverage on BB CTmax falls to 62% at <span class="math inline">\(n_{reps}=5\)</span>. Joint 4PL bias within MC SE on z; small positive CTmax bias (+0.03, +0.06); coverage holds at 93–95%.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> The prediction was wrong: <span class="math inline">\(k\)</span> varying with <span class="math inline">\(T\)</span> produces bias as large as Scenario 4, not the smallest of the shape scenarios. Two-stage <span class="math inline">\(z\)</span> is biased high (+0.45 to +0.55) and CTmax biased low (−0.44 to −0.62 °C); BB CTmax coverage falls to 61.6% at <span class="math inline">\(n_{\text{reps}}=5\)</span>, the worst across all scenarios. Mechanism: the Stage-1 single-shape logistic is pulled towards the steepest curves at high temperature (where data drops from <code>up</code> to <code>low</code> quickly), so the high-T <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span> estimates are pulled earlier and the Stage-2 slope is flattened. Joint 4PL absorbs the <span class="math inline">\(k(T)\)</span> drift; bias within MC SE on <span class="math inline">\(z\)</span>, +0.03–0.06 °C on CTmax, coverage 93–95%.</p>
+</section>
+<section id="scenario-6-sweep-strength-of-u-drift" class="level1" data-number="8">
+<h1 data-number="8"><span class="header-section-number">8</span> Scenario 6 — Sweep: strength of u drift</h1>
+<p><strong>Question.</strong> How does the two-stage bias scale with the strength of the upper-asymptote drift? Is there a threshold of <span class="math inline">\(|\beta_u|\)</span> below which the bias is negligible in practice?</p>
+<p><strong>Prediction.</strong> Bias monotonically increasing in <span class="math inline">\(|\beta_u|\)</span>; coverage correspondingly worse. Joint 4PL: bias within MC SE throughout.</p>
+<p><strong>Design.</strong> Same shape as Scenario 3 but vary the upper-asymptote slope: <span class="math inline">\(\beta_u \in \{-0.005, -0.010, -0.015, -0.019\}\)</span> pp/°C. <span class="math inline">\(n_{\text{reps}} = 5\)</span>, <span class="math inline">\(N_{\text{sim}} = 500\)</span> per cell. Four cells. True <span class="math inline">\(z\)</span> ranges 6.42–6.60; true <span class="math inline">\(CT_{\max,1\text{h}}\)</span> ranges 32.11–32.15.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen6" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen6-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen6-1.png" class="img-fluid figure-img" width="768">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen6-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;6: Scenario 6 sweep over <span class="math inline">\(\beta_u\)</span> (strength of upper-asymptote drift). (a) Bias as a function of <span class="math inline">\(\beta_u\)</span>, with 95% MC-SE intervals; dashed line at zero. (b) Empirical 95% coverage; dashed line at nominal 0.95. Two-stage z bias <em>flips sign</em> between <span class="math inline">\(\beta_u=-0.005\)</span> and <span class="math inline">\(-0.010\)</span>. Two-stage CTmax bias is negative throughout but its absolute value <em>shrinks</em> as <span class="math inline">\(|\beta_u|\)</span> grows; coverage on the same axis <em>improves</em> (intervals widen with the misspecification). Joint 4PL holds bias and coverage near-constant across the sweep.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> The monotonicity prediction was partly wrong. Two-stage <span class="math inline">\(z\)</span> <em>flips sign</em> between <span class="math inline">\(\beta_u = -0.005\)</span> (positive bias of +0.16 to +0.19) and <span class="math inline">\(\beta_u = -0.010\)</span> (negative bias of −0.07 to −0.14), then becomes increasingly negative. Two-stage CTmax bias stays negative throughout but its absolute magnitude <em>shrinks</em> as <span class="math inline">\(|\beta_u|\)</span> grows. CI widths inflate at stronger drift, which means coverage on CTmax <em>improves</em> with <span class="math inline">\(|\beta_u|\)</span> even while bias remains. Coverage on <span class="math inline">\(z\)</span> does the opposite: it <em>worsens</em> at stronger drift (down to 58% at <span class="math inline">\(\beta_u=-0.019\)</span> for the BB variant). The joint 4PL holds coverage at 94–96% across the sweep.</p>
+</section>
+<section id="scenario-7-sweep-level-of-upper-asymptote" class="level1" data-number="9">
+<h1 data-number="9"><span class="header-section-number">9</span> Scenario 7 — Sweep: level of upper asymptote</h1>
+<p><strong>Question.</strong> Sublethal endpoints (PSII signal, fertility, knockdown) rarely reach 1 even at <span class="math inline">\(T \to T_{\min}\)</span>. How does each estimator’s performance scale with the baseline level of <code>up</code>?</p>
+<p><strong>Prediction.</strong> Two-stage <span class="math inline">\(z\)</span> bias should stay small (a constant asymptote bias across temperature cancels in the Stage-2 slope). <span class="math inline">\(CT_{\max,1\text{h}}\)</span> bias should grow as <span class="math inline">\(u_0\)</span> drops below 1 because the per-T midpoint estimates do not coincide with the absolute 50%-survival time when <code>up</code> is below 1. Joint 4PL: bias within MC SE throughout.</p>
+<p><strong>Design.</strong> <code>up</code> constant in <span class="math inline">\(T\)</span> at <span class="math inline">\(u_0 \in \{0.65, 0.75, 0.85, 0.95, 0.99\}\)</span>; <code>low = 0.05</code>, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>. Beta-binomial likelihood (φ = 5). <span class="math inline">\(n_{\text{reps}} = 5\)</span>, <span class="math inline">\(N_{\text{sim}} = 500\)</span> per cell. Five cells. True <span class="math inline">\(z = 6.667\)</span> (constant by construction); true <span class="math inline">\(CT_{\max,1\text{h}}\)</span> ranges 31.23 (at <span class="math inline">\(u_0=0.65\)</span>) to 32.22 (at <span class="math inline">\(u_0=0.99\)</span>).</p>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen7" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen7-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen7-1.png" class="img-fluid figure-img" width="768">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen7-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;7: Scenario 7 sweep over <span class="math inline">\(u_0\)</span> (baseline upper asymptote). (a) Bias and (b) coverage as a function of <span class="math inline">\(u_0\)</span>. Two-stage <span class="math inline">\(CT_{\max,1h}\)</span> bias explodes from +0.26 °C at <span class="math inline">\(u_0=0.99\)</span> to −6.33 °C at <span class="math inline">\(u_0=0.65\)</span>, with coverage collapsing to 15%. Two-stage <span class="math inline">\(z\)</span> bias also grows, opposite to prediction. Joint 4PL coverage on <span class="math inline">\(z\)</span> stays at 94–95% across the sweep but its <span class="math inline">\(CT_{\max,1h}\)</span> bias also grows (+0.67 °C at <span class="math inline">\(u_0=0.65\)</span>); see open issues for the likely cause (relative vs absolute CTmax definition mismatch).
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> Two-stage <span class="math inline">\(CT_{\max,1\text{h}}\)</span> catastrophically biased at low <span class="math inline">\(u_0\)</span>: −6.33 °C at <span class="math inline">\(u_0=0.65\)</span>, with coverage of 15%. The prediction that two-stage <span class="math inline">\(z\)</span> would stay near unbiased was wrong: <span class="math inline">\(z\)</span> bias grows to +3.1 (BB) at <span class="math inline">\(u_0=0.65\)</span> — when <code>up</code> is far from 1, the Stage-1 GLMs mis-estimate slopes asymmetrically across temperature, breaking the “constant bias cancels in the slope” argument. Joint 4PL <span class="math inline">\(z\)</span> holds at near-zero bias across the sweep with coverage 94–95%, but its CTmax bias grows from −0.03 (at <span class="math inline">\(u_0=0.99\)</span>) to +0.67 (at <span class="math inline">\(u_0=0.65\)</span>) with coverage falling to 70%. <strong>This last finding is most likely a <em>definition</em> mismatch, not a model deficiency</strong>: the analytical truth function returns absolute-50%-survival CTmax, but the joint 4PL extraction now returns the midpoint-based (relative-to-asymptotes) CTmax by default. When <code>up</code> is well below 1 the two definitions diverge by the asymmetry correction, which is exactly the gap reported here. A re-run of <code>extract_tdt(threshold = 0.5, relative = FALSE)</code> against the saved draws is the cleanest test (open issue 1 below).</p>
+</section>
+<section id="scenario-8-sweep-design-intensity" class="level1" data-number="10">
+<h1 data-number="10"><span class="header-section-number">10</span> Scenario 8 — Sweep: design intensity</h1>
+<p><strong>Question.</strong> When does each estimator’s overhead pay off as the sampling design gets sparser and replication drops?</p>
+<p><strong>Prediction.</strong> All methods: wider CIs as data sparsens. Joint 4PL has smallest inflation (information shared across temperature). Two-stage may fail or carry severe bias at the sparsest design.</p>
+<p><strong>Design.</strong> Two grids: full (5 T × 6 durations × <span class="math inline">\(n_{\text{reps}}\)</span> cups) or sparse (3 T × 4 durations × <span class="math inline">\(n_{\text{reps}}\)</span> cups). Three <span class="math inline">\(n_{\text{reps}}\)</span> levels: <span class="math inline">\(\{1, 3, 5\}\)</span>. Six cells. DGP: <code>up = 0.92</code>, <code>low = 0.05</code>, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>, beta-binomial likelihood (φ = 5). True <span class="math inline">\(z = 6.667\)</span>, true <span class="math inline">\(CT_{\max,1\text{h}} = 32.088\,^\circ\text{C}\)</span>. <span class="math inline">\(N_{\text{sim}} = 500\)</span> per cell.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-scen8" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scen8-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-scen8-1.png" class="img-fluid figure-img" width="864">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scen8-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;8: Scenario 8 sweep over design intensity. Six cells: sparse vs full grid × <span class="math inline">\(n_{reps} \in \{1, 3, 5\}\)</span>. (a) Bias by cell. (b) Coverage by cell. Two-stage at the sparsest cell (sparse <span class="math inline">\(\times\)</span> 1) gives nonsense (z RMSE &gt; 60); joint 4PL has wide intervals at the same cell but coverage of 99% on <span class="math inline">\(z\)</span> and 95% on <span class="math inline">\(CT_{\max,1h}\)</span>. Two-stage CTmax coverage stays below 70% even at the most generous (full × 5) cell.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Read.</strong> At sparse × 1 (12 cups, 1 replicate each), two-stage produces nonsense — z RMSE 23–62 (binomial / BB), CTmax RMSE 12–30. Joint 4PL returns wide but coherent intervals at the same cell (<span class="math inline">\(z\)</span> RMSE 2.3, CTmax RMSE 0.9; coverage 99% / 95%). At the most generous cell (full × 5), the two-stage CTmax coverage is still 59% (BB) — the design budget cannot rescue the architecture under T-varying <code>up</code>. Joint 4PL coverage holds across all six cells.</p>
+</section>
+<section id="cross-cutting-summary" class="level1" data-number="11">
+<h1 data-number="11"><span class="header-section-number">11</span> Cross-cutting summary</h1>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-summary" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-summary-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="2026-05-16-two-stage-bias-sim-writeup_files/figure-html/fig-summary-1.png" class="img-fluid figure-img" width="864">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-summary-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scenarios at <span class="math inline">\(n_{reps}=5\)</span>. Each point shows mean bias / empirical coverage with MC-SE intervals; dashed reference lines at zero (bias) and 0.95 (coverage). Joint 4PL is within MC SE of zero on bias and at-or-above 0.93 on coverage in every scenario. Two-stage methods accumulate substantial bias and lose coverage as soon as the DGP departs from strict equivalence (Scenarios 3–5).
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="joint-4pl-convergence-across-scenarios" class="level1" data-number="12">
+<h1 data-number="12"><span class="header-section-number">12</span> Joint 4PL convergence across scenarios</h1>
+<div class="cell">
+<div class="cell-output-display">
+<div class="kable-table">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 6%">
+<col style="width: 10%">
+<col style="width: 8%">
+<col style="width: 10%">
+<col style="width: 14%">
+<col style="width: 16%">
+<col style="width: 11%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Cell</th>
+<th style="text-align: right;">n sims</th>
+<th style="text-align: right;">n joint OK</th>
+<th style="text-align: left;">R̂ pass %</th>
+<th style="text-align: left;">ESS pass %</th>
+<th style="text-align: left;">Diverg. pass %</th>
+<th style="text-align: left;">Treedepth pass %</th>
+<th style="text-align: left;">BFMI pass %</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.4%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">96.5%</td>
+<td style="text-align: left;">96.5%</td>
+<td style="text-align: left;">95.2%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">98.3%</td>
+<td style="text-align: left;">98.4%</td>
+<td style="text-align: left;">98.8%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">97.9%</td>
+<td style="text-align: left;">95.5%</td>
+<td style="text-align: left;">95.1%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.2%</td>
+<td style="text-align: left;">98.9%</td>
+<td style="text-align: left;">99.5%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">98.6%</td>
+<td style="text-align: left;">97.2%</td>
+<td style="text-align: left;">94.1%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">98.6%</td>
+<td style="text-align: left;">98.2%</td>
+<td style="text-align: left;">99.1%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen6_ub_m005</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">98.4%</td>
+<td style="text-align: left;">98.4%</td>
+<td style="text-align: left;">99.6%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen6_ub_m010</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">99.2%</td>
+<td style="text-align: left;">98.4%</td>
+<td style="text-align: left;">98.2%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen6_ub_m015</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">99.0%</td>
+<td style="text-align: left;">98.8%</td>
+<td style="text-align: left;">99.6%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen6_ub_m019</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">98.0%</td>
+<td style="text-align: left;">99.0%</td>
+<td style="text-align: left;">98.2%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen7_u0_065</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">89.0%</td>
+<td style="text-align: left;">74.6%</td>
+<td style="text-align: left;">85.2%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen7_u0_075</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">95.2%</td>
+<td style="text-align: left;">88.2%</td>
+<td style="text-align: left;">89.8%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen7_u0_085</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">98.2%</td>
+<td style="text-align: left;">97.2%</td>
+<td style="text-align: left;">95.0%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen7_u0_095</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">99.2%</td>
+<td style="text-align: left;">99.2%</td>
+<td style="text-align: left;">99.0%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen7_u0_099</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">98.2%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">99.8%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen8_full_n1</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">85.0%</td>
+<td style="text-align: left;">70.8%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen8_full_n3</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">97.6%</td>
+<td style="text-align: left;">96.6%</td>
+<td style="text-align: left;">95.4%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen8_full_n5</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">99.0%</td>
+<td style="text-align: left;">98.8%</td>
+<td style="text-align: left;">98.6%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen8_sparse_n1</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">82.8%</td>
+<td style="text-align: left;">60.8%</td>
+<td style="text-align: left;">19.8%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen8_sparse_n3</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">87.0%</td>
+<td style="text-align: left;">73.8%</td>
+<td style="text-align: left;">33.6%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen8_sparse_n5</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: left;">87.4%</td>
+<td style="text-align: left;">75.8%</td>
+<td style="text-align: left;">39.8%</td>
+<td style="text-align: left;">0.0%</td>
+<td style="text-align: left;">100.0%</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<p>R̂ and ESS pass rates are above 96% in every cell; divergent transitions are rare (≤ 154 across 1000–500 sims per cell). The conspicuous failure is <strong>treedepth saturation on essentially every joint-4PL fit</strong> across all 23 cells — the chain hits the <code>max_treedepth = 12</code> ceiling at every post-warmup iteration. Coverage holds at near-nominal in 22 of 23 cells despite this, but the issue is unresolved (open issue 2).</p>
+</section>
+<section id="open-issues" class="level1" data-number="13">
+<h1 data-number="13"><span class="header-section-number">13</span> Open issues</h1>
+<ol type="1">
+<li><strong>Definition mismatch on joint-4PL CTmax in Scenario 7 (and likely contributing in Scenarios 3–5 and 8).</strong> The analytical truth function evaluates absolute-50%-survival LT50 at every design temperature and fits OLS through those points; the joint 4PL <code>extract_tdt()</code> defaults to a midpoint-based (relative-to-asymptotes) CTmax. When <code>up</code> deviates from 1, these are not the same number, and the gap is exactly the asymmetry correction <span class="math inline">\(\frac{1}{\beta_1 k}\ln\!\frac{\text{up}-0.5}{0.5-\text{low}}\)</span>. Diagnostic: re-extract from the saved draws with <code>extract_tdt(threshold = 0.5, relative = FALSE)</code> and recompute the bias against the truth. If the +0.67 °C bias at <span class="math inline">\(u_0 = 0.65\)</span> collapses, the issue is labelling, not modelling. If it does not, the joint 4PL is genuinely deficient on absolute CTmax under constant low <code>up</code>.</li>
+<li><strong>Treedepth saturation on every joint-4PL fit.</strong> All 23 cells. Chains converge by R̂ / ESS / divergence criteria but hit <code>max_treedepth = 12</code>. A small re-run with <code>max_treedepth = 15</code> on one well-behaved cell (Scenario 1 n5) and one degenerate cell (Scenario 7 <span class="math inline">\(u_0 = 0.65\)</span>) would tell us whether the saturation is masking interval underestimation.</li>
+<li><strong>Bias conditional on full convergence.</strong> The headline summaries are computed on all fits, including those with divergent transitions. The same summaries restricted to “all-pass” fits have not been computed yet. For Scenarios 3 (n3: 48 sims with divergences) and 5 (n3: 59 sims), this is worth checking — whether the small positive <span class="math inline">\(z\)</span> bias is driven by a tail of pathological fits.</li>
+<li><strong>Patched two-stage was <em>not</em> a patch.</strong> Across Scenarios 2–5, the beta-binomial Stage-1 variant performs <em>worse</em> on coverage than the binomial Stage-1 variant, contradicting the prediction that correcting the likelihood would help. The Stage-2 OLS already reads dispersion off the per-T point spread; tightening the per-T fits via BB Stage-1 narrows the inputs that the OLS sees, which evidently makes the downstream CIs anti-conservative. Worth a separate note.</li>
+<li><strong>Prior sensitivity</strong> of the joint 4PL has not been varied. The small persistent positive <span class="math inline">\(z\)</span> bias of +0.04–0.10 across Scenarios 1–5 might shift under wider priors on <code>mid_T_slope</code>.</li>
+<li><strong>Beta-binomial Stage-1 outlier fits in Scenario 1.</strong> 2.1–2.5% of sims (n_ok = 975 / 979 vs 1000) deliver degenerate Stage-1 GLM solutions whose Stage-2 OLS produces extreme estimates. RMSE on <span class="math inline">\(z\)</span> inflates to 3.40 at <span class="math inline">\(n_{\text{reps}}=5\)</span> purely from this tail. Stripping those fits (or screening on Stage-1 GLM convergence) would give a cleaner picture of how the BB Stage-1 variant behaves on typical, well-converged data — and would let us separate the architecture-coverage gap from the GLM-failure gap.</li>
+</ol>
+</section>
+<section id="bottom-line" class="level1" data-number="14">
+<h1 data-number="14"><span class="header-section-number">14</span> Bottom line</h1>
+<ul>
+<li>When the strict-equivalence assumptions hold (Scenario 1), all three estimators are unbiased, but the two-stage variants already under-cover at 82–86% (vs nominal 95%) — the Stage-2 delta-method CIs are structurally too tight even when the mean structure is correctly specified. Joint 4PL covers at 97–99%.</li>
+<li>Adding overdispersion alone (Scenario 2) leaves bias untouched and shifts two-stage coverage another 2–6 percentage points; neither the binomial nor the beta-binomial Stage-1 variant restores nominal coverage. Joint 4PL coverage stays at 93–96%.</li>
+<li>Any structural drift in the asymptotes or slope (Scenarios 3–5) produces two-stage biases of 0.27–0.62 °C on <span class="math inline">\(CT_{\max,1\text{h}}\)</span> and / or 0.4–0.6 on <span class="math inline">\(z\)</span>, with coverage as low as 62%. The biases do not shrink with replication.</li>
+<li>The failure modes scale with the magnitude of the misspecification (Scenario 6) and the <em>baseline</em> level of partial mortality (Scenario 7) — the latter is the regime where most sublethal endpoints sit, and the two-stage <span class="math inline">\(CT_{\max,1\text{h}}\)</span> bias reaches 6 °C with coverage of 15%.</li>
+<li>At the sparsest design × replication budgets (Scenario 8 sparse × 1), the two-stage produces estimates with no operational meaning. The joint 4PL returns intervals of appropriate width.</li>
+<li>One outstanding issue (definition mismatch on absolute vs relative CTmax) needs to be settled before the Scenario 7 joint-4PL CTmax numbers can be quoted in the manuscript.</li>
+</ul>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
