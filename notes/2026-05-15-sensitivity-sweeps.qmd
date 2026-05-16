@@ -1,6 +1,7 @@
 ---
 title: "Sensitivity sweeps comparing the joint 4PL and the classical two-stage TDT estimator"
 date: 2026-05-15
+date-modified: 2026-05-16
 author: "Daniel Noble (with Claude assistance)"
 format:
   html:
@@ -14,6 +15,13 @@ execute:
   warning: false
   message: false
 ---
+
+::: {.callout-warning}
+**Superseded — do not use.** This note was written against pre-bug-fix
+simulation output (see `feedback_sim_preflight.md`). The corrected
+sensitivity-sweep results (Scenarios 6, 7, 8) are integrated into
+[`2026-05-16-two-stage-bias-sim-writeup.qmd`](2026-05-16-two-stage-bias-sim-writeup.qmd).
+:::
 
 ```{r}
 #| label: setup
