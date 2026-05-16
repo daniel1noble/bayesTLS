@@ -352,18 +352,31 @@ fit_two_stage_classical <- function(data, t_ref_min = 60) {
   g          <- c(-1 / b1, -(log10_tref - b0) / b1^2)  # d/d(b0, b1)
   CTmax_se   <- sqrt(as.numeric(t(g) %*% V2 %*% g))
 
-  z_thr     <- stats::qnorm(0.975)
+  # Stage-2 OLS has n_T - 2 residual degrees of freedom (3 for the full 5-T
+  # design, 1 for the sparse 3-T design). Normal-quantile CIs systematically
+  # under-cover at small df; the t-quantile CIs are the small-sample fix.
+  # Both are returned so the simulation can compare.
+  df_resid  <- stats::df.residual(s2)
+  z_norm    <- stats::qnorm(0.975)
+  z_t       <- if (is.finite(df_resid) && df_resid > 0)
+                 stats::qt(0.975, df = df_resid) else NA_real_
+
   list(
     success = TRUE,
     stage1  = s1,
-    z = list(point = z_point,
-             lower = z_point - z_thr * z_se,
-             upper = z_point + z_thr * z_se,
-             se    = z_se),
-    CTmax_1hr = list(point = CTmax_pt,
-                     lower = CTmax_pt - z_thr * CTmax_se,
-                     upper = CTmax_pt + z_thr * CTmax_se,
-                     se    = CTmax_se)
+    df_resid = df_resid,
+    z = list(point   = z_point,
+             lower   = z_point - z_norm * z_se,
+             upper   = z_point + z_norm * z_se,
+             lower_t = z_point - z_t    * z_se,
+             upper_t = z_point + z_t    * z_se,
+             se      = z_se),
+    CTmax_1hr = list(point   = CTmax_pt,
+                     lower   = CTmax_pt - z_norm * CTmax_se,
+                     upper   = CTmax_pt + z_norm * CTmax_se,
+                     lower_t = CTmax_pt - z_t    * CTmax_se,
+                     upper_t = CTmax_pt + z_t    * CTmax_se,
+                     se      = CTmax_se)
   )
 }
 
@@ -455,18 +468,29 @@ fit_two_stage_betabin <- function(data, t_ref_min = 60) {
   g          <- c(-1 / b1, -(log10_tref - b0) / b1^2)
   CTmax_se   <- sqrt(as.numeric(t(g) %*% V2 %*% g))
 
-  z_thr <- stats::qnorm(0.975)
+  # Both Normal- and t-quantile delta-method CIs. See fit_two_stage_classical()
+  # for the small-sample motivation.
+  df_resid <- stats::df.residual(s2)
+  z_norm   <- stats::qnorm(0.975)
+  z_t      <- if (is.finite(df_resid) && df_resid > 0)
+                stats::qt(0.975, df = df_resid) else NA_real_
+
   list(
     success = TRUE,
     stage1  = s1,
-    z = list(point = z_point,
-             lower = z_point - z_thr * z_se,
-             upper = z_point + z_thr * z_se,
-             se    = z_se),
-    CTmax_1hr = list(point = CTmax_pt,
-                     lower = CTmax_pt - z_thr * CTmax_se,
-                     upper = CTmax_pt + z_thr * CTmax_se,
-                     se    = CTmax_se)
+    df_resid = df_resid,
+    z = list(point   = z_point,
+             lower   = z_point - z_norm * z_se,
+             upper   = z_point + z_norm * z_se,
+             lower_t = z_point - z_t    * z_se,
+             upper_t = z_point + z_t    * z_se,
+             se      = z_se),
+    CTmax_1hr = list(point   = CTmax_pt,
+                     lower   = CTmax_pt - z_norm * CTmax_se,
+                     upper   = CTmax_pt + z_norm * CTmax_se,
+                     lower_t = CTmax_pt - z_t    * CTmax_se,
+                     upper_t = CTmax_pt + z_t    * CTmax_se,
+                     se      = CTmax_se)
   )
 }
 
@@ -494,74 +518,88 @@ fit_two_stage_betabin <- function(data, t_ref_min = 60) {
 #'         and `$diagnostics`.
 #' @export
 fit_joint_4pl_sim <- function(data,
-                              ndraws = 1000,
-                              chains = 2,
-                              iter   = 2000,
-                              seed   = 1L) {
+                              ndraws        = 1000,
+                              chains        = 3,
+                              iter          = 3000,
+                              warmup        = 1500,
+                              max_treedepth = 16,
+                              adapt_delta   = 0.95,
+                              seed          = 1L) {
   std <- standardize_data(data,
                           temp = "T", duration = "t",
                           n_total = "n", n_surv = "y",
                           duration_unit = "minutes")
-  # Note on sampler tuning: max_treedepth 14 (rather than the brms default 10
-  # or the fit_4pl default 12) is set because Scenario 1's truth (u=0.999,
-  # ell=0.001) sits at the inv_logit-reparameterised asymptote bound, where
-  # the posterior is flat and the sampler needs more integration steps. Higher
-  # treedepth costs wall time per iteration but is necessary for clean
-  # diagnostics in the strict-equivalence scenario. adapt_delta 0.95 matches
-  # the package default.
+  # Sampler tuning: max_treedepth = 16 (above the brms default 10 and the
+  # fit_4pl default 12) because Scenario 1's truth (u = 0.999, ell = 0.001)
+  # sits at the inv_logit-reparameterised asymptote bound and needs long
+  # integration paths to traverse the constrained geometry. Boundary cells
+  # would otherwise saturate the tree-depth ceiling on every post-warmup
+  # iteration. adapt_delta = 0.95 matches the bayesTLS default. The 3 chains
+  # × 3000 iter × 1500 warmup configuration gives 4500 post-warmup draws —
+  # comfortably above the ESS threshold of 400, and large enough that
+  # tail-quantile CIs from the posterior are stable.
   wf <- tryCatch(
     fit_4pl(std,
             chains     = chains,
             iter       = iter,
+            warmup     = warmup,
             cores      = chains,
             seed       = seed,
             refresh    = 0,
             silent     = 2,
             backend    = "cmdstanr",
-            control    = list(adapt_delta = 0.95, max_treedepth = 14)),
+            control    = list(adapt_delta   = adapt_delta,
+                              max_treedepth = max_treedepth)),
     error = function(e) e
   )
+  empty_block <- list(point = NA_real_,
+                      lower = NA_real_, upper = NA_real_)
   if (inherits(wf, "error")) {
     return(list(success = FALSE, error = conditionMessage(wf),
-                z = list(point = NA_real_, lower = NA_real_, upper = NA_real_),
-                CTmax_1hr = list(point = NA_real_, lower = NA_real_,
-                                 upper = NA_real_),
-                T_crit    = list(point = NA_real_, lower = NA_real_,
-                                 upper = NA_real_),
-                draws = NULL))
+                z         = empty_block, z_abs     = empty_block,
+                CTmax_1hr = empty_block, CTmax_1hr_abs = empty_block,
+                T_crit    = empty_block,
+                draws = NULL, draws_abs = NULL))
   }
 
-  # The bias simulation generates beta-binomial *lethal* data, so opt into
-  # the rate-multiplier T_crit for the joint-4PL summary.
-  et <- tryCatch(
-    suppressMessages(extract_tdt(wf, t_ref = 60, time_multiplier = 1,
-                                  ndraws = ndraws, lethal = TRUE)),
+  # Both threshold definitions on the same fit. `target_surv = "relative"`
+  # extracts z / CTmax at the midpoint between the (posterior-estimated) low
+  # and up asymptotes — what `extract_tdt()` returns by default. `"absolute"`
+  # uses literal 50% survival, which matches the analytical truth function.
+  # The second extract reuses the same fit so the marginal cost is sub-second.
+  et_rel <- tryCatch(
+    suppressMessages(extract_tdt(wf, target_surv = "relative", t_ref = 60,
+                                  time_multiplier = 1, ndraws = ndraws,
+                                  lethal = TRUE)),
     error = function(e) e
   )
-  if (inherits(et, "error")) {
-    return(list(success = FALSE, error = conditionMessage(et),
-                z = list(point = NA_real_, lower = NA_real_, upper = NA_real_),
-                CTmax_1hr = list(point = NA_real_, lower = NA_real_,
-                                 upper = NA_real_),
-                T_crit    = list(point = NA_real_, lower = NA_real_,
-                                 upper = NA_real_),
-                draws = NULL))
+  et_abs <- tryCatch(
+    suppressMessages(extract_tdt(wf, target_surv = "absolute", t_ref = 60,
+                                  time_multiplier = 1, ndraws = ndraws,
+                                  lethal = TRUE)),
+    error = function(e) e
+  )
+  if (inherits(et_rel, "error") || inherits(et_abs, "error")) {
+    err_msg <- if (inherits(et_rel, "error")) conditionMessage(et_rel)
+               else conditionMessage(et_abs)
+    return(list(success = FALSE, error = err_msg,
+                z         = empty_block, z_abs     = empty_block,
+                CTmax_1hr = empty_block, CTmax_1hr_abs = empty_block,
+                T_crit    = empty_block,
+                draws = NULL, draws_abs = NULL))
   }
 
-  # Per-draw vectors paired by .draw index. The three extract_tdt slots all
-  # carry .draw; inner_join keeps only draws that survived every primitive
-  # (e.g. drops any draw whose LT50 OLS regression failed).
-  z_d <- et$z$draws       |> dplyr::select(.draw, z)
-  c_d <- et$CTmax$draws   |> dplyr::transmute(.draw, CTmax_1hr = temp)
-  t_d <- et$T_crit$draws  |> dplyr::transmute(.draw, T_crit    = temp)
-  draws_df <- z_d |>
-    dplyr::inner_join(c_d, by = ".draw") |>
-    dplyr::inner_join(t_d, by = ".draw")
+  pack_draws <- function(et) {
+    z_d <- et$z$draws       |> dplyr::select(.draw, z)
+    c_d <- et$CTmax$draws   |> dplyr::transmute(.draw, CTmax_1hr = temp)
+    t_d <- et$T_crit$draws  |> dplyr::transmute(.draw, T_crit    = temp)
+    z_d |>
+      dplyr::inner_join(c_d, by = ".draw") |>
+      dplyr::inner_join(t_d, by = ".draw")
+  }
+  draws_rel <- pack_draws(et_rel)
+  draws_abs <- pack_draws(et_abs)
 
-  # Capture the full diagnostic row, not just rhat + divergences. The
-  # individual columns and the combined all_pass flag let the aggregator
-  # build per-cell pass-rate summaries and split bias/coverage into
-  # "all fits" vs "convergent fits only" downstream.
   diag_tbl <- tryCatch(diagnose_tdt_fit(wf), error = function(e) NULL)
   diag_default <- tibble::tibble(
     rhat_max        = NA_real_,
@@ -577,16 +615,23 @@ fit_joint_4pl_sim <- function(data,
 
   list(
     success = TRUE,
-    z = list(point = et$z$summary$z_median,
-             lower = et$z$summary$z_lower,
-             upper = et$z$summary$z_upper),
-    CTmax_1hr = list(point = et$CTmax$summary$temp_median,
-                     lower = et$CTmax$summary$temp_lower,
-                     upper = et$CTmax$summary$temp_upper),
-    T_crit    = list(point = et$T_crit$summary$temp_median,
-                     lower = et$T_crit$summary$temp_lower,
-                     upper = et$T_crit$summary$temp_upper),
-    draws = draws_df,
+    z = list(point = et_rel$z$summary$z_median,
+             lower = et_rel$z$summary$z_lower,
+             upper = et_rel$z$summary$z_upper),
+    z_abs = list(point = et_abs$z$summary$z_median,
+                 lower = et_abs$z$summary$z_lower,
+                 upper = et_abs$z$summary$z_upper),
+    CTmax_1hr = list(point = et_rel$CTmax$summary$temp_median,
+                     lower = et_rel$CTmax$summary$temp_lower,
+                     upper = et_rel$CTmax$summary$temp_upper),
+    CTmax_1hr_abs = list(point = et_abs$CTmax$summary$temp_median,
+                         lower = et_abs$CTmax$summary$temp_lower,
+                         upper = et_abs$CTmax$summary$temp_upper),
+    T_crit    = list(point = et_rel$T_crit$summary$temp_median,
+                     lower = et_rel$T_crit$summary$temp_lower,
+                     upper = et_rel$T_crit$summary$temp_upper),
+    draws     = draws_rel,
+    draws_abs = draws_abs,
     diagnostics = diag_row
   )
 }
@@ -635,23 +680,53 @@ sim_twostage_result_row <- function(joint, ts_bin, ts_bb, truth, sim_id,
   }
 
   rows <- dplyr::bind_rows(
+    # Joint 4PL — relative threshold (midpoint between estimated asymptotes).
     pack("joint_4pl", "z",
          joint$z$point, joint$z$lower, joint$z$upper,
          truth$z_true, joint$success),
     pack("joint_4pl", "CTmax_1hr",
          joint$CTmax_1hr$point, joint$CTmax_1hr$lower, joint$CTmax_1hr$upper,
          truth$CTmax_1hr_true, joint$success),
+    # Joint 4PL — absolute threshold (p = 0.5 literal). Same fit, second
+    # extract. Matches the analytical truth function's definition.
+    pack("joint_4pl_abs", "z",
+         joint$z_abs$point, joint$z_abs$lower, joint$z_abs$upper,
+         truth$z_true, joint$success),
+    pack("joint_4pl_abs", "CTmax_1hr",
+         joint$CTmax_1hr_abs$point, joint$CTmax_1hr_abs$lower,
+         joint$CTmax_1hr_abs$upper,
+         truth$CTmax_1hr_true, joint$success),
+    # Two-stage (binomial Stage-1, Normal-quantile delta-method CIs) — field
+    # default.
     pack("two_stage_bin", "z",
          ts_bin$z$point, ts_bin$z$lower, ts_bin$z$upper,
          truth$z_true, ts_bin$success),
     pack("two_stage_bin", "CTmax_1hr",
          ts_bin$CTmax_1hr$point, ts_bin$CTmax_1hr$lower, ts_bin$CTmax_1hr$upper,
          truth$CTmax_1hr_true, ts_bin$success),
+    # Two-stage (binomial Stage-1, t-quantile delta-method CIs) — small-sample
+    # correction for Stage-2 OLS residual df.
+    pack("two_stage_bin_t", "z",
+         ts_bin$z$point, ts_bin$z$lower_t, ts_bin$z$upper_t,
+         truth$z_true, ts_bin$success),
+    pack("two_stage_bin_t", "CTmax_1hr",
+         ts_bin$CTmax_1hr$point, ts_bin$CTmax_1hr$lower_t,
+         ts_bin$CTmax_1hr$upper_t,
+         truth$CTmax_1hr_true, ts_bin$success),
+    # Two-stage (beta-binomial Stage-1, Normal-quantile delta-method CIs).
     pack("two_stage_bb", "z",
          ts_bb$z$point, ts_bb$z$lower, ts_bb$z$upper,
          truth$z_true, ts_bb$success),
     pack("two_stage_bb", "CTmax_1hr",
          ts_bb$CTmax_1hr$point, ts_bb$CTmax_1hr$lower, ts_bb$CTmax_1hr$upper,
+         truth$CTmax_1hr_true, ts_bb$success),
+    # Two-stage (beta-binomial Stage-1, t-quantile delta-method CIs).
+    pack("two_stage_bb_t", "z",
+         ts_bb$z$point, ts_bb$z$lower_t, ts_bb$z$upper_t,
+         truth$z_true, ts_bb$success),
+    pack("two_stage_bb_t", "CTmax_1hr",
+         ts_bb$CTmax_1hr$point, ts_bb$CTmax_1hr$lower_t,
+         ts_bb$CTmax_1hr$upper_t,
          truth$CTmax_1hr_true, ts_bb$success)
   )
   rows$runtime_sec <- runtime_sec

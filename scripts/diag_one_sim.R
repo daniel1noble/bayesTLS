@@ -79,9 +79,10 @@ cat("============================================================\n")
 wf <- standardize_data(data, temp = "T", duration = "t",
                        n_total = "n", n_surv = "y",
                        duration_unit = "minutes")
-wf <- fit_4pl(wf, chains = 2, iter = 2000, cores = 2, seed = saved$meta$seed,
+wf <- fit_4pl(wf, chains = 3, iter = 3000, warmup = 1500, cores = 3,
+              seed = saved$meta$seed,
               refresh = 0, silent = 2, backend = "cmdstanr",
-              control = list(adapt_delta = 0.95, max_treedepth = 14))
+              control = list(adapt_delta = 0.95, max_treedepth = 16))
 print(summary(wf$fit))
 
 # Posterior summaries of the four 4PL sub-parameters at T_bar (each is a

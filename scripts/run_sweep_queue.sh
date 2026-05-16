@@ -108,7 +108,7 @@ queue_cell () {
 # n_sims = 1000; sensitivity sweeps (6-8) at n_sims = 500.
 # ============================================================================
 NSIMS_MAIN=1000   # Scenarios 1-5
-NSIMS_SWEEP=500   # Scenarios 6-8
+NSIMS_SWEEP=1000  # Scenarios 6-8 — standardised to match Scen 1-5 (was 500)
 
 # -- Scenario 1: Strict equivalence baseline (binomial DGM) ------------------
 # u=0.999, ell=0.001 (asymptotes at the 4PL bound), only midpoint varies with T.
@@ -203,29 +203,68 @@ done
 
 # Cross-cell distinctness check. Any two cells whose CLI args differ MUST
 # generate different data on the same seed. A duplicate hash means a CLI
-# flag isn't being threaded through to data generation (the 2026-05-15 bug
-# class). Sweep C cells with the same n_reps and design SHOULD collide —
-# but the planned grid has unique (design, n_reps) combinations so any
-# duplicate is a real bug.
+# flag isn't being threaded through to data generation (the 2026-05-15
+# bug class — see feedback_sim_preflight.md).
+#
+# Known-equivalent pairs (allowed duplicates): scen3_heat_lowers_u_n5
+# and scen6_ub_m010 share identical DGP arguments — Scen 6's u_beta1 =
+# −0.010 cell IS the Scen 3 (asym_u) DGP at n_reps = 5. Listed below
+# (semicolon-separated, order-tolerant) as an explicit whitelist; any
+# other duplicate is treated as a real bug.
+ALLOWED_DUPS="scen3_heat_lowers_u_n5,scen6_ub_m010;scen6_ub_m010,scen3_heat_lowers_u_n5"
+
 if [ -f /tmp/sim_preflight_hashes ]; then
-  dup_count=$(awk '{print $2}' /tmp/sim_preflight_hashes | sort | uniq -d | wc -l | tr -d ' ')
-  if [ "$dup_count" -gt 0 ]; then
-    echo ""
-    echo "  ERROR: $dup_count duplicate data hashes across pre-flight cells."
-    echo "  Cells producing identical data despite different CLI args:"
-    awk '{print $2 "\t" $1}' /tmp/sim_preflight_hashes | sort | uniq -D -w12 |
-      awk '{print "    " $2 " (hash=" $1 ")"}'
-    echo "  A CLI flag is not threaded through to data generation — see"
-    echo "  feedback_sim_preflight.md."
-    exit 1
+  # BSD-portable wide-uniq: group rows by the hash column (field 2),
+  # collect labels per hash, and report any hash with >1 cell label.
+  dup_pairs=$(awk '{ hashes[$2] = (hashes[$2] ? hashes[$2] "," $1 : $1) }
+                   END { for (h in hashes) if (index(hashes[h], ",") > 0)
+                           print hashes[h] "\t" h }' \
+              /tmp/sim_preflight_hashes)
+  if [ -n "$dup_pairs" ]; then
+    # Filter out duplicates that match the whitelist (semicolon-separated).
+    unexpected=$(echo "$dup_pairs" | awk -F'\t' -v allowed="$ALLOWED_DUPS" '
+      BEGIN { n = split(allowed, a, ";"); for (i = 1; i <= n; i++) wl[a[i]] = 1 }
+      { if (!(wl[$1])) print }')
+    if [ -n "$unexpected" ]; then
+      echo ""
+      echo "  ERROR: unexpected duplicate data hashes across pre-flight cells."
+      echo "  Cells producing identical data despite different CLI args:"
+      echo "$unexpected" | awk -F'\t' '{print "    " $1 " (hash=" $2 ")"}'
+      echo "  A CLI flag is not threaded through to data generation — see"
+      echo "  feedback_sim_preflight.md."
+      exit 1
+    fi
+    # Whitelisted duplicates are fine — log them for transparency.
+    echo "$dup_pairs" | awk -F'\t' '{print "  NOTE: expected duplicate "
+                                          $1 " (hash=" $2 ") — by-design overlap."}'
   fi
 fi
-echo "[$(date '+%H:%M:%S')] Pre-flight passed (all ${#CELL_LABELS[@]} cells produce distinct data)."
+echo "[$(date '+%H:%M:%S')] Pre-flight passed (cross-cell distinctness check OK)."
 
 # ---- Dispatch ------------------------------------------------------------
+N_CELLS=${#CELL_LABELS[@]}
+QUEUE_START=$(date +%s)
 for i in "${!CELL_LABELS[@]}"; do
+  CELL_NUM=$((i + 1))
+  echo ""
+  echo "[$(date '+%H:%M:%S')] === Queue progress: cell ${CELL_NUM} / ${N_CELLS} (${CELL_LABELS[$i]}) ==="
   # shellcheck disable=SC2086 # intentional word-split of stored arg string
   run_cell "${CELL_LABELS[$i]}" ${CELL_ARGS[$i]}
+  # Per-cell summary: the driver already prints mcse_summary + diag_summary
+  # at the end of its log; tail just those headlined sections so the queue
+  # log gives a heartbeat without dragging in the full per-sim chatter.
+  echo "[$(date '+%H:%M:%S')] --- Cell ${CELL_LABELS[$i]} summary (last 80 lines of cell log) ---"
+  tail -n 80 "/tmp/sim_${CELL_LABELS[$i]}.log"
+  ELAPSED=$(( $(date +%s) - QUEUE_START ))
+  H=$((ELAPSED / 3600)); M=$(((ELAPSED % 3600) / 60))
+  if [ "$CELL_NUM" -lt "$N_CELLS" ]; then
+    AVG=$((ELAPSED / CELL_NUM))
+    REMAIN=$(( AVG * (N_CELLS - CELL_NUM) ))
+    RH=$((REMAIN / 3600)); RM=$(((REMAIN % 3600) / 60))
+    echo "[$(date '+%H:%M:%S')] === ${CELL_NUM}/${N_CELLS} cells complete | elapsed ${H}h${M}m | est remaining ${RH}h${RM}m ==="
+  else
+    echo "[$(date '+%H:%M:%S')] === All ${N_CELLS} cells complete | total elapsed ${H}h${M}m ==="
+  fi
 done
 
 echo "[$(date '+%H:%M:%S')] All sweeps complete"

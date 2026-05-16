@@ -74,7 +74,18 @@ option_list <- list(
   optparse::make_option("--seed",     type = "integer",  default = 20260513L,
                         help = "Master seed; sim seed = master + 1000*scen_id + sim_id."),
   optparse::make_option("--force",    type = "logical",  default = FALSE,
-                        help = "If TRUE, re-run sims even if result file exists.")
+                        help = "If TRUE, re-run sims even if result file exists."),
+  # ---- brms sampler settings (passed straight to fit_joint_4pl_sim) -----
+  optparse::make_option("--chains",        type = "integer", default = 3L,
+                        help = "MCMC chains per sim. Default 3."),
+  optparse::make_option("--iter",          type = "integer", default = 3000L,
+                        help = "Total iterations per chain. Default 3000."),
+  optparse::make_option("--warmup",        type = "integer", default = 1500L,
+                        help = "Warmup iterations per chain. Default 1500. Post-warmup draws = chains * (iter - warmup)."),
+  optparse::make_option("--max_treedepth", type = "integer", default = 16L,
+                        help = "NUTS max_treedepth. Default 16."),
+  optparse::make_option("--adapt_delta",   type = "double",  default = 0.95,
+                        help = "NUTS adapt_delta. Default 0.95.")
 )
 opt <- optparse::parse_args(optparse::OptionParser(option_list = option_list))
 
@@ -163,15 +174,21 @@ run_one <- function(sim_id) {
   data <- sim_twostage_dataset(n_reps = n_reps, seed = seed_sim, truth = truth)
 
   t0 <- Sys.time()
+  empty_block <- list(point = NA_real_, lower = NA_real_, upper = NA_real_)
   joint <- tryCatch(
-    fit_joint_4pl_sim(data, seed = seed_sim),
+    fit_joint_4pl_sim(data,
+                      chains        = opt$chains,
+                      iter          = opt$iter,
+                      warmup        = opt$warmup,
+                      max_treedepth = opt$max_treedepth,
+                      adapt_delta   = opt$adapt_delta,
+                      seed          = seed_sim),
     error = function(e) list(success = FALSE, error = conditionMessage(e),
-                              z = list(point = NA_real_, lower = NA_real_, upper = NA_real_),
-                              CTmax_1hr = list(point = NA_real_, lower = NA_real_,
-                                               upper = NA_real_),
-                              T_crit    = list(point = NA_real_, lower = NA_real_,
-                                               upper = NA_real_),
-                              draws = NULL, diagnostics = NULL)
+                              z = empty_block, z_abs = empty_block,
+                              CTmax_1hr = empty_block, CTmax_1hr_abs = empty_block,
+                              T_crit    = empty_block,
+                              draws = NULL, draws_abs = NULL,
+                              diagnostics = NULL)
   )
   joint_sec <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
 
@@ -214,14 +231,19 @@ run_one <- function(sim_id) {
   # sim_id so downstream code can pool draws across sims without losing
   # the per-sim grouping. The two-stage point estimates and Wald CIs are
   # already in `row` — no per-draw analogue for the classical pipeline.
-  draws_df <- if (joint$success && !is.null(joint$draws)) {
-    joint$draws |>
+  # Saved separately for the relative and absolute threshold extracts.
+  tag_draws <- function(d) {
+    if (is.null(d)) return(NULL)
+    d |>
       dplyr::mutate(sim_id   = sim_id,
                     scenario = path_label) |>
       dplyr::select(sim_id, scenario, .draw, z, CTmax_1hr, T_crit)
-  } else NULL
+  }
+  draws_df     <- if (joint$success) tag_draws(joint$draws)     else NULL
+  draws_abs_df <- if (joint$success) tag_draws(joint$draws_abs) else NULL
 
-  saveRDS(list(row = row, meta = meta, draws = draws_df), result_file)
+  saveRDS(list(row = row, meta = meta,
+               draws = draws_df, draws_abs = draws_abs_df), result_file)
   invisible(NULL)
 }
 
@@ -264,19 +286,23 @@ cat(sprintf("\n  Run elapsed: %.1f min (%.2f sec / sim avg with %d workers)\n",
 # ---- aggregate per-sim files -------------------------------------------------
 
 cat("\n  Aggregating per-sim files ...\n")
-all_files <- list.files(raw_dir, pattern = "^sim_\\d+\\.rds$", full.names = TRUE)
-all_rows  <- vector("list", length(all_files))
-all_meta  <- vector("list", length(all_files))
-all_draws <- vector("list", length(all_files))
+all_files     <- list.files(raw_dir, pattern = "^sim_\\d+\\.rds$",
+                            full.names = TRUE)
+all_rows      <- vector("list", length(all_files))
+all_meta      <- vector("list", length(all_files))
+all_draws     <- vector("list", length(all_files))
+all_draws_abs <- vector("list", length(all_files))
 for (k in seq_along(all_files)) {
   obj <- readRDS(all_files[k])
-  all_rows[[k]]  <- obj$row
-  all_meta[[k]]  <- obj$meta
-  all_draws[[k]] <- obj$draws
+  all_rows[[k]]      <- obj$row
+  all_meta[[k]]      <- obj$meta
+  all_draws[[k]]     <- obj$draws
+  all_draws_abs[[k]] <- obj$draws_abs
 }
-per_sim <- dplyr::bind_rows(all_rows)
-meta    <- dplyr::bind_rows(all_meta)
-draws   <- dplyr::bind_rows(all_draws)
+per_sim   <- dplyr::bind_rows(all_rows)
+meta      <- dplyr::bind_rows(all_meta)
+draws     <- dplyr::bind_rows(all_draws)
+draws_abs <- dplyr::bind_rows(all_draws_abs)
 
 if (nrow(per_sim) == 0L) {
   stop("No per-sim files were produced — every simulation failed. ",
@@ -424,6 +450,7 @@ diff_summary <- if (nrow(diffs) == 0L) {
 out_per_sim       <- file.path(opt$out_dir, sprintf("per_sim_%s.rds", path_label))
 out_meta          <- file.path(opt$out_dir, sprintf("meta_%s.rds",    path_label))
 out_draws         <- file.path(opt$out_dir, sprintf("draws_%s.rds",   path_label))
+out_draws_abs     <- file.path(opt$out_dir, sprintf("draws_abs_%s.rds", path_label))
 out_summary       <- file.path(opt$out_dir, sprintf("summary_%s.rds", path_label))
 out_summary_conv  <- file.path(opt$out_dir, sprintf("summary_conv_%s.rds", path_label))
 out_diag          <- file.path(opt$out_dir, sprintf("diag_%s.rds",    path_label))
@@ -431,14 +458,17 @@ out_diffs         <- file.path(opt$out_dir, sprintf("diffs_%s.rds",   path_label
 saveRDS(per_sim,           out_per_sim)
 saveRDS(meta,              out_meta)
 saveRDS(draws,             out_draws)
+saveRDS(draws_abs,         out_draws_abs)
 saveRDS(mcse_summary,      out_summary)
 saveRDS(mcse_summary_conv, out_summary_conv)
 saveRDS(diag_summary,      out_diag)
 saveRDS(diffs,             out_diffs)
 cat(sprintf("\n  Saved %s (%d rows)\n", out_per_sim, nrow(per_sim)))
 cat(sprintf("  Saved %s (%d rows)\n", out_meta, nrow(meta)))
-cat(sprintf("  Saved %s (%d rows of per-draw joint-4PL posterior)\n",
+cat(sprintf("  Saved %s (%d rows of per-draw joint-4PL posterior, relative)\n",
             out_draws, nrow(draws)))
+cat(sprintf("  Saved %s (%d rows of per-draw joint-4PL posterior, absolute)\n",
+            out_draws_abs, nrow(draws_abs)))
 cat(sprintf("  Saved %s (all fits)\n", out_summary))
 cat(sprintf("  Saved %s (convergent fits only)\n", out_summary_conv))
 cat(sprintf("  Saved %s (joint-4PL per-cell diagnostic summary)\n", out_diag))

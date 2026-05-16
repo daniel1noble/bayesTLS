@@ -1,7 +1,7 @@
 ---
 title: "Methods — joint-4PL vs. two-stage bias simulation"
 date: 2026-05-13
-date-modified: 2026-05-15
+date-modified: 2026-05-16
 author: "Daniel Noble (with Claude assistance)"
 format:
   html:
@@ -64,14 +64,36 @@ $\log_{10} \text{LT}_{50}$ values on temperature gives slope and
 intercept estimates from which $z = -1/\hat\beta_1^{(2)}$ and
 $\text{CT}_{\max,1\text{h}} = (\log_{10} 60 - \hat\beta_0^{(2)}) /
 \hat\beta_1^{(2)}$ follow. The 95% confidence interval comes from the
-delta method on the Stage-2 covariance. A dataset is marked as a
-two-stage success only when every temperature delivers a finite,
-negative-slope Stage-1 fit and the Stage-2 slope is itself finite and
-negative.
+delta method on the Stage-2 covariance. Both Normal-quantile and
+small-sample t-quantile delta-method CIs are reported (see
+[CI construction](#ci-construction) below); the simulation records
+both as separate "methods" so the cost of the small-sample correction
+on coverage is directly observable. A dataset is marked as a two-stage
+success only when every temperature delivers a finite, negative-slope
+Stage-1 fit and the Stage-2 slope is itself finite and negative.
 
 Unweighted Stage-2 OLS is retained deliberately — it matches the version
 of the pipeline most commonly reported in the empirical TDT literature
 and is the comparator the reader will be familiar with.
+
+### CI construction: Normal vs t quantile {#ci-construction}
+
+For $z = -1/\hat\beta_1^{(2)}$ and
+$\text{CT}_{\max,1\text{h}} = (\log_{10}60 - \hat\beta_0^{(2)})/\hat\beta_1^{(2)}$,
+the delta-method standard error follows from the gradient and the
+Stage-2 covariance $V_2$. The default field practice constructs CIs as
+$\hat\theta \pm z_{0.975}\,\widehat{\text{SE}}(\hat\theta)$ — *Normal*
+quantiles. With only $n_T - p$ residual degrees of freedom in Stage 2
+(here $5-2 = 3$ at the full design, $3-2 = 1$ at the sparse design),
+$z_{0.975} = 1.96$ systematically under-covers because the SE itself is
+estimated from limited data.
+
+The *t-quantile* variant constructs CIs as
+$\hat\theta \pm t_{0.975,\,n_T-2}\,\widehat{\text{SE}}(\hat\theta)$,
+giving $t_{0.975,3} = 3.18$ (full design) and $t_{0.975,1} = 12.71$
+(sparse design). The simulation runs both and reports them as separate
+methods (`two_stage_bin` / `two_stage_bin_t` and analogously for the BB
+variant) so the gap is the observed small-sample-correction effect.
 
 ### Two-stage (beta-binomial) — the patched variant
 
@@ -104,12 +126,26 @@ $$
 
 with $u, \ell, k, \text{mid}$ each modelled as $\beta_0 + \beta_1 \cdot
 (T - \bar T)$. Default priors from `bayesTLS::make_4pl_priors()` are
-used. Samples are drawn with `cmdstanr` (2 chains × 2,000 iterations,
-half discarded as warm-up; `adapt_delta = 0.9`, `max_treedepth = 12`).
+used. Samples are drawn with `cmdstanr` (**3 chains × 3,000 iterations,
+1,500 discarded as warm-up → 4,500 post-warmup draws**;
+`adapt_delta = 0.95`, `max_treedepth = 16`). The previous configuration
+(2 chains × 2,000 iter, `max_treedepth = 14`) saturated the tree-depth
+ceiling on every post-warmup iteration in 22 of 23 cells; the new
+configuration absorbs the boundary-asymptote geometry of Scenario 1 and
+gives enough draws to make tail-quantile CI summaries stable.
+
 Post-fit, $z$ and $\text{CT}_{\max,1\text{h}}$ are extracted with
 `bayesTLS::extract_tdt(..., lethal = TRUE)` using the rate-multiplier
-definition of $T_{\text{crit}}$. We report the posterior median and
-2.5 % / 97.5 % quantiles.
+definition of $T_{\text{crit}}$. The simulation extracts both
+`target_surv = "relative"` (default — threshold at the midpoint between
+the posterior-estimated asymptotes) and `target_surv = "absolute"`
+(threshold at $p = 0.5$ literal) from the same fit, reported as
+separate "methods" (`joint_4pl` and `joint_4pl_abs`). The analytical
+truth function evaluates absolute-50% LT50 at each design temperature,
+so the `joint_4pl_abs` extract is on the same definition as truth; the
+`joint_4pl` extract gives the relative-threshold variant for direct
+comparison. We report the posterior median and 2.5 % / 97.5 %
+quantiles.
 
 ## Performance metrics
 
@@ -130,13 +166,14 @@ that pass all joint-4PL convergence diagnostics* (see
 ### Sample-size adequacy
 
 Monte-Carlo standard error thresholds: 0.05 °C for bias, 0.015 for
-coverage. At $N_{\text{sim}} = 1000$ (Scenarios 1–5) these thresholds
+coverage. At $N_{\text{sim}} = 1000$ (every scenario) these thresholds
 are comfortably met for all method × quantity combinations under the
-baseline DGP. At $N_{\text{sim}} = 500$ (Scenarios 6–8) the MCSE is
-$\sqrt{2}\approx 1.41 \times$ larger; for the sensitivity sweeps this is
-an accepted trade-off for halving the per-cell compute time. The driver
-auto-checks both thresholds at every cell and prints a warning if
-either is exceeded.
+baseline DGP. The sensitivity sweeps previously ran at
+$N_{\text{sim}} = 500$ to halve per-cell compute, but the 2026-05-16
+rebuild standardised on $N_{\text{sim}} = 1000$ throughout — the
+shorter per-sim wall times after the sampler retuning made the doubled
+sweep count cheap. The driver auto-checks both thresholds at every cell
+and prints a warning if either is exceeded.
 
 ## Truth
 
@@ -203,13 +240,17 @@ $m_{\beta_1} = -0.15$, $\phi = 5$ (beta-binomial dispersion).
 | 3 | Heat lowers max survival | u ~ 1 + T_c: (0.92, −0.01)<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.54, true CTmax_1hr = 32.12** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups<br>**2 simulation cells** | 1000 | TS architectures have no asymptote parameter; heat-induced u-drop must be absorbed into the slope, biasing z. | Cls and Pch TS: both biased (same shape misspec). Cls wider CIs (may accidentally cover); Pch narrower CIs (coverage drops more sharply around the biased point). 4PL: bias ≈ 0, calibrated. **Pch vs 4PL = pure shape / architecture cost.** |
 | 4 | Asymptotes compress | u ~ 1 + T_c: (0.92, −0.01)<br>ell ~ 1 + T_c: (0.05, +0.01)<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.66, true CTmax_1hr = 32.09** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups<br>**2 simulation cells** | 1000 | Both asymptotes move toward each other; true z barely shifts because the log-ratio is nearly preserved. Stresses joint 4PL's u + ell parametrisation more than its midpoint estimation. | Cls and Pch: small bias (smaller than Scen 3 because true z perturbation is smaller). 4PL: bias ≈ 0, calibrated. |
 | 5 | Heat sharpens curve | u ~ 1: 0.92<br>ell ~ 1: 0.05<br>k ~ 1 + T_c: (8, +0.25)<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.68, true CTmax_1hr = 32.08** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps ∈ {3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 90 or 150 cups<br>**2 simulation cells** | 1000 | TS Stage-1 GLMs allow slope to vary across T (separate fit per T), but Stage-2 OLS assumes linear log10(LD50)(T). Varying k breaks linearity subtly. | Smallest bias of the shape-perturbing scenarios. Cls and Pch: slight bias, coverage near nominal. 4PL: bias ≈ 0, calibrated. |
-| 6 | Sensitivity: strength of u drift | u ~ 1 + T_c: u_0 = 0.92, **β_u ∈ {−0.005, −0.010, −0.015, −0.019}**<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z ∈ [6.42, 6.60]**<br>**true CTmax_1hr ∈ [32.11, 32.15]** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps = 5** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br>**4 simulation cells (one per β_u)** | 500 | Maps the dose-response: how does the TS shape bias scale with the strength of the asymptote drift? | Cls and Pch: bias monotonically increasing in \|β_u\|; coverage drops correspondingly. 4PL: bias ≈ 0 throughout. |
-| 7 | Sensitivity: level of upper asymptote | u ~ 1: **u_0 ∈ {0.65, 0.75, 0.85, 0.95, 0.99}**<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.67 (constant)**<br>**true CTmax_1hr ∈ [31.23, 32.22]** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps = 5** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br>**5 simulation cells (one per u_0)** | 500 | TS GLM extrapolates to u → 1. Sublethal endpoints (PSII, fertility, knockdown) rarely reach 1. Tests cost of the forced-asymptote assumption. | Cls and Pch: z bias small (constant asymptote bias across T cancels in Stage-2 slope); CTmax_1hr bias grows as u_0 drops below 1. 4PL: bias ≈ 0 throughout. |
-| 8 | Sensitivity: design intensity | u ~ 1: 0.92<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.67, true CTmax_1hr = 32.09** | BB (φ=5) | Bin / BB | BB | **Full design** (5T × 6 dur = 30 cells per dataset) **or sparse** (3T × 4 dur = 12 cells per dataset)<br>**n_reps ∈ {1, 3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 12 to 150 cups, ~160 to ~2,000 individuals per dataset<br>**6 simulation cells (design × n_reps)** | 500 | When does each method's overhead pay off? At what budget can a study get away with the two-stage? | All methods: wider CIs as data sparsens. 4PL has smallest inflation (info shared across T). At sparse × 1-rep (12 cups total, 4 unique LD50 points), TS variants may fail or carry severe bias. |
+| 6 | Sensitivity: strength of u drift | u ~ 1 + T_c: u_0 = 0.92, **β_u ∈ {−0.005, −0.010, −0.015, −0.019}**<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z ∈ [6.42, 6.60]**<br>**true CTmax_1hr ∈ [32.11, 32.15]** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps = 5** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br>**4 simulation cells (one per β_u)** | 1000 | Maps the dose-response: how does the TS shape bias scale with the strength of the asymptote drift? | Cls and Pch: bias monotonically increasing in \|β_u\|; coverage drops correspondingly. 4PL: bias ≈ 0 throughout. |
+| 7 | Sensitivity: level of upper asymptote | u ~ 1: **u_0 ∈ {0.65, 0.75, 0.85, 0.95, 0.99}**<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.67 (constant)**<br>**true CTmax_1hr ∈ [31.23, 32.22]** | BB (φ=5) | Bin / BB | BB | 5T × 6 durations = **30 cells** per dataset<br>**n_reps = 5** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 150 cups, ~2,000 individuals per dataset<br>**5 simulation cells (one per u_0)** | 1000 | TS GLM extrapolates to u → 1. Sublethal endpoints (PSII, fertility, knockdown) rarely reach 1. Tests cost of the forced-asymptote assumption. | Cls and Pch: z bias small (constant asymptote bias across T cancels in Stage-2 slope); CTmax_1hr bias grows as u_0 drops below 1. 4PL: bias ≈ 0 throughout. |
+| 8 | Sensitivity: design intensity | u ~ 1: 0.92<br>ell ~ 1: 0.05<br>k ~ 1: 8<br>mid ~ 1 + T_c: (1.5, −0.15)<br>**true z = 6.67, true CTmax_1hr = 32.09** | BB (φ=5) | Bin / BB | BB | **Full design** (5T × 6 dur = 30 cells per dataset) **or sparse** (3T × 4 dur = 12 cells per dataset)<br>**n_reps ∈ {1, 3, 5}** cups per cell<br>**N ~ U(10, 20)** individuals per cup<br>⇒ 12 to 150 cups, ~160 to ~2,000 individuals per dataset<br>**6 simulation cells (design × n_reps)** | 1000 | When does each method's overhead pay off? At what budget can a study get away with the two-stage? | All methods: wider CIs as data sparsens. 4PL has smallest inflation (info shared across T). At sparse × 1-rep (12 cups total, 4 unique LD50 points), TS variants may fail or carry severe bias. |
 :::
 
-**Totals.** 23 simulation cells, ~16,500 fits total. Wall time on the
-project's 5-worker PSOCK setup: approximately 32 hours.
+**Totals.** 25 simulation cells, 25,000 simulated datasets, 250,000
+estimator fits at the new $N_{\text{sim}} = 1000$ standard. Each
+dataset yields 10 method × quantity rows (joint 4PL relative + absolute,
+two-stage binomial Normal + t, two-stage beta-binomial Normal + t).
+Wall time on the project's 5-worker PSOCK setup with 3 chains × 3000
+iter (warmup 1500): approximately 15–17 h end-to-end.
 
 ## Diagnostic checks {#diagnostic-checks}
 
