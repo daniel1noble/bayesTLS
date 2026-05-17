@@ -535,6 +535,16 @@ p_combined <- p + inset_element(p_inset,
 #| fig-height: 6
 #| fig-cap: "Conceptual figure showing how the joint Bayesian 4PL model delivers both relative and absolute $z$ and $CT_{max,1h}$ from a single dose–response fit. Coloured curves are joint-model posterior medians of survival probability at five assay temperatures (30–38 °C; viridis order); shaded bands are pointwise 95% credible intervals. Top-right inset: the 4PL function with its four parameters labelled."
 
+# Save the publication copy to output/figs/ (SVG, vector-editable).
+ggplot2::ggsave(
+  filename = here::here("output", "figs",
+                        "joint_4pl_derivation_conceptual.svg"),
+  plot     = p_combined,
+  width    = 9.5,
+  height   = 6.5,
+  units    = "in"
+)
+
 p_combined
 ```
 
