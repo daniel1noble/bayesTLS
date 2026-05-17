@@ -1,0 +1,429 @@
+---
+title: "Conceptual figure — how the joint 4PL delivers z and CTmax in one go"
+date: 2026-05-17
+author: "Daniel Noble (with Claude assistance)"
+format:
+  html:
+    toc: false
+    code-fold: true
+    fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+  echo: false
+---
+
+```{r setup}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+set.seed(20260517)
+
+# ============================================================================
+# Idealised joint-4PL parameters for the teaching figure. Chosen so the
+# curves are biologically expressive but the LT50 (relative midpoint) is
+# always well above the lower asymptote.
+#
+# `up`  varies with T: 0.85 at the cold end → 0.65 at the hot end.
+#       Kept ≥ 0.65 throughout so the per-curve midpoint never drops
+#       below ~0.35 — keeps LT50 above the lower asymptote even at the
+#       hottest assay.
+# `low` constant at 0.05 (background mortality with all individuals
+#       eventually dying).
+# `k`   varies with T: 6 at cold end → 10 at hot end (curves get sharper
+#       as it gets hotter, a common biological pattern).
+# `mid` linear in T with slope −0.15 → relative z = 6.67 °C.
+# ============================================================================
+T_bar    <- 34
+ell_0    <- 0.05    # low at T_bar
+ell_beta1 <- -0.0125  # low slope per °C → 0.10 at T=30, 0.00 at T=38
+u_0      <- 0.75    # up at T_bar
+u_beta1  <- -0.025  # up changes -0.025 per °C → 0.85 at T=30, 0.65 at T=38
+k_0      <- 8       # k at T_bar
+k_beta1  <- 0.5     # k changes +0.5 per °C → 6 at T=30, 10 at T=38
+beta0    <- 1.5     # mid at T_bar (log10 minutes)
+beta1    <- -0.15   # mid slope per °C → relative z = 6.67
+
+z_true       <- -1 / beta1                                # 6.667 °C
+log10_t_ref  <- log10(60)                                 # 1.778
+CTmax_1h_rel <- T_bar + (log10_t_ref - beta0) / beta1     # 32.18 °C
+
+temperatures <- c(30, 32, 34, 36, 38)
+
+# ============================================================================
+# Fake posterior draws — multivariate normal around the central parameter
+# values, with SDs picked so the resulting uncertainty bands look like the
+# Bayesian posterior of a comfortable fit. Used for illustration only.
+# ============================================================================
+ndraws <- 1000
+post <- tibble(
+  ell0_d    = pmin(pmax(rnorm(ndraws, ell_0,    0.012), 0.001), 0.49),
+  eb1_d     = rnorm(ndraws, ell_beta1, 0.003),
+  u0_d      = pmin(pmax(rnorm(ndraws, u_0,   0.020), 0.51 ), 0.999),
+  ub1_d     = rnorm(ndraws, u_beta1, 0.004),
+  k0_d      = exp(rnorm(ndraws, log(k_0), 0.045)),
+  kb1_d     = rnorm(ndraws, k_beta1, 0.08),
+  beta0_d   = rnorm(ndraws, beta0,   0.045),
+  beta1_d   = rnorm(ndraws, beta1,   0.012)
+)
+
+# Vectorised helpers — every 4PL sub-parameter is now T-varying.
+low_at <- function(T) pmax(post$ell0_d + post$eb1_d  * (T - T_bar), 0)
+up_at  <- function(T) post$u0_d   + post$ub1_d  * (T - T_bar)
+k_at   <- function(T) post$k0_d   + post$kb1_d  * (T - T_bar)
+mid_at <- function(T) post$beta0_d + post$beta1_d * (T - T_bar)
+
+# ============================================================================
+# Dose-response curves: posterior median + 95% CrI ribbon for each T.
+# ============================================================================
+log10_t_grid <- seq(-0.3, 3.3, length.out = 250)
+curve_post <- expand_grid(temp = temperatures, log10_t = log10_t_grid) |>
+  mutate(.row = row_number()) |>
+  group_by(.row) |>
+  group_modify(~ {
+    low_d <- low_at(.x$temp)
+    up_d  <- up_at(.x$temp)
+    k_d   <- k_at(.x$temp)
+    mid_d <- mid_at(.x$temp)
+    p_d   <- low_d + (up_d - low_d) / (1 + exp(k_d * (.x$log10_t - mid_d)))
+    tibble(p_med = median(p_d),
+           p_lo  = quantile(p_d, 0.025, names = FALSE),
+           p_hi  = quantile(p_d, 0.975, names = FALSE))
+  }) |>
+  ungroup() |>
+  bind_cols(expand_grid(temp = temperatures, log10_t = log10_t_grid))
+
+# Inflection points at p = (up + low)/2, x = mid(T) — relative t50.
+inflections <- tibble(temp = temperatures) |>
+  rowwise() |>
+  mutate(
+    log10_t50_med = median(mid_at(temp)),
+    log10_t50_lo  = quantile(mid_at(temp), 0.025, names = FALSE),
+    log10_t50_hi  = quantile(mid_at(temp), 0.975, names = FALSE),
+    p_inf_med     = median((up_at(temp) + low_at(temp)) / 2),
+    p_inf_lo      = quantile((up_at(temp) + low_at(temp)) / 2, 0.025, names = FALSE),
+    p_inf_hi      = quantile((up_at(temp) + low_at(temp)) / 2, 0.975, names = FALSE)
+  ) |>
+  ungroup()
+
+# Absolute t50: where each curve crosses p = 0.5.
+#   p = low + (up - low) / (1 + exp(k*(log10_t - mid))) = 0.5
+#   → log10_t_abs = mid + (1/k) * log((up - 0.5) / (0.5 - low))
+abs_t50_at <- function(T) {
+  low_d <- low_at(T)
+  up_d  <- up_at(T)
+  k_d   <- k_at(T)
+  mid_d <- mid_at(T)
+  # Guard against numerical edge cases when low ≈ 0.5: clip the
+  # denominator from below at 1e-3 (won't trigger here).
+  mid_d + (1 / k_d) * log((up_d - 0.5) / pmax(0.5 - low_d, 1e-3))
+}
+abs_crossings <- tibble(temp = temperatures) |>
+  rowwise() |>
+  mutate(
+    log10_t50_abs_med = median(abs_t50_at(temp)),
+    log10_t50_abs_lo  = quantile(abs_t50_at(temp), 0.025, names = FALSE),
+    log10_t50_abs_hi  = quantile(abs_t50_at(temp), 0.975, names = FALSE)
+  ) |>
+  ungroup()
+
+# ============================================================================
+# Fitted midpoint trajectory ("secondary slope") — the line in (log10_t, p)
+# space that runs through the per-T inflection points, with 95% CrI ribbon
+# from the joint posterior.
+#
+# The line's HORIZONTAL spacing per °C gives relative z directly; the
+# vertical drift reflects up(T) shrinking with temperature.
+# ============================================================================
+temp_grid_line <- seq(min(temperatures) - 0.5, max(temperatures) + 0.5,
+                      length.out = 200)
+mid_traj <- tibble(temp = temp_grid_line) |>
+  rowwise() |>
+  mutate(
+    log10_t50_med = median(mid_at(temp)),
+    log10_t50_lo  = quantile(mid_at(temp), 0.025, names = FALSE),
+    log10_t50_hi  = quantile(mid_at(temp), 0.975, names = FALSE),
+    p_inf_med     = median((up_at(temp) + low_at(temp)) / 2)
+  ) |>
+  ungroup()
+
+# Polygon for the CrI ribbon around the trajectory in (log10_t, p) space.
+mid_ribbon <- bind_rows(
+  mid_traj |> transmute(log10_t = log10_t50_lo, p = p_inf_med),
+  mid_traj |> arrange(desc(temp)) |>
+              transmute(log10_t = log10_t50_hi, p = p_inf_med)
+)
+
+# Absolute t50 trajectory at p = 0.5 (the line through the open triangles).
+abs_traj <- tibble(temp = temp_grid_line) |>
+  rowwise() |>
+  mutate(
+    log10_t50_abs_med = median(abs_t50_at(temp)),
+    log10_t50_abs_lo  = quantile(abs_t50_at(temp), 0.025, names = FALSE),
+    log10_t50_abs_hi  = quantile(abs_t50_at(temp), 0.975, names = FALSE)
+  ) |>
+  ungroup()
+# Visual hack: the absolute trajectory lives at the single horizontal line
+# p = 0.5, so a polygon built strictly at p = 0.5 has zero vertical
+# extent and never renders. We pad the polygon with a small ± half-height
+# (0.02 in probability units) so it shows as a thin band around the
+# absolute line. The horizontal width at each T is the true posterior CrI
+# on log10_t50_abs at that T.
+abs_ribbon_halfheight <- 0.02
+abs_ribbon <- bind_rows(
+  abs_traj |> transmute(log10_t = log10_t50_abs_lo,
+                        p       = 0.5 - abs_ribbon_halfheight),
+  abs_traj |> arrange(desc(temp)) |>
+              transmute(log10_t = log10_t50_abs_hi,
+                        p       = 0.5 + abs_ribbon_halfheight)
+)
+
+# CTmax_1h_rel posterior (where mid(T) = log10(60)).
+ctmax_post <- T_bar + (log10_t_ref - post$beta0_d) / post$beta1_d
+ctmax_med  <- median(ctmax_post)
+ctmax_lo   <- quantile(ctmax_post, 0.025, names = FALSE)
+ctmax_hi   <- quantile(ctmax_post, 0.975, names = FALSE)
+
+# CTmax_1h_abs posterior: solve abs_t50_at(T) = log10(60) for T per draw.
+# Closed form via linear approximation around the design grid is messy;
+# numerically solve per draw using uniroot on a wide T grid is overkill
+# for a synthetic posterior. Approximate by fitting a per-draw OLS line
+# to (T_grid, abs_t50) and inverting — this is exactly what the truth
+# function does in the real simulation driver.
+T_grid_inv <- temperatures
+abs_per_draw <- vapply(seq_len(ndraws), function(i) {
+  abs_vals <- sapply(T_grid_inv, function(T) {
+    mid_i <- post$beta0_d[i] + post$beta1_d[i] * (T - T_bar)
+    up_i  <- post$u0_d[i]    + post$ub1_d[i]   * (T - T_bar)
+    k_i   <- post$k0_d[i]    + post$kb1_d[i]   * (T - T_bar)
+    low_i <- pmax(post$ell0_d[i] + post$eb1_d[i] * (T - T_bar), 0)
+    mid_i + (1 / k_i) * log((up_i - 0.5) / pmax(0.5 - low_i, 1e-3))
+  })
+  fit <- stats::lm(abs_vals ~ T_grid_inv)
+  co  <- stats::coef(fit)
+  (log10_t_ref - co[[1]]) / co[[2]]
+}, numeric(1))
+ctmax_abs_med <- median(abs_per_draw)
+ctmax_abs_lo  <- quantile(abs_per_draw, 0.025, names = FALSE)
+ctmax_abs_hi  <- quantile(abs_per_draw, 0.975, names = FALSE)
+
+# z relative (from mid slope alone).
+z_post <- -1 / post$beta1_d
+z_med  <- median(z_post)
+z_lo   <- quantile(z_post, 0.025, names = FALSE)
+z_hi   <- quantile(z_post, 0.975, names = FALSE)
+
+# z absolute (from the per-draw OLS slope of abs_t50 on T).
+z_abs_per_draw <- vapply(seq_len(ndraws), function(i) {
+  abs_vals <- sapply(T_grid_inv, function(T) {
+    mid_i <- post$beta0_d[i] + post$beta1_d[i] * (T - T_bar)
+    up_i  <- post$u0_d[i]    + post$ub1_d[i]   * (T - T_bar)
+    k_i   <- post$k0_d[i]    + post$kb1_d[i]   * (T - T_bar)
+    low_i <- pmax(post$ell0_d[i] + post$eb1_d[i] * (T - T_bar), 0)
+    mid_i + (1 / k_i) * log((up_i - 0.5) / pmax(0.5 - low_i, 1e-3))
+  })
+  fit <- stats::lm(abs_vals ~ T_grid_inv)
+  -1 / stats::coef(fit)[[2]]
+}, numeric(1))
+z_abs_med <- median(z_abs_per_draw)
+z_abs_lo  <- quantile(z_abs_per_draw, 0.025, names = FALSE)
+z_abs_hi  <- quantile(z_abs_per_draw, 0.975, names = FALSE)
+
+# Ghost dose-response at CTmax_1h_rel (posterior median): by construction
+# its inflection sits on the vertical 60-min reference.
+ghost_low <- pmax(ell_0 + ell_beta1 * (ctmax_med - T_bar), 0)
+ghost_up  <- u_0 + u_beta1 * (ctmax_med - T_bar)
+ghost_k   <- k_0 + k_beta1 * (ctmax_med - T_bar)
+ghost_mid <- beta0 + beta1 * (ctmax_med - T_bar)
+ghost_p <- tibble(log10_t = log10_t_grid) |>
+  mutate(p = ghost_low +
+            (ghost_up - ghost_low) /
+              (1 + exp(ghost_k * (log10_t - ghost_mid))))
+
+# z bracket anchors — span point 3 (T = 34) to point 5 (T = 38). Same
+# slope as any other pair (mid(T) is straight), but anchoring on the
+# hotter end keeps the brackets in the busier mid–right area of the
+# figure rather than crowding the cool plateaus on the left.
+T_lo  <- 34; T_hi <- 38
+mid_lo <- beta0 + beta1 * (T_lo - T_bar)
+mid_hi <- beta0 + beta1 * (T_hi - T_bar)
+
+# Palette: viridis ordered by temperature.
+pal <- viridisLite::viridis(length(temperatures), end = 0.92)
+
+theme_proj <- theme_classic(base_size = 13) +
+  theme(
+    legend.position = "right",
+    axis.title      = element_text(size = 14, face = "bold"),
+    axis.text       = element_text(size = 12),
+    legend.title    = element_text(size = 12),
+    legend.text     = element_text(size = 11)
+  )
+
+# ============================================================================
+# Single-panel figure.
+# ============================================================================
+p <- ggplot() +
+  # Posterior 95% CrI ribbons around each dose-response curve.
+  geom_ribbon(data = curve_post,
+              aes(x = log10_t, ymin = p_lo, ymax = p_hi,
+                  fill = factor(temp)),
+              alpha = 0.18, colour = NA) +
+  # Ghost dose-response curve at CTmax_1h_rel. Made distinct from the
+  # T = 32 °C assay curve via heavier weight + long-dash style + a
+  # contrasting orange-red hue (away from both viridis purple and a
+  # standard "red" that blends with the low-T curve).
+  geom_line(data = ghost_p, aes(log10_t, p),
+            colour = "deeppink2", linewidth = 1.6, linetype = "longdash") +
+  # Posterior median dose-response curves.
+  geom_line(data = curve_post,
+            aes(log10_t, p_med, colour = factor(temp), group = temp),
+            linewidth = 0.9) +
+  # Horizontal reference at p = 0.5 (the absolute-LT50 threshold).
+  geom_hline(yintercept = 0.5, colour = "steelblue4",
+             linetype = "dashed", linewidth = 0.4) +
+  # Vertical reference at t = 60 min.
+  geom_vline(xintercept = log10_t_ref, colour = "grey55",
+             linetype = "dotted") +
+  # Relative-t50 trajectory: black line through the inflection points.
+  geom_polygon(data = mid_ribbon, aes(log10_t, p),
+               fill = "black", alpha = 0.13) +
+  geom_line(data = mid_traj,
+            aes(log10_t50_med, p_inf_med),
+            linewidth = 0.9, colour = "black") +
+  # Absolute-t50 trajectory: steel-blue line through the p = 0.5 crossings,
+  # with a faint band along the line marking the 95% CrI on log10_t at
+  # each temperature. The band is given a small visual height (set above
+  # by abs_ribbon_halfheight) so it renders; the horizontal width at any
+  # point is the true posterior CrI.
+  geom_polygon(data = abs_ribbon, aes(log10_t, p),
+               fill = "steelblue4", alpha = 0.32) +
+  geom_line(data = abs_traj,
+            aes(log10_t50_abs_med, 0.5),
+            linewidth = 0.9, colour = "steelblue4") +
+  # Inflection-point dots (relative t50): filled circles.
+  geom_errorbarh(data = inflections,
+                 aes(y = p_inf_med, xmin = log10_t50_lo, xmax = log10_t50_hi,
+                     colour = factor(temp)),
+                 height = 0, linewidth = 0.5, alpha = 0.7) +
+  geom_point(data = inflections,
+             aes(x = log10_t50_med, y = p_inf_med, fill = factor(temp)),
+             shape = 21, size = 3.2, stroke = 0.7, colour = "black") +
+  # p = 0.5 crossings (absolute t50): open triangles, colored by T.
+  geom_errorbarh(data = abs_crossings,
+                 aes(y = 0.5,
+                     xmin = log10_t50_abs_lo, xmax = log10_t50_abs_hi,
+                     colour = factor(temp)),
+                 height = 0, linewidth = 0.5, alpha = 0.7) +
+  geom_point(data = abs_crossings,
+             aes(x = log10_t50_abs_med, y = 0.5, fill = factor(temp)),
+             shape = 24, size = 2.8, stroke = 0.7, colour = "steelblue4") +
+  # ---- Relative-z bracket between two adjacent inflection dots ----------
+  # Y-position of the inflection at each anchor T.
+  # rel: bracket sits just below the inflections.
+  annotate("segment",
+           x = mid_lo, xend = mid_lo,
+           y = ((u_0 + u_beta1 * (T_lo - T_bar)) +
+                pmax(ell_0 + ell_beta1 * (T_lo - T_bar), 0)) / 2,
+           yend = 0.22,
+           colour = "black", linetype = "longdash", linewidth = 1.0) +
+  annotate("segment",
+           x = mid_hi, xend = mid_hi,
+           y = ((u_0 + u_beta1 * (T_hi - T_bar)) +
+                pmax(ell_0 + ell_beta1 * (T_hi - T_bar), 0)) / 2,
+           yend = 0.22,
+           colour = "black", linetype = "longdash", linewidth = 1.0) +
+  annotate("segment",
+           x = mid_hi, xend = mid_lo, y = 0.22, yend = 0.22,
+           arrow = arrow(ends = "both", length = unit(0.11, "in")),
+           colour = "black", linewidth = 0.8) +
+  # ---- Absolute-z bracket between two adjacent p=0.5 crossings ----------
+  # abs: bracket flipped ABOVE the p=0.5 line — vertical guides from
+  # the triangles go UP to a bracket at y = 0.64, keeping the absolute-z
+  # apparatus in the upper half of the plot and the relative-z apparatus
+  # in the lower half (clean separation).
+  annotate("segment",
+           x = abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_lo],
+           xend = abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_lo],
+           y = 0.5, yend = 0.64,
+           colour = "steelblue4", linetype = "longdash", linewidth = 1.0) +
+  annotate("segment",
+           x = abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_hi],
+           xend = abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_hi],
+           y = 0.5, yend = 0.64,
+           colour = "steelblue4", linetype = "longdash", linewidth = 1.0) +
+  annotate("segment",
+           x = abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_hi],
+           xend = abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_lo],
+           y = 0.64, yend = 0.64,
+           arrow = arrow(ends = "both", length = unit(0.11, "in")),
+           colour = "steelblue4", linewidth = 0.8) +
+  # ---- z labels: absolute on top (pointing down to its bracket above
+  # the p=0.5 line), relative below (pointing down to its bracket near
+  # the bottom). Two labels and two arrows, both flowing top-to-bottom.
+  annotate("label", x = -0.25, y = 0.82,
+           label = sprintf("z (absolute) = %.2f °C\n[%.2f, %.2f]",
+                           z_abs_med, z_abs_lo, z_abs_hi),
+           hjust = 0, colour = "steelblue4", size = 3.5, fontface = "bold",
+           fill = "white", label.size = 0, lineheight = 0.95) +
+  annotate("curve",
+           x = 0.35,
+           xend = (
+             abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_hi] +
+             abs_crossings$log10_t50_abs_med[abs_crossings$temp == T_lo]) / 2 - 0.08,
+           y = 0.80, yend = 0.66,
+           curvature = -0.20, colour = "steelblue4", linewidth = 0.55,
+           arrow = arrow(length = unit(0.08, "in"))) +
+  annotate("label", x = -0.25, y = 0.40,
+           label = sprintf("z (relative) = %.2f °C\n[%.2f, %.2f]",
+                           z_med, z_lo, z_hi),
+           hjust = 0, colour = "black", size = 3.5, fontface = "bold",
+           fill = "white", label.size = 0, lineheight = 0.95) +
+  annotate("curve",
+           x = 0.35, xend = (mid_lo + mid_hi) / 2 - 0.08,
+           y = 0.38, yend = 0.24,
+           curvature = -0.22, colour = "black", linewidth = 0.55,
+           arrow = arrow(length = unit(0.08, "in"))) +
+  # ---- CTmax labels: both at top ----------------------------------------
+  annotate("segment",
+           x = log10_t_ref, xend = log10_t_ref,
+           y = ghost_low, yend = 1.02,
+           colour = "deeppink2", linetype = "longdash", linewidth = 0.6) +
+  annotate("label", x = log10_t_ref, y = 1.09,
+           label = sprintf("CTmax 1h (relative) = %.2f °C   [%.2f, %.2f]",
+                           ctmax_med, ctmax_lo, ctmax_hi),
+           colour = "deeppink2", size = 3.2,
+           fill = "white", label.size = 0) +
+  annotate("label", x = log10_t_ref, y = 1.04,
+           label = sprintf("CTmax 1h (absolute) = %.2f °C   [%.2f, %.2f]",
+                           ctmax_abs_med, ctmax_abs_lo, ctmax_abs_hi),
+           colour = "steelblue4", size = 3.2,
+           fill = "white", label.size = 0) +
+  annotate("text", x = log10_t_ref + 0.05, y = 0.92,
+           label = "t = 60 min", hjust = 0, colour = "grey40",
+           size  = 4.2, fontface = "italic") +
+  scale_colour_manual(values = pal, name = "Assay T (°C)",
+                      aesthetics = c("colour", "fill")) +
+  scale_x_continuous(
+    breaks = log10(c(1, 5, 15, 60, 300, 1500)),
+    labels = c("1", "5", "15", "60", "300", "1500")
+  ) +
+  scale_y_continuous(limits = c(0, 1.13), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+  labs(title    = NULL,
+       subtitle = NULL,
+       x        = "Exposure duration (min, log scale)",
+       y        = "Survival probability") +
+  theme_proj
+```
+
+```{r}
+#| label: fig-derivation
+#| fig-width: 8.5
+#| fig-height: 6
+#| fig-cap: "Conceptual figure showing how the joint Bayesian 4PL model delivers both relative $z$ and relative $CT_{max,1h}$ from a single dose–response fit. Colored curves are joint-model posterior medians of survival probability at five assay temperatures (30–38 °C; viridis order). Asymptote `low` is constant at 0.05; `up` decreases linearly with T from 0.85 (at 30 °C) to 0.65 (at 38 °C); `k` increases with T from 6 to 10. Shaded bands are pointwise 95% credible intervals. Filled circles mark each curve's inflection — the joint-model `mid(T)`, i.e. the relative LT50 — with horizontal whiskers showing its 95% CrI. The black line through the inflections is the joint posterior's `mid(T) = β₀ + β₁(T − T̄)` regression (the 'secondary slope'); its horizontal spacing per °C is the relative TDT slope, giving $z = -1/\\beta_1$ directly. The red dashed curve is a ghost dose–response at exactly $T = CT_{max,1h}^{\\text{rel}}$, whose inflection sits on the 60-min reference by construction. Both summaries (`z`, `CTmax_1h`) and their 95% CrIs are projections of one joint posterior — uncertainty is propagated through the fit rather than ignored between stages."
+
+p
+```
+
