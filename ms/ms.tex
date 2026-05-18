@@ -449,6 +449,37 @@ shrimp (\emph{Crangon crangon}), zebrafish (\emph{Danio rerio}), and XXX
 (XXX), we demonstrate how to implement, validate, and expand this new
 modelling approach.
 
+\begin{figure}[H]
+
+\centering{
+
+\includegraphics[width=1\linewidth,height=\textheight,keepaspectratio]{../output/figs/fig1.png}
+
+}
+
+\caption{\label{fig-joint-4pl-conceptual}Conceptual comparison of the
+classical two-stage TDT/TLS workflow and the joint Bayesian
+four-parameter logistic (4PL) model. (a) In the two-stage workflow,
+separate dose-response curves are fit at each assay temperature and the
+resulting \(t_{50}\) estimates are regressed against temperature. This
+can fail when assays do not bracket \(t_{50}\), treats first-stage
+estimates as fixed and independent, and does not naturally propagate
+uncertainty, covariates, or hierarchical structure into \(z\) and
+\(CT_{max,1h}\). (b) The joint 4PL model estimates the full survival
+surface in one model. Coloured curves show posterior median survival
+probabilities at assay temperatures, with shaded pointwise 95\% credible
+intervals. Filled circles mark the model midpoint, \texttt{mid(T)},
+defining relative \(\log_{10}t_{50}\); open triangles mark the absolute
+50\% survival crossing. The black and steelblue trajectories give the
+relative and absolute \(t_{50}\) relationships used to derive
+\(z_{rel}\), \(z_{abs}\), and \(CT_{max,1h}\) at the 60-min reference.
+Dashed ghost curves show the fitted dose response at the corresponding
+relative and absolute \(CT_{max,1h}\) values. Inset: the 4PL parameters
+\texttt{low}, \texttt{up}, \texttt{mid}, and \texttt{k}. Values are
+illustrative.}
+
+\end{figure}%
+
 \section{A non-linear Bayesian hierarchical model for characterizing
 thermal load
 sensitivity}\label{a-non-linear-bayesian-hierarchical-model-for-characterizing-thermal-load-sensitivity}
@@ -714,10 +745,14 @@ simulations, designs included one to five replicate cups per
 temperature-by-time treatment, with 10 to 20 organisms per cup sampled
 from a uniform distribution. For each scenario-by-design combination, we
 simulated 1,000 datasets and fit both the two-stage and 4PL approaches.
-Monte Carlo standard errors for the bias and coverage summaries were
-small, indicating that 1,000 datasets provided adequate precision for
-the simulation summaries (\citeproc{ref-morris_simulation_2019}{Morris
-\emph{et al.} 2019}).
+We report Monte Carlo standard errors (MCSE) for the bias and coverage
+summaries, but these were small, indicating adequate precision for the
+simulation summaries (\citeproc{ref-direnzo2023}{DiRenzo \emph{et al.}
+2023}; \citeproc{ref-koehler2009}{Koehler \emph{et al.} 2009};
+\citeproc{ref-williams2024}{Williams \emph{et al.} 2024}).
+
+\paragraph{\texorpdfstring{\emph{Simulation
+results}}{Simulation results}}\label{simulation-results}
 
 \section{Application of Bayesian dose-response models to case
 studies}\label{application-of-bayesian-dose-response-models-to-case-studies}
@@ -892,6 +927,12 @@ C.K., Haak, D.C., \emph{et al.} (2008).
 warming on terrestrial ectotherms across latitude}. \emph{Proceedings of
 the National Academy of Sciences}, 105, 6668--6672.
 
+\bibitem[\citeproctext]{ref-direnzo2023}
+DiRenzo, G.V., Hanks, E. \& Miller, D.A.W. (2023).
+\href{https://doi.org/10.1111/2041-210X.14030}{A practical guide to
+understanding and validating complex models using data simulations}.
+\emph{Methods in Ecology and Evolution}, 14, 203--217.
+
 \bibitem[\citeproctext]{ref-faber_tdt_plants_2024}
 Faber, A.H., Ørsted, M. \& Ehlers, B.K. (2024).
 \href{https://doi.org/10.1093/jxb/erae096}{Application of the thermal
@@ -936,6 +977,12 @@ Jørgensen, L.B., Ørsted, M., Malte, H., Wang, T. \& Overgaard, J.
 escalation of heat failure rates in ectotherms with global warming}.
 \emph{Nature}, 611, 93--98.
 
+\bibitem[\citeproctext]{ref-koehler2009}
+Koehler, E., Brown, E. \& Haneuse, S.J.-P.A. (2009).
+\href{https://doi.org/10.1198/tast.2009.0030}{On the {Assessment} of
+{Monte Carlo Error} in {Simulation-Based Statistical Analyses}}.
+\emph{American Statistician}, 63, 155--162.
+
 \bibitem[\citeproctext]{ref-li2023}
 Li, Y.-J., Chen, S.-Y., Jørgensen, L.B., Overgaard, J., Renault, D.,
 Colinet, H., \emph{et al.} (2023).
@@ -943,12 +990,6 @@ Colinet, H., \emph{et al.} (2023).
 differences in thermal tolerance landscape explain aphid community
 abundance under climate change}. \emph{Journal of Thermal Biology}, 114,
 103583.
-
-\bibitem[\citeproctext]{ref-morris_simulation_2019}
-Morris, T.P., White, I.R. \& Crowther, M.J. (2019).
-\href{https://doi.org/10.1002/sim.8086}{Using simulation studies to
-evaluate statistical methods}. \emph{Statistics in Medicine}, 38,
-2074--2102.
 
 \bibitem[\citeproctext]{ref-nakagawa_santos_2012}
 Nakagawa, S. \& Santos, E.S.A. (2012).
@@ -1074,6 +1115,14 @@ Wiens, J.J. (2016).
 \href{https://doi.org/10.1371/journal.pbio.2001104}{Climate-related
 local extinctions are already widespread among plant and animal
 species}. \emph{PLOS Biology}, 14, e2001104.
+
+\bibitem[\citeproctext]{ref-williams2024}
+Williams, C., Yang, Y., Lagisz, M., Morrison, K., Ricolfi, L., Warton,
+D.I., \emph{et al.} (2024).
+\href{https://doi.org/10.1111/2041-210x.14415}{Transparent reporting
+items for simulation studies evaluating statistical methods: Foundations
+for reproducibility and reliability}. \emph{Methods in Ecology and
+Evolution}, 15, 1926--1939.
 
 \end{CSLReferences}
 
