@@ -124,7 +124,7 @@ We show that the classical and Bayesian frameworks are equivalent, but that the 
 **Keywords:** thermal-death-time; thermal tolerance landscape; multilevel model; 4-parameter logistic; heat injury; heat tolerance; critical thermal maximum; ectotherm
 :::
 
-```{r setup}
+```{r}
 #| label: setup
 #| cache: false
 
@@ -161,7 +161,7 @@ set.seed(123)
 
 Climate change is increasing the frequency, intensity, and duration of extreme heat events globally, with cascading consequences for organismal fitness, population persistence, and biodiversity[@snook_fertility_2026; @arnold_thermal_2025; @rezende_drosophila_mortality_2020; @smale_marine_2019; @wiens_localextinctions_2016]. Quantifying variation in thermal tolerance within and among species is therefore central to forecasting biological responses to climate change in nature [@sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019; @jorgensen_nature_2022]. Threshold-based measures of heat tolerance, such as the critical thermal maximum ($CT_{max}$), have long been used to establish differences in climate vulnerability among taxa and predicting vulnerability to climate change [@pottier_amphibians_2025; @sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019]. While useful, threshold-based metrics do not capture how the biological effects of extreme heat on fitness depend on both the duration and intensity of heat stress, limiting our ability to make realistic predictions of the impacts of climate change in nature [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021].
 
-The Thermal Death Time (TDT) / Thermal Load Sensitivity (TLS) models address this limitation by quantifying how the intensity and duration of heat exposure jointly determine survival responses to heat stress [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_nature_2022; @jorgensen_drosophila_2019; @arnold_thermal_2025]. Recently, the TDT framework was expanded to include sublethal (e.g., fertility, heat coma) responses to heat stress, providing a flexible framework to broadly explain variation in biological responses to heat stress [@orsted_suzukii_2024; @arnold_thermal_2025; @noble2026]. These models capture how heat injury accumulates in a dose-dependent manner above a certain threshold ($T_{crit}$), with injury accumulating more rapidly at higher temperatures and over longer exposures. As a result, organisms may eventually reach a thermal load that leads to compromised physiological function that negatively impacts growth, reproduction and survival [@orsted_finding_2022; @rezende_landscapes_2014; @arnold_thermal_2025; @jorgensen_drosophila_2019] if injury cannot be repaired [@arnold_thermal_2025; @buckley_damage_2025; @jorgensen_unifying_2021]. By linking biological responses to the intensity and duration of heat stress, the TLS and TDT frameworks allow for more realistic predictions of the impacts of  fluctuating thermal regimes  [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021], and have shown promise in predicting observed mortality rates in nature [@rezende_drosophila_mortality_2020; @zamora2026predicting].
+The Thermal Death Time (TDT) / Thermal Load Sensitivity (TLS) models address this limitation by quantifying how the intensity and duration of heat exposure jointly determine survival responses to heat stress [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_nature_2022; @jorgensen_drosophila_2019; @arnold_thermal_2025]. Recently, the TDT framework was expanded to include sublethal (e.g., fertility, heat coma) responses to heat stress, providing a flexible framework to broadly explain variation in biological responses to heat stress [@orsted_suzukii_2024; @arnold_thermal_2025; @noble2026]. These models capture how heat injury accumulates in a dose-dependent manner above a certain threshold ($T_{crit}$), with injury accumulating more rapidly at higher temperatures and over longer exposures. As a result, organisms may eventually reach a thermal load that leads to compromised physiological function that negatively impacts growth, reproduction and survival [@orsted_finding_2022; @rezende_landscapes_2014; @arnold_thermal_2025; @jorgensen_drosophila_2019] if injury cannot be repaired [@arnold_thermal_2025; @buckley_damage_2025; @jorgensen_unifying_2021]. By linking biological responses to the intensity and duration of heat stress, the TLS and TDT frameworks allow for more realistic predictions of the impacts of  fluctuating thermal regimes  [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021], and have shown promise in predicting observed mortality rates in nature [@rezende_drosophila_mortality_2020; @zamora2026].
 
 Despite their predictive power, TDT/TLS analyses traditionally involves a two-step modelling approach [@orsted_finding_2022; @rezende_drosophila_mortality_2020; @truebano2018; @jorgensen_drosophila_2019; @li2023]. First, organisms are exposed to multiple temperatures for different durations, and the proportion of individuals that are dead, infertile, knocked down, or otherwise affected is modelled as a function of exposure duration. This is typically done by fitting independent dose-response curves at each assay temperature. From these curves, the exposure duration required to reach a specified response threshold is estimated, most often $t_{50}$, the time required to reach 50% mortality, infertility, knockdown, or  other endpoints. Second, the resulting $\log_{10}(t_{50})$ estimates are regressed against assay temperature. Thermal sensitivity (i.e., the inverse of the slope of this regression, $z$) and static critical thermal maximum (i.e., the intercept of the regression, $sCT_{max_{time}}$) are then derived from this linear model [@rezende_landscapes_2014; @orsted_finding_2022]. Thermal sensitivity ($z$) is interpreted as the temperature increase required to reduce $t_{50}$ by a factor of 10, while $sCT_{max_{time}}$ is usually arbitrarily computed for a 1 min [@rezende_landscapes_2014], 1 hour [@jorgensen_drosophila_2019], or 4 hour [@orsted_suzukii_2024] duration of heat stress exposure. These quantities can then be used to estimate cumulative Heat Injury (HI) under realistic temperature-time series, where injury accumulates as a function of the exposure duration relative to the predicted tolerance time at each temperature [@jorgensen_drosophila_2019; @villeneuve_dynamic_2024]. Recent extensions have emphasized that injury accumulation may also be partly offset by repair or acclimation mechanisms, motivating the emergence of new models that incorporate damage-repair dynamics [@arnold_thermal_2025; @buckley_damage_2025].
 
@@ -328,7 +328,7 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Lethal TDT — hierarchical 4PL on counts
 
-```{r fig-survival-curves}
+```{r}
 #| label: fig-survival-curves
 #| fig-cap: "Posterior survival curves at each lethal-TDT assay temperature, with 95% credible bands and observed survival proportions."
 #| eval: false
@@ -340,7 +340,7 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Reconciling the three endpoints via the Jørgensen ramping equation
 
-```{r fig-tdt-ctmax-reconciliation}
+```{r}
 #| label: fig-tdt-ctmax-reconciliation
 #| fig-cap: "Forward (TDT → dynamic $CT_{max}$) and inverse ($CT_{max}$ → TDT) reconciliation under full posterior propagation."
 #| eval: false
@@ -348,7 +348,7 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Field-temperature heat-injury projections under warming scenarios
 
-```{r fig-hi-warming}
+```{r}
 #| label: fig-hi-warming
 #| fig-cap: "Posterior cumulative heat-injury and survival under measured Baltic surface-temperature traces and +1, +2, +3 °C warming scenarios, with and without a Sharpe–Schoolfield repair kernel."
 #| eval: false
