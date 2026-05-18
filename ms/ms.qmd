@@ -252,6 +252,10 @@ $$ {#eq-S-pred}
 
 Here $S(T, \tau)$ is the survival surface fitted by the dose-response model, so $S_{\text{pred}}(t)$ is the survival probability for an organism held at *constant* $T_{\text{ref}}$ after exposure duration $\tau_{\text{eff}}(t)$. 
 
+# Simulations
+
+To explore the benefits of using a 4PL approach compared to the two-stage approach we conducted a series of simulations evaluating key scenarios 
+
 # Application of Bayesian dose-response models to case studies
 
 We applied the 4-parameter (4PL) Bayesian logistic model to four case studies covering a broad range of ectothermic groups. For all case studies, we show how much a modelling framework can retrieve classical parameters of the TLS framework such as $z$ and $CT_{max1h}$ using both lethal and sublethal data. We also show how to derive an estimate of $T_{crit}$ from sublethal data (e.g., time to heat knockdown). 
