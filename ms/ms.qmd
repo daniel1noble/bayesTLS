@@ -254,7 +254,9 @@ Here $S(T, \tau)$ is the survival surface fitted by the dose-response model, so 
 
 # Simulations
 
-We estimated bias and coverage (i.e., how well the 95% CrIs capture truth) for *z* and $CT_{max_{1hr}}$ when derived from the 4PL and two-stage approaches. We tested performance of both approaches under various data and design constraints including when: i) survival was bounded between 0 and 1; ii) 
+We estimated bias and coverage (i.e., how well the 95% CrI/CIs capture truth) for *z* and $CT_{max_{1hr}}$ when derived from both the 4PL and two-stage approaches. We tested performance of both approaches under various data and design constraints including when: (i) survival was bounded between 0 and 1; (ii) when the likihood was mispecified (i.e., using binomial when beta-binomial was supported); (iii) 
+
+We cross all scenarios with different design constraints typical of the types of empircial studies conducted in the field. These designs included between 1 - 5 replicates for each temperature x time treatment with between 10-20 organisms per replicate. We fit the two-stage and 4PL approaches to a total of 1000 datasets per scenario and design.  
 
 # Application of Bayesian dose-response models to case studies
 
