@@ -102,18 +102,29 @@ post  <- tibble::tibble(
 )
 print(post, digits = 4)
 
-# Extract CTmax / z under both threshold definitions.
+# Extract CTmax / z under both threshold definitions. NOte that, here, as opposed to simulatino we use full posterior but simulation uses 1000 draw subset of posterior 
 et_rel <- suppressMessages(extract_tdt(
   wf, target_surv = "relative", t_ref = 60,
-  time_multiplier = 1, ndraws = 1000, lethal = TRUE))
+  time_multiplier = 1, ndraws = 4500, lethal = TRUE))
 et_abs <- suppressMessages(extract_tdt(
   wf, target_surv = "absolute", t_ref = 60,
-  time_multiplier = 1, ndraws = 1000, lethal = TRUE))
+  time_multiplier = 1, ndraws = 4500, lethal = TRUE))
 
 joint_z_rel  <- et_rel$z$summary$z_median
 joint_c_rel  <- et_rel$CTmax$summary$temp_median
 joint_z_abs  <- et_abs$z$summary$z_median
 joint_c_abs  <- et_abs$CTmax$summary$temp_median
+
+# Relative is easy to verify because it's just the slope of posterior. We can check that this matches
+
+rel_z  <- brms::as_draws_df(wf$fit, variable = "mid_temp_c", regex = TRUE)
+z_rel <- -1/rel_z[,"b_mid_temp_c"]
+median(z_rel[,1]) 
+
+# NOw CTmax. Little more complicated but should be doable. 
+rel_ctmax <- brms::as_draws_df(wf$fit, variable = "mid", regex = TRUE)
+ctmax_rel <- 34 + ((log10(60) - rel_ctmax[,"b_mid_Intercept"]) /  rel_ctmax[,"b_mid_temp_c"])
+median(ctmax_rel[,1])
 
 cat(sprintf("\nJoint 4PL extracted (posterior medians):\n"))
 cat(sprintf("  RELATIVE:  z = %.4f   CTmax_1hr = %.4f °C\n",
