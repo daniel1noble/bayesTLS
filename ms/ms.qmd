@@ -260,7 +260,7 @@ $$ {#eq-S-pred}
 
 Here $S(T, \tau)$ is the survival surface fitted by the dose-response model, so $S_{\text{pred}}(t)$ is the survival probability for an organism held at *constant* $T_{\text{ref}}$ after exposure duration $\tau_{\text{eff}}(t)$. 
 
-# Simulations
+# Simulations Evaluating statistical properties of the joint and two-stage modelling approaches
 
 We assessed the performance of the 4PL and two-stage approaches by estimating empirical bias and 95% interval coverage for *z* and $CT_{max_{1hr}}$ across simulation replicates. Bias was calculated as the estimated value minus the true value, whereas coverage was defined as the proportion of intervals containing the true parameter value. The 4PL approach estimated parameter uncertainty directly from the fitted model. In contrast, the two-stage approach required uncertainty to be propagated across both estimation stages, which we did using the Delta method. For the two-stage estimates, we constructed intervals using both normal and *t*-distribution quantiles to evaluate the sensitivity of coverage to different assumptions about sampling uncertainty.
 
