@@ -9,28 +9,28 @@
 \arguments{
 \item{object}{A fitted \code{bayes_tls} workflow.}
 
-\item{...}{Ignored.}
+\item{...}{Passed through to \code{\link[brms:summary.brmsfit]{brms::summary.brmsfit()}} (e.g.
+\code{prob}, \code{mc_se}, \code{priors}, \code{robust}).}
 }
 \value{
-A list with class \code{"summary.bayes_tls"} containing \code{meta},
-\code{shape}, \code{parameters} (a \code{posterior::draws_summary} tibble), and
-\code{diagnostics} (named list of scalar HMC summaries).
+A \code{summary.brmsfit} object (brms handles printing).
 }
 \description{
-Returns a list with the model spec, a posterior summary of every sampled
-parameter (population-level coefficients \verb{b_*}, random-effect SDs \verb{sd_*},
-and overdispersion \code{phi} if present), and headline HMC diagnostics (max
-Rhat, min ESS, divergent transitions, treedepth saturations).
+Delegates to \code{summary()} on the underlying \code{brmsfit} (\code{x$fit}), so the
+returned object is a \code{summary.brmsfit} with the population-level
+coefficient table, group-level standard deviations, family parameters,
+and HMC diagnostics already laid out by brms.
 }
 \details{
-For natural-scale 4PL parameters (\code{low}, \code{up}, \code{k}, \code{z}), use
-\code{\link[=tdt_parameter_table]{tdt_parameter_table()}}. For the TDT quantities (\code{z}, \code{CTmax_1hr},
-optionally \code{T_crit}), use \code{\link[=extract_tdt]{extract_tdt()}}.
+The high-level workflow context (data shape, $\bar T$, asymptote
+bounds, random-effect grouping, draw count) is available via
+\code{\link[=print.bayes_tls]{print.bayes_tls()}}. For natural-scale 4PL parameters (\code{low}, \code{up},
+\code{k}, \code{z}), use \code{\link[=tdt_parameter_table]{tdt_parameter_table()}}. For the TDT quantities
+(\code{z}, \code{CTmax_1hr}, optionally \code{T_crit}), use \code{\link[=extract_tdt]{extract_tdt()}}.
 }
 \examples{
 \dontrun{
-s <- summary(wf)
-s$diagnostics
-s$parameters
+summary(wf)
+summary(wf, prob = 0.9, robust = TRUE)
 }
 }

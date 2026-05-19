@@ -173,6 +173,16 @@ tdt_function_tour <- tibble::tribble(
   "Model spec",       "make_4pl_priors()",                  "Weakly informative priors for the disjoint-bounds 4PL.",
   "Model spec",       "make_4pl_formula()",                 "brms non-linear formula; identity link, all four sub-parameters get temp_c.",
   "Fit",              "fit_4pl()",                          "Joint Bayesian 4PL fit; returns a `bayes_tls` object (use `print()`, `summary()`, `plot()`).",
+  "Inspection",       "print.bayes_tls()",                  "Compact one-screen header: data shape, T_bar, asymptote bounds, random-effect grouping, fit status (draws if fitted, spec only otherwise).",
+  "Inspection",       "summary.bayes_tls()",                "Delegates to `summary()` on the underlying `brmsfit`; returns a `summary.brmsfit` with the population-level coefficient table, group-level SDs, family parameters, and HMC diagnostics laid out by brms. Extra arguments (e.g. `prob`, `robust`) are passed through.",
+  "Inspection",       "plot.bayes_tls()",                   "Delegates to `plot()` on the underlying `brmsfit`; returns brms's default `mcmc_combo` (density + post-warmup trace, chains coloured) for inspecting MCMC mixing. Extra arguments (e.g. `pars`, `combo`) are passed through.",
+  "Inspection",       "has_fit()",                          "Predicate: is a `bayes_tls` workflow fitted (TRUE) or spec-only (FALSE)?",
+  "Inspection",       "extract_4pl_pars()",                 "Posterior draws of the four natural-scale 4PL parameters (low, up, k, mid) at the centring temperature T_bar.",
+  "Accessors",        "get_z_draws()",                      "Per-draw posterior of z from an `extract_tdt()` output.",
+  "Accessors",        "get_ctmax_draws()",                  "Per-draw posterior of CTmax_1hr from an `extract_tdt()` output.",
+  "Accessors",        "get_tcrit_draws()",                  "Per-draw posterior of T_crit from an `extract_tdt(lethal = TRUE)` output.",
+  "Accessors",        "get_surv_draws()",                   "Per-draw posterior of survival probability from `predict_survival_curves()`.",
+  "Accessors",        "get_hi_draws()",                     "Per-draw posterior of heat-injury integrals from `predict_heat_injury()`.",
   "Diagnostics",      "diagnose_tdt_fit()",                 "Rhat / ESS / divergences / treedepth, with pass-fail flags.",
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z).",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands.",
@@ -746,25 +756,17 @@ tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 3.5
 
-# Per-draw posteriors for the three quantities, both likelihoods. Trim each
-# to a common length so we can stack columns in one tibble.
-n_keep <- min(nrow(et_bin$z$draws), nrow(et_bin$CTmax$draws),
-              nrow(et_bin$T_crit$draws),
-              nrow(et_bb$z$draws), nrow(et_bb$CTmax$draws),
-              nrow(et_bb$T_crit$draws))
-
-draws_bin_d <- tibble::tibble(
-  z         = et_bin$z$draws$z[seq_len(n_keep)],
-  CTmax_1hr = et_bin$CTmax$draws$temp[seq_len(n_keep)],
-  T_crit    = et_bin$T_crit$draws$temp[seq_len(n_keep)],
-  model     = "Binomial"
-)
-draws_bb_d <- tibble::tibble(
-  z         = et_bb$z$draws$z[seq_len(n_keep)],
-  CTmax_1hr = et_bb$CTmax$draws$temp[seq_len(n_keep)],
-  T_crit    = et_bb$T_crit$draws$temp[seq_len(n_keep)],
-  model     = "Beta-binomial"
-)
+# Per-draw posteriors for the three quantities, both likelihoods. The
+# accessors return one-column tibbles keyed on `.draw`, so we join on
+# `.draw` to keep posterior draws paired correctly.
+draws_bin_d <- get_z_draws(et_bin) |>
+  dplyr::inner_join(get_ctmax_draws(et_bin), by = ".draw") |>
+  dplyr::inner_join(get_tcrit_draws(et_bin), by = ".draw") |>
+  dplyr::transmute(z, CTmax_1hr = CTmax, T_crit, model = "Binomial")
+draws_bb_d <- get_z_draws(et_bb) |>
+  dplyr::inner_join(get_ctmax_draws(et_bb),  by = ".draw") |>
+  dplyr::inner_join(get_tcrit_draws(et_bb),  by = ".draw") |>
+  dplyr::transmute(z, CTmax_1hr = CTmax, T_crit, model = "Beta-binomial")
 
 post_long <- dplyr::bind_rows(draws_bin_d, draws_bb_d) |>
   tidyr::pivot_longer(c(z, CTmax_1hr, T_crit),
@@ -812,24 +814,24 @@ summarise_draws <- function(x) {
 }
 
 uncert_summary <- dplyr::bind_rows(
-  summarise_draws(et_bin$z$draws$z)          |> dplyr::mutate(quantity = "z (°C)",                  likelihood = "Binomial"),
-  summarise_draws(et_bin$CTmax$draws$temp)   |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)",     likelihood = "Binomial"),
-  summarise_draws(et_bin$T_crit$draws$temp)  |> dplyr::mutate(quantity = "T_crit (°C)", likelihood = "Binomial"),
-  summarise_draws(et_bb$z$draws$z)           |> dplyr::mutate(quantity = "z (°C)",                  likelihood = "Beta-binomial"),
-  summarise_draws(et_bb$CTmax$draws$temp)    |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)",     likelihood = "Beta-binomial"),
-  summarise_draws(et_bb$T_crit$draws$temp)   |> dplyr::mutate(quantity = "T_crit (°C)", likelihood = "Beta-binomial")
+  summarise_draws(get_z_draws(et_bin)$z)          |> dplyr::mutate(quantity = "z (°C)",              likelihood = "Binomial"),
+  summarise_draws(get_ctmax_draws(et_bin)$CTmax)  |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Binomial"),
+  summarise_draws(get_tcrit_draws(et_bin)$T_crit) |> dplyr::mutate(quantity = "T_crit (°C)",        likelihood = "Binomial"),
+  summarise_draws(get_z_draws(et_bb)$z)           |> dplyr::mutate(quantity = "z (°C)",              likelihood = "Beta-binomial"),
+  summarise_draws(get_ctmax_draws(et_bb)$CTmax)   |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Beta-binomial"),
+  summarise_draws(get_tcrit_draws(et_bb)$T_crit)  |> dplyr::mutate(quantity = "T_crit (°C)",        likelihood = "Beta-binomial")
 ) |>
   dplyr::select(quantity, likelihood, mean, sd, median, lower, upper)
 
 # Scalars for inline reporting in the next paragraph.
-sd_z_bin  <- round(stats::sd(et_bin$z$draws$z),         2)
-sd_z_bb   <- round(stats::sd(et_bb$z$draws$z),          2)
-sd_ct_bin <- round(stats::sd(et_bin$CTmax$draws$temp),  2)
-sd_ct_bb  <- round(stats::sd(et_bb$CTmax$draws$temp),   2)
-ci_z_bin  <- round(diff(stats::quantile(et_bin$z$draws$z,         c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_z_bb   <- round(diff(stats::quantile(et_bb$z$draws$z,          c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_ct_bin <- round(diff(stats::quantile(et_bin$CTmax$draws$temp,  c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_ct_bb  <- round(diff(stats::quantile(et_bb$CTmax$draws$temp,   c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+sd_z_bin  <- round(stats::sd(get_z_draws(et_bin)$z),         2)
+sd_z_bb   <- round(stats::sd(get_z_draws(et_bb)$z),          2)
+sd_ct_bin <- round(stats::sd(get_ctmax_draws(et_bin)$CTmax), 2)
+sd_ct_bb  <- round(stats::sd(get_ctmax_draws(et_bb)$CTmax),  2)
+ci_z_bin  <- round(diff(stats::quantile(get_z_draws(et_bin)$z,         c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_z_bb   <- round(diff(stats::quantile(get_z_draws(et_bb)$z,          c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_ct_bin <- round(diff(stats::quantile(get_ctmax_draws(et_bin)$CTmax, c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_ct_bb  <- round(diff(stats::quantile(get_ctmax_draws(et_bb)$CTmax,  c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
 
 uncert_summary |>
   dplyr::rename(
@@ -1922,7 +1924,8 @@ tinytable::tt(shrimp_extract, digits = 2, escape = TRUE)
 #| fig-width: 11
 #| fig-height: 3.5
 
-z_draws_shrimp   <- tibble::tibble(temp = et_shrimp$z$draws$z)
+z_draws_shrimp   <- get_z_draws(et_shrimp) |>
+  dplyr::transmute(temp = z)
 z_q <- stats::quantile(z_draws_shrimp$temp,
                        c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
 z_post_shrimp <- list(
@@ -2753,12 +2756,16 @@ Because the three fits are independent, pairwise contrasts $\Delta_{ij} = q^{(i)
 #| tbl-cap: "Pairwise differences in $z$ and $CT_{max_{1hr}}$ across zebrafish life stages from the three separate 4PL fits. Positive values mean the first-listed stage has the larger value."
 
 make_contrast <- function(a, b, var) {
-  da <- zf_et_sep[[a]][[var]]$draws
-  db <- zf_et_sep[[b]][[var]]$draws
-  k <- min(nrow(da), nrow(db))
-  draws_a <- if (var == "z") da$z[seq_len(k)] else da$temp[seq_len(k)]
-  draws_b <- if (var == "z") db$z[seq_len(k)] else db$temp[seq_len(k)]
-  delta <- draws_a - draws_b
+  # Pair posterior draws by .draw so the contrast is computed within
+  # draw — this is the standard accessor-based contrast pattern shown
+  # in the get_z_draws() docstring example.
+  getter <- switch(var, z = get_z_draws, CTmax = get_ctmax_draws)
+  value_col <- switch(var, z = "z", CTmax = "CTmax")
+  paired <- dplyr::inner_join(getter(zf_et_sep[[a]]),
+                              getter(zf_et_sep[[b]]),
+                              by = ".draw", suffix = c("_a", "_b"))
+  delta  <- paired[[paste0(value_col, "_a")]] -
+            paired[[paste0(value_col, "_b")]]
   q <- stats::quantile(delta, c(0.025, 0.5, 0.975), names = FALSE)
   tibble::tibble(
     Contrast = paste(a, "−", b),
@@ -3150,13 +3157,20 @@ tinytable::tt(zf_compare, escape = TRUE)
 
 zf_post_long <- dplyr::bind_rows(
   lapply(zf_stages, function(s) {
-    dplyr::bind_rows(
-      tibble::tibble(life_stage = s, quantity = "z",         method = "Separate",
-                     value = zf_et_sep[[s]]$z$draws$z),
-      tibble::tibble(life_stage = s, quantity = "CTmax_1hr", method = "Separate",
-                     value = zf_et_sep[[s]]$CTmax$draws$temp),
-      tibble::tibble(life_stage = s, quantity = "T_crit",    method = "Separate",
-                     value = zf_et_sep[[s]]$T_crit$draws$temp),
+    # zf_et_sep is a standard extract_tdt() result → accessors apply.
+    sep_long <- dplyr::bind_rows(
+      get_z_draws(zf_et_sep[[s]])     |>
+        dplyr::transmute(quantity = "z",         value = z),
+      get_ctmax_draws(zf_et_sep[[s]]) |>
+        dplyr::transmute(quantity = "CTmax_1hr", value = CTmax),
+      get_tcrit_draws(zf_et_sep[[s]]) |>
+        dplyr::transmute(quantity = "T_crit",    value = T_crit)
+    ) |>
+      dplyr::mutate(life_stage = s, method = "Separate")
+    # zf_joint_tdt[[s]] is a custom object: $z$draws carries BOTH z and
+    # CTmax columns (output of derive_tdt_parameters), so we keep its
+    # bespoke access pattern here.
+    joint_long <- dplyr::bind_rows(
       tibble::tibble(life_stage = s, quantity = "z",         method = "Joint",
                      value = zf_joint_tdt[[s]]$z$draws$z),
       tibble::tibble(life_stage = s, quantity = "CTmax_1hr", method = "Joint",
@@ -3164,6 +3178,7 @@ zf_post_long <- dplyr::bind_rows(
       tibble::tibble(life_stage = s, quantity = "T_crit",    method = "Joint",
                      value = zf_joint_tdt[[s]]$T_crit$draws$temp)
     )
+    dplyr::bind_rows(sep_long, joint_long)
   })
 ) |>
   dplyr::filter(is.finite(value)) |>

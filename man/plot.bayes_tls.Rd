@@ -2,31 +2,31 @@
 % Please edit documentation in R/bayes_tls_methods.R
 \name{plot.bayes_tls}
 \alias{plot.bayes_tls}
-\title{MCMC trace plot for a fitted \code{bayes_tls} workflow}
+\title{MCMC mixing plot for a fitted \code{bayes_tls} workflow}
 \usage{
-\method{plot}{bayes_tls}(x, pars = NULL, ...)
+\method{plot}{bayes_tls}(x, ...)
 }
 \arguments{
 \item{x}{A fitted \code{bayes_tls} workflow.}
 
-\item{pars}{Optional character vector of parameter names to plot. Default
-\code{NULL} selects population-level coefficients (\verb{b_*}),
-random-effect SDs (\verb{sd_*}), and the dispersion parameter
-(\code{phi}) when the family carries one.}
-
-\item{...}{Ignored.}
+\item{...}{Passed through to \code{brms}'s \code{plot.brmsfit} method (e.g.
+\code{pars}, \code{combo}, \code{N}, \code{ask}).}
 }
 \value{
-A \code{ggplot} object.
+The brms plot output (invisibly), typically a list of
+\code{bayesplot} ggplots.
 }
 \description{
-Post-warmup trace of each sampled parameter, chains coloured. Use to
-eyeball chain mixing alongside the numeric Rhat / ESS in
+Delegates to \code{plot()} on the underlying \code{brmsfit} (\code{x$fit}), which
+produces brms's default \code{mcmc_combo} layout (per-parameter density
+on the left, post-warmup trace on the right, chains coloured). Use
+this to eyeball chain mixing alongside the numeric Rhat / ESS in
 \code{\link[=summary.bayes_tls]{summary.bayes_tls()}}.
 }
 \examples{
 \dontrun{
 plot(wf)
-plot(wf, pars = c("b_mid_Intercept", "b_mid_temp_c"))
+plot(wf, pars = "^b_mid")
+plot(wf, combo = c("dens_overlay", "trace"))
 }
 }

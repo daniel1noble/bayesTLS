@@ -44,151 +44,55 @@ print.bayes_tls <- function(x, ...) {
 
 #' Summarise a fitted `bayes_tls` workflow
 #'
-#' Returns a list with the model spec, a posterior summary of every sampled
-#' parameter (population-level coefficients `b_*`, random-effect SDs `sd_*`,
-#' and overdispersion `phi` if present), and headline HMC diagnostics (max
-#' Rhat, min ESS, divergent transitions, treedepth saturations).
+#' Delegates to `summary()` on the underlying `brmsfit` (`x$fit`), so the
+#' returned object is a `summary.brmsfit` with the population-level
+#' coefficient table, group-level standard deviations, family parameters,
+#' and HMC diagnostics already laid out by brms.
 #'
-#' For natural-scale 4PL parameters (`low`, `up`, `k`, `z`), use
-#' [tdt_parameter_table()]. For the TDT quantities (`z`, `CTmax_1hr`,
-#' optionally `T_crit`), use [extract_tdt()].
+#' The high-level workflow context (data shape, $\bar T$, asymptote
+#' bounds, random-effect grouping, draw count) is available via
+#' [print.bayes_tls()]. For natural-scale 4PL parameters (`low`, `up`,
+#' `k`, `z`), use [tdt_parameter_table()]. For the TDT quantities
+#' (`z`, `CTmax_1hr`, optionally `T_crit`), use [extract_tdt()].
 #'
 #' @param object A fitted `bayes_tls` workflow.
-#' @param ...    Ignored.
-#' @return A list with class `"summary.bayes_tls"` containing `meta`,
-#'         `shape`, `parameters` (a `posterior::draws_summary` tibble), and
-#'         `diagnostics` (named list of scalar HMC summaries).
+#' @param ...    Passed through to [brms::summary.brmsfit()] (e.g.
+#'               `prob`, `mc_se`, `priors`, `robust`).
+#' @return A `summary.brmsfit` object (brms handles printing).
 #' @examples
 #' \dontrun{
-#' s <- summary(wf)
-#' s$diagnostics
-#' s$parameters
+#' summary(wf)
+#' summary(wf, prob = 0.9, robust = TRUE)
 #' }
 #' @export
 summary.bayes_tls <- function(object, ...) {
   if (!has_fit(object))
     stop("workflow has no fit; call fit_4pl() first.", call. = FALSE)
-
-  fit   <- object$fit
-  draws <- posterior::as_draws(fit)
-  params <- posterior::summarise_draws(draws)
-
-  np      <- brms::nuts_params(fit)
-  divs    <- sum(np$Value[np$Parameter == "divergent__"], na.rm = TRUE)
-  td_vals <- np$Value[np$Parameter == "treedepth__"]
-  td_max  <- if (length(td_vals)) max(td_vals, na.rm = TRUE) else NA_real_
-  treed   <- if (is.finite(td_max)) sum(td_vals >= td_max) else 0L
-
-  structure(
-    list(
-      meta = object$meta,
-      shape = list(
-        n_obs       = nrow(object$data),
-        n_temps     = length(unique(object$data$temp)),
-        n_durations = length(unique(object$data$duration)),
-        n_draws     = brms::ndraws(fit)
-      ),
-      parameters  = params,
-      diagnostics = list(
-        max_rhat       = if ("rhat"     %in% names(params))
-                           max(params$rhat,     na.rm = TRUE) else NA_real_,
-        min_ess_bulk   = if ("ess_bulk" %in% names(params))
-                           min(params$ess_bulk, na.rm = TRUE) else NA_real_,
-        min_ess_tail   = if ("ess_tail" %in% names(params))
-                           min(params$ess_tail, na.rm = TRUE) else NA_real_,
-        divergences    = as.integer(divs),
-        treedepth_hits = as.integer(treed)
-      )
-    ),
-    class = "summary.bayes_tls"
-  )
+  summary(object$fit, ...)
 }
 
-#' Print method for `summary.bayes_tls`
+#' MCMC mixing plot for a fitted `bayes_tls` workflow
 #'
-#' @param x      A `summary.bayes_tls` object.
-#' @param digits Digits for the posterior summary table. Default `3`.
-#' @param ...    Ignored.
-#' @return The object, invisibly.
-#' @export
-print.summary.bayes_tls <- function(x, digits = 3, ...) {
-  bounds <- x$meta$bounds
-  cat("<bayes_tls summary>\n")
-  cat("  Data:    ", x$shape$n_obs,        "rows;",
-      x$shape$n_temps,     "temperatures;",
-      x$shape$n_durations, "durations\n")
-  cat("  T_bar:   ", round(x$meta$temp_mean, 2), "\n")
-  cat(sprintf(
-    "  Bounds:   response in (%.3f, %.3f); low in (%.3f, %.3f); up in (%.3f, %.3f)\n",
-    x$meta$lower, x$meta$upper,
-    bounds$low_min, bounds$low_max,
-    bounds$up_min,  bounds$up_max
-  ))
-  if (!is.null(x$meta$random_effects))
-    cat("  RE:      ", paste(x$meta$random_effects, collapse = ", "), "\n")
-  cat("  Draws:   ", x$shape$n_draws, "\n\n")
-
-  d <- x$diagnostics
-  cat("HMC diagnostics:\n")
-  cat(sprintf("  max Rhat = %.4f   min ESS bulk = %s   min ESS tail = %s\n",
-              d$max_rhat,
-              if (is.finite(d$min_ess_bulk)) format(round(d$min_ess_bulk)) else "NA",
-              if (is.finite(d$min_ess_tail)) format(round(d$min_ess_tail)) else "NA"))
-  cat(sprintf("  divergences = %d   treedepth hits = %d\n\n",
-              d$divergences, d$treedepth_hits))
-
-  cat("Posterior summary:\n")
-  print(as.data.frame(x$parameters), row.names = FALSE, digits = digits)
-  invisible(x)
-}
-
-#' MCMC trace plot for a fitted `bayes_tls` workflow
-#'
-#' Post-warmup trace of each sampled parameter, chains coloured. Use to
-#' eyeball chain mixing alongside the numeric Rhat / ESS in
+#' Delegates to `plot()` on the underlying `brmsfit` (`x$fit`), which
+#' produces brms's default `mcmc_combo` layout (per-parameter density
+#' on the left, post-warmup trace on the right, chains coloured). Use
+#' this to eyeball chain mixing alongside the numeric Rhat / ESS in
 #' [summary.bayes_tls()].
 #'
 #' @param x    A fitted `bayes_tls` workflow.
-#' @param pars Optional character vector of parameter names to plot. Default
-#'             `NULL` selects population-level coefficients (`b_*`),
-#'             random-effect SDs (`sd_*`), and the dispersion parameter
-#'             (`phi`) when the family carries one.
-#' @param ...  Ignored.
-#' @return A `ggplot` object.
+#' @param ...  Passed through to `brms`'s `plot.brmsfit` method (e.g.
+#'             `pars`, `combo`, `N`, `ask`).
+#' @return The brms plot output (invisibly), typically a list of
+#'         `bayesplot` ggplots.
 #' @examples
 #' \dontrun{
 #' plot(wf)
-#' plot(wf, pars = c("b_mid_Intercept", "b_mid_temp_c"))
+#' plot(wf, pars = "^b_mid")
+#' plot(wf, combo = c("dens_overlay", "trace"))
 #' }
 #' @export
-plot.bayes_tls <- function(x, pars = NULL, ...) {
+plot.bayes_tls <- function(x, ...) {
   if (!has_fit(x))
     stop("workflow has no fit; call fit_4pl() first.", call. = FALSE)
-
-  draws    <- posterior::as_draws_df(x$fit)
-  all_pars <- setdiff(names(draws), c(".chain", ".iteration", ".draw"))
-
-  if (is.null(pars)) {
-    pars <- grep("^(b_|sd_|phi$)", all_pars, value = TRUE)
-    if (length(pars) == 0L) pars <- all_pars
-  } else {
-    missing_pars <- setdiff(pars, all_pars)
-    if (length(missing_pars))
-      stop("Unknown parameter(s): ", paste(missing_pars, collapse = ", "),
-           call. = FALSE)
-  }
-
-  long <- do.call(rbind, lapply(pars, function(p) {
-    data.frame(parameter = p,
-               iteration = draws$.iteration,
-               chain     = factor(draws$.chain),
-               value     = draws[[p]])
-  }))
-
-  ggplot2::ggplot(long,
-                  ggplot2::aes(x = iteration, y = value, colour = chain)) +
-    ggplot2::geom_line(alpha = 0.7, linewidth = 0.3) +
-    ggplot2::facet_wrap(~ parameter, scales = "free_y") +
-    theme_tdt() +
-    ggplot2::labs(x = "iteration (post-warmup)", y = NULL, colour = "Chain")
+  plot(x$fit, ...)
 }
