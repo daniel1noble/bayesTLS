@@ -142,6 +142,7 @@ log10_lt50_bin <- vapply(sort(unique(data$T)), function(Ti) {
   d_i <- subset(data, T == Ti)
   fit <- glm(cbind(y, n - y) ~ log10(t), family = binomial("logit"),
              data = d_i)
+  summary(fit)
   cat(sprintf("  T = %.1f:  intercept = %+.3f   slope = %+.3f   "
               , Ti, coef(fit)[1], coef(fit)[2]))
   cat(sprintf("log10(LT50) = %.3f\n", -coef(fit)[1] / coef(fit)[2]))
