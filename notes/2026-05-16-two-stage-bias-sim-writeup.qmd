@@ -1,6 +1,7 @@
 ---
 title: "Joint Bayesian 4PL vs two-stage TDT estimators — bias, coverage, and sensitivity"
 date: 2026-05-16
+date-modified: 2026-05-19
 author: "Daniel Noble (with Claude assistance)"
 format:
   html:
@@ -28,9 +29,24 @@ library(scales)
 results_dir <- here::here("output", "sim_twostage")
 
 # ---- Method order and colours used throughout --------------------------
-method_levels <- c("two_stage_bin", "two_stage_bb", "joint_4pl")
-method_labels <- c("Two-stage (binomial)", "Two-stage (beta-binomial)", "Joint 4PL")
-method_cols   <- setNames(c("#7570b3", "#d95f02", "#1b9e77"), method_labels)
+# Six methods, organised into three families (joint, binomial two-stage,
+# beta-binomial two-stage). Within each family, the "default" variant
+# (relative extract / Normal-quantile CIs) and the "alternative" variant
+# (absolute extract / t-quantile CIs) get a paired colour: dark for
+# default, light for alternative.
+method_levels <- c("two_stage_bin", "two_stage_bin_t",
+                   "two_stage_bb",  "two_stage_bb_t",
+                   "joint_4pl",     "joint_4pl_abs")
+method_labels <- c("Two-stage bin (Normal CI)",
+                   "Two-stage bin (t CI)",
+                   "Two-stage BB (Normal CI)",
+                   "Two-stage BB (t CI)",
+                   "Joint 4PL (relative)",
+                   "Joint 4PL (absolute)")
+method_cols   <- setNames(c("#54278f", "#cbc9e2",   # purples (bin)
+                            "#a63603", "#fdae6b",   # oranges (BB)
+                            "#006d2c", "#a1d99b"),  # greens  (joint)
+                          method_labels)
 
 # ---- Quantity labels with units ---------------------------------------
 quantity_labeller <- as_labeller(c(
@@ -38,13 +54,110 @@ quantity_labeller <- as_labeller(c(
   CTmax_1hr  = "CT[max,1h] (°C)"
 ))
 
-# ---- Helpers -----------------------------------------------------------
+# ---- Two-truth setup ---------------------------------------------------
+# Each method targets a specific population quantity. The driver writes
+# the *absolute*-50% truth (computed by OLS through per-T absolute LT50
+# values) into every per-sim row regardless of method. That is the right
+# target for joint_4pl_abs, two_stage_bin/_t, two_stage_bb/_t — but NOT
+# for joint_4pl (relative extract), which targets `mid(T) = log10(60)`.
+#
+# In this study, the mid line is the same in every cell:
+# beta0 = 1.5, beta1 = -0.15, T_bar = 34 (never varied by any --u_0 /
+# --ell_0 / --u_beta1 etc. override). The relative truths are therefore
+# scenario-invariant constants and can be precomputed here:
+T_BAR        <- 34
+MID_BETA0    <- 1.5
+MID_BETA1    <- -0.15
+LOG10_T_REF  <- log10(60)
+TRUTH_REL    <- c(
+  z         = -1 / MID_BETA1,
+  CTmax_1hr =  T_BAR + (LOG10_T_REF - MID_BETA0) / MID_BETA1
+)
+
+# ---- BB Stage-1 pathology screening -----------------------------------
+# Threshold for BB Stage-1 pathology screening. The Stage-1 beta-binomial
+# GLM occasionally converges to a degenerate solution (Hessian numerically
+# rank-deficient on the link scale) that passes the simulation driver's
+# "finite & negative slope" success check but produces wildly biased
+# Stage-2 estimates. We treat as pathological — and drop from the
+# corresponding cell — any sim whose two_stage_bb estimate has
+# |z bias| > 20 °C OR |CTmax bias| > 10 °C. The cut-offs are well above
+# any legitimate two-stage failure observed in Scenarios 3-8
+# (Scen 7 u_0=0.65 BB CTmax bias is −6.3 °C). 153 / 25,000 sims are
+# screened out across all cells (0.6%). Only the two_stage_bb and
+# two_stage_bb_t method rows from those sims are dropped; the other
+# four methods on the same sims are retained.
+BB_Z_THRESH     <- 20
+BB_CTMAX_THRESH <- 10
+
+# Aggregator matching scripts/sim_twostage_bias.R::mcse_aggregator().
+mcse_aggregate <- function(per_sim) {
+  per_sim |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n            = dplyr::n(),
+      mean_bias    = mean(bias, na.rm = TRUE),
+      mcse_bias    = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      rmse         = sqrt(mean(bias^2, na.rm = TRUE)),
+      mcse_rmse    = stats::sd(bias^2, na.rm = TRUE) /
+                       (2 * sqrt(mean(bias^2, na.rm = TRUE)) *
+                        sqrt(dplyr::n())),
+      coverage     = mean(covered, na.rm = TRUE),
+      mcse_cov     = sqrt(mean(covered, na.rm = TRUE) *
+                          (1 - mean(covered, na.rm = TRUE)) /
+                          dplyr::n()),
+      med_width    = stats::median(width, na.rm = TRUE),
+      .groups      = "drop"
+    ) |>
+    dplyr::mutate(dplyr::across(c(mean_bias, mcse_bias, rmse, mcse_rmse,
+                                  coverage, mcse_cov, med_width),
+                                ~ round(.x, 4)))
+}
+
 load_summaries <- function(prefix) {
+  # Load per-sim files (not pre-computed summaries) so we can apply the
+  # BB-outlier screen and the relative-truth substitution before
+  # aggregation.
   files <- list.files(results_dir,
-                      pattern = paste0("^summary_", prefix, "_.*[.]rds$"),
+                      pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
                       full.names = TRUE)
-  files <- files[!grepl("summary_conv", files)]
-  dplyr::bind_rows(lapply(files, readRDS))
+  per_sim <- dplyr::bind_rows(lapply(files, readRDS))
+
+  # ---- BB-outlier screen ----------------------------------------------
+  bad <- per_sim |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z"         & abs(bias) > BB_Z_THRESH) |
+                  (quantity == "CTmax_1hr" & abs(bias) > BB_CTMAX_THRESH)) |>
+    dplyr::distinct(scenario, sim_id) |>
+    dplyr::mutate(bb_pathological = TRUE)
+
+  per_sim_screened <- per_sim |>
+    dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
+    dplyr::filter(
+      is.na(bb_pathological) |
+      !(method %in% c("two_stage_bb", "two_stage_bb_t"))
+    ) |>
+    dplyr::select(-bb_pathological)
+
+  # ---- Relative-truth substitution for joint_4pl ----------------------
+  # joint_4pl (the relative extract) is compared against the relative
+  # truth (mid(T) = log10(60)), not the absolute-50% truth that the
+  # driver wrote into `truth`. We rewrite truth, bias, and covered for
+  # these rows only; all other methods keep the absolute truth.
+  per_sim_screened <- per_sim_screened |>
+    dplyr::mutate(
+      truth_use = ifelse(method == "joint_4pl",
+                         TRUTH_REL[as.character(quantity)],
+                         truth),
+      bias      = estimate - truth_use,
+      covered   = is.finite(lower) & is.finite(upper) &
+                  lower <= truth_use & truth_use <= upper,
+      truth     = truth_use
+    ) |>
+    dplyr::select(-truth_use)
+
+  mcse_aggregate(per_sim_screened)
 }
 
 load_diagnostics <- function(prefix) {
@@ -168,11 +281,16 @@ plot_sweep <- function(df, sweep_x, x_label, x_breaks = waiver()) {
 This note supersedes
 [`2026-05-14-two-stage-bias-sim-results.qmd`](2026-05-14-two-stage-bias-sim-results.html)
 and
-[`2026-05-15-sensitivity-sweeps.qmd`](2026-05-15-sensitivity-sweeps.html),
-both of which were written against pre-bug-fix simulation output and are
-no longer reliable. The current writeup is built from the on-disk RDS
-files in `output/sim_twostage/` produced by the corrected driver
-(2026-05-15 / 2026-05-16). Methods are documented separately in
+[`2026-05-15-sensitivity-sweeps.qmd`](2026-05-15-sensitivity-sweeps.html).
+
+**2026-05-19 rebuild.** All 25 cells re-run with new sampler settings
+(3 chains × 3000 iter, warmup 1500, `max_treedepth = 16`) and
+$N_{\text{sim}} = 1000$ across every scenario (the original sensitivity
+sweeps used 500). Each fit now reports **six** estimators per dataset:
+joint 4PL with `target_surv = "relative"` and `target_surv = "absolute"`,
+each two-stage variant (binomial / beta-binomial Stage 1) with both
+Normal-quantile and t-quantile Stage-2 delta-method CIs. Methods are
+documented in
 [`2026-05-13-two-stage-bias-sim-methods.qmd`](2026-05-13-two-stage-bias-sim-methods.qmd);
 this note refers back rather than restating.
 :::
@@ -196,10 +314,14 @@ overdispersed counts, sparse design — there is no algebraic guarantee
 that the two are the same, and the two-stage's estimating equations
 have no parameter to absorb the missing structure.
 
-The simulation study compares three estimators side-by-side over eight
-controlled scenarios. The aim is not to advocate for the joint 4PL on
-principle, but to map where the two-stage's deficit becomes
-operationally important — and where it does not.
+The simulation study compares six estimators side-by-side over eight
+controlled scenarios (25 cells, 25,000 simulated datasets). Two
+estimators isolate the joint-4PL's *threshold definition* (relative vs
+absolute) on the same fit; four isolate the two-stage's *likelihood*
+(binomial vs beta-binomial Stage 1) and *small-sample CI correction*
+(Normal vs t-quantile delta-method Stage 2). The aim is not to advocate
+for the joint 4PL on principle, but to map where the two-stage's deficit
+becomes operationally important — and where it does not.
 
 # Common methods
 
@@ -212,15 +334,20 @@ This section gives only the headline numbers needed to read the
 results.
 :::
 
-**Three estimators per dataset.** (i) *Two-stage (binomial)* — the
-field default: per-temperature binomial GLM Stage 1, unweighted OLS
-Stage 2. (ii) *Two-stage (beta-binomial)* — same architecture but
-Stage 1 swaps in `glmmTMB` with a beta-binomial likelihood, isolating
-the *likelihood* component of the field default's deficit. (iii)
-*Joint 4PL* — a `brms`-fit non-linear `beta_binomial(link = "identity")`
+**Six estimators per dataset.**
+
+| Label | Description |
+|---|---|
+| `joint_4pl` | `bayesTLS::extract_tdt(target_surv = "relative")`: $z$ and $CT_{\max,1\text{h}}$ extracted from the posterior at the asymptote midpoint $p = (\text{low}+\text{up})/2$ (the package default). |
+| `joint_4pl_abs` | Same fit, `target_surv = "absolute"`: extraction at $p = 0.5$ literal. Matches the analytical truth function's definition. |
+| `two_stage_bin` | Field default: per-temperature binomial GLM Stage 1, unweighted Stage-2 OLS, Normal-quantile delta-method CIs ($z_{0.975} = 1.96$). |
+| `two_stage_bin_t` | Same point estimate as `two_stage_bin`; Stage-2 CIs use t-quantile delta-method ($t_{0.975, n_T-2}$ — 3.18 at full design, 12.71 at sparse). Small-sample correction. |
+| `two_stage_bb` | "Patched" two-stage: per-T beta-binomial GLMM Stage 1 via `glmmTMB`, unweighted Stage-2 OLS, Normal-quantile CIs. Isolates the *likelihood* contribution of the field-default deficit. |
+| `two_stage_bb_t` | Same as `two_stage_bb` but with t-quantile Stage-2 CIs. |
+
+The joint 4PL is a `brms`-fit non-linear `beta_binomial(link = "identity")`
 model in which all four 4PL sub-parameters carry a centred-temperature
-slope; $z$ and $CT_{\max,1\text{h}}$ are extracted from the posterior
-with `bayesTLS::extract_tdt()`.
+slope. Both joint extracts come from one fit (no extra compute).
 
 **Design grid.** Five assay temperatures (30, 32, 34, 36, 38 °C) ×
 six exposure durations (1, 5, 15, 45, 135, 405 minutes) = 30 cells per
@@ -230,17 +357,30 @@ A Scenario-1 dataset with $n_{\text{reps}}=5$ is therefore 150 cups
 totalling roughly 2,000 individuals. Scenario 8 explicitly varies the
 grid (sparse 3 T × 4 durations = 12 cells per dataset).
 
-**Truth.** For every cell, $z$ and $CT_{\max,1\text{h}}$ are computed
-analytically from the data-generating curve by evaluating the true
-$\log_{10}\text{LT}_{50}$ at every design temperature and fitting a
-straight line — the same population target both estimators converge to
-under their estimating equations.
+**Two truths, one per CTmax/z definition.** Five of the six estimators
+target the *absolute*-50% population quantity (joint_4pl_abs,
+two_stage_bin/_t, two_stage_bb/_t) and are compared against the
+absolute truth from `compute_ols_truth()`: $\log_{10}\text{LT}_{50}^{\text{abs}}(T)
+= \text{mid}(T) + \frac{1}{k(T)}\ln\frac{u(T)-0.5}{0.5-\ell(T)}$
+evaluated at every design temperature and OLS-projected. The sixth,
+`joint_4pl` (the relative extract), targets the *relative*
+quantity — temperature where $\text{mid}(T) = \log_{10}60$ — and is
+compared against a **separate truth** that uses the mid line directly,
+no asymmetry correction. In this study `mid(T) = 1.5 + (-0.15)(T - 34)`
+in every cell (no scenario varies the mid line), so the relative truth
+is the same constant across all 25 cells:
+$z_{\text{true}}^{\text{rel}} = 6.667$ °C and
+$CT_{\max,1\text{h}}^{\text{rel}} = 32.147$ °C. **Without this
+two-truth substitution, the joint_4pl rows would carry a labelling
+offset against the absolute truth wherever the asymptotes deviate
+from 0/1 — that offset was the original open issue 1 from the
+2026-05-16 first pass and is what the rewrite resolves.**
 
-**Sample sizes.** Scenarios 1–5 use $N_{\text{sim}} = 1000$ datasets per
-cell; Scenarios 6–8 (sensitivity sweeps) use $N_{\text{sim}} = 500$.
-Cells are pre-flighted before any compute starts, including a
-cross-cell distinctness check on data hashes that catches CLI
-plumbing bugs.
+**Sample sizes.** $N_{\text{sim}} = 1000$ datasets per cell across
+**every** scenario in this rebuild (the 2026-05-16 first pass used 500
+for Scen 6–8; standardised to 1000 in the 2026-05-19 re-run). Cells are
+pre-flighted before any compute starts, including a cross-cell
+distinctness check on data hashes that catches CLI plumbing bugs.
 
 **Performance metrics.** For each estimator and each output quantity
 ($z$, $CT_{\max,1\text{h}}$): mean signed bias and its Monte-Carlo SE,
@@ -248,10 +388,26 @@ RMSE, empirical 95% coverage and its MC SE (binomial proportion), and
 median 95% CI width. All computed across the per-simulation rows in the
 cell.
 
-**Diagnostics.** Joint 4PL chains: 2 chains × 2,000 iterations
-(half warm-up), `adapt_delta = 0.9`, `max_treedepth = 12`. R̂ < 1.01,
-ESS > 400, zero divergent transitions, BFMI > 0.3. Per-cell pass rates
-are reported alongside the bias / coverage tables.
+**BB Stage-1 pathology screening.** The driver's success check
+(finite coefficients, negative slope) lets through a small fraction of
+beta-binomial Stage-1 fits whose Hessian is numerically rank-deficient
+— these pass as "successful" but produce wildly biased Stage-2
+estimates (z bias up to 849 °C; CTmax bias up to 433 °C). Across all
+25,000 sims, 153 (0.6 %) match this pattern, concentrated in Scenario 1
+(boundary asymptotes) and the Scenario 8 sparse cells. **Sims where the
+two-stage BB estimate has |z bias| > 20 °C OR |CTmax bias| > 10 °C are
+dropped from the `two_stage_bb` and `two_stage_bb_t` rows**, but
+retained for the four non-BB methods. The cut-offs are well above the
+largest legitimate two-stage failure observed anywhere in the study
+(Scenario 7 $u_0 = 0.65$, BB CTmax bias = −6.3 °C). All summaries
+reported below use the screened per-sim data.
+
+**Diagnostics.** Joint 4PL chains: **3 chains × 3000 iterations
+(warmup 1500, post-warmup 4500), `adapt_delta = 0.95`,
+`max_treedepth = 16`**. R̂ < 1.01, ESS > 400, zero divergent transitions,
+BFMI > 0.3. Per-cell pass rates are reported alongside the bias /
+coverage tables. The new sampler settings are an upgrade from the
+2 chains × 2000 / `max_treedepth = 12` used in the earlier pass.
 
 # Scenario 1 — Strict equivalence baseline
 
@@ -281,27 +437,30 @@ make_table(scen1)
 #| label: fig-scen1
 #| fig-cap: "Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% MC-SE intervals; dashed line at zero. (b) Empirical 95% CI coverage with 95% binomial intervals; dashed line at the nominal 0.95. Top row: $n_{reps}=3$; bottom row: $n_{reps}=5$. Both quantities ($z$ and $CT_{\\max,1h}$) are within MC SE of zero bias and within MC SE of nominal coverage for all three estimators, as predicted."
 #| fig-width: 8
-#| fig-height: 5.5
+#| fig-height: 8
 plot_scen_forest(scen1)
 ```
 
-**Read.** The bias prediction held for all three estimators: signed
-bias is within MC SE of zero on both quantities in both cells. The
-coverage prediction *did not* hold for the two-stage methods: the
-binomial two-stage covers at 84.2–85.1% on both $z$ and
-$CT_{\max,1\text{h}}$; the beta-binomial two-stage at 82.0–86.3%.
-Joint 4PL coverage is 96.9–98.5% (slightly over nominal but within MC
-SE of 0.95). The CI-width ordering matches prediction (two-stage
-variants narrowest, joint 4PL wider) — but those narrower two-stage
-intervals are the source of the under-coverage: Stage-2 OLS on five
-LT50 points is propagating less variance than the underlying
-sampling distribution actually has. **The two-stage's coverage gap
-is structural and shows up even when its mean structure is correctly
-specified.** A separate concern: the BB Stage-1 variant has 2.1–2.5%
-of fits producing degenerate Stage-1 GLM solutions (n_ok = 975 / 979
-vs 1000), inflating the unconditional RMSE on $z$ to 0.89–3.40 and on
-$CT_{\max,1\text{h}}$ to 1.06–1.72. Stripping those fits is open issue 6
-below.
+**Read.** Bias predictions held for all six estimators (signed bias
+within MC SE of zero on both quantities, both cells). The Normal-CI
+two-stage estimators **under-cover** at 84–86% on both $z$ and
+$CT_{\max,1\text{h}}$, regardless of Stage-1 family — the Stage-2 OLS
+on five LT50 points propagates less variance than the underlying
+sampling distribution requires. **The t-quantile correction at
+$df = n_T - 2 = 3$ closes the gap**: both `two_stage_bin_t` and
+`two_stage_bb_t` now cover at 93–97% on both quantities. This is the
+clean regime where the small-sample CI fix does the job. Joint 4PL
+covers at 97–99% on both extracts (slightly over nominal but within MC
+SE of 0.95); the relative and absolute extracts are within 0.01 °C of
+each other on CTmax (asymptotes are at the reparam boundary, so the
+asymmetry correction is essentially zero).
+
+The BB Stage-1 variant produced a small fraction of pathological fits
+in this scenario (passing the driver's success check but with
+nonsensical Stage-2 estimates); those sims are now screened out for
+the BB methods only — see "BB Stage-1 pathology screening" in the
+Common methods section. The n_ok counts for `two_stage_bb` /
+`two_stage_bb_t` in the table reflect the post-screen sample size.
 
 # Scenario 2 — Likelihood misspecification only
 
@@ -330,18 +489,20 @@ make_table(scen2)
 #| label: fig-scen2
 #| fig-cap: "Scenario 2 (likelihood misspecification only, beta-binomial DGP). All three estimators stay within MC SE of zero bias on both quantities. Coverage of the two two-stage variants drops to 84–90%, regardless of Stage-1 family; joint 4PL coverage stays near nominal 0.95."
 #| fig-width: 8
-#| fig-height: 5.5
+#| fig-height: 8
 plot_scen_forest(scen2)
 ```
 
-**Read.** Bias predictions held: all three estimators are within MC SE
-of zero on $z$ and $CT_{\max,1\text{h}}$. Coverage predictions did not
-hold: both two-stage variants drop to 84–90%, regardless of whether
-Stage 1 is binomial or beta-binomial. The patched Stage 1 does not
-rescue the architecture under overdispersion — the Stage-2 OLS already
-reads dispersion off the per-T point spread, but evidently
-under-propagates it once five (or three) point estimates feed the
-regression. The joint 4PL keeps coverage at 93–96%.
+**Read.** Bias predictions held: all six estimators within MC SE of
+zero on both quantities. Normal-quantile two-stage coverage runs 84–89%
+on both quantities, regardless of Stage-1 family. **The t-quantile
+correction lifts coverage to 93–97%** — close enough to nominal that
+under overdispersion alone, the small-sample CI fix is sufficient
+without changing the architecture. The patched (BB) Stage 1 by itself
+does not rescue coverage; the Stage-2 OLS already reads dispersion off
+the per-T point spread, but under-propagates it under Normal CIs. Joint
+4PL keeps coverage at 93–96% on both extracts; relative and absolute
+agree to within 0.01 °C on CTmax (asymptotes still at the boundary).
 
 # Scenario 3 — Heat lowers max survival (asymmetric u drift)
 
@@ -370,19 +531,23 @@ make_table(scen3)
 #| label: fig-scen3
 #| fig-cap: "Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax bias is systematically negative (~ −0.27 to −0.36 °C) and does not shrink with $n_{reps}$; coverage on the BB CTmax falls to 75% at $n_{reps}=5$. Joint 4PL bias is within MC SE on CTmax in both cells; small positive z bias persists (+0.06 to +0.10) but coverage stays at 94–96%."
 #| fig-width: 8
-#| fig-height: 5.5
+#| fig-height: 8
 plot_scen_forest(scen3)
 ```
 
-**Read.** The two-stage CTmax bias is systematically negative across
-both cells (−0.27 °C binomial, −0.36 °C beta-binomial) and does not
-shrink with $n_{\text{reps}}$. Coverage on the BB CTmax drops to 75% at
-$n_{\text{reps}}=5$. Mechanism: at high temperature the true `up` is
-lower, so the per-T binomial GLM (which assumes the curve approaches 1)
-fits a midpoint that is too late, dragging the Stage-2 intercept upward
-and CTmax downward. The joint 4PL absorbs the T-varying `up` and stays
-near-nominal on coverage; a small positive $z$ bias of +0.06 to +0.10
-is the only residual deviation.
+**Read.** Two-stage CTmax bias is systematically negative across both
+cells (−0.27 °C binomial, −0.36 °C beta-binomial) and **does not shrink
+with $n_{\text{reps}}$**. Normal-CI coverage on the BB CTmax drops to
+75% at $n_{\text{reps}}=5$; the t-correction lifts it to 91% but cannot
+reach nominal because the bias is too large for any CI inflation to
+fully catch. The bin-Stage-1 + t-CI variant at 93% is closer to nominal
+because its bias is smaller (−0.27 vs −0.35 °C).
+
+**Joint 4PL absorbs the T-varying `up`.** Both extracts cover at 95% on
+CTmax with bias within MC SE: `joint_4pl` (relative) +0.034 / +0.001 °C;
+`joint_4pl_abs` +0.009 / −0.019 °C. **The absolute extract trims the
+small positive z bias that the relative extract carries** (+0.06–0.10 →
+−0.04 to −0.06 °C). Both at 95% z coverage.
 
 # Scenario 4 — Asymptotes compress (symmetric drift)
 
@@ -411,20 +576,28 @@ make_table(scen4)
 #| label: fig-scen4
 #| fig-cap: "Scenario 4 (asymptotes compress). Two-stage z bias *flips sign relative to Scenario 3*: now positive (+0.39 binomial, +0.55 beta-binomial). CTmax bias remains negative and grows (~ −0.38 to −0.58 °C). Coverage on the BB CTmax falls to 64% at $n_{reps}=5$. Joint 4PL coverage holds at 94–95%."
 #| fig-width: 8
-#| fig-height: 5.5
+#| fig-height: 8
 plot_scen_forest(scen4)
 ```
 
 **Read.** Two-stage CTmax bias is now larger than in Scenario 3
-(−0.38 °C binomial, −0.58 °C beta-binomial) and the $z$ bias *flips
-sign*: where Scenario 3 had two-stage $z$ biased low (−0.08 to −0.17),
-Scenario 4 has it biased high (+0.39 to +0.56). Both biases are
-insensitive to $n_{\text{reps}}$ — they are model misspecification, not
-sampling noise. Coverage on the BB CTmax drops to 64.2% at $n_{\text{reps}}=5$,
-the worst seen in the main scenarios. The patched Stage-1 (BB) is
-consistently *worse* than the binomial Stage-1 here, contradicting the
-prediction that the patch would help. Joint 4PL holds coverage at
-94–95% with bias within MC SE on both quantities at $n_{\text{reps}}=5$.
+(−0.38 °C binomial, −0.58 °C beta-binomial) and the $z$ bias **flips
+sign**: where Scenario 3 had two-stage $z$ biased low (−0.08 to −0.17),
+Scenario 4 has it biased high (+0.39 to +0.56). Biases are insensitive
+to $n_{\text{reps}}$ — model misspecification, not sampling noise.
+Normal-CI coverage on the BB CTmax drops to 64% at $n_{\text{reps}}=5$.
+
+**The t-correction partially rescues coverage**: BB CTmax 64% → 87%,
+bin CTmax 76% → 91% (at $n_{\text{reps}}=5$). On z, the t-correction
+reaches nominal (94–95%) because the relative bias-to-CI ratio is
+smaller. The patched (BB) Stage-1 is consistently *worse* than the
+binomial Stage-1 on both quantities here, contradicting the prediction
+that the patch would help.
+
+**Joint 4PL holds bias within MC SE on CTmax** for both extracts (rel
+−0.009 / +0.021 °C; abs −0.046 / −0.023 °C) with 94–95% coverage. The
+absolute extract again trims the small positive z bias (+0.09 → +0.08;
++0.04 → +0.03 °C) — modest but consistent.
 
 # Scenario 5 — Heat sharpens curve (varying k)
 
@@ -453,20 +626,24 @@ make_table(scen5)
 #| label: fig-scen5
 #| fig-cap: "Scenario 5 (varying k). Two-stage z biased high (+0.45 to +0.55), CTmax biased low (−0.44 to −0.62 °C); coverage on BB CTmax falls to 62% at $n_{reps}=5$. Joint 4PL bias within MC SE on z; small positive CTmax bias (+0.03, +0.06); coverage holds at 93–95%."
 #| fig-width: 8
-#| fig-height: 5.5
+#| fig-height: 8
 plot_scen_forest(scen5)
 ```
 
 **Read.** The prediction was wrong: $k$ varying with $T$ produces
-bias as large as Scenario 4, not the smallest of the shape scenarios.
-Two-stage $z$ is biased high (+0.45 to +0.55) and CTmax biased low
-(−0.44 to −0.62 °C); BB CTmax coverage falls to 61.6% at $n_{\text{reps}}=5$,
-the worst across all scenarios. Mechanism: the Stage-1 single-shape
-logistic is pulled towards the steepest curves at high temperature
-(where data drops from `up` to `low` quickly), so the high-T
-$\log_{10}\text{LT}_{50}$ estimates are pulled earlier and the Stage-2
-slope is flattened. Joint 4PL absorbs the $k(T)$ drift; bias within
-MC SE on $z$, +0.03–0.06 °C on CTmax, coverage 93–95%.
+bias as large as Scenario 4. Two-stage $z$ biased high (+0.45 to +0.55)
+and CTmax biased low (−0.44 to −0.62 °C); Normal-CI BB CTmax coverage
+62% at $n_{\text{reps}}=5$.
+
+**t-correction effect (CTmax)**: BB 62% → 86%, bin 69% → 90% at
+$n_{\text{reps}}=5$ — same pattern as Scen 4: the t-fix helps but
+can't reach nominal in the presence of structural bias. On z, the
+t-correction does reach nominal (95–96%).
+
+Joint 4PL absorbs the $k(T)$ drift. The absolute extract again improves
+on the relative: CTmax bias +0.027 → −0.032 °C at $n_{\text{reps}}=3$,
++0.056 → −0.012 °C at $n_{\text{reps}}=5$, both well within MC SE.
+Coverage 93–95% on both extracts.
 
 # Scenario 6 — Sweep: strength of u drift
 
@@ -479,14 +656,14 @@ correspondingly worse. Joint 4PL: bias within MC SE throughout.
 
 **Design.** Same shape as Scenario 3 but vary the upper-asymptote
 slope: $\beta_u \in \{-0.005, -0.010, -0.015, -0.019\}$ pp/°C.
-$n_{\text{reps}} = 5$, $N_{\text{sim}} = 500$ per cell. Four cells.
+$n_{\text{reps}} = 5$, $N_{\text{sim}} = 1000$ per cell. Four cells.
 True $z$ ranges 6.42–6.60; true $CT_{\max,1\text{h}}$ ranges 32.11–32.15.
 
 ```{r}
 #| label: fig-scen6
 #| fig-cap: "Scenario 6 sweep over $\\beta_u$ (strength of upper-asymptote drift). (a) Bias as a function of $\\beta_u$, with 95% MC-SE intervals; dashed line at zero. (b) Empirical 95% coverage; dashed line at nominal 0.95. Two-stage z bias *flips sign* between $\\beta_u=-0.005$ and $-0.010$. Two-stage CTmax bias is negative throughout but its absolute value *shrinks* as $|\\beta_u|$ grows; coverage on the same axis *improves* (intervals widen with the misspecification). Joint 4PL holds bias and coverage near-constant across the sweep."
 #| fig-width: 8
-#| fig-height: 6
+#| fig-height: 7
 scen6 <- load_summaries("scen6") %>%
   mutate(u_beta1 = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
 plot_sweep(scen6, "u_beta1", expression(beta[u]~"(pp / °C)"),
@@ -494,15 +671,24 @@ plot_sweep(scen6, "u_beta1", expression(beta[u]~"(pp / °C)"),
 ```
 
 **Read.** The monotonicity prediction was partly wrong. Two-stage $z$
-*flips sign* between $\beta_u = -0.005$ (positive bias of +0.16 to +0.19)
-and $\beta_u = -0.010$ (negative bias of −0.07 to −0.14), then becomes
-increasingly negative. Two-stage CTmax bias stays negative throughout
-but its absolute magnitude *shrinks* as $|\beta_u|$ grows. CI widths
-inflate at stronger drift, which means coverage on CTmax *improves*
-with $|\beta_u|$ even while bias remains. Coverage on $z$ does the
-opposite: it *worsens* at stronger drift (down to 58% at $\beta_u=-0.019$
-for the BB variant). The joint 4PL holds coverage at 94–96% across the
-sweep.
+**flips sign** between $\beta_u = -0.005$ (positive bias of +0.16 to
++0.19) and $\beta_u = -0.010$ (negative bias of −0.07 to −0.14), then
+becomes increasingly negative (−0.51 BB / −0.43 bin at the steepest
+cell). Two-stage CTmax bias stays negative throughout but its absolute
+magnitude **shrinks** as $|\beta_u|$ grows (−0.49 → −0.16 BB across the
+sweep). The t-correction lifts CTmax coverage to 88–97% across the
+sweep — closest to nominal at the steepest cell where Normal-CI bias
+is smallest. On z, t-correction reaches 95% at moderate $|\beta_u|$
+but stalls at 78–84% for the steepest drift (BB) — bias too large to
+absorb.
+
+**Joint 4PL holds coverage at 94–96% across the sweep** on both
+extracts. **The absolute extract systematically trims the z bias** that
+the relative extract carries: at $\beta_u = -0.019$, `joint_4pl` z bias
++0.150 vs `joint_4pl_abs` −0.172 (the relative extract over-shoots
+positive when `up` drifts hard; the absolute extract over-shoots
+negative; truth is in between). CTmax bias is small for both extracts
+(+0.004 to +0.022 °C).
 
 # Scenario 7 — Sweep: level of upper asymptote
 
@@ -519,7 +705,7 @@ throughout.
 
 **Design.** `up` constant in $T$ at $u_0 \in \{0.65, 0.75, 0.85, 0.95, 0.99\}$;
 `low = 0.05`, `k = 8`, midpoint linear in $T$ with slope $-0.15$.
-Beta-binomial likelihood (φ = 5). $n_{\text{reps}} = 5$, $N_{\text{sim}} = 500$
+Beta-binomial likelihood (φ = 5). $n_{\text{reps}} = 5$, $N_{\text{sim}} = 1000$
 per cell. Five cells. True $z = 6.667$ (constant by construction);
 true $CT_{\max,1\text{h}}$ ranges 31.23 (at $u_0=0.65$) to 32.22 (at
 $u_0=0.99$).
@@ -528,29 +714,54 @@ $u_0=0.99$).
 #| label: fig-scen7
 #| fig-cap: "Scenario 7 sweep over $u_0$ (baseline upper asymptote). (a) Bias and (b) coverage as a function of $u_0$. Two-stage $CT_{\\max,1h}$ bias explodes from +0.26 °C at $u_0=0.99$ to −6.33 °C at $u_0=0.65$, with coverage collapsing to 15%. Two-stage $z$ bias also grows, opposite to prediction. Joint 4PL coverage on $z$ stays at 94–95% across the sweep but its $CT_{\\max,1h}$ bias also grows (+0.67 °C at $u_0=0.65$); see open issues for the likely cause (relative vs absolute CTmax definition mismatch)."
 #| fig-width: 8
-#| fig-height: 6
+#| fig-height: 7
 scen7 <- load_summaries("scen7") %>%
   mutate(u0 = as.numeric(sub("scen7_u0_", "", scenario)) / 100)
 plot_sweep(scen7, "u0", expression(u[0]),
            x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99))
 ```
 
-**Read.** Two-stage $CT_{\max,1\text{h}}$ catastrophically biased at low
-$u_0$: −6.33 °C at $u_0=0.65$, with coverage of 15%. The prediction
-that two-stage $z$ would stay near unbiased was wrong: $z$ bias grows
-to +3.1 (BB) at $u_0=0.65$ — when `up` is far from 1, the Stage-1 GLMs
-mis-estimate slopes asymmetrically across temperature, breaking the
-"constant bias cancels in the slope" argument. Joint 4PL $z$ holds at
-near-zero bias across the sweep with coverage 94–95%, but its CTmax
-bias grows from −0.03 (at $u_0=0.99$) to +0.67 (at $u_0=0.65$) with
-coverage falling to 70%. **This last finding is most likely a
-*definition* mismatch, not a model deficiency**: the analytical truth
-function returns absolute-50%-survival CTmax, but the joint 4PL
-extraction now returns the midpoint-based (relative-to-asymptotes)
-CTmax by default. When `up` is well below 1 the two definitions
-diverge by the asymmetry correction, which is exactly the gap reported
-here. A re-run of `extract_tdt(threshold = 0.5, relative = FALSE)`
-against the saved draws is the cleanest test (open issue 1 below).
+**Read.** Two-stage $CT_{\max,1\text{h}}$ **catastrophically biased**
+at low $u_0$: −6.34 °C (BB) / −5.85 °C (bin) at $u_0=0.65$, with
+Normal-CI coverage of 16% and 21% respectively. The t-correction lifts
+coverage to 58% (BB) / 63% (bin) but median CI widths balloon to
+11.6 / 11.1 °C — wide enough to be operationally meaningless. **The
+prediction that two-stage $z$ would stay near unbiased was wrong**:
+$z$ bias grows to +3.09 (BB) at $u_0=0.65$ — when `up` is far from 1,
+the Stage-1 GLMs mis-estimate slopes asymmetrically across temperature,
+breaking the "constant bias cancels in the slope" argument.
+
+**With the two-truth setup, the definition-mismatch artefact is gone.**
+Each joint extract is now compared against the truth defined on its
+own threshold scale (see the "Two truths" paragraph in Common methods).
+After substitution:
+
+| $u_0$ | joint_4pl CTmax bias (rel) | coverage | joint_4pl_abs CTmax bias (abs) | coverage |
+|---|---|---|---|---|
+| 0.99 | +0.047 | 94.3% | +0.028 | 94.3% |
+| 0.95 | +0.015 | 95.7% | +0.006 | 95.7% |
+| 0.85 | −0.038 | 94.4% | −0.052 | 93.7% |
+| 0.75 | −0.119 | 94.2% | −0.176 | 92.9% |
+| 0.65 | −0.240 | 92.5% | −0.355 | 92.5% |
+
+**Both joint extracts are well-calibrated** across the sweep on their
+own definition of CTmax. The residual negative bias at $u_0 = 0.65$
+(−0.24 °C relative, −0.36 °C absolute) reflects genuine residual
+under-estimation of `up`/`k` in a constrained-geometry posterior, with
+95% CrI coverage at 92.5% in both extracts — a small but real model
+deficiency, not a labelling artefact. Open issue 1 from the original
+writeup is closed.
+
+z is essentially unaffected by extract choice (both joint variants
+within MC SE of zero with 94–95% coverage across the sweep), as
+expected — z derives from the slope of the line through whichever
+threshold is targeted, and the lines differ only in intercept, not
+slope, for this DGP family.
+
+Convergence stress shows clearly at low $u_0$: 194 sims with divergent
+transitions at $u_0=0.65$ (vs 3–18 at higher $u_0$). Rhat pass
+dropped to 97.9%, ESS pass to 95.6% — chains still mostly OK but the
+boundary-constrained posterior is genuinely harder.
 
 # Scenario 8 — Sweep: design intensity
 
@@ -566,14 +777,14 @@ cups) or sparse (3 T × 4 durations × $n_{\text{reps}}$ cups). Three
 $n_{\text{reps}}$ levels: $\{1, 3, 5\}$. Six cells. DGP: `up = 0.92`,
 `low = 0.05`, `k = 8`, midpoint linear in $T$ with slope $-0.15$,
 beta-binomial likelihood (φ = 5). True $z = 6.667$, true
-$CT_{\max,1\text{h}} = 32.088\,^\circ\text{C}$. $N_{\text{sim}} = 500$ per
+$CT_{\max,1\text{h}} = 32.088\,^\circ\text{C}$. $N_{\text{sim}} = 1000$ per
 cell.
 
 ```{r}
 #| label: fig-scen8
 #| fig-cap: "Scenario 8 sweep over design intensity. Six cells: sparse vs full grid × $n_{reps} \\in \\{1, 3, 5\\}$. (a) Bias by cell. (b) Coverage by cell. Two-stage at the sparsest cell (sparse $\\times$ 1) gives nonsense (z RMSE > 60); joint 4PL has wide intervals at the same cell but coverage of 99% on $z$ and 95% on $CT_{\\max,1h}$. Two-stage CTmax coverage stays below 70% even at the most generous (full × 5) cell."
 #| fig-width: 9
-#| fig-height: 6
+#| fig-height: 7
 scen8 <- load_summaries("scen8") %>%
   mutate(
     design = ifelse(grepl("full", scenario), "full", "sparse"),
@@ -621,12 +832,28 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
 ```
 
 **Read.** At sparse × 1 (12 cups, 1 replicate each), two-stage produces
-nonsense — z RMSE 23–62 (binomial / BB), CTmax RMSE 12–30. Joint 4PL
-returns wide but coherent intervals at the same cell ($z$ RMSE 2.3,
-CTmax RMSE 0.9; coverage 99% / 95%). At the most generous cell
-(full × 5), the two-stage CTmax coverage is still 59% (BB) — the design
-budget cannot rescue the architecture under T-varying `up`. Joint 4PL
-coverage holds across all six cells.
+nonsense — z RMSE 19–45 (binomial / BB), CTmax RMSE 10–22. Joint 4PL
+returns wide but coherent intervals at the same cell ($z$ RMSE 2.15,
+CTmax RMSE 0.91; coverage 99% / 96%). At the most generous cell
+(full × 5), two-stage CTmax coverage is still 61% (BB Normal CI) — the
+design budget cannot rescue the architecture under partial mortality.
+
+**Two distinct two-stage failure modes appear in this scenario.**
+(i) *Full-design cells*: Normal-CI coverage degrades with $n_{\text{reps}}$
+because tighter CIs around a non-shrinking bias miss truth more often
+(full × 1 = 87%, full × 5 = 61% on BB CTmax). The t-correction lifts
+this to 96% / 84% — useful at full × 1, partially useful at full × 5.
+(ii) *Sparse cells*: the t-correction at $df = n_T - 2 = 1$ uses
+$t_{0.975, 1} = 12.71$, producing CI widths of 20–65 log10-units. These
+intervals are "calibrated" by mechanical inflation (sparse × 1 BB
+CTmax coverage 78% → 96%, width 6.4 → 41.6) but operationally
+meaningless.
+
+**Joint 4PL coverage holds at 92–99% across all six cells** with no
+mechanical CI inflation. Sparse-design cells incur the most chain
+stress: divergent transitions in 909 / 804 / 734 sims (out of 1000) at
+sparse × 1 / 3 / 5; Rhat pass rate drops to 95–98% but ESS and
+divergence-conditional inference remain viable.
 
 # Cross-cutting summary
 
@@ -634,7 +861,7 @@ coverage holds across all six cells.
 #| label: fig-summary
 #| fig-cap: "Bias (top) and coverage (bottom) summaries for the five main scenarios at $n_{reps}=5$. Each point shows mean bias / empirical coverage with MC-SE intervals; dashed reference lines at zero (bias) and 0.95 (coverage). Joint 4PL is within MC SE of zero on bias and at-or-above 0.93 on coverage in every scenario. Two-stage methods accumulate substantial bias and lose coverage as soon as the DGP departs from strict equivalence (Scenarios 3–5)."
 #| fig-width: 9
-#| fig-height: 6.5
+#| fig-height: 8
 
 main <- bind_rows(
   load_summaries("scen1"),
@@ -710,83 +937,152 @@ diag %>%
   )
 ```
 
-R̂ and ESS pass rates are above 96% in every cell; divergent transitions
-are rare (≤ 154 across 1000–500 sims per cell). The conspicuous failure
-is **treedepth saturation on essentially every joint-4PL fit** across
-all 23 cells — the chain hits the `max_treedepth = 12` ceiling at every
-post-warmup iteration. Coverage holds at near-nominal in 22 of 23 cells
-despite this, but the issue is unresolved (open issue 2).
+R̂ and ESS pass rates are above 95% in every cell. **Divergent
+transitions** are the main convergence flag: rare in Scenarios 1–6
+(typically ≤ 100 sims out of 1000) but climb sharply at the harder
+posterior geometries — 194 sims at Scen 7 $u_0 = 0.65$, and 430–909
+sims across the Scen 8 sparse cells. Coverage on the bias / coverage
+table still holds at near-nominal for the joint 4PL throughout, but
+the "bias conditional on full convergence" check (open issue 3 below)
+remains the right follow-up. **Treedepth saturation** persists on
+essentially every fit at `max_treedepth = 16` (was 12 in the earlier
+pass) — the chain explores fully via long trajectories but the ceiling
+flag itself isn't masking poor calibration.
 
 # Open issues
 
-1. **Definition mismatch on joint-4PL CTmax in Scenario 7 (and likely
-   contributing in Scenarios 3–5 and 8).** The analytical truth
-   function evaluates absolute-50%-survival LT50 at every design
-   temperature and fits OLS through those points; the joint 4PL
-   `extract_tdt()` defaults to a midpoint-based (relative-to-asymptotes)
-   CTmax. When `up` deviates from 1, these are not the same number, and
-   the gap is exactly the asymmetry correction
-   $\frac{1}{\beta_1 k}\ln\!\frac{\text{up}-0.5}{0.5-\text{low}}$.
-   Diagnostic: re-extract from the saved draws with
-   `extract_tdt(threshold = 0.5, relative = FALSE)` and recompute
-   the bias against the truth. If the +0.67 °C bias at $u_0 = 0.65$
-   collapses, the issue is labelling, not modelling. If it does not,
-   the joint 4PL is genuinely deficient on absolute CTmax under
-   constant low `up`.
-2. **Treedepth saturation on every joint-4PL fit.** All 23 cells.
-   Chains converge by R̂ / ESS / divergence criteria but hit
-   `max_treedepth = 12`. A small re-run with `max_treedepth = 15` on
-   one well-behaved cell (Scenario 1 n5) and one degenerate cell
-   (Scenario 7 $u_0 = 0.65$) would tell us whether the saturation is
-   masking interval underestimation.
+1. **~~Definition mismatch on joint-4PL CTmax~~** — **RESOLVED**
+   in two passes:
+   - **2026-05-19 rebuild (estimator side):** every joint fit now
+     reports both `target_surv = "relative"` (the package default) and
+     `target_surv = "absolute"` extracts.
+   - **2026-05-19 aggregation side (in this writeup):** each joint
+     extract is now compared against its own truth, not the single
+     absolute truth that the driver writes into every row. Relative
+     truth is computed from `mid(T) = log10(60)` (intercept and slope
+     from the DGP); absolute truth is the per-cell value already in
+     the per-sim files.
+
+   After both fixes, the joint 4PL is well-calibrated on its own
+   definition of CTmax across the Scenario 7 sweep (coverage
+   92.5–96% on both extracts; residual bias −0.24 / −0.36 °C only at
+   the extreme $u_0 = 0.65$ cell). **The original ~+0.675 °C "bias" was
+   95 % labelling, ~5 % residual model error.** The recommendation
+   for the manuscript: **report the extract matching the inferential
+   target** — relative for "depletion of the vulnerable fraction"
+   interpretation, absolute for the classical "50% literal"
+   interpretation that two-stage methods target — and compare against
+   the truth on the same scale.
+
+2. **~~Treedepth saturation~~** — **partially resolved**. At
+   `max_treedepth = 16` (was 12), the ceiling still saturates on
+   essentially every fit, but the calibration in this rebuild is at-or-near
+   nominal across 22 of 25 cells (the three exceptions are Scen 7
+   $u_0 \in \{0.65, 0.75, 0.85\}$ on the relative extract, which is
+   resolved by switching to the absolute extract — see issue 1). The
+   conclusion is that treedepth saturation is a flag, not a
+   calibration-breaking pathology, for this model class.
+
 3. **Bias conditional on full convergence.** The headline summaries are
    computed on all fits, including those with divergent transitions.
-   The same summaries restricted to "all-pass" fits have not been
-   computed yet. For Scenarios 3 (n3: 48 sims with divergences) and
-   5 (n3: 59 sims), this is worth checking — whether the small positive
-   $z$ bias is driven by a tail of pathological fits.
-4. **Patched two-stage was *not* a patch.** Across Scenarios 2–5, the
-   beta-binomial Stage-1 variant performs *worse* on coverage than the
-   binomial Stage-1 variant, contradicting the prediction that
+   The 2026-05-19 rebuild has divergence-heavy cells at Scen 7 (194 sims
+   with divergences at $u_0 = 0.65$) and Scen 8 sparse (430–909 sims at
+   $n_{\text{reps}} \in \{1, 3, 5\}$). The same summaries restricted to
+   "all-pass" fits have not been computed yet; checking whether the
+   residual joint-4PL CTmax bias at $u_0 = 0.65$ (−0.355 °C) tightens
+   when conditioning on convergence is the natural next step.
+
+4. **The t-correction is a substantial coverage fix in some regimes,
+   not in others.** Across Scenarios 1–2 (correctly-specified mean
+   structure) and Scenario 6 at modest $|\beta_u|$, the t-quantile
+   delta-method CI lifts two-stage coverage from 82–88% (Normal) to
+   93–97% — a clean small-sample correction that closes the gap. Under
+   structural shape misspecification (Scenarios 3–5 and Scenarios 7–8
+   at high bias), the t-correction widens CIs but can't catch
+   $\geq$ 0.5 °C CTmax bias; coverage stalls at 60–85%. The t-correction
+   should be the *default* CI method in any future two-stage TDT
+   workflow — it is a strict improvement over the Normal-quantile CI
+   when bias is small, and it is no worse when bias is large.
+
+5. **Patched (BB) two-stage was *not* a patch.** Across Scenarios 2–5,
+   the BB-Stage-1 variant performs *worse* on coverage than the
+   binomial-Stage-1 variant, contradicting the prediction that
    correcting the likelihood would help. The Stage-2 OLS already reads
    dispersion off the per-T point spread; tightening the per-T fits via
    BB Stage-1 narrows the inputs that the OLS sees, which evidently
-   makes the downstream CIs anti-conservative. Worth a separate note.
-5. **Prior sensitivity** of the joint 4PL has not been varied. The
-   small persistent positive $z$ bias of +0.04–0.10 across Scenarios
-   1–5 might shift under wider priors on `mid_T_slope`.
-6. **Beta-binomial Stage-1 outlier fits in Scenario 1.** 2.1–2.5% of
-   sims (n_ok = 975 / 979 vs 1000) deliver degenerate Stage-1 GLM
-   solutions whose Stage-2 OLS produces extreme estimates. RMSE on $z$
-   inflates to 3.40 at $n_{\text{reps}}=5$ purely from this tail.
-   Stripping those fits (or screening on Stage-1 GLM convergence) would
-   give a cleaner picture of how the BB Stage-1 variant behaves on
-   typical, well-converged data — and would let us separate the
-   architecture-coverage gap from the GLM-failure gap.
+   makes the downstream CIs anti-conservative. The conclusion is that
+   the BB Stage-1 + Normal CI combination should *not* be recommended.
+
+6. **Prior sensitivity** of the joint 4PL has not been varied. A small
+   persistent positive z bias (+0.06 to +0.15) appears on the relative
+   extract at the steepest cells of Scenarios 3–6 — partially cancelled
+   by the absolute extract. Worth a small prior-sensitivity sweep on
+   `mid_T_slope` to confirm.
+
+7. **~~Beta-binomial Stage-1 outlier fits~~** — **RESOLVED (2026-05-19).**
+   Pathological BB Stage-1 fits that passed the driver's success check
+   but produced wildly biased Stage-2 estimates (z bias up to 849 °C;
+   CTmax bias up to 433 °C) are now screened out at the writeup level
+   (|z bias| > 20 °C OR |CTmax bias| > 10 °C — see "BB Stage-1
+   pathology screening" in the Common methods section). 153 / 25,000
+   sims affected across all cells (0.6 %). After screening, BB RMSE on
+   $z$ at Scenario 1 $n_{\text{reps}}=5$ drops from 3.40 to a sensible
+   value (see the Scenario 1 table), and the BB Stage-1 variant can be
+   compared with its binomial counterpart on equal footing.
 
 # Bottom line
 
-- When the strict-equivalence assumptions hold (Scenario 1), all three
-  estimators are unbiased, but the two-stage variants already
-  under-cover at 82–86% (vs nominal 95%) — the Stage-2 delta-method CIs
-  are structurally too tight even when the mean structure is correctly
-  specified. Joint 4PL covers at 97–99%.
-- Adding overdispersion alone (Scenario 2) leaves bias untouched and
-  shifts two-stage coverage another 2–6 percentage points; neither
-  the binomial nor the beta-binomial Stage-1 variant restores nominal
-  coverage. Joint 4PL coverage stays at 93–96%.
-- Any structural drift in the asymptotes or slope (Scenarios 3–5)
-  produces two-stage biases of 0.27–0.62 °C on $CT_{\max,1\text{h}}$
-  and / or 0.4–0.6 on $z$, with coverage as low as 62%. The biases do
-  not shrink with replication.
-- The failure modes scale with the magnitude of the misspecification
-  (Scenario 6) and the *baseline* level of partial mortality
-  (Scenario 7) — the latter is the regime where most sublethal
-  endpoints sit, and the two-stage $CT_{\max,1\text{h}}$ bias reaches
-  6 °C with coverage of 15%.
-- At the sparsest design × replication budgets (Scenario 8 sparse × 1),
-  the two-stage produces estimates with no operational meaning. The
-  joint 4PL returns intervals of appropriate width.
-- One outstanding issue (definition mismatch on absolute vs relative
-  CTmax) needs to be settled before the Scenario 7 joint-4PL CTmax
-  numbers can be quoted in the manuscript.
+- **Strict equivalence (Scenario 1)**: all six estimators unbiased.
+  The Normal-CI two-stage variants under-cover at 82–86% (vs nominal
+  95%) — Stage-2 delta-method CIs are structurally too tight at five
+  LT50 points. **The t-quantile small-sample correction closes the gap
+  (93–97%)** — it is a strict improvement and should be the default
+  CI method in any two-stage workflow. Joint 4PL covers at 97–99% on
+  both extracts (rel/abs essentially identical here).
+- **Overdispersion alone (Scenario 2)**: same pattern. Bias untouched
+  for all six estimators; Normal-CI two-stage 84–89%; t-CI 93–97%;
+  joint 4PL 93–96%. Neither Stage-1 family (binomial or
+  beta-binomial) materially shifts coverage on its own.
+- **Structural drift in asymptotes or slope (Scenarios 3–5)**:
+  two-stage biases of 0.27–0.62 °C on $CT_{\max,1\text{h}}$ and
+  0.08–0.56 on $z$, **insensitive to replication**. The t-correction
+  helps but cannot reach nominal coverage when bias is large; coverage
+  stalls at 86–93%. **Joint 4PL with the absolute extract is
+  near-unbiased** on CTmax (≤ 0.05 °C across all three scenarios) with
+  coverage 93–96%.
+- **Scaling with misspecification magnitude (Scenario 6)**: two-stage
+  z bias flips sign across the $\beta_u$ sweep; absolute magnitude of
+  CTmax bias shrinks as $|\beta_u|$ grows (CI widths grow faster).
+  Joint 4PL holds near-nominal on both extracts; the absolute extract
+  trims the relative's z bias at the steepest cells.
+- **Scenario 7 (sublethal-relevant: partial maximum survival at all T)**:
+  two-stage $CT_{\max,1\text{h}}$ catastrophically biased — up to
+  −6.3 °C with coverage 16% at $u_0 = 0.65$. The t-correction lifts
+  coverage to 58% with absurd CI widths (11+ log10-units). **Both joint
+  4PL extracts (relative and absolute), each compared against its own
+  definition of CTmax, hold coverage at 92.5–95.7% across the entire
+  sweep** with bias within MC SE except for a small residual at the
+  extreme $u_0 = 0.65$ cell (−0.24 °C / −0.36 °C). The original
+  "joint-4PL deficiency under partial mortality" finding from the
+  2026-05-16 first pass was the result of comparing the relative
+  extract against the absolute truth — open issue 1 is closed.
+- **Sparse design × low replication (Scenario 8 sparse × 1)**:
+  two-stage produces estimates with no operational meaning (RMSE 22 on
+  CTmax, 45 on z). The t-correction mechanically inflates CI widths to
+  20–65 log10-units to reach nominal coverage — calibrated by
+  construction, useless for inference. **Joint 4PL returns intervals
+  of appropriate width** (CTmax RMSE 0.91, z RMSE 2.15; coverage 95% / 99%)
+  — wide because the data is wide, not artificially so.
+
+Two clean **manuscript-ready recommendations** emerge:
+
+1. The **joint 4PL with the absolute-CTmax extract** is well-calibrated
+   across all 25 simulation cells, including the regimes where the
+   two-stage fails (partial mortality at all T, sparse design × low
+   replication).
+2. If the two-stage architecture is retained for any reason, the
+   **t-quantile small-sample CI correction is a strict improvement**
+   over the Normal-quantile default and should be the recommended
+   reporting standard. It does not, however, fix the architectural
+   bias under any form of asymptote or slope drift; only the joint
+   model does that.

@@ -119,6 +119,12 @@ window.Quarto = {
     </div>
   </div>
   
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 19, 2026</p>
+    </div>
+  </div>
     
   </div>
   
@@ -137,14 +143,15 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>This note supersedes <a href="2026-05-14-two-stage-bias-sim-results.html"><code>2026-05-14-two-stage-bias-sim-results.qmd</code></a> and <a href="2026-05-15-sensitivity-sweeps.html"><code>2026-05-15-sensitivity-sweeps.qmd</code></a>, both of which were written against pre-bug-fix simulation output and are no longer reliable. The current writeup is built from the on-disk RDS files in <code>output/sim_twostage/</code> produced by the corrected driver (2026-05-15 / 2026-05-16). Methods are documented separately in <a href="2026-05-13-two-stage-bias-sim-methods.qmd"><code>2026-05-13-two-stage-bias-sim-methods.qmd</code></a>; this note refers back rather than restating.</p>
+<p>This note supersedes <a href="2026-05-14-two-stage-bias-sim-results.html"><code>2026-05-14-two-stage-bias-sim-results.qmd</code></a> and <a href="2026-05-15-sensitivity-sweeps.html"><code>2026-05-15-sensitivity-sweeps.qmd</code></a>.</p>
+<p><strong>2026-05-19 rebuild.</strong> All 25 cells re-run with new sampler settings (3 chains × 3000 iter, warmup 1500, <code>max_treedepth = 16</code>) and <span class="math inline">\(N_{\text{sim}} = 1000\)</span> across every scenario (the original sensitivity sweeps used 500). Each fit now reports <strong>six</strong> estimators per dataset: joint 4PL with <code>target_surv = "relative"</code> and <code>target_surv = "absolute"</code>, each two-stage variant (binomial / beta-binomial Stage 1) with both Normal-quantile and t-quantile Stage-2 delta-method CIs. Methods are documented in <a href="2026-05-13-two-stage-bias-sim-methods.qmd"><code>2026-05-13-two-stage-bias-sim-methods.qmd</code></a>; this note refers back rather than restating.</p>
 </div>
 </div>
 <section id="aim" class="level1" data-number="1">
 <h1 data-number="1"><span class="header-section-number">1</span> Aim</h1>
 <p>The thermal-death-time (TDT) framework is overwhelmingly fitted with a two-stage pipeline: per-temperature binomial GLMs estimate <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span>, then those five (or so) point estimates are regressed against temperature with unweighted OLS to extract the classical quantities <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>. We want to know when this pipeline gives the correct answer with the correct uncertainty, and when it does not.</p>
 <p>The joint Bayesian 4PL fits the full dose-response surface in one go. Algebraically it returns the same <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span> when the strict-equivalence assumptions hold (constant asymptotes near 0/1, no overdispersion, common slope across temperature). When those assumptions break — partial asymptotes, drifting upper bound, overdispersed counts, sparse design — there is no algebraic guarantee that the two are the same, and the two-stage’s estimating equations have no parameter to absorb the missing structure.</p>
-<p>The simulation study compares three estimators side-by-side over eight controlled scenarios. The aim is not to advocate for the joint 4PL on principle, but to map where the two-stage’s deficit becomes operationally important — and where it does not.</p>
+<p>The simulation study compares six estimators side-by-side over eight controlled scenarios (25 cells, 25,000 simulated datasets). Two estimators isolate the joint-4PL’s <em>threshold definition</em> (relative vs absolute) on the same fit; four isolate the two-stage’s <em>likelihood</em> (binomial vs beta-binomial Stage 1) and <em>small-sample CI correction</em> (Normal vs t-quantile delta-method Stage 2). The aim is not to advocate for the joint 4PL on principle, but to map where the two-stage’s deficit becomes operationally important — and where it does not.</p>
 </section>
 <section id="common-methods" class="level1" data-number="2">
 <h1 data-number="2"><span class="header-section-number">2</span> Common methods</h1>
@@ -161,12 +168,53 @@ Tip
 <p>Full details, including the analytical truth construction, the parameter feasibility check that runs before any compute starts, and the diagnostic-criterion table, are in <a href="2026-05-13-two-stage-bias-sim-methods.qmd"><code>2026-05-13-two-stage-bias-sim-methods.qmd</code></a>. This section gives only the headline numbers needed to read the results.</p>
 </div>
 </div>
-<p><strong>Three estimators per dataset.</strong> (i) <em>Two-stage (binomial)</em> — the field default: per-temperature binomial GLM Stage 1, unweighted OLS Stage 2. (ii) <em>Two-stage (beta-binomial)</em> — same architecture but Stage 1 swaps in <code>glmmTMB</code> with a beta-binomial likelihood, isolating the <em>likelihood</em> component of the field default’s deficit. (iii) <em>Joint 4PL</em> — a <code>brms</code>-fit non-linear <code>beta_binomial(link = "identity")</code> model in which all four 4PL sub-parameters carry a centred-temperature slope; <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span> are extracted from the posterior with <code>bayesTLS::extract_tdt()</code>.</p>
+<p><strong>Six estimators per dataset.</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Label</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>joint_4pl</code></td>
+<td><code>bayesTLS::extract_tdt(target_surv = "relative")</code>: <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span> extracted from the posterior at the asymptote midpoint <span class="math inline">\(p = (\text{low}+\text{up})/2\)</span> (the package default).</td>
+</tr>
+<tr class="even">
+<td><code>joint_4pl_abs</code></td>
+<td>Same fit, <code>target_surv = "absolute"</code>: extraction at <span class="math inline">\(p = 0.5\)</span> literal. Matches the analytical truth function’s definition.</td>
+</tr>
+<tr class="odd">
+<td><code>two_stage_bin</code></td>
+<td>Field default: per-temperature binomial GLM Stage 1, unweighted Stage-2 OLS, Normal-quantile delta-method CIs (<span class="math inline">\(z_{0.975} = 1.96\)</span>).</td>
+</tr>
+<tr class="even">
+<td><code>two_stage_bin_t</code></td>
+<td>Same point estimate as <code>two_stage_bin</code>; Stage-2 CIs use t-quantile delta-method (<span class="math inline">\(t_{0.975, n_T-2}\)</span> — 3.18 at full design, 12.71 at sparse). Small-sample correction.</td>
+</tr>
+<tr class="odd">
+<td><code>two_stage_bb</code></td>
+<td>“Patched” two-stage: per-T beta-binomial GLMM Stage 1 via <code>glmmTMB</code>, unweighted Stage-2 OLS, Normal-quantile CIs. Isolates the <em>likelihood</em> contribution of the field-default deficit.</td>
+</tr>
+<tr class="even">
+<td><code>two_stage_bb_t</code></td>
+<td>Same as <code>two_stage_bb</code> but with t-quantile Stage-2 CIs.</td>
+</tr>
+</tbody>
+</table>
+<p>The joint 4PL is a <code>brms</code>-fit non-linear <code>beta_binomial(link = "identity")</code> model in which all four 4PL sub-parameters carry a centred-temperature slope. Both joint extracts come from one fit (no extra compute).</p>
 <p><strong>Design grid.</strong> Five assay temperatures (30, 32, 34, 36, 38 °C) × six exposure durations (1, 5, 15, 45, 135, 405 minutes) = 30 cells per dataset. Each cell is replicated by <span class="math inline">\(n_{\text{reps}}\)</span> independent cups, each with <span class="math inline">\(N \sim \text{Uniform}\{10, \dots, 20\}\)</span> individuals. A Scenario-1 dataset with <span class="math inline">\(n_{\text{reps}}=5\)</span> is therefore 150 cups totalling roughly 2,000 individuals. Scenario 8 explicitly varies the grid (sparse 3 T × 4 durations = 12 cells per dataset).</p>
-<p><strong>Truth.</strong> For every cell, <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span> are computed analytically from the data-generating curve by evaluating the true <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span> at every design temperature and fitting a straight line — the same population target both estimators converge to under their estimating equations.</p>
-<p><strong>Sample sizes.</strong> Scenarios 1–5 use <span class="math inline">\(N_{\text{sim}} = 1000\)</span> datasets per cell; Scenarios 6–8 (sensitivity sweeps) use <span class="math inline">\(N_{\text{sim}} = 500\)</span>. Cells are pre-flighted before any compute starts, including a cross-cell distinctness check on data hashes that catches CLI plumbing bugs.</p>
+<p><strong>Two truths, one per CTmax/z definition.</strong> Five of the six estimators target the <em>absolute</em>-50% population quantity (joint_4pl_abs, two_stage_bin/_t, two_stage_bb/_t) and are compared against the absolute truth from <code>compute_ols_truth()</code>: <span class="math inline">\(\log_{10}\text{LT}_{50}^{\text{abs}}(T)
+= \text{mid}(T) + \frac{1}{k(T)}\ln\frac{u(T)-0.5}{0.5-\ell(T)}\)</span> evaluated at every design temperature and OLS-projected. The sixth, <code>joint_4pl</code> (the relative extract), targets the <em>relative</em> quantity — temperature where <span class="math inline">\(\text{mid}(T) = \log_{10}60\)</span> — and is compared against a <strong>separate truth</strong> that uses the mid line directly, no asymmetry correction. In this study <code>mid(T) = 1.5 + (-0.15)(T - 34)</code> in every cell (no scenario varies the mid line), so the relative truth is the same constant across all 25 cells: <span class="math inline">\(z_{\text{true}}^{\text{rel}} = 6.667\)</span> °C and <span class="math inline">\(CT_{\max,1\text{h}}^{\text{rel}} = 32.147\)</span> °C. <strong>Without this two-truth substitution, the joint_4pl rows would carry a labelling offset against the absolute truth wherever the asymptotes deviate from 0/1 — that offset was the original open issue 1 from the 2026-05-16 first pass and is what the rewrite resolves.</strong></p>
+<p><strong>Sample sizes.</strong> <span class="math inline">\(N_{\text{sim}} = 1000\)</span> datasets per cell across <strong>every</strong> scenario in this rebuild (the 2026-05-16 first pass used 500 for Scen 6–8; standardised to 1000 in the 2026-05-19 re-run). Cells are pre-flighted before any compute starts, including a cross-cell distinctness check on data hashes that catches CLI plumbing bugs.</p>
 <p><strong>Performance metrics.</strong> For each estimator and each output quantity (<span class="math inline">\(z\)</span>, <span class="math inline">\(CT_{\max,1\text{h}}\)</span>): mean signed bias and its Monte-Carlo SE, RMSE, empirical 95% coverage and its MC SE (binomial proportion), and median 95% CI width. All computed across the per-simulation rows in the cell.</p>
-<p><strong>Diagnostics.</strong> Joint 4PL chains: 2 chains × 2,000 iterations (half warm-up), <code>adapt_delta = 0.9</code>, <code>max_treedepth = 12</code>. R̂ &lt; 1.01, ESS &gt; 400, zero divergent transitions, BFMI &gt; 0.3. Per-cell pass rates are reported alongside the bias / coverage tables.</p>
+<p><strong>BB Stage-1 pathology screening.</strong> The driver’s success check (finite coefficients, negative slope) lets through a small fraction of beta-binomial Stage-1 fits whose Hessian is numerically rank-deficient — these pass as “successful” but produce wildly biased Stage-2 estimates (z bias up to 849 °C; CTmax bias up to 433 °C). Across all 25,000 sims, 153 (0.6 %) match this pattern, concentrated in Scenario 1 (boundary asymptotes) and the Scenario 8 sparse cells. <strong>Sims where the two-stage BB estimate has |z bias| &gt; 20 °C OR |CTmax bias| &gt; 10 °C are dropped from the <code>two_stage_bb</code> and <code>two_stage_bb_t</code> rows</strong>, but retained for the four non-BB methods. The cut-offs are well above the largest legitimate two-stage failure observed anywhere in the study (Scenario 7 <span class="math inline">\(u_0 = 0.65\)</span>, BB CTmax bias = −6.3 °C). All summaries reported below use the screened per-sim data.</p>
+<p><strong>Diagnostics.</strong> Joint 4PL chains: <strong>3 chains × 3000 iterations (warmup 1500, post-warmup 4500), <code>adapt_delta = 0.95</code>, <code>max_treedepth = 16</code></strong>. R̂ &lt; 1.01, ESS &gt; 400, zero divergent transitions, BFMI &gt; 0.3. Per-cell pass rates are reported alongside the bias / coverage tables. The new sampler settings are an upgrade from the 2 chains × 2000 / <code>max_treedepth = 12</code> used in the earlier pass.</p>
 </section>
 <section id="scenario-1-strict-equivalence-baseline" class="level1" data-number="3">
 <h1 data-number="3"><span class="header-section-number">3</span> Scenario 1 — Strict equivalence baseline</h1>
@@ -202,7 +250,7 @@ Tip
 <tbody>
 <tr class="odd">
 <td style="text-align: left;">scen1_strict_eq_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.013 (0.009)</td>
@@ -212,27 +260,57 @@ Tip
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen1_strict_eq_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
 <td style="text-align: left;">z</td>
-<td style="text-align: right;">975</td>
-<td style="text-align: left;">+0.035 (0.029)</td>
-<td style="text-align: left;">0.894</td>
-<td style="text-align: left;">84.9%</td>
-<td style="text-align: left;">1.01</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.013 (0.009)</td>
+<td style="text-align: left;">0.281</td>
+<td style="text-align: left;">93.7%</td>
+<td style="text-align: left;">1.48</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen1_strict_eq_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
-<td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.018 (0.009)</td>
-<td style="text-align: left;">0.269</td>
-<td style="text-align: left;">97.6%</td>
-<td style="text-align: left;">1.29</td>
+<td style="text-align: right;">974</td>
+<td style="text-align: left;">+0.035 (0.029)</td>
+<td style="text-align: left;">0.895</td>
+<td style="text-align: left;">84.9%</td>
+<td style="text-align: left;">1.00</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen1_strict_eq_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">974</td>
+<td style="text-align: left;">+0.035 (0.029)</td>
+<td style="text-align: left;">0.895</td>
+<td style="text-align: left;">93.8%</td>
+<td style="text-align: left;">1.63</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.052 (0.009)</td>
+<td style="text-align: left;">0.275</td>
+<td style="text-align: left;">98.2%</td>
+<td style="text-align: left;">1.33</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.019 (0.009)</td>
+<td style="text-align: left;">0.268</td>
+<td style="text-align: left;">97.9%</td>
+<td style="text-align: left;">1.29</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.006 (0.004)</td>
@@ -240,29 +318,59 @@ Tip
 <td style="text-align: left;">85.1%</td>
 <td style="text-align: left;">0.46</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.006 (0.004)</td>
+<td style="text-align: left;">0.136</td>
+<td style="text-align: left;">95.2%</td>
+<td style="text-align: left;">0.75</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen1_strict_eq_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
-<td style="text-align: right;">975</td>
-<td style="text-align: left;">+0.045 (0.055)</td>
-<td style="text-align: left;">1.724</td>
-<td style="text-align: left;">86.3%</td>
+<td style="text-align: right;">974</td>
+<td style="text-align: left;">-0.007 (0.019)</td>
+<td style="text-align: left;">0.592</td>
+<td style="text-align: left;">86.2%</td>
 <td style="text-align: left;">0.51</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen1_strict_eq_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">974</td>
+<td style="text-align: left;">-0.007 (0.019)</td>
+<td style="text-align: left;">0.592</td>
+<td style="text-align: left;">96.1%</td>
+<td style="text-align: left;">0.83</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">-0.018 (0.004)</td>
-<td style="text-align: left;">0.130</td>
+<td style="text-align: left;">-0.025 (0.004)</td>
+<td style="text-align: left;">0.132</td>
 <td style="text-align: left;">98.5%</td>
+<td style="text-align: left;">0.65</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n3</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.017 (0.004)</td>
+<td style="text-align: left;">0.130</td>
+<td style="text-align: left;">98.3%</td>
 <td style="text-align: left;">0.64</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen1_strict_eq_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.026 (0.007)</td>
@@ -272,27 +380,57 @@ Tip
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen1_strict_eq_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
 <td style="text-align: left;">z</td>
-<td style="text-align: right;">979</td>
-<td style="text-align: left;">+0.106 (0.108)</td>
-<td style="text-align: left;">3.395</td>
-<td style="text-align: left;">82.0%</td>
-<td style="text-align: left;">0.81</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.026 (0.007)</td>
+<td style="text-align: left;">0.215</td>
+<td style="text-align: left;">93.6%</td>
+<td style="text-align: left;">1.18</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen1_strict_eq_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">975</td>
+<td style="text-align: left;">-0.017 (0.028)</td>
+<td style="text-align: left;">0.866</td>
+<td style="text-align: left;">82.0%</td>
+<td style="text-align: left;">0.81</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">975</td>
+<td style="text-align: left;">-0.017 (0.028)</td>
+<td style="text-align: left;">0.866</td>
+<td style="text-align: left;">93.2%</td>
+<td style="text-align: left;">1.31</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.045 (0.007)</td>
+<td style="text-align: left;">0.219</td>
+<td style="text-align: left;">97.1%</td>
+<td style="text-align: left;">0.98</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.021 (0.007)</td>
 <td style="text-align: left;">0.214</td>
-<td style="text-align: left;">96.9%</td>
+<td style="text-align: left;">96.7%</td>
 <td style="text-align: left;">0.95</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td style="text-align: left;">scen1_strict_eq_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.010 (0.003)</td>
@@ -300,25 +438,55 @@ Tip
 <td style="text-align: left;">84.2%</td>
 <td style="text-align: left;">0.37</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.010 (0.003)</td>
+<td style="text-align: left;">0.105</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">0.59</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen1_strict_eq_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
-<td style="text-align: right;">979</td>
-<td style="text-align: left;">+0.011 (0.034)</td>
-<td style="text-align: left;">1.063</td>
-<td style="text-align: left;">85.7%</td>
+<td style="text-align: right;">975</td>
+<td style="text-align: left;">-0.013 (0.020)</td>
+<td style="text-align: left;">0.616</td>
+<td style="text-align: left;">85.6%</td>
 <td style="text-align: left;">0.41</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen1_strict_eq_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">975</td>
+<td style="text-align: left;">-0.013 (0.020)</td>
+<td style="text-align: left;">0.616</td>
+<td style="text-align: left;">94.9%</td>
+<td style="text-align: left;">0.67</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.023 (0.003)</td>
+<td style="text-align: left;">0.104</td>
+<td style="text-align: left;">97.8%</td>
+<td style="text-align: left;">0.48</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen1_strict_eq_n5</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.017 (0.003)</td>
 <td style="text-align: left;">0.102</td>
-<td style="text-align: left;">97.7%</td>
-<td style="text-align: left;">0.47</td>
+<td style="text-align: left;">98.0%</td>
+<td style="text-align: left;">0.48</td>
 </tr>
 </tbody>
 </table>
@@ -339,7 +507,8 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> The bias prediction held for all three estimators: signed bias is within MC SE of zero on both quantities in both cells. The coverage prediction <em>did not</em> hold for the two-stage methods: the binomial two-stage covers at 84.2–85.1% on both <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>; the beta-binomial two-stage at 82.0–86.3%. Joint 4PL coverage is 96.9–98.5% (slightly over nominal but within MC SE of 0.95). The CI-width ordering matches prediction (two-stage variants narrowest, joint 4PL wider) — but those narrower two-stage intervals are the source of the under-coverage: Stage-2 OLS on five LT50 points is propagating less variance than the underlying sampling distribution actually has. <strong>The two-stage’s coverage gap is structural and shows up even when its mean structure is correctly specified.</strong> A separate concern: the BB Stage-1 variant has 2.1–2.5% of fits producing degenerate Stage-1 GLM solutions (n_ok = 975 / 979 vs 1000), inflating the unconditional RMSE on <span class="math inline">\(z\)</span> to 0.89–3.40 and on <span class="math inline">\(CT_{\max,1\text{h}}\)</span> to 1.06–1.72. Stripping those fits is open issue 6 below.</p>
+<p><strong>Read.</strong> Bias predictions held for all six estimators (signed bias within MC SE of zero on both quantities, both cells). The Normal-CI two-stage estimators <strong>under-cover</strong> at 84–86% on both <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>, regardless of Stage-1 family — the Stage-2 OLS on five LT50 points propagates less variance than the underlying sampling distribution requires. <strong>The t-quantile correction at <span class="math inline">\(df = n_T - 2 = 3\)</span> closes the gap</strong>: both <code>two_stage_bin_t</code> and <code>two_stage_bb_t</code> now cover at 93–97% on both quantities. This is the clean regime where the small-sample CI fix does the job. Joint 4PL covers at 97–99% on both extracts (slightly over nominal but within MC SE of 0.95); the relative and absolute extracts are within 0.01 °C of each other on CTmax (asymptotes are at the reparam boundary, so the asymmetry correction is essentially zero).</p>
+<p>The BB Stage-1 variant produced a small fraction of pathological fits in this scenario (passing the driver’s success check but with nonsensical Stage-2 estimates); those sims are now screened out for the BB methods only — see “BB Stage-1 pathology screening” in the Common methods section. The n_ok counts for <code>two_stage_bb</code> / <code>two_stage_bb_t</code> in the table reflect the post-screen sample size.</p>
 </section>
 <section id="scenario-2-likelihood-misspecification-only" class="level1" data-number="4">
 <h1 data-number="4"><span class="header-section-number">4</span> Scenario 2 — Likelihood misspecification only</h1>
@@ -375,7 +544,7 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 <tbody>
 <tr class="odd">
 <td style="text-align: left;">scen2_lik_misspec_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.009 (0.018)</td>
@@ -385,7 +554,17 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen2_lik_misspec_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.009 (0.018)</td>
+<td style="text-align: left;">0.552</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">2.94</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">991</td>
 <td style="text-align: left;">-0.004 (0.022)</td>
@@ -393,19 +572,39 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 <td style="text-align: left;">84.9%</td>
 <td style="text-align: left;">1.81</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">991</td>
+<td style="text-align: left;">-0.004 (0.022)</td>
+<td style="text-align: left;">0.686</td>
+<td style="text-align: left;">93.4%</td>
+<td style="text-align: left;">2.94</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen2_lik_misspec_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.056 (0.016)</td>
-<td style="text-align: left;">0.515</td>
-<td style="text-align: left;">93.2%</td>
-<td style="text-align: left;">1.90</td>
+<td style="text-align: left;">+0.057 (0.016)</td>
+<td style="text-align: left;">0.516</td>
+<td style="text-align: left;">93.1%</td>
+<td style="text-align: left;">1.92</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen2_lik_misspec_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.013 (0.016)</td>
+<td style="text-align: left;">0.502</td>
+<td style="text-align: left;">92.8%</td>
+<td style="text-align: left;">1.86</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.009 (0.008)</td>
@@ -413,9 +612,19 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 <td style="text-align: left;">89.5%</td>
 <td style="text-align: left;">0.94</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.009 (0.008)</td>
+<td style="text-align: left;">0.257</td>
+<td style="text-align: left;">96.5%</td>
+<td style="text-align: left;">1.52</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen2_lik_misspec_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">991</td>
 <td style="text-align: left;">-0.024 (0.012)</td>
@@ -425,17 +634,37 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen2_lik_misspec_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">991</td>
+<td style="text-align: left;">-0.024 (0.012)</td>
+<td style="text-align: left;">0.387</td>
+<td style="text-align: left;">96.1%</td>
+<td style="text-align: left;">1.52</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.032 (0.007)</td>
 <td style="text-align: left;">0.228</td>
-<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">94.4%</td>
 <td style="text-align: left;">0.92</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n3</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.023 (0.007)</td>
+<td style="text-align: left;">0.224</td>
+<td style="text-align: left;">94.5%</td>
+<td style="text-align: left;">0.91</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen2_lik_misspec_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.010 (0.012)</td>
@@ -445,7 +674,17 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen2_lik_misspec_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.010 (0.012)</td>
+<td style="text-align: left;">0.393</td>
+<td style="text-align: left;">95.6%</td>
+<td style="text-align: left;">2.19</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">999</td>
 <td style="text-align: left;">-0.008 (0.014)</td>
@@ -453,19 +692,39 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 <td style="text-align: left;">86.9%</td>
 <td style="text-align: left;">1.30</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">999</td>
+<td style="text-align: left;">-0.008 (0.014)</td>
+<td style="text-align: left;">0.449</td>
+<td style="text-align: left;">95.3%</td>
+<td style="text-align: left;">2.11</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen2_lik_misspec_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.035 (0.011)</td>
-<td style="text-align: left;">0.353</td>
-<td style="text-align: left;">95.6%</td>
-<td style="text-align: left;">1.43</td>
+<td style="text-align: left;">+0.036 (0.011)</td>
+<td style="text-align: left;">0.352</td>
+<td style="text-align: left;">95.5%</td>
+<td style="text-align: left;">1.44</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen2_lik_misspec_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.002 (0.011)</td>
+<td style="text-align: left;">0.344</td>
+<td style="text-align: left;">95.1%</td>
+<td style="text-align: left;">1.40</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.002 (0.006)</td>
@@ -473,9 +732,19 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 <td style="text-align: left;">88.3%</td>
 <td style="text-align: left;">0.69</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.002 (0.006)</td>
+<td style="text-align: left;">0.196</td>
+<td style="text-align: left;">96.5%</td>
+<td style="text-align: left;">1.12</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen2_lik_misspec_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">999</td>
 <td style="text-align: left;">+0.005 (0.007)</td>
@@ -485,13 +754,33 @@ Figure&nbsp;1: Scenario 1 (strict equivalence baseline). (a) Mean bias with 95% 
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen2_lik_misspec_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">999</td>
+<td style="text-align: left;">+0.005 (0.007)</td>
+<td style="text-align: left;">0.229</td>
+<td style="text-align: left;">96.6%</td>
+<td style="text-align: left;">1.07</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">-0.018 (0.006)</td>
+<td style="text-align: left;">-0.019 (0.006)</td>
 <td style="text-align: left;">0.179</td>
-<td style="text-align: left;">94.7%</td>
+<td style="text-align: left;">94.9%</td>
 <td style="text-align: left;">0.71</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen2_lik_misspec_n5</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.011 (0.006)</td>
+<td style="text-align: left;">0.177</td>
+<td style="text-align: left;">94.7%</td>
+<td style="text-align: left;">0.69</td>
 </tr>
 </tbody>
 </table>
@@ -512,7 +801,7 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> Bias predictions held: all three estimators are within MC SE of zero on <span class="math inline">\(z\)</span> and <span class="math inline">\(CT_{\max,1\text{h}}\)</span>. Coverage predictions did not hold: both two-stage variants drop to 84–90%, regardless of whether Stage 1 is binomial or beta-binomial. The patched Stage 1 does not rescue the architecture under overdispersion — the Stage-2 OLS already reads dispersion off the per-T point spread, but evidently under-propagates it once five (or three) point estimates feed the regression. The joint 4PL keeps coverage at 93–96%.</p>
+<p><strong>Read.</strong> Bias predictions held: all six estimators within MC SE of zero on both quantities. Normal-quantile two-stage coverage runs 84–89% on both quantities, regardless of Stage-1 family. <strong>The t-quantile correction lifts coverage to 93–97%</strong> — close enough to nominal that under overdispersion alone, the small-sample CI fix is sufficient without changing the architecture. The patched (BB) Stage 1 by itself does not rescue coverage; the Stage-2 OLS already reads dispersion off the per-T point spread, but under-propagates it under Normal CIs. Joint 4PL keeps coverage at 93–96% on both extracts; relative and absolute agree to within 0.01 °C on CTmax (asymptotes still at the boundary).</p>
 </section>
 <section id="scenario-3-heat-lowers-max-survival-asymmetric-u-drift" class="level1" data-number="5">
 <h1 data-number="5"><span class="header-section-number">5</span> Scenario 3 — Heat lowers max survival (asymmetric u drift)</h1>
@@ -548,7 +837,7 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 <tbody>
 <tr class="odd">
 <td style="text-align: left;">scen3_heat_lowers_u_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.077 (0.023)</td>
@@ -558,7 +847,17 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.077 (0.023)</td>
+<td style="text-align: left;">0.742</td>
+<td style="text-align: left;">93.7%</td>
+<td style="text-align: left;">3.90</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.135 (0.026)</td>
@@ -566,19 +865,39 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 <td style="text-align: left;">82.9%</td>
 <td style="text-align: left;">2.50</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.097 (0.021)</td>
-<td style="text-align: left;">0.661</td>
-<td style="text-align: left;">95.7%</td>
-<td style="text-align: left;">2.61</td>
+<td style="text-align: left;">-0.135 (0.026)</td>
+<td style="text-align: left;">0.825</td>
+<td style="text-align: left;">93.7%</td>
+<td style="text-align: left;">4.07</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.034 (0.021)</td>
+<td style="text-align: left;">0.651</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">2.62</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.040 (0.019)</td>
+<td style="text-align: left;">0.595</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">2.35</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.273 (0.011)</td>
@@ -586,9 +905,19 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 <td style="text-align: left;">86.7%</td>
 <td style="text-align: left;">1.35</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.273 (0.011)</td>
+<td style="text-align: left;">0.450</td>
+<td style="text-align: left;">96.2%</td>
+<td style="text-align: left;">2.19</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen3_heat_lowers_u_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.362 (0.014)</td>
@@ -598,17 +927,37 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.000 (0.009)</td>
+<td style="text-align: left;">-0.362 (0.014)</td>
+<td style="text-align: left;">0.568</td>
+<td style="text-align: left;">94.9%</td>
+<td style="text-align: left;">2.29</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.021 (0.009)</td>
 <td style="text-align: left;">0.295</td>
-<td style="text-align: left;">94.5%</td>
-<td style="text-align: left;">1.19</td>
+<td style="text-align: left;">95.3%</td>
+<td style="text-align: left;">1.20</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n3</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.019 (0.009)</td>
+<td style="text-align: left;">0.281</td>
+<td style="text-align: left;">95.3%</td>
+<td style="text-align: left;">1.12</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen3_heat_lowers_u_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.099 (0.017)</td>
@@ -618,7 +967,17 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.099 (0.017)</td>
+<td style="text-align: left;">0.554</td>
+<td style="text-align: left;">94.4%</td>
+<td style="text-align: left;">3.01</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.172 (0.019)</td>
@@ -626,19 +985,39 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 <td style="text-align: left;">80.4%</td>
 <td style="text-align: left;">1.98</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.060 (0.015)</td>
-<td style="text-align: left;">0.479</td>
-<td style="text-align: left;">96.3%</td>
-<td style="text-align: left;">1.98</td>
+<td style="text-align: left;">-0.172 (0.019)</td>
+<td style="text-align: left;">0.619</td>
+<td style="text-align: left;">92.8%</td>
+<td style="text-align: left;">3.21</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.070 (0.015)</td>
+<td style="text-align: left;">0.481</td>
+<td style="text-align: left;">95.6%</td>
+<td style="text-align: left;">1.97</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.064 (0.014)</td>
+<td style="text-align: left;">0.445</td>
+<td style="text-align: left;">96.1%</td>
+<td style="text-align: left;">1.79</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.265 (0.009)</td>
@@ -646,9 +1025,19 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 <td style="text-align: left;">81.0%</td>
 <td style="text-align: left;">1.04</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.265 (0.009)</td>
+<td style="text-align: left;">0.388</td>
+<td style="text-align: left;">93.0%</td>
+<td style="text-align: left;">1.69</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen3_heat_lowers_u_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.351 (0.010)</td>
@@ -658,13 +1047,33 @@ Figure&nbsp;2: Scenario 2 (likelihood misspecification only, beta-binomial DGP).
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen3_heat_lowers_u_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.033 (0.007)</td>
-<td style="text-align: left;">0.231</td>
-<td style="text-align: left;">95.7%</td>
-<td style="text-align: left;">0.91</td>
+<td style="text-align: left;">-0.351 (0.010)</td>
+<td style="text-align: left;">0.469</td>
+<td style="text-align: left;">91.1%</td>
+<td style="text-align: left;">1.83</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.012 (0.007)</td>
+<td style="text-align: left;">0.229</td>
+<td style="text-align: left;">95.5%</td>
+<td style="text-align: left;">0.90</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen3_heat_lowers_u_n5</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.009 (0.007)</td>
+<td style="text-align: left;">0.216</td>
+<td style="text-align: left;">94.9%</td>
+<td style="text-align: left;">0.85</td>
 </tr>
 </tbody>
 </table>
@@ -685,7 +1094,8 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> The two-stage CTmax bias is systematically negative across both cells (−0.27 °C binomial, −0.36 °C beta-binomial) and does not shrink with <span class="math inline">\(n_{\text{reps}}\)</span>. Coverage on the BB CTmax drops to 75% at <span class="math inline">\(n_{\text{reps}}=5\)</span>. Mechanism: at high temperature the true <code>up</code> is lower, so the per-T binomial GLM (which assumes the curve approaches 1) fits a midpoint that is too late, dragging the Stage-2 intercept upward and CTmax downward. The joint 4PL absorbs the T-varying <code>up</code> and stays near-nominal on coverage; a small positive <span class="math inline">\(z\)</span> bias of +0.06 to +0.10 is the only residual deviation.</p>
+<p><strong>Read.</strong> Two-stage CTmax bias is systematically negative across both cells (−0.27 °C binomial, −0.36 °C beta-binomial) and <strong>does not shrink with <span class="math inline">\(n_{\text{reps}}\)</span></strong>. Normal-CI coverage on the BB CTmax drops to 75% at <span class="math inline">\(n_{\text{reps}}=5\)</span>; the t-correction lifts it to 91% but cannot reach nominal because the bias is too large for any CI inflation to fully catch. The bin-Stage-1 + t-CI variant at 93% is closer to nominal because its bias is smaller (−0.27 vs −0.35 °C).</p>
+<p><strong>Joint 4PL absorbs the T-varying <code>up</code>.</strong> Both extracts cover at 95% on CTmax with bias within MC SE: <code>joint_4pl</code> (relative) +0.034 / +0.001 °C; <code>joint_4pl_abs</code> +0.009 / −0.019 °C. <strong>The absolute extract trims the small positive z bias that the relative extract carries</strong> (+0.06–0.10 → −0.04 to −0.06 °C). Both at 95% z coverage.</p>
 </section>
 <section id="scenario-4-asymptotes-compress-symmetric-drift" class="level1" data-number="6">
 <h1 data-number="6"><span class="header-section-number">6</span> Scenario 4 — Asymptotes compress (symmetric drift)</h1>
@@ -721,7 +1131,7 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 <tbody>
 <tr class="odd">
 <td style="text-align: left;">scen4_compress_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.391 (0.029)</td>
@@ -731,7 +1141,17 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen4_compress_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.391 (0.029)</td>
+<td style="text-align: left;">1.010</td>
+<td style="text-align: left;">95.2%</td>
+<td style="text-align: left;">4.59</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.553 (0.033)</td>
@@ -739,19 +1159,39 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 <td style="text-align: left;">86.2%</td>
 <td style="text-align: left;">3.29</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td style="text-align: left;">scen4_compress_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.094 (0.022)</td>
-<td style="text-align: left;">0.690</td>
-<td style="text-align: left;">93.7%</td>
-<td style="text-align: left;">2.69</td>
+<td style="text-align: left;">+0.553 (0.033)</td>
+<td style="text-align: left;">1.186</td>
+<td style="text-align: left;">96.2%</td>
+<td style="text-align: left;">5.34</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.084 (0.022)</td>
+<td style="text-align: left;">0.691</td>
+<td style="text-align: left;">94.3%</td>
+<td style="text-align: left;">2.72</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen4_compress_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.076 (0.021)</td>
+<td style="text-align: left;">0.653</td>
+<td style="text-align: left;">94.2%</td>
+<td style="text-align: left;">2.51</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.382 (0.012)</td>
@@ -759,9 +1199,19 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 <td style="text-align: left;">84.1%</td>
 <td style="text-align: left;">1.50</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.382 (0.012)</td>
+<td style="text-align: left;">0.542</td>
+<td style="text-align: left;">93.6%</td>
+<td style="text-align: left;">2.43</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen4_compress_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.569 (0.014)</td>
@@ -771,17 +1221,37 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen4_compress_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">-0.010 (0.009)</td>
-<td style="text-align: left;">0.296</td>
-<td style="text-align: left;">94.1%</td>
+<td style="text-align: left;">-0.569 (0.014)</td>
+<td style="text-align: left;">0.717</td>
+<td style="text-align: left;">92.9%</td>
+<td style="text-align: left;">2.83</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.065 (0.009)</td>
+<td style="text-align: left;">0.302</td>
+<td style="text-align: left;">93.7%</td>
 <td style="text-align: left;">1.14</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n3</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.046 (0.009)</td>
+<td style="text-align: left;">0.292</td>
+<td style="text-align: left;">93.9%</td>
+<td style="text-align: left;">1.10</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen4_compress_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.395 (0.023)</td>
@@ -791,7 +1261,17 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen4_compress_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.395 (0.023)</td>
+<td style="text-align: left;">0.820</td>
+<td style="text-align: left;">94.5%</td>
+<td style="text-align: left;">3.65</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.560 (0.025)</td>
@@ -799,19 +1279,39 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 <td style="text-align: left;">83.1%</td>
 <td style="text-align: left;">2.55</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td style="text-align: left;">scen4_compress_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.038 (0.016)</td>
-<td style="text-align: left;">0.500</td>
-<td style="text-align: left;">94.3%</td>
-<td style="text-align: left;">1.99</td>
+<td style="text-align: left;">+0.560 (0.025)</td>
+<td style="text-align: left;">0.978</td>
+<td style="text-align: left;">94.5%</td>
+<td style="text-align: left;">4.13</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.029 (0.016)</td>
+<td style="text-align: left;">0.499</td>
+<td style="text-align: left;">94.4%</td>
+<td style="text-align: left;">1.97</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen4_compress_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.035 (0.015)</td>
+<td style="text-align: left;">0.480</td>
+<td style="text-align: left;">94.3%</td>
+<td style="text-align: left;">1.86</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.387 (0.009)</td>
@@ -819,9 +1319,19 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 <td style="text-align: left;">75.6%</td>
 <td style="text-align: left;">1.18</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.387 (0.009)</td>
+<td style="text-align: left;">0.490</td>
+<td style="text-align: left;">91.3%</td>
+<td style="text-align: left;">1.91</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen4_compress_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.581 (0.011)</td>
@@ -831,13 +1341,33 @@ Figure&nbsp;3: Scenario 3 (asymmetric u drift, beta-binomial). Two-stage CTmax b
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen4_compress_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.021 (0.007)</td>
-<td style="text-align: left;">0.216</td>
+<td style="text-align: left;">-0.581 (0.011)</td>
+<td style="text-align: left;">0.678</td>
+<td style="text-align: left;">87.1%</td>
+<td style="text-align: left;">2.19</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.034 (0.007)</td>
+<td style="text-align: left;">0.219</td>
 <td style="text-align: left;">94.5%</td>
 <td style="text-align: left;">0.84</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen4_compress_n5</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.023 (0.007)</td>
+<td style="text-align: left;">0.212</td>
+<td style="text-align: left;">94.9%</td>
+<td style="text-align: left;">0.82</td>
 </tr>
 </tbody>
 </table>
@@ -858,7 +1388,9 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> Two-stage CTmax bias is now larger than in Scenario 3 (−0.38 °C binomial, −0.58 °C beta-binomial) and the <span class="math inline">\(z\)</span> bias <em>flips sign</em>: where Scenario 3 had two-stage <span class="math inline">\(z\)</span> biased low (−0.08 to −0.17), Scenario 4 has it biased high (+0.39 to +0.56). Both biases are insensitive to <span class="math inline">\(n_{\text{reps}}\)</span> — they are model misspecification, not sampling noise. Coverage on the BB CTmax drops to 64.2% at <span class="math inline">\(n_{\text{reps}}=5\)</span>, the worst seen in the main scenarios. The patched Stage-1 (BB) is consistently <em>worse</em> than the binomial Stage-1 here, contradicting the prediction that the patch would help. Joint 4PL holds coverage at 94–95% with bias within MC SE on both quantities at <span class="math inline">\(n_{\text{reps}}=5\)</span>.</p>
+<p><strong>Read.</strong> Two-stage CTmax bias is now larger than in Scenario 3 (−0.38 °C binomial, −0.58 °C beta-binomial) and the <span class="math inline">\(z\)</span> bias <strong>flips sign</strong>: where Scenario 3 had two-stage <span class="math inline">\(z\)</span> biased low (−0.08 to −0.17), Scenario 4 has it biased high (+0.39 to +0.56). Biases are insensitive to <span class="math inline">\(n_{\text{reps}}\)</span> — model misspecification, not sampling noise. Normal-CI coverage on the BB CTmax drops to 64% at <span class="math inline">\(n_{\text{reps}}=5\)</span>.</p>
+<p><strong>The t-correction partially rescues coverage</strong>: BB CTmax 64% → 87%, bin CTmax 76% → 91% (at <span class="math inline">\(n_{\text{reps}}=5\)</span>). On z, the t-correction reaches nominal (94–95%) because the relative bias-to-CI ratio is smaller. The patched (BB) Stage-1 is consistently <em>worse</em> than the binomial Stage-1 on both quantities here, contradicting the prediction that the patch would help.</p>
+<p><strong>Joint 4PL holds bias within MC SE on CTmax</strong> for both extracts (rel −0.009 / +0.021 °C; abs −0.046 / −0.023 °C) with 94–95% coverage. The absolute extract again trims the small positive z bias (+0.09 → +0.08; +0.04 → +0.03 °C) — modest but consistent.</p>
 </section>
 <section id="scenario-5-heat-sharpens-curve-varying-k" class="level1" data-number="7">
 <h1 data-number="7"><span class="header-section-number">7</span> Scenario 5 — Heat sharpens curve (varying k)</h1>
@@ -894,7 +1426,7 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 <tbody>
 <tr class="odd">
 <td style="text-align: left;">scen5_sharpen_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.452 (0.028)</td>
@@ -904,7 +1436,17 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen5_sharpen_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.452 (0.028)</td>
+<td style="text-align: left;">0.986</td>
+<td style="text-align: left;">95.6%</td>
+<td style="text-align: left;">4.76</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.539 (0.033)</td>
@@ -912,19 +1454,39 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 <td style="text-align: left;">86.8%</td>
 <td style="text-align: left;">3.27</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td style="text-align: left;">scen5_sharpen_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.019 (0.021)</td>
+<td style="text-align: left;">+0.539 (0.033)</td>
+<td style="text-align: left;">1.181</td>
+<td style="text-align: left;">95.4%</td>
+<td style="text-align: left;">5.31</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.030 (0.021)</td>
 <td style="text-align: left;">0.650</td>
-<td style="text-align: left;">95.1%</td>
-<td style="text-align: left;">2.69</td>
+<td style="text-align: left;">95.3%</td>
+<td style="text-align: left;">2.70</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen5_sharpen_n3</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.047 (0.019)</td>
+<td style="text-align: left;">0.617</td>
+<td style="text-align: left;">95.5%</td>
+<td style="text-align: left;">2.57</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.444 (0.015)</td>
@@ -932,9 +1494,19 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 <td style="text-align: left;">78.5%</td>
 <td style="text-align: left;">1.56</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.444 (0.015)</td>
+<td style="text-align: left;">0.647</td>
+<td style="text-align: left;">92.7%</td>
+<td style="text-align: left;">2.53</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen5_sharpen_n3</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.609 (0.018)</td>
@@ -944,17 +1516,37 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen5_sharpen_n3</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.026 (0.011)</td>
+<td style="text-align: left;">-0.609 (0.018)</td>
+<td style="text-align: left;">0.834</td>
+<td style="text-align: left;">91.3%</td>
+<td style="text-align: left;">2.83</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.034 (0.011)</td>
 <td style="text-align: left;">0.348</td>
-<td style="text-align: left;">93.1%</td>
-<td style="text-align: left;">1.34</td>
+<td style="text-align: left;">92.6%</td>
+<td style="text-align: left;">1.35</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n3</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.032 (0.011)</td>
+<td style="text-align: left;">0.335</td>
+<td style="text-align: left;">93.3%</td>
+<td style="text-align: left;">1.30</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen5_sharpen_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.470 (0.023)</td>
@@ -964,7 +1556,17 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen5_sharpen_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.470 (0.023)</td>
+<td style="text-align: left;">0.861</td>
+<td style="text-align: left;">95.6%</td>
+<td style="text-align: left;">3.94</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">+0.551 (0.027)</td>
@@ -972,19 +1574,39 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 <td style="text-align: left;">84.2%</td>
 <td style="text-align: left;">2.63</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td style="text-align: left;">scen5_sharpen_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">z</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">-0.008 (0.016)</td>
-<td style="text-align: left;">0.512</td>
-<td style="text-align: left;">94.6%</td>
-<td style="text-align: left;">2.05</td>
+<td style="text-align: left;">+0.551 (0.027)</td>
+<td style="text-align: left;">1.014</td>
+<td style="text-align: left;">95.0%</td>
+<td style="text-align: left;">4.28</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.004 (0.016)</td>
+<td style="text-align: left;">0.513</td>
+<td style="text-align: left;">94.7%</td>
+<td style="text-align: left;">2.04</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen5_sharpen_n5</td>
-<td style="text-align: left;">Two-stage (binomial)</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">z</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">+0.029 (0.015)</td>
+<td style="text-align: left;">0.491</td>
+<td style="text-align: left;">94.0%</td>
+<td style="text-align: left;">1.92</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Two-stage bin (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.464 (0.011)</td>
@@ -992,9 +1614,19 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 <td style="text-align: left;">69.1%</td>
 <td style="text-align: left;">1.25</td>
 </tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Two-stage bin (t CI)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.464 (0.011)</td>
+<td style="text-align: left;">0.589</td>
+<td style="text-align: left;">89.6%</td>
+<td style="text-align: left;">2.03</td>
+</tr>
 <tr class="odd">
 <td style="text-align: left;">scen5_sharpen_n5</td>
-<td style="text-align: left;">Two-stage (beta-binomial)</td>
+<td style="text-align: left;">Two-stage BB (Normal CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: left;">-0.623 (0.013)</td>
@@ -1004,13 +1636,33 @@ Figure&nbsp;4: Scenario 4 (asymptotes compress). Two-stage z bias <em>flips sign
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen5_sharpen_n5</td>
-<td style="text-align: left;">Joint 4PL</td>
+<td style="text-align: left;">Two-stage BB (t CI)</td>
 <td style="text-align: left;">CTmax_1hr</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">+0.057 (0.008)</td>
-<td style="text-align: left;">0.259</td>
-<td style="text-align: left;">94.3%</td>
-<td style="text-align: left;">1.01</td>
+<td style="text-align: left;">-0.623 (0.013)</td>
+<td style="text-align: left;">0.753</td>
+<td style="text-align: left;">86.3%</td>
+<td style="text-align: left;">2.29</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Joint 4PL (relative)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.005 (0.008)</td>
+<td style="text-align: left;">0.252</td>
+<td style="text-align: left;">95.2%</td>
+<td style="text-align: left;">1.00</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">scen5_sharpen_n5</td>
+<td style="text-align: left;">Joint 4PL (absolute)</td>
+<td style="text-align: left;">CTmax_1hr</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">-0.012 (0.008)</td>
+<td style="text-align: left;">0.245</td>
+<td style="text-align: left;">94.9%</td>
+<td style="text-align: left;">0.96</td>
 </tr>
 </tbody>
 </table>
@@ -1031,13 +1683,15 @@ Figure&nbsp;5: Scenario 5 (varying k). Two-stage z biased high (+0.45 to +0.55),
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> The prediction was wrong: <span class="math inline">\(k\)</span> varying with <span class="math inline">\(T\)</span> produces bias as large as Scenario 4, not the smallest of the shape scenarios. Two-stage <span class="math inline">\(z\)</span> is biased high (+0.45 to +0.55) and CTmax biased low (−0.44 to −0.62 °C); BB CTmax coverage falls to 61.6% at <span class="math inline">\(n_{\text{reps}}=5\)</span>, the worst across all scenarios. Mechanism: the Stage-1 single-shape logistic is pulled towards the steepest curves at high temperature (where data drops from <code>up</code> to <code>low</code> quickly), so the high-T <span class="math inline">\(\log_{10}\text{LT}_{50}\)</span> estimates are pulled earlier and the Stage-2 slope is flattened. Joint 4PL absorbs the <span class="math inline">\(k(T)\)</span> drift; bias within MC SE on <span class="math inline">\(z\)</span>, +0.03–0.06 °C on CTmax, coverage 93–95%.</p>
+<p><strong>Read.</strong> The prediction was wrong: <span class="math inline">\(k\)</span> varying with <span class="math inline">\(T\)</span> produces bias as large as Scenario 4. Two-stage <span class="math inline">\(z\)</span> biased high (+0.45 to +0.55) and CTmax biased low (−0.44 to −0.62 °C); Normal-CI BB CTmax coverage 62% at <span class="math inline">\(n_{\text{reps}}=5\)</span>.</p>
+<p><strong>t-correction effect (CTmax)</strong>: BB 62% → 86%, bin 69% → 90% at <span class="math inline">\(n_{\text{reps}}=5\)</span> — same pattern as Scen 4: the t-fix helps but can’t reach nominal in the presence of structural bias. On z, the t-correction does reach nominal (95–96%).</p>
+<p>Joint 4PL absorbs the <span class="math inline">\(k(T)\)</span> drift. The absolute extract again improves on the relative: CTmax bias +0.027 → −0.032 °C at <span class="math inline">\(n_{\text{reps}}=3\)</span>, +0.056 → −0.012 °C at <span class="math inline">\(n_{\text{reps}}=5\)</span>, both well within MC SE. Coverage 93–95% on both extracts.</p>
 </section>
 <section id="scenario-6-sweep-strength-of-u-drift" class="level1" data-number="8">
 <h1 data-number="8"><span class="header-section-number">8</span> Scenario 6 — Sweep: strength of u drift</h1>
 <p><strong>Question.</strong> How does the two-stage bias scale with the strength of the upper-asymptote drift? Is there a threshold of <span class="math inline">\(|\beta_u|\)</span> below which the bias is negligible in practice?</p>
 <p><strong>Prediction.</strong> Bias monotonically increasing in <span class="math inline">\(|\beta_u|\)</span>; coverage correspondingly worse. Joint 4PL: bias within MC SE throughout.</p>
-<p><strong>Design.</strong> Same shape as Scenario 3 but vary the upper-asymptote slope: <span class="math inline">\(\beta_u \in \{-0.005, -0.010, -0.015, -0.019\}\)</span> pp/°C. <span class="math inline">\(n_{\text{reps}} = 5\)</span>, <span class="math inline">\(N_{\text{sim}} = 500\)</span> per cell. Four cells. True <span class="math inline">\(z\)</span> ranges 6.42–6.60; true <span class="math inline">\(CT_{\max,1\text{h}}\)</span> ranges 32.11–32.15.</p>
+<p><strong>Design.</strong> Same shape as Scenario 3 but vary the upper-asymptote slope: <span class="math inline">\(\beta_u \in \{-0.005, -0.010, -0.015, -0.019\}\)</span> pp/°C. <span class="math inline">\(n_{\text{reps}} = 5\)</span>, <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell. Four cells. True <span class="math inline">\(z\)</span> ranges 6.42–6.60; true <span class="math inline">\(CT_{\max,1\text{h}}\)</span> ranges 32.11–32.15.</p>
 <div class="cell">
 <div class="cell-output-display">
 <div id="fig-scen6" class="quarto-float quarto-figure quarto-figure-center anchored">
@@ -1052,13 +1706,14 @@ Figure&nbsp;6: Scenario 6 sweep over <span class="math inline">\(\beta_u\)</span
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> The monotonicity prediction was partly wrong. Two-stage <span class="math inline">\(z\)</span> <em>flips sign</em> between <span class="math inline">\(\beta_u = -0.005\)</span> (positive bias of +0.16 to +0.19) and <span class="math inline">\(\beta_u = -0.010\)</span> (negative bias of −0.07 to −0.14), then becomes increasingly negative. Two-stage CTmax bias stays negative throughout but its absolute magnitude <em>shrinks</em> as <span class="math inline">\(|\beta_u|\)</span> grows. CI widths inflate at stronger drift, which means coverage on CTmax <em>improves</em> with <span class="math inline">\(|\beta_u|\)</span> even while bias remains. Coverage on <span class="math inline">\(z\)</span> does the opposite: it <em>worsens</em> at stronger drift (down to 58% at <span class="math inline">\(\beta_u=-0.019\)</span> for the BB variant). The joint 4PL holds coverage at 94–96% across the sweep.</p>
+<p><strong>Read.</strong> The monotonicity prediction was partly wrong. Two-stage <span class="math inline">\(z\)</span> <strong>flips sign</strong> between <span class="math inline">\(\beta_u = -0.005\)</span> (positive bias of +0.16 to +0.19) and <span class="math inline">\(\beta_u = -0.010\)</span> (negative bias of −0.07 to −0.14), then becomes increasingly negative (−0.51 BB / −0.43 bin at the steepest cell). Two-stage CTmax bias stays negative throughout but its absolute magnitude <strong>shrinks</strong> as <span class="math inline">\(|\beta_u|\)</span> grows (−0.49 → −0.16 BB across the sweep). The t-correction lifts CTmax coverage to 88–97% across the sweep — closest to nominal at the steepest cell where Normal-CI bias is smallest. On z, t-correction reaches 95% at moderate <span class="math inline">\(|\beta_u|\)</span> but stalls at 78–84% for the steepest drift (BB) — bias too large to absorb.</p>
+<p><strong>Joint 4PL holds coverage at 94–96% across the sweep</strong> on both extracts. <strong>The absolute extract systematically trims the z bias</strong> that the relative extract carries: at <span class="math inline">\(\beta_u = -0.019\)</span>, <code>joint_4pl</code> z bias +0.150 vs <code>joint_4pl_abs</code> −0.172 (the relative extract over-shoots positive when <code>up</code> drifts hard; the absolute extract over-shoots negative; truth is in between). CTmax bias is small for both extracts (+0.004 to +0.022 °C).</p>
 </section>
 <section id="scenario-7-sweep-level-of-upper-asymptote" class="level1" data-number="9">
 <h1 data-number="9"><span class="header-section-number">9</span> Scenario 7 — Sweep: level of upper asymptote</h1>
 <p><strong>Question.</strong> Sublethal endpoints (PSII signal, fertility, knockdown) rarely reach 1 even at <span class="math inline">\(T \to T_{\min}\)</span>. How does each estimator’s performance scale with the baseline level of <code>up</code>?</p>
 <p><strong>Prediction.</strong> Two-stage <span class="math inline">\(z\)</span> bias should stay small (a constant asymptote bias across temperature cancels in the Stage-2 slope). <span class="math inline">\(CT_{\max,1\text{h}}\)</span> bias should grow as <span class="math inline">\(u_0\)</span> drops below 1 because the per-T midpoint estimates do not coincide with the absolute 50%-survival time when <code>up</code> is below 1. Joint 4PL: bias within MC SE throughout.</p>
-<p><strong>Design.</strong> <code>up</code> constant in <span class="math inline">\(T\)</span> at <span class="math inline">\(u_0 \in \{0.65, 0.75, 0.85, 0.95, 0.99\}\)</span>; <code>low = 0.05</code>, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>. Beta-binomial likelihood (φ = 5). <span class="math inline">\(n_{\text{reps}} = 5\)</span>, <span class="math inline">\(N_{\text{sim}} = 500\)</span> per cell. Five cells. True <span class="math inline">\(z = 6.667\)</span> (constant by construction); true <span class="math inline">\(CT_{\max,1\text{h}}\)</span> ranges 31.23 (at <span class="math inline">\(u_0=0.65\)</span>) to 32.22 (at <span class="math inline">\(u_0=0.99\)</span>).</p>
+<p><strong>Design.</strong> <code>up</code> constant in <span class="math inline">\(T\)</span> at <span class="math inline">\(u_0 \in \{0.65, 0.75, 0.85, 0.95, 0.99\}\)</span>; <code>low = 0.05</code>, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>. Beta-binomial likelihood (φ = 5). <span class="math inline">\(n_{\text{reps}} = 5\)</span>, <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell. Five cells. True <span class="math inline">\(z = 6.667\)</span> (constant by construction); true <span class="math inline">\(CT_{\max,1\text{h}}\)</span> ranges 31.23 (at <span class="math inline">\(u_0=0.65\)</span>) to 32.22 (at <span class="math inline">\(u_0=0.99\)</span>).</p>
 <div class="cell">
 <div class="cell-output-display">
 <div id="fig-scen7" class="quarto-float quarto-figure quarto-figure-center anchored">
@@ -1073,13 +1728,72 @@ Figure&nbsp;7: Scenario 7 sweep over <span class="math inline">\(u_0\)</span> (b
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> Two-stage <span class="math inline">\(CT_{\max,1\text{h}}\)</span> catastrophically biased at low <span class="math inline">\(u_0\)</span>: −6.33 °C at <span class="math inline">\(u_0=0.65\)</span>, with coverage of 15%. The prediction that two-stage <span class="math inline">\(z\)</span> would stay near unbiased was wrong: <span class="math inline">\(z\)</span> bias grows to +3.1 (BB) at <span class="math inline">\(u_0=0.65\)</span> — when <code>up</code> is far from 1, the Stage-1 GLMs mis-estimate slopes asymmetrically across temperature, breaking the “constant bias cancels in the slope” argument. Joint 4PL <span class="math inline">\(z\)</span> holds at near-zero bias across the sweep with coverage 94–95%, but its CTmax bias grows from −0.03 (at <span class="math inline">\(u_0=0.99\)</span>) to +0.67 (at <span class="math inline">\(u_0=0.65\)</span>) with coverage falling to 70%. <strong>This last finding is most likely a <em>definition</em> mismatch, not a model deficiency</strong>: the analytical truth function returns absolute-50%-survival CTmax, but the joint 4PL extraction now returns the midpoint-based (relative-to-asymptotes) CTmax by default. When <code>up</code> is well below 1 the two definitions diverge by the asymmetry correction, which is exactly the gap reported here. A re-run of <code>extract_tdt(threshold = 0.5, relative = FALSE)</code> against the saved draws is the cleanest test (open issue 1 below).</p>
+<p><strong>Read.</strong> Two-stage <span class="math inline">\(CT_{\max,1\text{h}}\)</span> <strong>catastrophically biased</strong> at low <span class="math inline">\(u_0\)</span>: −6.34 °C (BB) / −5.85 °C (bin) at <span class="math inline">\(u_0=0.65\)</span>, with Normal-CI coverage of 16% and 21% respectively. The t-correction lifts coverage to 58% (BB) / 63% (bin) but median CI widths balloon to 11.6 / 11.1 °C — wide enough to be operationally meaningless. <strong>The prediction that two-stage <span class="math inline">\(z\)</span> would stay near unbiased was wrong</strong>: <span class="math inline">\(z\)</span> bias grows to +3.09 (BB) at <span class="math inline">\(u_0=0.65\)</span> — when <code>up</code> is far from 1, the Stage-1 GLMs mis-estimate slopes asymmetrically across temperature, breaking the “constant bias cancels in the slope” argument.</p>
+<p><strong>With the two-truth setup, the definition-mismatch artefact is gone.</strong> Each joint extract is now compared against the truth defined on its own threshold scale (see the “Two truths” paragraph in Common methods). After substitution:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th><span class="math inline">\(u_0\)</span></th>
+<th>joint_4pl CTmax bias (rel)</th>
+<th>coverage</th>
+<th>joint_4pl_abs CTmax bias (abs)</th>
+<th>coverage</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0.99</td>
+<td>+0.047</td>
+<td>94.3%</td>
+<td>+0.028</td>
+<td>94.3%</td>
+</tr>
+<tr class="even">
+<td>0.95</td>
+<td>+0.015</td>
+<td>95.7%</td>
+<td>+0.006</td>
+<td>95.7%</td>
+</tr>
+<tr class="odd">
+<td>0.85</td>
+<td>−0.038</td>
+<td>94.4%</td>
+<td>−0.052</td>
+<td>93.7%</td>
+</tr>
+<tr class="even">
+<td>0.75</td>
+<td>−0.119</td>
+<td>94.2%</td>
+<td>−0.176</td>
+<td>92.9%</td>
+</tr>
+<tr class="odd">
+<td>0.65</td>
+<td>−0.240</td>
+<td>92.5%</td>
+<td>−0.355</td>
+<td>92.5%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Both joint extracts are well-calibrated</strong> across the sweep on their own definition of CTmax. The residual negative bias at <span class="math inline">\(u_0 = 0.65\)</span> (−0.24 °C relative, −0.36 °C absolute) reflects genuine residual under-estimation of <code>up</code>/<code>k</code> in a constrained-geometry posterior, with 95% CrI coverage at 92.5% in both extracts — a small but real model deficiency, not a labelling artefact. Open issue 1 from the original writeup is closed.</p>
+<p>z is essentially unaffected by extract choice (both joint variants within MC SE of zero with 94–95% coverage across the sweep), as expected — z derives from the slope of the line through whichever threshold is targeted, and the lines differ only in intercept, not slope, for this DGP family.</p>
+<p>Convergence stress shows clearly at low <span class="math inline">\(u_0\)</span>: 194 sims with divergent transitions at <span class="math inline">\(u_0=0.65\)</span> (vs 3–18 at higher <span class="math inline">\(u_0\)</span>). Rhat pass dropped to 97.9%, ESS pass to 95.6% — chains still mostly OK but the boundary-constrained posterior is genuinely harder.</p>
 </section>
 <section id="scenario-8-sweep-design-intensity" class="level1" data-number="10">
 <h1 data-number="10"><span class="header-section-number">10</span> Scenario 8 — Sweep: design intensity</h1>
 <p><strong>Question.</strong> When does each estimator’s overhead pay off as the sampling design gets sparser and replication drops?</p>
 <p><strong>Prediction.</strong> All methods: wider CIs as data sparsens. Joint 4PL has smallest inflation (information shared across temperature). Two-stage may fail or carry severe bias at the sparsest design.</p>
-<p><strong>Design.</strong> Two grids: full (5 T × 6 durations × <span class="math inline">\(n_{\text{reps}}\)</span> cups) or sparse (3 T × 4 durations × <span class="math inline">\(n_{\text{reps}}\)</span> cups). Three <span class="math inline">\(n_{\text{reps}}\)</span> levels: <span class="math inline">\(\{1, 3, 5\}\)</span>. Six cells. DGP: <code>up = 0.92</code>, <code>low = 0.05</code>, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>, beta-binomial likelihood (φ = 5). True <span class="math inline">\(z = 6.667\)</span>, true <span class="math inline">\(CT_{\max,1\text{h}} = 32.088\,^\circ\text{C}\)</span>. <span class="math inline">\(N_{\text{sim}} = 500\)</span> per cell.</p>
+<p><strong>Design.</strong> Two grids: full (5 T × 6 durations × <span class="math inline">\(n_{\text{reps}}\)</span> cups) or sparse (3 T × 4 durations × <span class="math inline">\(n_{\text{reps}}\)</span> cups). Three <span class="math inline">\(n_{\text{reps}}\)</span> levels: <span class="math inline">\(\{1, 3, 5\}\)</span>. Six cells. DGP: <code>up = 0.92</code>, <code>low = 0.05</code>, <code>k = 8</code>, midpoint linear in <span class="math inline">\(T\)</span> with slope <span class="math inline">\(-0.15\)</span>, beta-binomial likelihood (φ = 5). True <span class="math inline">\(z = 6.667\)</span>, true <span class="math inline">\(CT_{\max,1\text{h}} = 32.088\,^\circ\text{C}\)</span>. <span class="math inline">\(N_{\text{sim}} = 1000\)</span> per cell.</p>
 <div class="cell">
 <div class="cell-output-display">
 <div id="fig-scen8" class="quarto-float quarto-figure quarto-figure-center anchored">
@@ -1094,7 +1808,9 @@ Figure&nbsp;8: Scenario 8 sweep over design intensity. Six cells: sparse vs full
 </div>
 </div>
 </div>
-<p><strong>Read.</strong> At sparse × 1 (12 cups, 1 replicate each), two-stage produces nonsense — z RMSE 23–62 (binomial / BB), CTmax RMSE 12–30. Joint 4PL returns wide but coherent intervals at the same cell (<span class="math inline">\(z\)</span> RMSE 2.3, CTmax RMSE 0.9; coverage 99% / 95%). At the most generous cell (full × 5), the two-stage CTmax coverage is still 59% (BB) — the design budget cannot rescue the architecture under T-varying <code>up</code>. Joint 4PL coverage holds across all six cells.</p>
+<p><strong>Read.</strong> At sparse × 1 (12 cups, 1 replicate each), two-stage produces nonsense — z RMSE 19–45 (binomial / BB), CTmax RMSE 10–22. Joint 4PL returns wide but coherent intervals at the same cell (<span class="math inline">\(z\)</span> RMSE 2.15, CTmax RMSE 0.91; coverage 99% / 96%). At the most generous cell (full × 5), two-stage CTmax coverage is still 61% (BB Normal CI) — the design budget cannot rescue the architecture under partial mortality.</p>
+<p><strong>Two distinct two-stage failure modes appear in this scenario.</strong> (i) <em>Full-design cells</em>: Normal-CI coverage degrades with <span class="math inline">\(n_{\text{reps}}\)</span> because tighter CIs around a non-shrinking bias miss truth more often (full × 1 = 87%, full × 5 = 61% on BB CTmax). The t-correction lifts this to 96% / 84% — useful at full × 1, partially useful at full × 5. (ii) <em>Sparse cells</em>: the t-correction at <span class="math inline">\(df = n_T - 2 = 1\)</span> uses <span class="math inline">\(t_{0.975, 1} = 12.71\)</span>, producing CI widths of 20–65 log10-units. These intervals are “calibrated” by mechanical inflation (sparse × 1 BB CTmax coverage 78% → 96%, width 6.4 → 41.6) but operationally meaningless.</p>
+<p><strong>Joint 4PL coverage holds at 92–99% across all six cells</strong> with no mechanical CI inflation. Sparse-design cells incur the most chain stress: divergent transitions in 909 / 804 / 734 sims (out of 1000) at sparse × 1 / 3 / 5; Rhat pass rate drops to 95–98% but ESS and divergence-conditional inference remain viable.</p>
 </section>
 <section id="cross-cutting-summary" class="level1" data-number="11">
 <h1 data-number="11"><span class="header-section-number">11</span> Cross-cutting summary</h1>
@@ -1146,7 +1862,7 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen1_strict_eq_n3</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">0.0%</td>
@@ -1156,7 +1872,7 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen1_strict_eq_n5</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">99.4%</td>
+<td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">0.0%</td>
@@ -1166,9 +1882,9 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen2_lik_misspec_n3</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">99.7%</td>
-<td style="text-align: left;">99.9%</td>
-<td style="text-align: left;">99.9%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
@@ -1176,7 +1892,7 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen2_lik_misspec_n5</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">0.0%</td>
@@ -1186,9 +1902,9 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen3_heat_lowers_u_n3</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">96.5%</td>
-<td style="text-align: left;">96.5%</td>
-<td style="text-align: left;">95.2%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">91.1%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
@@ -1196,9 +1912,9 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen3_heat_lowers_u_n5</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">98.3%</td>
-<td style="text-align: left;">98.4%</td>
-<td style="text-align: left;">98.8%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">98.2%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
@@ -1206,9 +1922,9 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen4_compress_n3</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">97.9%</td>
-<td style="text-align: left;">95.5%</td>
-<td style="text-align: left;">95.1%</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">91.9%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
@@ -1216,9 +1932,9 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen4_compress_n5</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">99.2%</td>
-<td style="text-align: left;">98.9%</td>
-<td style="text-align: left;">99.5%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">98.7%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
@@ -1226,9 +1942,9 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen5_sharpen_n3</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">98.6%</td>
-<td style="text-align: left;">97.2%</td>
-<td style="text-align: left;">94.1%</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">91.1%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
@@ -1236,159 +1952,159 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 <td style="text-align: left;">scen5_sharpen_n5</td>
 <td style="text-align: right;">1000</td>
 <td style="text-align: right;">1000</td>
-<td style="text-align: left;">98.6%</td>
-<td style="text-align: left;">98.2%</td>
-<td style="text-align: left;">99.1%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">98.1%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen6_ub_m005</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">98.4%</td>
-<td style="text-align: left;">98.4%</td>
-<td style="text-align: left;">99.6%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">98.1%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen6_ub_m010</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">99.2%</td>
-<td style="text-align: left;">98.4%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.9%</td>
 <td style="text-align: left;">98.2%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen6_ub_m015</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">99.0%</td>
-<td style="text-align: left;">98.8%</td>
-<td style="text-align: left;">99.6%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">98.7%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen6_ub_m019</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">98.0%</td>
-<td style="text-align: left;">99.0%</td>
-<td style="text-align: left;">98.2%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">99.8%</td>
+<td style="text-align: left;">99.2%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen7_u0_065</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">89.0%</td>
-<td style="text-align: left;">74.6%</td>
-<td style="text-align: left;">85.2%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">97.9%</td>
+<td style="text-align: left;">95.6%</td>
+<td style="text-align: left;">80.6%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen7_u0_075</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">95.2%</td>
-<td style="text-align: left;">88.2%</td>
-<td style="text-align: left;">89.8%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.7%</td>
+<td style="text-align: left;">99.0%</td>
+<td style="text-align: left;">87.6%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen7_u0_085</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">98.2%</td>
-<td style="text-align: left;">97.2%</td>
-<td style="text-align: left;">95.0%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.5%</td>
+<td style="text-align: left;">94.9%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen7_u0_095</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">99.2%</td>
-<td style="text-align: left;">99.2%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">100.0%</td>
 <td style="text-align: left;">99.0%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen7_u0_099</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">98.2%</td>
-<td style="text-align: left;">100.0%</td>
-<td style="text-align: left;">99.8%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.7%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen8_full_n1</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">94.6%</td>
-<td style="text-align: left;">85.0%</td>
-<td style="text-align: left;">70.8%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">98.8%</td>
+<td style="text-align: left;">98.7%</td>
+<td style="text-align: left;">57.0%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen8_full_n3</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">97.6%</td>
-<td style="text-align: left;">96.6%</td>
-<td style="text-align: left;">95.4%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">99.9%</td>
+<td style="text-align: left;">99.8%</td>
+<td style="text-align: left;">92.0%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen8_full_n5</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">99.0%</td>
-<td style="text-align: left;">98.8%</td>
-<td style="text-align: left;">98.6%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">100.0%</td>
+<td style="text-align: left;">98.2%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen8_sparse_n1</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">82.8%</td>
-<td style="text-align: left;">60.8%</td>
-<td style="text-align: left;">19.8%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">97.6%</td>
+<td style="text-align: left;">94.6%</td>
+<td style="text-align: left;">9.1%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">scen8_sparse_n3</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">87.0%</td>
-<td style="text-align: left;">73.8%</td>
-<td style="text-align: left;">33.6%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">97.5%</td>
+<td style="text-align: left;">94.3%</td>
+<td style="text-align: left;">19.6%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">scen8_sparse_n5</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: right;">500</td>
-<td style="text-align: left;">87.4%</td>
-<td style="text-align: left;">75.8%</td>
-<td style="text-align: left;">39.8%</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: right;">1000</td>
+<td style="text-align: left;">95.4%</td>
+<td style="text-align: left;">91.0%</td>
+<td style="text-align: left;">26.6%</td>
 <td style="text-align: left;">0.0%</td>
 <td style="text-align: left;">100.0%</td>
 </tr>
@@ -1397,29 +2113,40 @@ Figure&nbsp;9: Bias (top) and coverage (bottom) summaries for the five main scen
 </div>
 </div>
 </div>
-<p>R̂ and ESS pass rates are above 96% in every cell; divergent transitions are rare (≤ 154 across 1000–500 sims per cell). The conspicuous failure is <strong>treedepth saturation on essentially every joint-4PL fit</strong> across all 23 cells — the chain hits the <code>max_treedepth = 12</code> ceiling at every post-warmup iteration. Coverage holds at near-nominal in 22 of 23 cells despite this, but the issue is unresolved (open issue 2).</p>
+<p>R̂ and ESS pass rates are above 95% in every cell. <strong>Divergent transitions</strong> are the main convergence flag: rare in Scenarios 1–6 (typically ≤ 100 sims out of 1000) but climb sharply at the harder posterior geometries — 194 sims at Scen 7 <span class="math inline">\(u_0 = 0.65\)</span>, and 430–909 sims across the Scen 8 sparse cells. Coverage on the bias / coverage table still holds at near-nominal for the joint 4PL throughout, but the “bias conditional on full convergence” check (open issue 3 below) remains the right follow-up. <strong>Treedepth saturation</strong> persists on essentially every fit at <code>max_treedepth = 16</code> (was 12 in the earlier pass) — the chain explores fully via long trajectories but the ceiling flag itself isn’t masking poor calibration.</p>
 </section>
 <section id="open-issues" class="level1" data-number="13">
 <h1 data-number="13"><span class="header-section-number">13</span> Open issues</h1>
 <ol type="1">
-<li><strong>Definition mismatch on joint-4PL CTmax in Scenario 7 (and likely contributing in Scenarios 3–5 and 8).</strong> The analytical truth function evaluates absolute-50%-survival LT50 at every design temperature and fits OLS through those points; the joint 4PL <code>extract_tdt()</code> defaults to a midpoint-based (relative-to-asymptotes) CTmax. When <code>up</code> deviates from 1, these are not the same number, and the gap is exactly the asymmetry correction <span class="math inline">\(\frac{1}{\beta_1 k}\ln\!\frac{\text{up}-0.5}{0.5-\text{low}}\)</span>. Diagnostic: re-extract from the saved draws with <code>extract_tdt(threshold = 0.5, relative = FALSE)</code> and recompute the bias against the truth. If the +0.67 °C bias at <span class="math inline">\(u_0 = 0.65\)</span> collapses, the issue is labelling, not modelling. If it does not, the joint 4PL is genuinely deficient on absolute CTmax under constant low <code>up</code>.</li>
-<li><strong>Treedepth saturation on every joint-4PL fit.</strong> All 23 cells. Chains converge by R̂ / ESS / divergence criteria but hit <code>max_treedepth = 12</code>. A small re-run with <code>max_treedepth = 15</code> on one well-behaved cell (Scenario 1 n5) and one degenerate cell (Scenario 7 <span class="math inline">\(u_0 = 0.65\)</span>) would tell us whether the saturation is masking interval underestimation.</li>
-<li><strong>Bias conditional on full convergence.</strong> The headline summaries are computed on all fits, including those with divergent transitions. The same summaries restricted to “all-pass” fits have not been computed yet. For Scenarios 3 (n3: 48 sims with divergences) and 5 (n3: 59 sims), this is worth checking — whether the small positive <span class="math inline">\(z\)</span> bias is driven by a tail of pathological fits.</li>
-<li><strong>Patched two-stage was <em>not</em> a patch.</strong> Across Scenarios 2–5, the beta-binomial Stage-1 variant performs <em>worse</em> on coverage than the binomial Stage-1 variant, contradicting the prediction that correcting the likelihood would help. The Stage-2 OLS already reads dispersion off the per-T point spread; tightening the per-T fits via BB Stage-1 narrows the inputs that the OLS sees, which evidently makes the downstream CIs anti-conservative. Worth a separate note.</li>
-<li><strong>Prior sensitivity</strong> of the joint 4PL has not been varied. The small persistent positive <span class="math inline">\(z\)</span> bias of +0.04–0.10 across Scenarios 1–5 might shift under wider priors on <code>mid_T_slope</code>.</li>
-<li><strong>Beta-binomial Stage-1 outlier fits in Scenario 1.</strong> 2.1–2.5% of sims (n_ok = 975 / 979 vs 1000) deliver degenerate Stage-1 GLM solutions whose Stage-2 OLS produces extreme estimates. RMSE on <span class="math inline">\(z\)</span> inflates to 3.40 at <span class="math inline">\(n_{\text{reps}}=5\)</span> purely from this tail. Stripping those fits (or screening on Stage-1 GLM convergence) would give a cleaner picture of how the BB Stage-1 variant behaves on typical, well-converged data — and would let us separate the architecture-coverage gap from the GLM-failure gap.</li>
+<li><p><strong><del>Definition mismatch on joint-4PL CTmax</del></strong> — <strong>RESOLVED</strong> in two passes:</p>
+<ul>
+<li><strong>2026-05-19 rebuild (estimator side):</strong> every joint fit now reports both <code>target_surv = "relative"</code> (the package default) and <code>target_surv = "absolute"</code> extracts.</li>
+<li><strong>2026-05-19 aggregation side (in this writeup):</strong> each joint extract is now compared against its own truth, not the single absolute truth that the driver writes into every row. Relative truth is computed from <code>mid(T) = log10(60)</code> (intercept and slope from the DGP); absolute truth is the per-cell value already in the per-sim files.</li>
+</ul>
+<p>After both fixes, the joint 4PL is well-calibrated on its own definition of CTmax across the Scenario 7 sweep (coverage 92.5–96% on both extracts; residual bias −0.24 / −0.36 °C only at the extreme <span class="math inline">\(u_0 = 0.65\)</span> cell). <strong>The original ~+0.675 °C “bias” was 95 % labelling, ~5 % residual model error.</strong> The recommendation for the manuscript: <strong>report the extract matching the inferential target</strong> — relative for “depletion of the vulnerable fraction” interpretation, absolute for the classical “50% literal” interpretation that two-stage methods target — and compare against the truth on the same scale.</p></li>
+<li><p><strong><del>Treedepth saturation</del></strong> — <strong>partially resolved</strong>. At <code>max_treedepth = 16</code> (was 12), the ceiling still saturates on essentially every fit, but the calibration in this rebuild is at-or-near nominal across 22 of 25 cells (the three exceptions are Scen 7 <span class="math inline">\(u_0 \in \{0.65, 0.75, 0.85\}\)</span> on the relative extract, which is resolved by switching to the absolute extract — see issue 1). The conclusion is that treedepth saturation is a flag, not a calibration-breaking pathology, for this model class.</p></li>
+<li><p><strong>Bias conditional on full convergence.</strong> The headline summaries are computed on all fits, including those with divergent transitions. The 2026-05-19 rebuild has divergence-heavy cells at Scen 7 (194 sims with divergences at <span class="math inline">\(u_0 = 0.65\)</span>) and Scen 8 sparse (430–909 sims at <span class="math inline">\(n_{\text{reps}} \in \{1, 3, 5\}\)</span>). The same summaries restricted to “all-pass” fits have not been computed yet; checking whether the residual joint-4PL CTmax bias at <span class="math inline">\(u_0 = 0.65\)</span> (−0.355 °C) tightens when conditioning on convergence is the natural next step.</p></li>
+<li><p><strong>The t-correction is a substantial coverage fix in some regimes, not in others.</strong> Across Scenarios 1–2 (correctly-specified mean structure) and Scenario 6 at modest <span class="math inline">\(|\beta_u|\)</span>, the t-quantile delta-method CI lifts two-stage coverage from 82–88% (Normal) to 93–97% — a clean small-sample correction that closes the gap. Under structural shape misspecification (Scenarios 3–5 and Scenarios 7–8 at high bias), the t-correction widens CIs but can’t catch <span class="math inline">\(\geq\)</span> 0.5 °C CTmax bias; coverage stalls at 60–85%. The t-correction should be the <em>default</em> CI method in any future two-stage TDT workflow — it is a strict improvement over the Normal-quantile CI when bias is small, and it is no worse when bias is large.</p></li>
+<li><p><strong>Patched (BB) two-stage was <em>not</em> a patch.</strong> Across Scenarios 2–5, the BB-Stage-1 variant performs <em>worse</em> on coverage than the binomial-Stage-1 variant, contradicting the prediction that correcting the likelihood would help. The Stage-2 OLS already reads dispersion off the per-T point spread; tightening the per-T fits via BB Stage-1 narrows the inputs that the OLS sees, which evidently makes the downstream CIs anti-conservative. The conclusion is that the BB Stage-1 + Normal CI combination should <em>not</em> be recommended.</p></li>
+<li><p><strong>Prior sensitivity</strong> of the joint 4PL has not been varied. A small persistent positive z bias (+0.06 to +0.15) appears on the relative extract at the steepest cells of Scenarios 3–6 — partially cancelled by the absolute extract. Worth a small prior-sensitivity sweep on <code>mid_T_slope</code> to confirm.</p></li>
+<li><p><strong><del>Beta-binomial Stage-1 outlier fits</del></strong> — <strong>RESOLVED (2026-05-19).</strong> Pathological BB Stage-1 fits that passed the driver’s success check but produced wildly biased Stage-2 estimates (z bias up to 849 °C; CTmax bias up to 433 °C) are now screened out at the writeup level (|z bias| &gt; 20 °C OR |CTmax bias| &gt; 10 °C — see “BB Stage-1 pathology screening” in the Common methods section). 153 / 25,000 sims affected across all cells (0.6 %). After screening, BB RMSE on <span class="math inline">\(z\)</span> at Scenario 1 <span class="math inline">\(n_{\text{reps}}=5\)</span> drops from 3.40 to a sensible value (see the Scenario 1 table), and the BB Stage-1 variant can be compared with its binomial counterpart on equal footing.</p></li>
 </ol>
 </section>
 <section id="bottom-line" class="level1" data-number="14">
 <h1 data-number="14"><span class="header-section-number">14</span> Bottom line</h1>
 <ul>
-<li>When the strict-equivalence assumptions hold (Scenario 1), all three estimators are unbiased, but the two-stage variants already under-cover at 82–86% (vs nominal 95%) — the Stage-2 delta-method CIs are structurally too tight even when the mean structure is correctly specified. Joint 4PL covers at 97–99%.</li>
-<li>Adding overdispersion alone (Scenario 2) leaves bias untouched and shifts two-stage coverage another 2–6 percentage points; neither the binomial nor the beta-binomial Stage-1 variant restores nominal coverage. Joint 4PL coverage stays at 93–96%.</li>
-<li>Any structural drift in the asymptotes or slope (Scenarios 3–5) produces two-stage biases of 0.27–0.62 °C on <span class="math inline">\(CT_{\max,1\text{h}}\)</span> and / or 0.4–0.6 on <span class="math inline">\(z\)</span>, with coverage as low as 62%. The biases do not shrink with replication.</li>
-<li>The failure modes scale with the magnitude of the misspecification (Scenario 6) and the <em>baseline</em> level of partial mortality (Scenario 7) — the latter is the regime where most sublethal endpoints sit, and the two-stage <span class="math inline">\(CT_{\max,1\text{h}}\)</span> bias reaches 6 °C with coverage of 15%.</li>
-<li>At the sparsest design × replication budgets (Scenario 8 sparse × 1), the two-stage produces estimates with no operational meaning. The joint 4PL returns intervals of appropriate width.</li>
-<li>One outstanding issue (definition mismatch on absolute vs relative CTmax) needs to be settled before the Scenario 7 joint-4PL CTmax numbers can be quoted in the manuscript.</li>
+<li><strong>Strict equivalence (Scenario 1)</strong>: all six estimators unbiased. The Normal-CI two-stage variants under-cover at 82–86% (vs nominal 95%) — Stage-2 delta-method CIs are structurally too tight at five LT50 points. <strong>The t-quantile small-sample correction closes the gap (93–97%)</strong> — it is a strict improvement and should be the default CI method in any two-stage workflow. Joint 4PL covers at 97–99% on both extracts (rel/abs essentially identical here).</li>
+<li><strong>Overdispersion alone (Scenario 2)</strong>: same pattern. Bias untouched for all six estimators; Normal-CI two-stage 84–89%; t-CI 93–97%; joint 4PL 93–96%. Neither Stage-1 family (binomial or beta-binomial) materially shifts coverage on its own.</li>
+<li><strong>Structural drift in asymptotes or slope (Scenarios 3–5)</strong>: two-stage biases of 0.27–0.62 °C on <span class="math inline">\(CT_{\max,1\text{h}}\)</span> and 0.08–0.56 on <span class="math inline">\(z\)</span>, <strong>insensitive to replication</strong>. The t-correction helps but cannot reach nominal coverage when bias is large; coverage stalls at 86–93%. <strong>Joint 4PL with the absolute extract is near-unbiased</strong> on CTmax (≤ 0.05 °C across all three scenarios) with coverage 93–96%.</li>
+<li><strong>Scaling with misspecification magnitude (Scenario 6)</strong>: two-stage z bias flips sign across the <span class="math inline">\(\beta_u\)</span> sweep; absolute magnitude of CTmax bias shrinks as <span class="math inline">\(|\beta_u|\)</span> grows (CI widths grow faster). Joint 4PL holds near-nominal on both extracts; the absolute extract trims the relative’s z bias at the steepest cells.</li>
+<li><strong>Scenario 7 (sublethal-relevant: partial maximum survival at all T)</strong>: two-stage <span class="math inline">\(CT_{\max,1\text{h}}\)</span> catastrophically biased — up to −6.3 °C with coverage 16% at <span class="math inline">\(u_0 = 0.65\)</span>. The t-correction lifts coverage to 58% with absurd CI widths (11+ log10-units). <strong>Both joint 4PL extracts (relative and absolute), each compared against its own definition of CTmax, hold coverage at 92.5–95.7% across the entire sweep</strong> with bias within MC SE except for a small residual at the extreme <span class="math inline">\(u_0 = 0.65\)</span> cell (−0.24 °C / −0.36 °C). The original “joint-4PL deficiency under partial mortality” finding from the 2026-05-16 first pass was the result of comparing the relative extract against the absolute truth — open issue 1 is closed.</li>
+<li><strong>Sparse design × low replication (Scenario 8 sparse × 1)</strong>: two-stage produces estimates with no operational meaning (RMSE 22 on CTmax, 45 on z). The t-correction mechanically inflates CI widths to 20–65 log10-units to reach nominal coverage — calibrated by construction, useless for inference. <strong>Joint 4PL returns intervals of appropriate width</strong> (CTmax RMSE 0.91, z RMSE 2.15; coverage 95% / 99%) — wide because the data is wide, not artificially so.</li>
 </ul>
+<p>Two clean <strong>manuscript-ready recommendations</strong> emerge:</p>
+<ol type="1">
+<li>The <strong>joint 4PL with the absolute-CTmax extract</strong> is well-calibrated across all 25 simulation cells, including the regimes where the two-stage fails (partial mortality at all T, sparse design × low replication).</li>
+<li>If the two-stage architecture is retained for any reason, the <strong>t-quantile small-sample CI correction is a strict improvement</strong> over the Normal-quantile default and should be the recommended reporting standard. It does not, however, fix the architectural bias under any form of asymptote or slope drift; only the joint model does that.</li>
+</ol>
 </section>
 
 </main>
