@@ -744,14 +744,60 @@ simulations, designs included one to five replicate cups per
 temperature-by-time treatment, with 10 to 20 organisms per cup sampled
 from a uniform distribution. For each scenario-by-design combination, we
 simulated 1,000 datasets and fit both the two-stage and 4PL approaches.
-We report Monte Carlo standard errors (MCSE) for the bias and coverage
-summaries, but these were small, indicating adequate precision for the
-simulation summaries (\citeproc{ref-direnzo2023}{DiRenzo \emph{et al.}
-2023}; \citeproc{ref-koehler2009}{Koehler \emph{et al.} 2009};
+Overall, we ran 25,000 simulations and were limited to 1000 simulations
+per run. We report Monte Carlo standard errors (MCSE) for the bias and
+coverage summaries to better understand across simulation uncertainty
+(\citeproc{ref-direnzo2023}{DiRenzo \emph{et al.} 2023};
+\citeproc{ref-koehler2009}{Koehler \emph{et al.} 2009};
 \citeproc{ref-williams2024}{Williams \emph{et al.} 2024}).
 
 \paragraph{\texorpdfstring{\emph{Simulation
 results}}{Simulation results}}\label{simulation-results}
+
+When the data-generating process matched the classical assumptions, with
+survival spanning the full 0-1 range and temperature affecting only the
+dose-response midpoint, the two-stage approach performed similarly to
+the joint 4PL model, producing little bias and near-nominal coverage
+when confidence intervals were constructed with t-distribution
+quantiles. This distinction was important: using normal (z) quantiles
+instead produced anti-conservative intervals with coverage well below
+the nominal 95\% level (see Supplement).
+
+In contrast, the two-stage approach resulted in biased \emph{z} and
+\(CT_{max_{1hr}}\), often with poor coverage, when temperature impacted
+upper thresholds (up) and rate of decline (k) (Figure~\ref{fig-sims}).
+These biases were consistent with larger sample sizes
+(Figure~\ref{fig-sims}). Bias for both \emph{z} and \(CT_{max_{1hr}}\)
+from the two-stage approaches were particularly severe as the upper
+survival threshold decreased (see Supplement). Overall, these results
+confirm that any model misspecfication requires the 4PL to properly
+recover true \emph{z} and \(CT_{max}\), with correct uncertainty.
+
+\begin{figure}[H]
+
+\centering{
+
+\pandocbounded{\includegraphics[keepaspectratio]{ms_files/figure-pdf/fig-sims-1.pdf}}
+
+}
+
+\caption{\label{fig-sims}Simulation performance when the data-generating
+process violates classical TDT shape assumptions. Scen 3 introduces
+upper-asymptote drift (\(u\) declines 0.01 per °C from 0.92;
+\(\text{low}=0.05\), \(k=8\)), whereas Scen 5 lets curve steepness vary
+with temperature (\(k=6\) to 10 from 30 to 38 °C; \(u=0.92\),
+\(\text{low}=0.05\)). Both scenarios use \(n_{reps}=5\),
+\(N_{sim}=1000\), and beta-binomial overdispersion (\(\phi=5\)). Top
+row: mean signed bias in \(z\) and \(CT_{max,1h}\) with 95\% Monte Carlo
+SE bars; bottom row: empirical 95\% interval coverage. Dashed lines mark
+zero bias and nominal coverage. Absolute-scale methods
+(\texttt{joint\_4pl\_abs} and all two-stage variants) are evaluated
+against the analytical absolute-50\% truth; \texttt{joint\_4pl} is
+evaluated against the relative midpoint truth. Two-stage normal- and
+t-quantile variants share point estimates and differ only in Stage-2
+delta-method interval construction.}
+
+\end{figure}%
 
 \section{Application of Bayesian dose-response models to case
 studies}\label{application-of-bayesian-dose-response-models-to-case-studies}

@@ -266,11 +266,264 @@ We assessed the performance of the 4PL and two-stage approaches by estimating em
 
 We tested the performance of the two-stage and 4PL approaches across scenarios designed to separate different sources of estimator bias and uncertainty. First, we simulated a strict-equivalence baseline in which survival spanned the full 0–1 range, there was no overdispersion, and only the dose-response midpoint varied with temperature. This scenario tests whether the two approaches recover the same quantities when the assumptions of the classical two-stage model are met. Second, we introduced beta-binomial overdispersion while keeping the same underlying dose-response shape, allowing us to isolate the cost of likelihood misspecification when binomial models are applied to overdispersed count data. Third, we simulated departures from the classical dose-response assumptions by allowing the upper asymptote to decline with temperature, both asymptotes to compress with temperature, or the curve steepness to change with temperature. These scenarios reflect empirical cases in which survival or sublethal responses do not span the full response range, or where the shape of the dose-response curve changes across assay temperatures. Finally, we ran sensitivity analyses that varied the strength of upper-asymptote drift, the overall level of the upper asymptote, and the intensity of the experimental design. 
 
-Experimental designs were chosen to span the scale of published TDT/TLS assays, which often estimate response curves from several static temperatures and exposure durations with modest numbers of individuals, samples, or replicate vials per treatment [@truebano2018; @jorgensen_drosophila_2019; @li2023; @orsted_suzukii_2024; @faber_tdt_plants_2024]. In the simulations, designs included one to five replicate cups per temperature-by-time treatment, with 10 to 20 organisms per cup sampled from a uniform distribution. For each scenario-by-design combination, we simulated 1,000 datasets and fit both the two-stage and 4PL approaches. We report Monte Carlo standard errors (MCSE) for the bias and coverage summaries, but these were small, indicating adequate precision for the simulation summaries [@williams2024; @direnzo2023; @koehler2009].
+Experimental designs were chosen to span the scale of published TDT/TLS assays, which often estimate response curves from several static temperatures and exposure durations with modest numbers of individuals, samples, or replicate vials per treatment [@truebano2018; @jorgensen_drosophila_2019; @li2023; @orsted_suzukii_2024; @faber_tdt_plants_2024]. In the simulations, designs included one to five replicate cups per temperature-by-time treatment, with 10 to 20 organisms per cup sampled from a uniform distribution. For each scenario-by-design combination, we simulated 1,000 datasets and fit both the two-stage and 4PL approaches. Overall, we ran 25,000 simulations and were limited to 1000 simulations per run. We report Monte Carlo standard errors (MCSE) for the bias and coverage summaries to better understand across simulation uncertainty [@williams2024; @direnzo2023; @koehler2009].
 
 #### *Simulation results*
 
+When the data-generating process matched the classical assumptions, with survival spanning the full 0-1 range and temperature affecting only the dose-response midpoint, the two-stage approach performed similarly to the joint 4PL model, producing little bias and near-nominal coverage when confidence intervals were constructed with t-distribution quantiles. This distinction was important: using normal (z) quantiles instead produced anti-conservative intervals with coverage well below the nominal 95% level (see Supplement).
 
+In contrast, the two-stage approach resulted in biased *z* and $CT_{max_{1hr}}$, often with poor coverage, when temperature impacted upper thresholds (up) and rate of decline (k) (@fig-sims). These biases were consistent with larger sample sizes (@fig-sims). Bias for both *z* and $CT_{max_{1hr}}$ from the two-stage approaches were particularly severe as the upper survival threshold decreased (see Supplement). Overall, these results confirm that any model misspecfication requires the 4PL to properly recover true *z* and $CT_{max}$, with correct uncertainty. 
+
+```{r}
+#| label: fig-sims
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.5
+#| fig-cap: "Simulation performance when the data-generating process violates classical TDT shape assumptions. Row labelled **'u varies with T'**: upper asymptote $u$ declines 0.01 per °C from 0.92 at $T=34$ °C, with $\\text{low}=0.05$ and $k=8$ constant in $T$. Row labelled **'k varies with T'**: slope $k$ ranges from 6 at 30 °C to 10 at 38 °C, with $u=0.92$ and $\\text{low}=0.05$ constant. Both rows use 5 replicate cups per (T × duration) cell, $N_{sim}=1000$ simulated datasets per row, and beta-binomial overdispersion ($\\phi=5$). Panel (a): mean signed bias in $z$ (left column) and $CT_{max,1h}$ (right column) with 95% Monte Carlo SE bars. Panel (b): empirical 95% interval coverage with the same column layout. Dashed lines mark zero bias and nominal coverage. Absolute-scale methods (`joint_4pl_abs` and all two-stage variants) are evaluated against the analytical absolute-50% truth; `joint_4pl` is evaluated against the relative midpoint truth. Two-stage normal- and t-quantile variants share point estimates and differ only in Stage-2 delta-method interval construction."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(patchwork)
+
+# ---- Method ordering + paired colour palette (matches notes writeup) --
+.method_levels <- c("two_stage_bin", "two_stage_bin_t",
+                    "two_stage_bb",  "two_stage_bb_t",
+                    "joint_4pl",     "joint_4pl_abs")
+.method_labels <- c("Two-stage bin (Normal CI)", "Two-stage bin (t CI)",
+                    "Two-stage BB (Normal CI)",  "Two-stage BB (t CI)",
+                    "Joint 4PL (relative)",      "Joint 4PL (absolute)")
+.method_cols <- setNames(c("#54278f","#cbc9e2","#a63603","#fdae6b",
+                           "#006d2c","#a1d99b"), .method_labels)
+
+# ---- Two-truth constants (mid line is fixed across all 25 sim cells) --
+.TRUTH_REL <- c(z = -1 / -0.15,
+                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+# ---- BB Stage-1 pathology screening + two-truth aggregation -----------
+.load_screened <- function(prefix) {
+  files <- list.files(
+    here::here("output", "sim_twostage"),
+    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+    full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z"         & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |>
+    dplyr::mutate(bb_path = TRUE)
+
+  ps |>
+    dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb", "two_stage_bb_t"))) |>
+    dplyr::select(-bb_path) |>
+    dplyr::mutate(
+      truth_use = ifelse(method == "joint_4pl",
+                         .TRUTH_REL[as.character(quantity)],
+                         truth),
+      bias    = estimate - truth_use,
+      covered = is.finite(lower) & is.finite(upper) &
+                lower <= truth_use & truth_use <= upper
+    ) |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n         = dplyr::n(),
+      mean_bias = mean(bias, na.rm = TRUE),
+      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      coverage  = mean(covered, na.rm = TRUE),
+      mcse_cov  = sqrt(mean(covered, na.rm = TRUE) *
+                       (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
+      .groups   = "drop"
+    )
+}
+
+# Use n_reps = 5 cells of Scen 3 and Scen 5 for the manuscript figure.
+.d <- dplyr::bind_rows(.load_screened("scen3"),
+                       .load_screened("scen5")) |>
+  dplyr::filter(grepl("_n5$", scenario)) |>
+  dplyr::mutate(
+    method   = factor(method,   levels = .method_levels,
+                                labels = .method_labels),
+    quantity = factor(quantity, levels = c("z", "CTmax_1hr"),
+                                labels = c("z (°C)",
+                                           "CT[max,1h] (°C)")),
+    scenario_label = dplyr::recode(
+      sub("_n5$", "", scenario),
+      scen3_heat_lowers_u = "u varies with T",
+      scen5_sharpen       = "k varies with T"),
+    bias_lo = mean_bias - 1.96 * mcse_bias,
+    bias_hi = mean_bias + 1.96 * mcse_bias,
+    cov_lo  = coverage  - 1.96 * mcse_cov,
+    cov_hi  = coverage  + 1.96 * mcse_cov
+  )
+
+.theme_proj <- theme_classic(base_size = 11) +
+  theme(strip.background = element_blank(),
+        strip.text       = element_text(face = "bold"),
+        legend.position  = "bottom",
+        legend.title     = element_blank(),
+        legend.text      = element_text(size = 9),
+        panel.spacing    = unit(0.8, "lines"))
+
+.p_bias <- ggplot(.d, aes(x = mean_bias, y = method, colour = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi), height = 0.25) +
+  geom_point(size = 2.4) +
+  facet_grid(scenario_label ~ quantity, scales = "free_x") +
+  scale_colour_manual(values = .method_cols) +
+  labs(x = "Mean bias (estimate − truth)", y = NULL,
+       title = "(a) Bias") +
+  .theme_proj + theme(legend.position = "none")
+
+.p_cov <- ggplot(.d, aes(x = coverage, y = method, colour = method)) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi), height = 0.25) +
+  geom_point(size = 2.4) +
+  facet_grid(scenario_label ~ quantity) +
+  scale_colour_manual(values = .method_cols) +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+  labs(x = "Empirical 95% CI coverage", y = NULL,
+       title = "(b) Coverage") +
+  .theme_proj
+
+.p_bias / .p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+#| label: fig-sims2
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "Bias in $z$ and $CT_{max,1h}$ as the partial-mortality regime is swept along two orthogonal axes. Row labelled **'u drifts with T (varying $\\beta_u$)'**: upper asymptote at $T = \\bar T$ fixed at $u_0 = 0.92$, slope $\\beta_u$ varied across $\\{-0.005, -0.010, -0.015, -0.019\\}$ pp/°C — i.e., $u$ stays high at cool assays and declines progressively at hotter ones. Row labelled **'u is constant but reduced (varying $u_0$)'**: $\\beta_u = 0$ (no temperature drift); the baseline level itself is swept across $\\{0.65, 0.75, 0.85, 0.95, 0.99\\}$ — i.e., a constant fraction of the cohort is never susceptible, regardless of temperature. Both rows: $\\text{low}=0.05$, $k=8$, mid linear in $T$ with slope $-0.15$, beta-binomial likelihood ($\\phi=5$), $n_{reps}=5$, $N_{sim}=1000$ datasets per cell. Points are mean signed bias with 95% Monte Carlo SE bars; dashed lines mark zero bias. Left column: $z$; right column: $CT_{max,1h}$. Only the four distinct point-estimate methods are shown: the two-stage Normal-CI and t-CI variants share point estimates within each Stage-1 family, so bias is identical between them; coverage differences appear in the supplementary writeup. Methods are evaluated against the truth on their own threshold scale (see Methods). The two failure signatures differ: drifting $u$ tilts the Stage-2 slope (large $z$ bias, modest $CT_{max,1h}$ bias); constant low $u$ shifts the Stage-2 intercept (large $CT_{max,1h}$ bias, with $z$ bias of opposite sign growing as $u_0$ falls)."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(patchwork)
+
+# ---- Method ordering + colour palette ---------------------------------
+# Bias is identical for the Normal-CI and t-CI variants of each
+# two-stage Stage-1 family (they share point estimates; only Stage-2 CI
+# construction differs). For this bias-only figure we therefore plot
+# just the four distinct point-estimate methods: two_stage_bin,
+# two_stage_bb, joint_4pl (relative), joint_4pl_abs (absolute).
+.method_levels <- c("two_stage_bin", "two_stage_bb",
+                    "joint_4pl",     "joint_4pl_abs")
+.method_labels <- c("Two-stage bin", "Two-stage BB",
+                    "Joint 4PL (relative)", "Joint 4PL (absolute)")
+.method_cols <- setNames(c("#54278f", "#a63603", "#006d2c", "#a1d99b"),
+                         .method_labels)
+
+# ---- Two-truth constants (mid line is fixed across all 25 sim cells) --
+.TRUTH_REL <- c(z = -1 / -0.15,
+                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+# ---- BB Stage-1 pathology screening + two-truth aggregation -----------
+.load_screened <- function(prefix) {
+  files <- list.files(
+    here::here("output", "sim_twostage"),
+    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+    full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z"         & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |>
+    dplyr::mutate(bb_path = TRUE)
+
+  ps |>
+    dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb", "two_stage_bb_t"))) |>
+    dplyr::select(-bb_path) |>
+    dplyr::mutate(
+      truth_use = ifelse(method == "joint_4pl",
+                         .TRUTH_REL[as.character(quantity)],
+                         truth),
+      bias    = estimate - truth_use,
+      covered = is.finite(lower) & is.finite(upper) &
+                lower <= truth_use & truth_use <= upper
+    ) |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n         = dplyr::n(),
+      mean_bias = mean(bias, na.rm = TRUE),
+      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      .groups   = "drop"
+    )
+}
+
+.scen6 <- .load_screened("scen6") |>
+  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
+                sweep_label = "u drifts with T (varying β_u, pp / °C)")
+
+.scen7 <- .load_screened("scen7") |>
+  dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
+                sweep_label = "u is constant but reduced (varying u_0)")
+
+.shape_fmt <- function(d) {
+  d |>
+    dplyr::filter(method %in% .method_levels) |>
+    dplyr::mutate(
+      method   = factor(method,   levels = .method_levels,
+                                  labels = .method_labels),
+      quantity = factor(quantity, levels = c("z", "CTmax_1hr"),
+                                  labels = c("z (°C)",
+                                             "CT[max,1h] (°C)")),
+      bias_lo = mean_bias - 1.96 * mcse_bias,
+      bias_hi = mean_bias + 1.96 * mcse_bias
+    )
+}
+
+.theme_proj <- theme_classic(base_size = 11) +
+  theme(strip.background = element_blank(),
+        strip.text       = element_text(face = "bold"),
+        legend.position  = "bottom",
+        legend.title     = element_blank(),
+        legend.text      = element_text(size = 9),
+        panel.spacing    = unit(0.8, "lines"))
+
+.build <- function(d, x_label, x_breaks) {
+  ggplot(d, aes(x = sweep_x, y = mean_bias, colour = method)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(aes(ymin = bias_lo, ymax = bias_hi), width = 0) +
+    geom_point(size = 2.4) +
+    geom_line() +
+    facet_wrap(~ quantity, scales = "free_y", nrow = 1) +
+    scale_colour_manual(values = .method_cols) +
+    scale_x_continuous(breaks = x_breaks) +
+    labs(x = x_label, y = "Mean bias (estimate − truth)") +
+    .theme_proj
+}
+
+.p6 <- .build(.shape_fmt(.scen6),
+              x_label  = expression(beta[u]~"(pp / °C, drift of "*italic(u)*" with T)"),
+              x_breaks = c(-0.019, -0.015, -0.010, -0.005)) +
+  ggtitle("(a) u drifts with T (varying β_u)")
+
+.p7 <- .build(.shape_fmt(.scen7),
+              x_label  = expression(u[0]~"(constant upper asymptote, all T)"),
+              x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99)) +
+  ggtitle("(b) u is constant but reduced (varying u_0)")
+
+.p6 / .p7 + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom")
+```
 
 # Application of Bayesian dose-response models to case studies
 
