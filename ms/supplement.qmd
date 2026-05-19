@@ -34,6 +34,11 @@ format:
     number-sections: true
     embed-resources: true
     fig-cap-location: bottom
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true
+    code-overflow: scroll
+    format-links: false
   docx:
     reference-doc: ../bib/templates/template.docx
     toc: false
@@ -560,6 +565,11 @@ wf_bb  <- fit_4pl(std_bb,
                   chains = 4, iter = 2000, cores = 4, seed = 123,
                   file       = file.path(models_dir, "sim_4pl_betabinomial_v2"),
                   file_refit = "never")
+
+# `print()` on a bayes_tls workflow gives the one-screen header view: data
+# shape, centred-temperature mean, asymptote bounds, draws count.
+print(wf_bin)
+print(wf_bb)
 
 # Convenience: extract the brmsfit object for downstream brms helpers.
 fit_bin <- wf_bin$fit
@@ -1774,6 +1784,9 @@ wf_shrimp <- fit_4pl(
   control = list(adapt_delta = 0.99, max_treedepth = 12),
   file    = file.path(models_dir, "fit_shrimp_lethal_4pl")
 )
+
+# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
+print(wf_shrimp)
 ```
 
 ### Sampling diagnostics
@@ -2545,6 +2558,10 @@ zf_fits_sep <- lapply(zf_stages, function(s) {
   )
 })
 names(zf_fits_sep) <- zf_stages
+
+# Workflow header for one stage as a discoverability cue; the other two have
+# the same structure with different data shape.
+print(zf_fits_sep[[zf_stages[1]]])
 ```
 
 ### Sampling diagnostics for the separate fits
