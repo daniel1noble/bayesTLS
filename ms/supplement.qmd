@@ -164,6 +164,7 @@ Every exported function is documented with roxygen2 (`?fit_4pl`, etc.) and the p
 
 ```{r function-tour-table}
 #| label: tbl-function-tour
+#| echo: false
 #| tbl-cap: "Functions exported by the TDT analysis library, grouped by pipeline stage. Each function is documented with roxygen2 in its R file; runnable examples accompany every function."
 
 tdt_function_tour <- tibble::tribble(
@@ -1410,14 +1411,13 @@ tinytable::tt(val_table, digits = 2, escape = TRUE)
 The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. This sanity-check pattern — three traces with known doses, plus the recovery check — is what each new dataset's heat-injury prediction should pass before being trusted.
 
 
-# Extended Simulation Results
+# **Extended Simulation Results**
 
 This section provides more detail on the simulation results from the
 various scenarios we explored to understand bias and coverage of *z*
-and $CT_{max}$. The main manuscript figures
-([Fig. @fig-sims] and [Fig. @fig-sims2]) show bias and coverage for the
-two shape-perturbing scenarios (drifting upper asymptote `u`, varying
-slope `k`) and the bias results from the two partial-mortality sweeps.
+and $CT_{max}$. The main manuscript figures summarize the two
+shape-perturbing scenarios (drifting upper asymptote `u`, varying slope
+`k`) and the bias results from the two partial-mortality sweeps.
 
 Here we document the remaining scenarios we explored: the strict-equivalence
 baseline, likelihood misspecification alone, symmetric asymptote
@@ -1552,7 +1552,7 @@ library(patchwork)
 }
 ```
 
-## Strict equivalence baseline
+## *Strict equivalence baseline*
 
 This scenario is the strict-equivalence baseline. The data-generating curve spans the full survival range ($u = 0.999$, $\text{low} = 0.001$), has a shared slope ($k = 8$), and has a midpoint that declines linearly with temperature (slope $-0.15$) under a binomial likelihood with no overdispersion. We crossed this scenario with two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
 
@@ -1573,7 +1573,7 @@ We included this scenario to check whether the estimators agree when the classic
 .plot_forest(.d, panel_var = "panel_n")
 ```
 
-## Likelihood misspecification alone
+## *Likelihood misspecification alone*
 
 This scenario keeps the same mean dose-response shape as the strict-equivalence baseline, but generates counts from a beta-binomial likelihood with overdispersion $\phi = 5$. We again used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
 
@@ -1594,7 +1594,7 @@ We included this scenario to isolate the cost of likelihood misspecification: th
 .plot_forest(.d, panel_var = "panel_n")
 ```
 
-## Asymptotes compress symmetrically
+## *Asymptotes compress symmetrically*
 
 In this scenario, both asymptotes move toward each other as temperature increases: $u$ declines by 0.01 per °C from 0.92, while $\text{low}$ increases by 0.01 per °C from 0.05. This preserves the approximate logit-difference but compresses the response range. Although this symmetric compression is not biologically realistic, it is useful as a diagnostic test: it changes the dose-response range while largely preserving the midpoint-temperature relationship. We used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
 
@@ -1615,10 +1615,10 @@ Bias was smaller than in the asymmetric upper-asymptote scenario, but the two-st
 .plot_forest(.d, panel_var = "panel_n")
 ```
 
-## Coverage for the drifting-$u$ across temperatures ($\beta_u$)
+## *Coverage for the drifting-$u$ across temperatures ($\beta_u$)*
 
-This complements [Fig. @fig-sims2]a (which showed bias only) with the
-matching coverage panels.
+This complements the main-text $\beta_u$ bias sweep with the matching
+coverage panels.
 
 ```{r}
 #| label: fig-sim-supp-scen6cov
@@ -1627,7 +1627,7 @@ matching coverage panels.
 #| message: false
 #| fig-width: 8
 #| fig-height: 4.5
-#| fig-cap: "Empirical 95% CI coverage across the $\\beta_u$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as [Fig. @fig-sims2]a, with coverage now shown for all six methods (Normal- and t-quantile two-stage CIs differ on coverage even though their point estimates are identical)."
+#| fig-cap: "Empirical 95% CI coverage across the $\\beta_u$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as the main-text $\\beta_u$ bias sweep, with coverage shown for all six methods. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
 
 .d <- .load_screened("scen6") |>
   dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
@@ -1636,12 +1636,12 @@ matching coverage panels.
                 x_breaks = c(-0.019, -0.015, -0.010, -0.005))
 ```
 
-## Coverage for the constant-but-reduced-$u$ ($u_0$)
+## *Coverage for the constant-but-reduced-$u$ ($u_0$)*
 
-Complements [Fig. @fig-sims2]b. With a low $u_0$, the two-stage
-Stage-1 GLMs miscalibrate per-temperature, the Stage-2 OLS inherits
-that bias, and CI coverage on $CT_{max,1h}$ collapses well below
-nominal even after the t-quantile small-sample correction.
+This complements the main-text $u_0$ bias sweep. With a low $u_0$, the
+two-stage Stage-1 GLMs miscalibrate per temperature, the Stage-2 OLS
+inherits that bias, and CI coverage on $CT_{max,1h}$ collapses well
+below nominal even after the t-quantile small-sample correction.
 
 ```{r}
 #| label: fig-sim-supp-scen7cov
@@ -1650,7 +1650,7 @@ nominal even after the t-quantile small-sample correction.
 #| message: false
 #| fig-width: 8
 #| fig-height: 4.5
-#| fig-cap: "Empirical 95% CI coverage across the $u_0$ sweep (Scen 7). Same DGP and method set as [Fig. @fig-sims2]b. Two-stage CTmax coverage collapses as $u_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
+#| fig-cap: "Empirical 95% CI coverage across the $u_0$ sweep (Scen 7). Same DGP and method set as the main-text $u_0$ bias sweep. Two-stage CTmax coverage collapses as $u_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
 
 .d <- .load_screened("scen7") |>
   dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100)
@@ -1659,7 +1659,7 @@ nominal even after the t-quantile small-sample correction.
                 x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99))
 ```
 
-## Design variation impacts
+## *Design variation impacts*
 
 This scenario varies experimental design while holding the data-generating process fixed. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration cell; each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The DGP used the baseline beta-binomial shape ($u = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$); the sparsest design had only 12 'cups' total.
 
@@ -2799,7 +2799,7 @@ All four sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) receive this cell-mea
 #| label: zebrafish-joint-spec
 #| echo: true
 
-zf_bounds <- bayesTLS:::compute_4pl_bounds(lower = 0, upper = 1)
+zf_bounds <- getFromNamespace("compute_4pl_bounds", "bayesTLS")(lower = 0, upper = 1)
 low_expr  <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)",
                      zf_bounds$low_min, zf_bounds$low_w)
 up_expr   <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)",
@@ -3438,5 +3438,3 @@ The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summ
 
 pander::pander(sessionInfo())
 ```
-
-:::
