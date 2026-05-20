@@ -5,9 +5,242 @@ format: html
 
 # **Case Study 4: Seed data** {#sec-seed}
 
-We now apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` → `predict_heat_injury()` — to lethal-TDT data from imbibed seeds of mountain hickory (*Acacia penninervis* var. *penninervis*). The data are 100 individual seeds 
+We now apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` → `predict_heat_injury()` — to lethal-TDT data from imbibed seeds of mountain hickory (*Acacia penninervis* var. *penninervis*). The data are the proportion of seeds respiring following heat exposure. In this experiment, seeds were surface-sterilised, then placed on 1 % agar at 22 °C to imbibe for 24 h. Seeds were exposed to heat treatments (temperature × duration combinations) and then individual seeds were placed in 2 mL tubes containing 1.5 mL paraffin wax and 0.2 mL agar, leading 0.3 mL air volume as headspace to amplify the respiration signal:noise ratio of each ~60 mg seed. Tubes with seeds were placed in a $Q_2$ system that measured respiration through closed-system respirometry, quantifying the rate of oxygen consumption per seed as $\dot V O_2~(mL~seed^{-1}~h^{-1})$. Five replicate seeds were exposed to each heat treatment, and the proportion of respiring seeds were then calculated per treatment. As seed heat tolerance is considerably higher than animals or soft plant tissues, the assay temperatures spanned 22-80 °C and 15 min to 2 hours of exposure.
 
-
-148 replicate trials spanning 30–33 °C and 5 min to 6 hours of exposure, with each replicate exposing a tank of individuals to a fixed temperature × duration combination on a specific date. The two grouping factors `Date` and `Tank` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and tank-level cohort variation to be partitioned out of the dose-response surface.
 
 ## Data and standardisation {#sec-seed-data}
+
+```{r seed-load}
+#| label: seed-load
+#| echo: true
+
+seed_raw <- readr::read_csv(
+  here::here("data", "data_lethal_TDT_acacia_seeds.csv"),
+  show_col_types = FALSE
+)
+
+seed_std <- standardize_data(
+  data           = seed_raw,
+  temp           = "Temperature",
+  duration       = "Duration",
+  n_total        = "Seeds_Total",
+  n_surv         = "Seeds_Resp",
+  random_effects = NULL,
+  duration_unit  = "hours"
+)
+```
+
+```{r seed-summary-table}
+#| label: tbl-seed-summary
+#| tbl-cap: "Summary of the seed lethal-TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
+
+seed_summary <- tibble::tibble(
+  `n trials`              = nrow(seed_std),
+  `Temperature range (°C)` = paste(range(seed_std$temp), collapse = "–"),
+  `Duration range (hr)`   = paste(round(range(seed_std$duration), 2),
+                                  collapse = "–"),
+  `Median individuals/trial` = stats::median(seed_std$n_total),
+  `Temperature centre (°C)`  = attr(seed_std, "tdt_meta")$temp_mean
+)
+tinytable::tt(seed_summary, digits = 2, escape = TRUE)
+```
+
+## Fitting the joint Bayesian 4PL {#sec-seed-fit}
+
+`fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL with sensible defaults: a beta-binomial likelihood, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter.
+
+```{r seed-fit}
+#| label: seed-fit
+#| echo: true
+#| cache: false
+
+base_priors <- make_4pl_priors(
+  data = seed_std,
+  random_effects = NULL,
+  prior_phi = NULL
+)
+
+wf_seed <- fit_4pl(
+  seed_std, prior = base_priors,
+  random_effects = NULL, 
+  chains  = 4, iter = 10000, warmup = 5000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  file    = file.path(models_dir, "fit_seed_lethal_4pl")
+)
+
+# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
+print(wf_seed)
+```
+
+### Sampling diagnostics
+
+```{r seed-diagnostics}
+#| label: tbl-seed-diagnostics
+#| tbl-cap: "Sampling diagnostics for the seed 4PL fit. Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
+#| cache: false
+
+tinytable::tt(diagnose_tdt_fit(wf_seed), digits = 3, escape = TRUE)
+```
+
+The diagnostics table is a numerical pass/fail summary. The canonical visual check is the chain trace ("fuzzy caterpillar"): healthy chains overlap and explore the same posterior support; chains that drift, diverge, or hang in different regions signal a problem with the fit.
+
+```{r seed-trace-plot}
+#| label: fig-seed-trace
+#| fig-cap: "Posterior chain traces for the seed 4PL fixed-effect parameters and the beta-binomial dispersion $\\phi$. Each panel overlays four chains; well-mixed chains overlap throughout."
+#| fig-width: 9
+#| fig-height: 6
+#| cache: false
+
+brms::mcmc_plot(
+  wf_seed$fit,
+  type     = "trace",
+  variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
+               "b_logk_Intercept",   "b_mid_Intercept",
+               "b_mid_temp_c")
+) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+### Posterior parameters on the natural scale
+
+```{r seed-parameter-table}
+#| label: tbl-seed-parameters
+#| tbl-cap: "Posterior medians and 95% credible intervals for the seed 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in hours at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
+
+tinytable::tt(tdt_parameter_table(wf_seed), digits = 3, escape = TRUE)
+```
+
+## Survival curves with observed overlay {#sec-seed-survival-curves}
+
+`predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and exposure durations and returns posterior survival probabilities. Overlaying the per-replicate observed proportions gives a visual check that the fitted curves track the data at every temperature.
+
+```{r seed-survival-curves}
+#| label: fig-seed-survival-curves
+#| fig-cap: "Posterior survival curves for brown seed at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate survival proportions."
+#| fig-width: 8
+#| fig-height: 5
+
+psc_seed <- predict_survival_curves(
+  wf_seed,
+  temps     = sort(unique(seed_std$temp)),
+  ndraws    = 1000
+)
+plot_survival_curves(psc_seed, observed = seed_std) +
+  ggplot2::labs(x = "Exposure duration (minutes)")
+
+```
+
+## TDT landscape {#sec-seed-landscape}
+
+`derive_tdt_landscape()` evaluates the fitted 4PL on a dense (temperature, duration) grid and `plot_tdt_landscape()` renders it as a heatmap with overlaid contours at 25, 50, and 75% survival. This is the two-dimensional view of the dose-response surface that the TDT line summarises with one number per temperature.
+
+```{r seed-landscape}
+#| label: fig-seed-landscape
+#| fig-cap: "TDT landscape for brown seed: posterior median predicted survival across a 120 × 120 grid of assay temperatures × durations. White contours mark 25%, 50%, and 75% survival isolines. Overlaid points are raw observed proportions."
+#| fig-width: 8
+#| fig-height: 6
+#| cache: false
+
+seed_dur_grid <- seq(min(seed_std$duration), max(seed_std$duration),
+                        length.out = 120)
+lsp_seed <- derive_tdt_landscape(wf_seed,
+                                   duration_grid = seed_dur_grid,
+                                   ndraws        = 1000)
+plot_tdt_landscape(lsp_seed, observed = seed_std)
+```
+
+## TDT line: time to the threshold vs temperature {#sec-seed-tdt-line}
+
+The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "hours of exposure half the animals tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. The default threshold is $\text{mid}$ (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for the classical absolute-$t_{50}$ definition. For the seed data the two coincide because the asymptotes are anchored near 0 and 1.
+
+```{r seed-tdt-line}
+#| label: seed-tdt-line
+#| echo: true
+
+ltx_seed <- derive_tdt_curve(
+  wf_seed,
+  temp_grid        = seq(min(seed_std$temp) - 1.5,
+                         max(seed_std$temp) + 1.5, by = 0.05),
+  ndraws           = 500,
+  time_multiplier  = 1,
+  output_time_unit = "minutes"
+)
+```
+
+```{r plot-seed-tdt-line}
+#| label: fig-seed-tdt-line
+#| fig-cap: "Brown seed posterior TDT line: predicted time to threshold vs assay temperature, with 95 % credible band. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Both panels share the same posterior."
+#| fig-width: 9
+#| fig-height: 4
+
+plot_tdt_curve(ltx_seed, panels = "both", colour = "#b2182b")
+```
+
+## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-seed-extract}
+
+`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature, derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion). Passing `lethal = TRUE` additionally returns $T_{crit}$ under the rate-multiplier definition; this only makes sense when the endpoint is mortality (see @eq-tcrit), so we opt in for the seed data.
+
+```{r seed-extract}
+#| label: seed-extract
+#| echo: true
+
+et_seed <- extract_tdt(
+  wf_seed,
+  t_ref         = 60,
+  TC_rate_range = c(0.1, 1),
+  ndraws        = 500,
+  lethal        = TRUE
+)
+```
+
+```{r seed-extract-table}
+#| label: tbl-seed-extract
+#| tbl-cap: "Classical TDT summaries for brown seed, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$ — the pooled posterior carries both parameter uncertainty and operational uncertainty in $r^*$."
+
+seed_extract <- tibble::tribble(
+  ~Quantity,                        ~Median, ~Lower, ~Upper,
+  "z (°C per order of magnitude)",      et_seed$z$summary$z_median,
+                                    et_seed$z$summary$z_lower,
+                                    et_seed$z$summary$z_upper,
+  "CTmax_1hr (°C)",                 et_seed$CTmax$summary$temp_median,
+                                    et_seed$CTmax$summary$temp_lower,
+                                    et_seed$CTmax$summary$temp_upper,
+  "T_crit (°C, r* in [0.1, 1] per hour)",
+                                    et_seed$T_crit$summary$temp_median,
+                                    et_seed$T_crit$summary$temp_lower,
+                                    et_seed$T_crit$summary$temp_upper
+)
+tinytable::tt(seed_extract, digits = 2, escape = TRUE)
+```
+
+```{r seed-tcrit-ctmax-plot}
+#| label: fig-seed-tcrit-ctmax
+#| fig-cap: "Posterior densities of $z$ (left), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for brown seed. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The ~5 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ is the window between the onset of detectable damage accumulation and the LT50 temperature at 1 h."
+#| fig-width: 11
+#| fig-height: 3.5
+
+z_draws_seed   <- get_z_draws(et_seed) |>
+  dplyr::transmute(temp = z)
+z_q <- stats::quantile(z_draws_seed$temp,
+                       c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+z_post_seed <- list(
+  draws   = z_draws_seed,
+  summary = tibble::tibble(temp_lower  = z_q[1],
+                           temp_median = z_q[2],
+                           temp_upper  = z_q[3])
+)
+
+patchwork::wrap_plots(
+  plot_temperature_density(z_post_seed,
+                            x_label = expression(italic(z)~("°C per decade of time"))),
+  plot_temperature_density(et_seed$CTmax,
+                            x_label = expression(CT[max[1*hr]]~("°C"))),
+  plot_temperature_density(et_seed$T_crit,
+                            x_label = expression(T[crit]~("°C"))),
+  ncol = 3
+)
+```
+
+
+

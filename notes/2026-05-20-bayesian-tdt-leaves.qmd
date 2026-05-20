@@ -295,5 +295,151 @@ patchwork::wrap_plots(
 )
 ```
 
+
+## Heat injury under reference traces {#sec-leaf-hi}
+
+`predict_heat_injury()` projects the fitted dose-response surface through a temperature trace and returns cumulative heat injury (HI) and the resulting survival fraction at each time step. The damage threshold $T_c$ below which injury does not accumulate is hand-picked in this case, rather than model derived due to the sublethal nature of functional impairment. 
+
+We illustrate the function on four reference traces built by `make_temperature_scenarios()`: a flat baseline, a single one-hour spike, three one-hour spikes, and a four-day diurnal cycle that mimics a typical summer heatwave. The single-spike trace is calibrated as an analytical sanity check — its spike temperature is set to the posterior median of $CT_{max_{1hr}}$, so by definition the trace delivers approximately one $LT_{50}$ dose by the end of the spike hour. These values are plausible leaf temperatures on sunny, still conditions.
+
+```{r leaf-hi}
+#| label: leaf-hi
+#| echo: true
+
+leaf_T_c       <- 32.5
+leaf_CTmax_med <- et_leaf$CTmax$summary$temp_median
+
+leaf_scens <- make_temperature_scenarios(
+  baseline   = 30,
+  spike_temp = leaf_CTmax_med,
+  n_hours    = 96,
+  spike_times_single = 24,
+  spike_times_multi  = c(24, 48, 72),
+  diurnal_n_days     = 4,
+  diurnal_day_peaks  = c(38.0, 41.0, 44.0, 43.5),
+  diurnal_night_temp = c(20.0, 15.5, 17.5, 19.0),
+  diurnal_peak_fwhm  = 5,
+  diurnal_noise_sd   = 0.5,
+  diurnal_seed       = 1L
+)
+
+leaf_hi <- purrr::map(leaf_scens, function(sc) {
+  predict_heat_injury(trace = sc, workflow = wf_leaf,
+                      T_c = leaf_T_c, ndraws = 500)
+})
+```
+
+Setting `repair = TRUE` adds a temperature-dependent Sharpe-Schoolfield repair kernel so injury accumulated at hot temperatures can be partially cleared during cooler intervals. Here we re-run only the two scenarios that accrue meaningful HI without repair — the multi-spike and the diurnal traces.
+
+```{r leaf-hi-repair}
+#| label: leaf-hi-repair
+#| echo: true
+
+leaf_repair_pars <- list(
+  TA = 14065, TAL = 50000, TAH = 120000,
+  TL = 10.5 + 273.15, TH = 32.5 + 273.15, TREF = 30 + 273.15,
+  r_ref = 0.15
+)
+
+leaf_hi_multi_rep <- predict_heat_injury(
+  leaf_scens$multi_spike, wf_leaf, T_c = leaf_T_c, ndraws = 500,
+  repair = TRUE, repair_pars = leaf_repair_pars
+)
+leaf_hi_diurnal_rep <- predict_heat_injury(
+  leaf_scens$diurnal, wf_leaf, T_c = leaf_T_c, ndraws = 500,
+  repair = TRUE, repair_pars = leaf_repair_pars
+)
+```
+
+```{r leaf-hi-traces}
+#| label: fig-leaf-hi-traces
+#| fig-cap: "The four reference temperature traces used for the leaf heat-injury prediction. Baseline  °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ so each spike delivers approximately one LT50 dose. The diurnal scenario is a clustered 4-day heatwave: a cool day below $T_{crit}$ followed by three progressively hotter days. The dashed line marks the damage threshold $T_c = T_{crit}$."
+#| fig-width: 7
+#| fig-height: 9
+
+plot_temperature_scenarios(leaf_scens, T_c = leaf_T_c)
+```
+
+```{r leaf-hi-single-noreapair}
+#| label: fig-leaf-hi-single-norep
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, ~100% LT50-dose accrues by the end of the spike hour, producing ~50% mortality."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi$single_spike)
+```
+
+```{r leaf-hi-multi-noreapair}
+#| label: fig-leaf-hi-multi-norep
+#| fig-cap: "**Multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver ~3 × LT50-dose, driving cumulative HI well past 100% and survival to near zero."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi$multi_spike)
+```
+
+```{r leaf-hi-multi-rep}
+#| label: fig-leaf-hi-multi-rep
+#| fig-cap: "Same multi-spike trace, **with Sharpe-Schoolfield repair active**. Repair clears most of the dose between spikes, stopping the runaway accumulation seen without repair."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi_multi_rep)
+```
+
+The diurnal scenario (@fig-leaf-hi-diurnal-norep, @fig-leaf-hi-diurnal-rep) is closer to a real coastal record. Day 1 stays below $T_{crit}$ and accrues no injury; days 2–4 each contribute an injury bout that scales with the daily peak. Without repair, cumulative HI is well past 100 % by the end of day 4 and predicted survival has dropped to ~20 %. With repair on, off-peak hours and the cool first day act as recovery phases; the final trajectory is set by the net balance between daily accrual at sub-$CT_{max_{1hr}}$ peaks and overnight/cool-day repair.
+
+```{r leaf-hi-diurnal-noreapair}
+#| label: fig-leaf-hi-diurnal-norep
+#| fig-cap: "**4-day diurnal heatwave** trace, **no repair**. The cool first day flat-lines below $T_{crit}$; days 2–4 each accrue an injury bout scaling with the daily peak."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi$diurnal)
+```
+
+```{r leaf-hi-diurnal-rep}
+#| label: fig-leaf-hi-diurnal-rep
+#| fig-cap: "Same 4-day heatwave trace, **with Sharpe-Schoolfield repair active**. The cool first day and overnight troughs now act as recovery phases."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi_diurnal_rep)
+```
+
+```{r leaf-hi-summary}
+#| label: tbl-leaf-hi-summary
+#| tbl-cap: "Final cumulative HI and predicted survival under each scenario for brown leaf, posterior medians with 95% credible intervals."
+
+final_row <- function(hi) {
+  s <- tail(hi$summary, 1)
+  tibble::tibble(
+    `HI median (%)` = round(s$hi_median, 1),
+    `HI lower`      = round(s$hi_lower,  1),
+    `HI upper`      = round(s$hi_upper,  1),
+    `Survival median`  = round(s$surv_median, 3),
+    `Survival lower`   = round(s$surv_lower,  3),
+    `Survival upper`   = round(s$surv_upper,  3)
+  )
+}
+
+leaf_hi_table <- dplyr::bind_rows(
+  final_row(leaf_hi$flat)         |> dplyr::mutate(Scenario = "Flat",
+                                                     Repair = "None"),
+  final_row(leaf_hi$single_spike) |> dplyr::mutate(Scenario = "Single spike",
+                                                     Repair = "None"),
+  final_row(leaf_hi$multi_spike)  |> dplyr::mutate(Scenario = "Multi spike",
+                                                     Repair = "None"),
+  final_row(leaf_hi_multi_rep)    |> dplyr::mutate(Scenario = "Multi spike",
+                                                     Repair = "Sharpe-Schoolfield"),
+  final_row(leaf_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+                                                     Repair = "None"),
+  final_row(leaf_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+                                                     Repair = "Sharpe-Schoolfield")
+) |>
+  dplyr::select(Scenario, Repair, dplyr::everything())
+
+tinytable::tt(leaf_hi_table, escape = TRUE)
+```
 The snow gum leaf case study covers raw counts → fitted joint 4PL → classical TDT quantities with calibrated uncertainty. Every quantity inherits the posterior of the same single fit. 
 
