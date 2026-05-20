@@ -4,33 +4,9 @@ format: html
 ---
 
 ```{r}
-pacman::p_load(
-  tidyverse,
-  ggdist,
-  broom,
-  MASS,
-  patchwork,
-  readxl,
-  lme4,
-  brms,
-  drc,
-  mgcv,
-  medrc, #remotes::install_github("DoseResponse/medrc")
-  plotly,
-  viridisLite,
-  posterior,
-  scales,
-  glmmTMB,
-  MuMIn,
-  survminer,
-  survival,
-  flextable,
-  performance,
-  future,
-  future.apply,
-  hms)
 
-# source("R/test_functions.r")
+# pak::pkg_install("daniel1noble/bayesTLS")
+library(bayesTLS)
 
 ```
 
