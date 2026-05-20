@@ -1,0 +1,299 @@
+---
+title: "bayesian_TDT_plants"
+author: "Pieter Arnold"
+format: html
+---
+
+
+```{r}
+pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl)
+library(bayesTLS)
+```
+
+# **Case Study 3: Leaf PSII data** {#sec-leaves}
+
+We can also apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` — to photosystem II functional impairment TDT data from snow gum leaves (*Eucalyptus pauciflora* var. *pauciflora*). The data are chlorophyll fluorescence based measurements of the maximum potential quantum efficiency of photosystem II (PSII), known as *F*[V]/*F*[M], from excised leaf segments of 11 individual glasshouse-grown trees. In this experiment, *F*[V]/*F*[M] was measured prior to heat exposure and then 24 h after *F*[V]/*F*[M], such that the response variable was a proportional value of *F*[V]/*F*[M] bounded between 0 and 1.
+
+The TDT trials spanned 28-48 °C and 5 min to 2 hours of exposure, with each replicate plant originating from one of two glasshouse rooms and measured over two days. Similar to Case Study 1, the two grouping factors `Day` and `G_Room` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and glasshouse room-level variation to be partitioned out of the dose-response surface.
+
+## Data and standardisation {#sec-leaf-data}
+
+```{r leaf-load}
+#| label: leaf-load
+#| echo: true
+
+leaf_raw <- readr::read_csv(
+  here::here("data", "data_function_PSII_TDT_snowgum.csv"),
+  show_col_types = FALSE
+)
+
+leaf_raw$fvfm_prop <- leaf_raw$final_fvfm / leaf_raw$initial_fvfm # Response variable 
+str(leaf_raw)
+assay_temp <- as.numeric(leaf_raw$Temp)
+temp_mean <- mean(assay_temp, na.rm = TRUE)
+
+leaf_std <- leaf_raw %>% 
+  mutate(
+    # Constrain to (0,1) for beta distribution
+    fvfm_beta = case_when(
+      fvfm_prop >= 0.999 ~ 0.999,
+      fvfm_prop <= 0.001 ~ 0.001,
+      TRUE ~ fvfm_prop
+    ),
+    assay_temp = Temp,
+    temp = Temp,
+    temp_c = assay_temp - temp_mean,
+    duration = Time,
+    logd = log10(duration),
+    # Convert random effects to factors
+    Day = factor(Day),
+    G_Room = factor(G_Room)
+  )
+
+str(leaf_std)
+
+```
+
+```{r leaf-summary-table}
+#| label: tbl-leaf-summary
+#| tbl-cap: "Summary of the leaf PSII TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
+
+leaf_summary <- tibble::tibble(
+  `n individuals`              = length(unique(leaf_std$Unique_ID)),
+  `Temperature range (°C)`     = paste(range(leaf_std$assay_temp), collapse = "–"),
+  `Duration range (min)`       = paste(round(range(leaf_std$duration), 2), collapse = "–"),
+  `Temperature centre (°C)`    = attr(leaf_std, "tdt_meta")$temp_mean,
+  `n Day`                      = length(unique(leaf_std$Day)),
+  `n glasshouse room`          = length(unique(leaf_std$G_Room))
+)
+tinytable::tt(leaf_summary, digits = 2, escape = TRUE)
+```
+
+## Fitting the joint Bayesian 4PL {#sec-leaf-fit}
+
+`fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL for proportional response data: a beta distribution, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter. We add random intercepts on `mid` for `Day` and `G_Room` to absorb the day-to-day and room-to-room variation that would otherwise contaminate the dose-response surface.
+
+```{r leaf-fit}
+#| label: leaf-fit
+#| echo: true
+#| cache: false
+
+
+formula_beta <- make_4pl_formula(
+  random_effects = c("Day", "G_Room"),
+  lower = 0,
+  upper = 1,
+  family = brms::Beta(link = "logit"),
+  response_var = "fvfm_beta"
+)
+
+base_priors <- make_4pl_priors(
+  data = leaf_std,
+  random_effects = c("Day", "G_Room"),
+  prior_phi = NULL
+)
+
+wf_leaf_fit <- brms::brm(
+  formula = formula_beta,
+  data = leaf_std,
+  prior = base_priors,
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 12),
+  file    = file.path(models_dir, "fit_leaf_function_4pl")
+)
+
+wf_leaf <- structure(
+  list(
+    fit = wf_leaf_fit,
+    data = leaf_std,
+    formula = formula_beta,
+    prior = priors_beta,
+    meta = list(
+      temp_mean = temp_mean,
+      duration_unit = "minutes",
+      random_effects = c("Day", "G_Room"),
+      lower = 0,
+      upper = 1,
+      bounds = list(low_min = 0.001, low_w = 0.498, up_min = 0.501, up_w = 0.498)
+    )
+  ),
+  class = "bayes_tls"
+)
+
+# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
+print(wf_leaf)
+```
+
+### Sampling diagnostics
+
+```{r leaf-diagnostics}
+#| label: tbl-leaf-diagnostics
+#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, ESS > 4000, 3 divergences, 1 treedepth flag."
+#| cache: false
+
+tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
+
+```
+
+The diagnostics table is a numerical pass/fail summary. The canonical visual check is the chain trace ("fuzzy caterpillar"): healthy chains overlap and explore the same posterior support; chains that drift, diverge, or hang in different regions signal a problem with the fit.
+
+```{r leaf-trace-plot}
+#| label: fig-leaf-trace
+#| fig-cap: "Posterior chain traces for the leaf 4PL fixed-effect parameters and the beta dispersion $\\phi$. Each panel overlays four chains; well-mixed chains overlap throughout."
+#| fig-width: 9
+#| fig-height: 6
+#| cache: false
+
+brms::mcmc_plot(
+  wf_leaf$fit,
+  type     = "trace",
+  variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
+               "b_logk_Intercept",   "b_mid_Intercept",
+               "b_mid_temp_c",       "Intercept_phi")
+) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "bottom")
+
+```
+
+### Posterior parameters on the natural scale
+
+```{r leaf-parameter-table}
+#| label: tbl-leaf-parameters
+#| tbl-cap: "Posterior medians and 95% credible intervals for the leaf 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in hours at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
+
+tinytable::tt(tdt_parameter_table(wf_leaf), digits = 3, escape = TRUE)
+```
+
+## "Survival" curves with observed overlay {#sec-leaf-survival-curves}
+
+Here we use the same survival-type functions as before, but *survival* is instead *functional impairment* of PSII. `predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and exposure durations and returns posterior functional impairment probabilities. Overlaying the per-replicate observed proportions gives a visual check that the fitted curves track the data at every temperature.
+
+```{r leaf-survival-curves}
+#| label: fig-leaf-survival-curves
+#| fig-cap: "Posterior functional impairment curves for snow gum leaf PSII at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate functional impairment proportions."
+#| fig-width: 8
+#| fig-height: 5
+
+psc_leaf <- predict_survival_curves(
+  wf_leaf,
+  temps     = sort(unique(leaf_std$temp)),
+  ndraws    = 500
+)
+
+# Add survival as a variable for plotting, where "survival" = fvfm_prop
+leaf_std$survival <- leaf_std$fvfm_prop
+
+plot_survival_curves(psc_leaf, observed = leaf_std) +
+  ggplot2::labs(x = "Exposure duration (minutes)") +
+  ggplot2::coord_cartesian(xlim = c(0, 120))
+
+```
+
+## TDT landscape {#sec-leaf-landscape}
+
+`derive_tdt_landscape()` evaluates the fitted 4PL on a dense (temperature, duration) grid and `plot_tdt_landscape()` renders it as a heatmap with overlaid contours at 10, 50, and 90% functional impairment This is the two-dimensional view of the dose-response surface that the TDT line summarises with one number per temperature.
+
+```{r leaf-landscape}
+#| label: fig-leaf-landscape
+#| fig-cap: "TDT landscape for snow gum PSII function: posterior median predicted functional impairment across a 120 × 120 grid of assay temperatures × durations. White contours mark 10%, 50%, and 90% functional impairment isolines. Overlaid points are raw observed proportions."
+#| fig-width: 8
+#| fig-height: 6
+#| cache: false
+
+leaf_dur_grid <- seq(min(leaf_std$duration), max(leaf_std$duration),
+                        length.out = 120)
+lsp_leaf <- derive_tdt_landscape(wf_leaf,
+                                   duration_grid = leaf_dur_grid,
+                                   ndraws        = 500)
+plot_tdt_landscape(lsp_leaf, observed = leaf_std)
+```
+
+## TDT line: time to the threshold vs temperature {#sec-leaf-tdt-line}
+
+The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "minutes of exposure half the PSII tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. The default threshold is $\text{mid}$ (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for the classical absolute-$t_{50}$ definition.
+
+```{r leaf-tdt-line}
+#| label: leaf-tdt-line
+#| echo: true
+
+ltx_leaf <- derive_tdt_curve(
+  wf_leaf,
+  temp_grid        = seq(min(leaf_std$temp) - 1.5,
+                         max(leaf_std$temp) + 1.5, by = 0.05),
+  ndraws           = 500,
+  time_multiplier  = 1,
+  output_time_unit = "minutes"
+)
+```
+
+```{r plot-leaf-tdt-line}
+#| label: fig-leaf-tdt-line
+#| fig-cap: "Snow gum leaf PSII function posterior TDT line: predicted time to threshold vs assay temperature, with 95 % credible band. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Both panels share the same posterior."
+#| fig-width: 9
+#| fig-height: 4
+
+plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
+```
+
+## Classical TDT quantities: $z$, $CT_{max_{1hr}}$ {#sec-leaf-extract}
+
+`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature, derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion).
+
+```{r leaf-extract}
+#| label: leaf-extract
+#| echo: true
+
+et_leaf <- extract_tdt(
+  wf_leaf,
+  t_ref         = 60,
+  TC_rate_range = c(0.1, 1),
+  ndraws        = 500,
+  lethal        = FALSE
+)
+```
+
+```{r leaf-extract-table}
+#| label: tbl-leaf-extract
+#| tbl-cap: "Classical TDT summaries for brown leaf, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw)."
+
+leaf_extract <- tibble::tribble(
+  ~Quantity,                        ~Median, ~Lower, ~Upper,
+  "z (°C per order of magnitude)",      et_leaf$z$summary$z_median,
+                                    et_leaf$z$summary$z_lower,
+                                    et_leaf$z$summary$z_upper,
+  "CTmax_1hr (°C)",                 et_leaf$CTmax$summary$temp_median,
+                                    et_leaf$CTmax$summary$temp_lower,
+                                    et_leaf$CTmax$summary$temp_upper
+)
+tinytable::tt(leaf_extract, digits = 2, escape = TRUE)
+```
+
+```{r leaf-ctmax-plot}
+#| label: fig-leaf-ctmax
+#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The ~5 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ is the window between the onset of detectable damage accumulation and the LT50 temperature at 1 h."
+#| fig-width: 11
+#| fig-height: 3.5
+
+z_draws_leaf   <- get_z_draws(et_leaf) |>
+  dplyr::transmute(temp = z)
+z_q <- stats::quantile(z_draws_leaf$temp,
+                       c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+z_post_leaf <- list(
+  draws   = z_draws_leaf,
+  summary = tibble::tibble(temp_lower  = z_q[1],
+                           temp_median = z_q[2],
+                           temp_upper  = z_q[3])
+)
+
+patchwork::wrap_plots(
+  plot_temperature_density(z_post_leaf,
+                            x_label = expression(italic(z)~("°C per decade of time"))),
+  plot_temperature_density(et_leaf$CTmax,
+                            x_label = expression(CT[max[1*hr]]~("°C"))),
+  ncol = 2
+)
+```
+
+The snow gum leaf case study covers raw counts → fitted joint 4PL → classical TDT quantities with calibrated uncertainty. Every quantity inherits the posterior of the same single fit. 
+

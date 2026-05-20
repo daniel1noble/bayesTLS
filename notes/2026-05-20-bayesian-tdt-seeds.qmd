@@ -1,0 +1,13 @@
+---
+title: "bayesian-tdt-seeds"
+format: html
+---
+
+# **Case Study 4: Seed data** {#sec-seed}
+
+We now apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` → `predict_heat_injury()` — to lethal-TDT data from imbibed seeds of mountain hickory (*Acacia penninervis* var. *penninervis*). The data are 100 individual seeds 
+
+
+148 replicate trials spanning 30–33 °C and 5 min to 6 hours of exposure, with each replicate exposing a tank of individuals to a fixed temperature × duration combination on a specific date. The two grouping factors `Date` and `Tank` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and tank-level cohort variation to be partitioned out of the dose-response surface.
+
+## Data and standardisation {#sec-seed-data}
