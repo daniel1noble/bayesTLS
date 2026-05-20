@@ -2,7 +2,6 @@
 
 S3method(plot,bayes_tls)
 S3method(print,bayes_tls)
-S3method(print,summary.bayes_tls)
 S3method(summary,bayes_tls)
 export(clock_to_minutes)
 export(derive_tdt_curve)

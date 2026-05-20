@@ -34,6 +34,11 @@ format:
     number-sections: true
     embed-resources: true
     fig-cap-location: bottom
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true
+    code-overflow: scroll
+    format-links: false
   docx:
     reference-doc: ../bib/templates/template.docx
     toc: false
@@ -164,6 +169,7 @@ Every exported function is documented with roxygen2 (`?fit_4pl`, etc.) and the p
 
 ```{r function-tour-table}
 #| label: tbl-function-tour
+#| echo: false
 #| tbl-cap: "Functions exported by the TDT analysis library, grouped by pipeline stage. Each function is documented with roxygen2 in its R file; runnable examples accompany every function."
 
 tdt_function_tour <- tibble::tribble(
@@ -172,6 +178,16 @@ tdt_function_tour <- tibble::tribble(
   "Model spec",       "make_4pl_priors()",                  "Weakly informative priors for the disjoint-bounds 4PL.",
   "Model spec",       "make_4pl_formula()",                 "brms non-linear formula; identity link, all four sub-parameters get temp_c.",
   "Fit",              "fit_4pl()",                          "Joint Bayesian 4PL fit; returns a `bayes_tls` object (use `print()`, `summary()`, `plot()`).",
+  "Inspection",       "print.bayes_tls()",                  "Compact one-screen header: data shape, T_bar, asymptote bounds, random-effect grouping, fit status (draws if fitted, spec only otherwise).",
+  "Inspection",       "summary.bayes_tls()",                "Delegates to `summary()` on the underlying `brmsfit`; returns a `summary.brmsfit` with the population-level coefficient table, group-level SDs, family parameters, and HMC diagnostics laid out by brms. Extra arguments (e.g. `prob`, `robust`) are passed through.",
+  "Inspection",       "plot.bayes_tls()",                   "Delegates to `plot()` on the underlying `brmsfit`; returns brms's default `mcmc_combo` (density + post-warmup trace, chains coloured) for inspecting MCMC mixing. Extra arguments (e.g. `pars`, `combo`) are passed through.",
+  "Inspection",       "has_fit()",                          "Predicate: is a `bayes_tls` workflow fitted (TRUE) or spec-only (FALSE)?",
+  "Inspection",       "extract_4pl_pars()",                 "Posterior draws of the four natural-scale 4PL parameters (low, up, k, mid) at the centring temperature T_bar.",
+  "Accessors",        "get_z_draws()",                      "Per-draw posterior of z from an `extract_tdt()` output.",
+  "Accessors",        "get_ctmax_draws()",                  "Per-draw posterior of CTmax_1hr from an `extract_tdt()` output.",
+  "Accessors",        "get_tcrit_draws()",                  "Per-draw posterior of T_crit from an `extract_tdt(lethal = TRUE)` output.",
+  "Accessors",        "get_surv_draws()",                   "Per-draw posterior of survival probability from `predict_survival_curves()`.",
+  "Accessors",        "get_hi_draws()",                     "Per-draw posterior of heat-injury integrals from `predict_heat_injury()`.",
   "Diagnostics",      "diagnose_tdt_fit()",                 "Rhat / ESS / divergences / treedepth, with pass-fail flags.",
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z).",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands.",
@@ -550,6 +566,11 @@ wf_bb  <- fit_4pl(std_bb,
                   file       = file.path(models_dir, "sim_4pl_betabinomial_v2"),
                   file_refit = "never")
 
+# `print()` on a bayes_tls workflow gives the one-screen header view: data
+# shape, centred-temperature mean, asymptote bounds, draws count.
+print(wf_bin)
+print(wf_bb)
+
 # Convenience: extract the brmsfit object for downstream brms helpers.
 fit_bin <- wf_bin$fit
 fit_bb  <- wf_bb$fit
@@ -745,25 +766,17 @@ tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 3.5
 
-# Per-draw posteriors for the three quantities, both likelihoods. Trim each
-# to a common length so we can stack columns in one tibble.
-n_keep <- min(nrow(et_bin$z$draws), nrow(et_bin$CTmax$draws),
-              nrow(et_bin$T_crit$draws),
-              nrow(et_bb$z$draws), nrow(et_bb$CTmax$draws),
-              nrow(et_bb$T_crit$draws))
-
-draws_bin_d <- tibble::tibble(
-  z         = et_bin$z$draws$z[seq_len(n_keep)],
-  CTmax_1hr = et_bin$CTmax$draws$temp[seq_len(n_keep)],
-  T_crit    = et_bin$T_crit$draws$temp[seq_len(n_keep)],
-  model     = "Binomial"
-)
-draws_bb_d <- tibble::tibble(
-  z         = et_bb$z$draws$z[seq_len(n_keep)],
-  CTmax_1hr = et_bb$CTmax$draws$temp[seq_len(n_keep)],
-  T_crit    = et_bb$T_crit$draws$temp[seq_len(n_keep)],
-  model     = "Beta-binomial"
-)
+# Per-draw posteriors for the three quantities, both likelihoods. The
+# accessors return one-column tibbles keyed on `.draw`, so we join on
+# `.draw` to keep posterior draws paired correctly.
+draws_bin_d <- get_z_draws(et_bin) |>
+  dplyr::inner_join(get_ctmax_draws(et_bin), by = ".draw") |>
+  dplyr::inner_join(get_tcrit_draws(et_bin), by = ".draw") |>
+  dplyr::transmute(z, CTmax_1hr = CTmax, T_crit, model = "Binomial")
+draws_bb_d <- get_z_draws(et_bb) |>
+  dplyr::inner_join(get_ctmax_draws(et_bb),  by = ".draw") |>
+  dplyr::inner_join(get_tcrit_draws(et_bb),  by = ".draw") |>
+  dplyr::transmute(z, CTmax_1hr = CTmax, T_crit, model = "Beta-binomial")
 
 post_long <- dplyr::bind_rows(draws_bin_d, draws_bb_d) |>
   tidyr::pivot_longer(c(z, CTmax_1hr, T_crit),
@@ -811,24 +824,24 @@ summarise_draws <- function(x) {
 }
 
 uncert_summary <- dplyr::bind_rows(
-  summarise_draws(et_bin$z$draws$z)          |> dplyr::mutate(quantity = "z (°C)",                  likelihood = "Binomial"),
-  summarise_draws(et_bin$CTmax$draws$temp)   |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)",     likelihood = "Binomial"),
-  summarise_draws(et_bin$T_crit$draws$temp)  |> dplyr::mutate(quantity = "T_crit (°C)", likelihood = "Binomial"),
-  summarise_draws(et_bb$z$draws$z)           |> dplyr::mutate(quantity = "z (°C)",                  likelihood = "Beta-binomial"),
-  summarise_draws(et_bb$CTmax$draws$temp)    |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)",     likelihood = "Beta-binomial"),
-  summarise_draws(et_bb$T_crit$draws$temp)   |> dplyr::mutate(quantity = "T_crit (°C)", likelihood = "Beta-binomial")
+  summarise_draws(get_z_draws(et_bin)$z)          |> dplyr::mutate(quantity = "z (°C)",              likelihood = "Binomial"),
+  summarise_draws(get_ctmax_draws(et_bin)$CTmax)  |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Binomial"),
+  summarise_draws(get_tcrit_draws(et_bin)$T_crit) |> dplyr::mutate(quantity = "T_crit (°C)",        likelihood = "Binomial"),
+  summarise_draws(get_z_draws(et_bb)$z)           |> dplyr::mutate(quantity = "z (°C)",              likelihood = "Beta-binomial"),
+  summarise_draws(get_ctmax_draws(et_bb)$CTmax)   |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Beta-binomial"),
+  summarise_draws(get_tcrit_draws(et_bb)$T_crit)  |> dplyr::mutate(quantity = "T_crit (°C)",        likelihood = "Beta-binomial")
 ) |>
   dplyr::select(quantity, likelihood, mean, sd, median, lower, upper)
 
 # Scalars for inline reporting in the next paragraph.
-sd_z_bin  <- round(stats::sd(et_bin$z$draws$z),         2)
-sd_z_bb   <- round(stats::sd(et_bb$z$draws$z),          2)
-sd_ct_bin <- round(stats::sd(et_bin$CTmax$draws$temp),  2)
-sd_ct_bb  <- round(stats::sd(et_bb$CTmax$draws$temp),   2)
-ci_z_bin  <- round(diff(stats::quantile(et_bin$z$draws$z,         c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_z_bb   <- round(diff(stats::quantile(et_bb$z$draws$z,          c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_ct_bin <- round(diff(stats::quantile(et_bin$CTmax$draws$temp,  c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_ct_bb  <- round(diff(stats::quantile(et_bb$CTmax$draws$temp,   c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+sd_z_bin  <- round(stats::sd(get_z_draws(et_bin)$z),         2)
+sd_z_bb   <- round(stats::sd(get_z_draws(et_bb)$z),          2)
+sd_ct_bin <- round(stats::sd(get_ctmax_draws(et_bin)$CTmax), 2)
+sd_ct_bb  <- round(stats::sd(get_ctmax_draws(et_bb)$CTmax),  2)
+ci_z_bin  <- round(diff(stats::quantile(get_z_draws(et_bin)$z,         c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_z_bb   <- round(diff(stats::quantile(get_z_draws(et_bb)$z,          c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_ct_bin <- round(diff(stats::quantile(get_ctmax_draws(et_bin)$CTmax, c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+ci_ct_bb  <- round(diff(stats::quantile(get_ctmax_draws(et_bb)$CTmax,  c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
 
 uncert_summary |>
   dplyr::rename(
@@ -1410,6 +1423,307 @@ tinytable::tt(val_table, digits = 2, escape = TRUE)
 The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. This sanity-check pattern — three traces with known doses, plus the recovery check — is what each new dataset's heat-injury prediction should pass before being trusted.
 
 
+# **Extended Simulation Results**
+
+This section provides more detail on the simulation results from the
+various scenarios we explored to understand bias and coverage of *z*
+and $CT_{max}$. The main manuscript figures summarize the two
+shape-perturbing scenarios (drifting upper asymptote `u`, varying slope
+`k`) and the bias results from the two partial-mortality sweeps.
+
+Here we document the remaining scenarios we explored: the strict-equivalence
+baseline, likelihood misspecification alone, symmetric asymptote
+compression, and the design-impact — plus the coverage panels
+for the two sweeps reported as bias-only in the main text.
+
+```{r sim-supp-setup}
+#| label: sim-supp-setup
+#| echo: false
+#| warning: false
+#| message: false
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(patchwork)
+
+.method_levels <- c("two_stage_bin", "two_stage_bin_t",
+                    "two_stage_bb",  "two_stage_bb_t",
+                    "joint_4pl",     "joint_4pl_abs")
+.method_labels <- c("Two-stage bin (Normal CI)", "Two-stage bin (t CI)",
+                    "Two-stage BB (Normal CI)",  "Two-stage BB (t CI)",
+                    "Joint 4PL (relative)",      "Joint 4PL (absolute)")
+.method_cols <- setNames(c("#54278f","#cbc9e2","#a63603","#fdae6b",
+                           "#006d2c","#a1d99b"), .method_labels)
+
+.TRUTH_REL <- c(z = -1 / -0.15,
+                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+.quantity_labeller <- as_labeller(c(
+  z          = "z (°C)",
+  CTmax_1hr  = "CT[max,1h] (°C)"
+))
+
+.theme_proj <- theme_classic(base_size = 11) +
+  theme(strip.background = element_blank(),
+        strip.text       = element_text(face = "bold"),
+        legend.position  = "bottom",
+        legend.title     = element_blank(),
+        legend.text      = element_text(size = 9),
+        panel.spacing    = unit(0.8, "lines"))
+
+.load_screened <- function(prefix) {
+  files <- list.files(
+    here::here("output", "sim_twostage"),
+    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+    full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z"         & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |>
+    dplyr::mutate(bb_path = TRUE)
+  ps |>
+    dplyr::left_join(bad, by = c("scenario","sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb","two_stage_bb_t"))) |>
+    dplyr::select(-bb_path) |>
+    dplyr::mutate(
+      truth_use = ifelse(method == "joint_4pl",
+                         .TRUTH_REL[as.character(quantity)],
+                         truth),
+      bias    = estimate - truth_use,
+      covered = is.finite(lower) & is.finite(upper) &
+                lower <= truth_use & truth_use <= upper
+    ) |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n         = dplyr::n(),
+      mean_bias = mean(bias, na.rm = TRUE),
+      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      coverage  = mean(covered, na.rm = TRUE),
+      mcse_cov  = sqrt(mean(covered, na.rm = TRUE) *
+                       (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
+      .groups   = "drop"
+    ) |>
+    dplyr::mutate(
+      method   = factor(method,   levels = .method_levels,
+                                  labels = .method_labels),
+      quantity = factor(quantity, levels = c("CTmax_1hr","z")),
+      bias_lo  = mean_bias - 1.96 * mcse_bias,
+      bias_hi  = mean_bias + 1.96 * mcse_bias,
+      cov_lo   = coverage  - 1.96 * mcse_cov,
+      cov_hi   = coverage  + 1.96 * mcse_cov
+    )
+}
+
+# Forest plot for cell-based scenarios (Scen 1, 2, 4, 8).
+# `panel_var` is the column name to facet rows on (e.g. "panel_n" or "cell").
+.plot_forest <- function(d, panel_var = "panel_n") {
+  p_bias <- ggplot(d, aes(x = mean_bias, y = method, colour = method)) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi), height = 0.25) +
+    geom_point(size = 2.4) +
+    facet_grid(reformulate("quantity", panel_var), scales = "free_x",
+               labeller = labeller(quantity = .quantity_labeller)) +
+    scale_colour_manual(values = .method_cols) +
+    labs(x = "Mean bias (estimate − truth)", y = NULL,
+         title = "(a) Bias") +
+    .theme_proj + theme(legend.position = "none")
+  p_cov <- ggplot(d, aes(x = coverage, y = method, colour = method)) +
+    geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+    geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi), height = 0.25) +
+    geom_point(size = 2.4) +
+    facet_grid(reformulate("quantity", panel_var), scales = "free_x",
+               labeller = labeller(quantity = .quantity_labeller)) +
+    scale_colour_manual(values = .method_cols) +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+    labs(x = "Empirical 95% CI coverage", y = NULL,
+         title = "(b) Coverage") +
+    .theme_proj + theme(legend.position = "none")
+  p_bias / p_cov + plot_layout(heights = c(1, 1))
+}
+
+# Sweep coverage plot for Scen 6 / Scen 7.
+.plot_sweep_cov <- function(d, sweep_x, x_label, x_breaks = waiver()) {
+  ggplot(d, aes(x = .data[[sweep_x]], y = coverage, colour = method)) +
+    geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(aes(ymin = cov_lo, ymax = cov_hi), width = 0) +
+    geom_point(size = 2.4) +
+    geom_line() +
+    facet_wrap(~ quantity, nrow = 1,
+               labeller = labeller(quantity = .quantity_labeller)) +
+    scale_colour_manual(values = .method_cols) +
+    scale_x_continuous(breaks = x_breaks) +
+    scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+    labs(x = x_label, y = "Empirical 95% CI coverage") +
+    .theme_proj
+}
+```
+
+## *Strict equivalence baseline*
+
+This scenario is the strict-equivalence baseline. The data-generating curve spans the full survival range ($u = 0.999$, $\text{low} = 0.001$), has a shared slope ($k = 8$), and has a midpoint that declines linearly with temperature (slope $-0.15$) under a binomial likelihood with no overdispersion. We crossed this scenario with two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
+
+We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles undercovered, whereas the *t*-quantile delta-method intervals were close to nominal 95% coverage.
+
+```{r}
+#| label: fig-sim-supp-scen1
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Bias and coverage at the strict-equivalence baseline (binomial DGP, asymptotes near 0/1, single slope $k$). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom). Columns: $z$ (left) and $CT_{max,1h}$ (right). Dashed reference lines at zero bias and nominal 0.95 coverage."
+
+.d <- .load_screened("scen1") |>
+  dplyr::mutate(panel_n = paste0("n[reps] = ",
+                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
+.plot_forest(.d, panel_var = "panel_n")
+```
+
+## *Likelihood misspecification alone*
+
+This scenario keeps the same mean dose-response shape as the strict-equivalence baseline, but generates counts from a beta-binomial likelihood with overdispersion $\phi = 5$. We again used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
+
+We included this scenario to isolate the cost of likelihood misspecification: the mean structure is correct for all estimators, but the binomial two-stage variant ignores overdispersion at Stage 1. Point estimates remained largely unbiased, showing that overdispersion alone did not shift the target estimands. The main effect was on uncertainty, with likelihood-aware beta-binomial and joint 4PL fits giving better-calibrated intervals than binomial two-stage fits.
+
+```{r}
+#| label: fig-sim-supp-scen2
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Bias and coverage with likelihood misspecification only (beta-binomial DGP with $\\phi=5$; curve shape as in the strict-equivalence baseline). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
+
+.d <- .load_screened("scen2") |>
+  dplyr::mutate(panel_n = paste0("n[reps] = ",
+                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
+.plot_forest(.d, panel_var = "panel_n")
+```
+
+## *Asymptotes compress symmetrically*
+
+In this scenario, both asymptotes move toward each other as temperature increases: $u$ declines by 0.01 per °C from 0.92, while $\text{low}$ increases by 0.01 per °C from 0.05. This preserves the approximate logit-difference but compresses the response range. Although this symmetric compression is not biologically realistic, it is useful as a diagnostic test: it changes the dose-response range while largely preserving the midpoint-temperature relationship. We used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
+
+Bias was smaller than in the asymmetric upper-asymptote scenario, but the two-stage fits still showed poorer calibration than the joint 4PL because the classical model cannot represent changing asymptotes directly.
+
+```{r}
+#| label: fig-sim-supp-scen4
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Bias and coverage when both asymptotes compress symmetrically with temperature. Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
+
+.d <- .load_screened("scen4") |>
+  dplyr::mutate(panel_n = paste0("n[reps] = ",
+                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
+.plot_forest(.d, panel_var = "panel_n")
+```
+
+## *Coverage for the drifting-$u$ across temperatures ($\beta_u$)*
+
+This complements the main-text $\beta_u$ bias sweep with the matching
+coverage panels.
+
+```{r}
+#| label: fig-sim-supp-scen6cov
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+#| fig-cap: "Empirical 95% CI coverage across the $\\beta_u$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as the main-text $\\beta_u$ bias sweep, with coverage shown for all six methods. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
+
+.d <- .load_screened("scen6") |>
+  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
+.plot_sweep_cov(.d, "sweep_x",
+                expression(beta[u]~"(pp / °C, drift of "*italic(u)*" with T)"),
+                x_breaks = c(-0.019, -0.015, -0.010, -0.005))
+```
+
+## *Coverage for the constant-but-reduced-$u$ ($u_0$)*
+
+This complements the main-text $u_0$ bias sweep. With a low $u_0$, the
+two-stage Stage-1 GLMs miscalibrate per temperature, the Stage-2 OLS
+inherits that bias, and CI coverage on $CT_{max,1h}$ collapses well
+below nominal even after the t-quantile small-sample correction.
+
+```{r}
+#| label: fig-sim-supp-scen7cov
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+#| fig-cap: "Empirical 95% CI coverage across the $u_0$ sweep (Scen 7). Same DGP and method set as the main-text $u_0$ bias sweep. Two-stage CTmax coverage collapses as $u_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
+
+.d <- .load_screened("scen7") |>
+  dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100)
+.plot_sweep_cov(.d, "sweep_x",
+                expression(u[0]~"(constant upper asymptote, all T)"),
+                x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99))
+```
+
+## *Design variation impacts*
+
+This scenario varies experimental design while holding the data-generating process fixed. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration cell; each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The DGP used the baseline beta-binomial shape ($u = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$); the sparsest design had only 12 'cups' total.
+
+We included this scenario to test how much information each estimator needs before the two-stage reduction becomes unstable. Performance improved with denser designs and more replication, but the sparse one-replicate design was especially problematic for the two-stage pipeline. The joint 4PL was more stable across the design gradient because it shares information across temperatures and durations rather than estimating each temperature-specific curve separately.
+
+```{r}
+#| label: fig-sim-supp-scen8
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 9
+#| fig-cap: "Bias and coverage across six design × replication cells (Scen 8). Two-stage at sparse × 1 produces large, unstable estimates with implausibly wide t-corrected CIs; joint 4PL returns coherent intervals of appropriate width across all six cells."
+
+.d <- .load_screened("scen8") |>
+  dplyr::mutate(
+    design = ifelse(grepl("full", scenario), "full", "sparse"),
+    n_reps = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
+    cell   = factor(sprintf("%s × %d", design, n_reps),
+                    levels = c("sparse × 1", "full × 1",
+                               "sparse × 3", "full × 3",
+                               "sparse × 5", "full × 5"))
+  )
+
+p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(values = .method_cols) +
+  labs(x = "Mean bias (estimate − truth)", y = NULL,
+       title = "(a) Bias") +
+  .theme_proj
+
+p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(values = .method_cols) +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+  labs(x = "Empirical 95% CI coverage", y = NULL,
+       title = "(b) Coverage") +
+  .theme_proj
+
+p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom")
+```
 
 # **Case Study 1: Shrimp data** {#sec-shrimp}
 
@@ -1470,6 +1784,9 @@ wf_shrimp <- fit_4pl(
   control = list(adapt_delta = 0.99, max_treedepth = 12),
   file    = file.path(models_dir, "fit_shrimp_lethal_4pl")
 )
+
+# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
+print(wf_shrimp)
 ```
 
 ### Sampling diagnostics
@@ -1620,7 +1937,8 @@ tinytable::tt(shrimp_extract, digits = 2, escape = TRUE)
 #| fig-width: 11
 #| fig-height: 3.5
 
-z_draws_shrimp   <- tibble::tibble(temp = et_shrimp$z$draws$z)
+z_draws_shrimp   <- get_z_draws(et_shrimp) |>
+  dplyr::transmute(temp = z)
 z_q <- stats::quantile(z_draws_shrimp$temp,
                        c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
 z_post_shrimp <- list(
@@ -2240,6 +2558,10 @@ zf_fits_sep <- lapply(zf_stages, function(s) {
   )
 })
 names(zf_fits_sep) <- zf_stages
+
+# Workflow header for one stage as a discoverability cue; the other two have
+# the same structure with different data shape.
+print(zf_fits_sep[[zf_stages[1]]])
 ```
 
 ### Sampling diagnostics for the separate fits
@@ -2451,12 +2773,16 @@ Because the three fits are independent, pairwise contrasts $\Delta_{ij} = q^{(i)
 #| tbl-cap: "Pairwise differences in $z$ and $CT_{max_{1hr}}$ across zebrafish life stages from the three separate 4PL fits. Positive values mean the first-listed stage has the larger value."
 
 make_contrast <- function(a, b, var) {
-  da <- zf_et_sep[[a]][[var]]$draws
-  db <- zf_et_sep[[b]][[var]]$draws
-  k <- min(nrow(da), nrow(db))
-  draws_a <- if (var == "z") da$z[seq_len(k)] else da$temp[seq_len(k)]
-  draws_b <- if (var == "z") db$z[seq_len(k)] else db$temp[seq_len(k)]
-  delta <- draws_a - draws_b
+  # Pair posterior draws by .draw so the contrast is computed within
+  # draw — this is the standard accessor-based contrast pattern shown
+  # in the get_z_draws() docstring example.
+  getter <- switch(var, z = get_z_draws, CTmax = get_ctmax_draws)
+  value_col <- switch(var, z = "z", CTmax = "CTmax")
+  paired <- dplyr::inner_join(getter(zf_et_sep[[a]]),
+                              getter(zf_et_sep[[b]]),
+                              by = ".draw", suffix = c("_a", "_b"))
+  delta  <- paired[[paste0(value_col, "_a")]] -
+            paired[[paste0(value_col, "_b")]]
   q <- stats::quantile(delta, c(0.025, 0.5, 0.975), names = FALSE)
   tibble::tibble(
     Contrast = paste(a, "−", b),
@@ -2497,7 +2823,7 @@ All four sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) receive this cell-mea
 #| label: zebrafish-joint-spec
 #| echo: true
 
-zf_bounds <- bayesTLS:::compute_4pl_bounds(lower = 0, upper = 1)
+zf_bounds <- getFromNamespace("compute_4pl_bounds", "bayesTLS")(lower = 0, upper = 1)
 low_expr  <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)",
                      zf_bounds$low_min, zf_bounds$low_w)
 up_expr   <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)",
@@ -2848,13 +3174,20 @@ tinytable::tt(zf_compare, escape = TRUE)
 
 zf_post_long <- dplyr::bind_rows(
   lapply(zf_stages, function(s) {
-    dplyr::bind_rows(
-      tibble::tibble(life_stage = s, quantity = "z",         method = "Separate",
-                     value = zf_et_sep[[s]]$z$draws$z),
-      tibble::tibble(life_stage = s, quantity = "CTmax_1hr", method = "Separate",
-                     value = zf_et_sep[[s]]$CTmax$draws$temp),
-      tibble::tibble(life_stage = s, quantity = "T_crit",    method = "Separate",
-                     value = zf_et_sep[[s]]$T_crit$draws$temp),
+    # zf_et_sep is a standard extract_tdt() result → accessors apply.
+    sep_long <- dplyr::bind_rows(
+      get_z_draws(zf_et_sep[[s]])     |>
+        dplyr::transmute(quantity = "z",         value = z),
+      get_ctmax_draws(zf_et_sep[[s]]) |>
+        dplyr::transmute(quantity = "CTmax_1hr", value = CTmax),
+      get_tcrit_draws(zf_et_sep[[s]]) |>
+        dplyr::transmute(quantity = "T_crit",    value = T_crit)
+    ) |>
+      dplyr::mutate(life_stage = s, method = "Separate")
+    # zf_joint_tdt[[s]] is a custom object: $z$draws carries BOTH z and
+    # CTmax columns (output of derive_tdt_parameters), so we keep its
+    # bespoke access pattern here.
+    joint_long <- dplyr::bind_rows(
       tibble::tibble(life_stage = s, quantity = "z",         method = "Joint",
                      value = zf_joint_tdt[[s]]$z$draws$z),
       tibble::tibble(life_stage = s, quantity = "CTmax_1hr", method = "Joint",
@@ -2862,6 +3195,7 @@ zf_post_long <- dplyr::bind_rows(
       tibble::tibble(life_stage = s, quantity = "T_crit",    method = "Joint",
                      value = zf_joint_tdt[[s]]$T_crit$draws$temp)
     )
+    dplyr::bind_rows(sep_long, joint_long)
   })
 ) |>
   dplyr::filter(is.finite(value)) |>
@@ -3136,5 +3470,3 @@ The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summ
 
 pander::pander(sessionInfo())
 ```
-
-:::

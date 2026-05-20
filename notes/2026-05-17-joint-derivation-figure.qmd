@@ -261,16 +261,31 @@ z_abs_med <- median(z_abs_per_draw)
 z_abs_lo  <- quantile(z_abs_per_draw, 0.025, names = FALSE)
 z_abs_hi  <- quantile(z_abs_per_draw, 0.975, names = FALSE)
 
-# Ghost dose-response at CTmax_1h_rel (posterior median): by construction
-# its inflection sits on the vertical 60-min reference.
-ghost_low <- pmax(ell_0 + ell_beta1 * (ctmax_med - T_bar), 0)
-ghost_up  <- u_0 + u_beta1 * (ctmax_med - T_bar)
-ghost_k   <- k_0 + k_beta1 * (ctmax_med - T_bar)
-ghost_mid <- beta0 + beta1 * (ctmax_med - T_bar)
-ghost_p <- tibble(log10_t = log10_t_grid) |>
-  mutate(p = ghost_low +
-            (ghost_up - ghost_low) /
-              (1 + exp(ghost_k * (log10_t - ghost_mid))))
+# Two ghost dose-response curves:
+#   1. at T = CTmax_1h_rel (posterior median): by construction its
+#      inflection sits on the vertical 60-min reference.
+#   2. at T = CTmax_1h_abs (posterior median): by construction its
+#      absolute 50% crossing sits on the vertical 60-min reference.
+ghost_curve <- function(T_anchor) {
+  g_low <- pmax(ell_0 + ell_beta1 * (T_anchor - T_bar), 0)
+  g_up  <- u_0 + u_beta1 * (T_anchor - T_bar)
+  g_k   <- k_0 + k_beta1 * (T_anchor - T_bar)
+  g_mid <- beta0 + beta1 * (T_anchor - T_bar)
+  tibble(log10_t = log10_t_grid,
+         p = g_low + (g_up - g_low) /
+                       (1 + exp(g_k * (log10_t - g_mid))),
+         T_anchor = T_anchor,
+         low = g_low, up = g_up)
+}
+ghost_p     <- ghost_curve(ctmax_med)
+ghost_p_abs <- ghost_curve(ctmax_abs_med)
+
+# Anchor y-values for the colour-matched vertical leader lines at the
+# 60-min reference: the pink ghost crosses log10(60) at its inflection
+# (the asymptote midpoint); the blue ghost crosses log10(60) at p = 0.5
+# by construction.
+ghost_rel_anchor_y <- (ghost_p$low[1]    + ghost_p$up[1])    / 2
+ghost_abs_anchor_y <- 0.5
 
 # z bracket anchors — span point 3 (T = 34) to point 5 (T = 38). Same
 # slope as any other pair (mid(T) is straight), but anchoring on the
@@ -301,11 +316,14 @@ p <- ggplot() +
               aes(x = log10_t, ymin = p_lo, ymax = p_hi,
                   fill = factor(temp)),
               alpha = 0.18, colour = NA) +
-  # Ghost dose-response curve at CTmax_1h_rel. Slimmer line in the same
-  # long-dash + deeppink style; no need to compete with the now-removed
-  # vertical red connector — the grey 60-min vertical handles that role.
+  # Two ghost dose-response curves — one per CTmax definition. Each is
+  # drawn in the colour of its CTmax label so the reader can pair them
+  # visually: pink (relative) crosses log10(60) at its inflection;
+  # steel-blue (absolute) crosses log10(60) at p = 0.5 by construction.
   geom_line(data = ghost_p, aes(log10_t, p),
             colour = "deeppink2", linewidth = 1.0, linetype = "longdash") +
+  geom_line(data = ghost_p_abs, aes(log10_t, p),
+            colour = "steelblue4", linewidth = 1.0, linetype = "longdash") +
   # Posterior median dose-response curves.
   geom_line(data = curve_post,
             aes(log10_t, p_med, colour = factor(temp), group = temp),
@@ -420,9 +438,26 @@ p <- ggplot() +
            y = 0.38, yend = 0.24,
            curvature = -0.22, colour = "black", linewidth = 0.55,
            arrow = arrow(length = unit(0.08, "in"))) +
-  # ---- CTmax labels: anchored just left of the 60-min vertical. The
-  # grey dotted vline (declared earlier) is the only vertical reference
-  # — no second red/pink vertical connector.
+  # ---- CTmax leader lines: a coloured longdash segment from each
+  # ghost curve's reference point (where it crosses log10(60)) up to
+  # its label. Pink for relative (anchored at the inflection of the
+  # pink ghost), steel-blue for absolute (anchored at p = 0.5 of the
+  # blue ghost).
+  annotate("segment",
+           x = log10_t_ref, xend = log10_t_ref,
+           y = ghost_rel_anchor_y, yend = 1.07,
+           colour = "deeppink2", linetype = "longdash", linewidth = 0.55) +
+  annotate("segment",
+           x = log10_t_ref, xend = log10_t_ref,
+           y = ghost_abs_anchor_y, yend = 1.02,
+           colour = "steelblue4", linetype = "longdash", linewidth = 0.55) +
+  annotate("point", x = log10_t_ref, y = ghost_rel_anchor_y,
+           shape = 21, size = 2.6, fill = "deeppink2",
+           colour = "black", stroke = 0.5) +
+  annotate("point", x = log10_t_ref, y = ghost_abs_anchor_y,
+           shape = 21, size = 2.6, fill = "steelblue4",
+           colour = "black", stroke = 0.5) +
+  # ---- CTmax labels: anchored just left of the 60-min vertical. ----
   annotate("label", x = log10_t_ref - 0.08, y = 1.09,
            label = sprintf("CTmax 1h (relative) = %.2f °C   [%.2f, %.2f]",
                            ctmax_med, ctmax_lo, ctmax_hi),

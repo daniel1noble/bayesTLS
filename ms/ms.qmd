@@ -124,7 +124,7 @@ We show that the classical and Bayesian frameworks are equivalent, but that the 
 **Keywords:** thermal-death-time; thermal tolerance landscape; multilevel model; 4-parameter logistic; heat injury; heat tolerance; critical thermal maximum; ectotherm
 :::
 
-```{r setup}
+```{r}
 #| label: setup
 #| cache: false
 
@@ -161,7 +161,7 @@ set.seed(123)
 
 Climate change is increasing the frequency, intensity, and duration of extreme heat events globally, with cascading consequences for organismal fitness, population persistence, and biodiversity[@snook_fertility_2026; @arnold_thermal_2025; @rezende_drosophila_mortality_2020; @smale_marine_2019; @wiens_localextinctions_2016]. Quantifying variation in thermal tolerance within and among species is therefore central to forecasting biological responses to climate change in nature [@sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019; @jorgensen_nature_2022]. Threshold-based measures of heat tolerance, such as the critical thermal maximum ($CT_{max}$), have long been used to establish differences in climate vulnerability among taxa and predicting vulnerability to climate change [@pottier_amphibians_2025; @sunday_global_2011; @deutsch_latitude_2008; @sunday_redistribution_2012; @pinsky_marine_2019]. While useful, threshold-based metrics do not capture how the biological effects of extreme heat on fitness depend on both the duration and intensity of heat stress, limiting our ability to make realistic predictions of the impacts of climate change in nature [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021].
 
-The Thermal Death Time (TDT) / Thermal Load Sensitivity (TLS) models address this limitation by quantifying how the intensity and duration of heat exposure jointly determine survival responses to heat stress [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_nature_2022; @jorgensen_drosophila_2019; @arnold_thermal_2025]. Recently, the TDT framework was expanded to include sublethal (e.g., fertility, heat coma) responses to heat stress, providing a flexible framework to broadly explain variation in biological responses to heat stress [@orsted_suzukii_2024; @arnold_thermal_2025; @noble2026]. These models capture how heat injury accumulates in a dose-dependent manner above a certain threshold ($T_{crit}$), with injury accumulating more rapidly at higher temperatures and over longer exposures. As a result, organisms may eventually reach a thermal load that leads to compromised physiological function that negatively impacts growth, reproduction and survival [@orsted_finding_2022; @rezende_landscapes_2014; @arnold_thermal_2025; @jorgensen_drosophila_2019] if injury cannot be repaired [@arnold_thermal_2025; @buckley_damage_2025; @jorgensen_unifying_2021]. By linking biological responses to the intensity and duration of heat stress, the TLS and TDT frameworks allow for more realistic predictions of the impacts of  fluctuating thermal regimes  [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021], and have shown promise in predicting observed mortality rates in nature [@rezende_drosophila_mortality_2020; @zamora2026predicting].
+The Thermal Death Time (TDT) / Thermal Load Sensitivity (TLS) models address this limitation by quantifying how the intensity and duration of heat exposure jointly determine survival responses to heat stress [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_nature_2022; @jorgensen_drosophila_2019; @arnold_thermal_2025]. Recently, the TDT framework was expanded to include sublethal (e.g., fertility, heat coma) responses to heat stress, providing a flexible framework to broadly explain variation in biological responses to heat stress [@orsted_suzukii_2024; @arnold_thermal_2025; @noble2026]. These models capture how heat injury accumulates in a dose-dependent manner above a certain threshold ($T_{crit}$), with injury accumulating more rapidly at higher temperatures and over longer exposures. As a result, organisms may eventually reach a thermal load that leads to compromised physiological function that negatively impacts growth, reproduction and survival [@orsted_finding_2022; @rezende_landscapes_2014; @arnold_thermal_2025; @jorgensen_drosophila_2019] if injury cannot be repaired [@arnold_thermal_2025; @buckley_damage_2025; @jorgensen_unifying_2021]. By linking biological responses to the intensity and duration of heat stress, the TLS and TDT frameworks allow for more realistic predictions of the impacts of  fluctuating thermal regimes  [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021], and have shown promise in predicting observed mortality rates in nature [@rezende_drosophila_mortality_2020; @zamora2026].
 
 Despite their predictive power, TDT/TLS analyses traditionally involves a two-step modelling approach [@orsted_finding_2022; @rezende_drosophila_mortality_2020; @truebano2018; @jorgensen_drosophila_2019; @li2023]. First, organisms are exposed to multiple temperatures for different durations, and the proportion of individuals that are dead, infertile, knocked down, or otherwise affected is modelled as a function of exposure duration. This is typically done by fitting independent dose-response curves at each assay temperature. From these curves, the exposure duration required to reach a specified response threshold is estimated, most often $t_{50}$, the time required to reach 50% mortality, infertility, knockdown, or  other endpoints. Second, the resulting $\log_{10}(t_{50})$ estimates are regressed against assay temperature. Thermal sensitivity (i.e., the inverse of the slope of this regression, $z$) and static critical thermal maximum (i.e., the intercept of the regression, $sCT_{max_{time}}$) are then derived from this linear model [@rezende_landscapes_2014; @orsted_finding_2022]. Thermal sensitivity ($z$) is interpreted as the temperature increase required to reduce $t_{50}$ by a factor of 10, while $sCT_{max_{time}}$ is usually arbitrarily computed for a 1 min [@rezende_landscapes_2014], 1 hour [@jorgensen_drosophila_2019], or 4 hour [@orsted_suzukii_2024] duration of heat stress exposure. These quantities can then be used to estimate cumulative Heat Injury (HI) under realistic temperature-time series, where injury accumulates as a function of the exposure duration relative to the predicted tolerance time at each temperature [@jorgensen_drosophila_2019; @villeneuve_dynamic_2024]. Recent extensions have emphasized that injury accumulation may also be partly offset by repair or acclimation mechanisms, motivating the emergence of new models that incorporate damage-repair dynamics [@arnold_thermal_2025; @buckley_damage_2025].
 
@@ -169,8 +169,16 @@ The two-step pipeline is intuitive and easy to implement, yet it has several pra
 
 Here, we present a single-stage alternative to the classical two-step pipeline: a hierarchical Bayesian four-parameter logistic model fitted jointly to all temperature-by-duration response data. In this framework, survival or sublethal response probabilities are estimated directly as a function of exposure duration and assay temperature, while allowing the parameters of the dose-response curve to vary among groups and hierarchical levels. The four-parameter logistic model provides a flexible sigmoidal description of thermal dose responses, with interpretable parameters for the lower asymptote, upper asymptote, curve steepness, and midpoint [@ritz_drc_2015; @ritz_ecotox_2010; @nielsen_nlmm_2004; @rudemo_random_1989; @ritz_streibig_2008]. We focus on binomial and beta-binomial outcomes because count data dominate TDT/TLS studies, but the same modelling logic can be extended to other response types using appropriate likelihoods, including continuous performance traits, or latency data. Similarly, although we use the four-parameter log-logistic form for its flexibility, simpler nested models (3PL, with one asymptote fixed; 2PL, with both fixed at 0 and 1) or alternative monotonic dose-response functions (e.g., Weibull, log-normal) can be implemented within the same general framework [@ritz_drc_2015; @ritz_streibig_2008].
 
-We show how classical TLS quantities, such as thermal sensitivity ($z$), thermal tolerance ($CT_{max}$), heat injury accumulation, survival under fluctuating thermal regimes, and their uncertainty, can be derived from this single Bayesian model. We implement these tools in the R package $bayesTLS$ and recommend this new modelling approach as the default approach for analysing organismal responses to varying thermal loads. Using simulations and empirical case studies in brown shrimp (*Crangon crangon*), zebrafish (*Danio rerio*), and XXX (XXX), we demonstrate how to implement, validate, and expand this new modelling approach. 
- 
+We show how classical TLS quantities, such as thermal sensitivity ($z$), thermal tolerance ($CT_{max}$), heat injury accumulation, survival under fluctuating thermal regimes, and their uncertainty, can be derived from this single Bayesian model. We implement these tools in the R package $bayesTLS$ and recommend this new modelling approach as the default approach for analysing organismal responses to varying thermal loads. Using simulations and empirical case studies in brown shrimp (*Crangon crangon*), zebrafish (*Danio rerio*), and XXX (XXX), we demonstrate how to implement, validate, and expand this new modelling approach.
+
+```{r}
+#| label: fig-joint-4pl-conceptual
+#| echo: false
+#| fig-cap: "Conceptual comparison of the classical two-stage TDT/TLS workflow and the joint Bayesian four-parameter logistic (4PL) model. (a) In the two-stage workflow, separate dose-response curves are fit at each assay temperature and the resulting $t_{50}$ estimates are regressed against temperature. This can fail when assays do not bracket $t_{50}$, treats first-stage estimates as fixed and independent, and does not naturally propagate uncertainty, covariates, or hierarchical structure into $z$ and $CT_{max,1h}$. (b) The joint 4PL model estimates the full survival surface in one model. Coloured curves show posterior median survival probabilities at assay temperatures, with shaded pointwise 95% credible intervals. Filled circles mark the model midpoint, `mid(T)`, defining relative $\\log_{10}t_{50}$; open triangles mark the absolute 50% survival crossing. The black and steelblue trajectories give the relative and absolute $t_{50}$ relationships used to derive $z_{rel}$, $z_{abs}$, and $CT_{max,1h}$ at the 60-min reference. Dashed ghost curves show the fitted dose response at the corresponding relative and absolute $CT_{max,1h}$ values. Inset: the 4PL parameters `low`, `up`, `mid`, and `k`. Values are illustrative."
+#| fig-align: center
+#| out-width: "100%"
+knitr::include_graphics(here::here("output", "figs", "fig1.png"))
+```
 
 # A non-linear Bayesian hierarchical model for characterizing thermal load sensitivity
 
@@ -252,6 +260,273 @@ $$ {#eq-S-pred}
 
 Here $S(T, \tau)$ is the survival surface fitted by the dose-response model, so $S_{\text{pred}}(t)$ is the survival probability for an organism held at *constant* $T_{\text{ref}}$ after exposure duration $\tau_{\text{eff}}(t)$. 
 
+# Simulations Evaluating statistical properties of the joint and two-stage modelling approaches
+
+We assessed the performance of the 4PL and two-stage approaches by estimating empirical bias and 95% interval coverage for *z* and $CT_{max_{1hr}}$ across simulation replicates. Bias was calculated as the estimated value minus the true value, whereas coverage was defined as the proportion of intervals containing the true parameter value. The 4PL approach estimated parameter uncertainty directly from the fitted model. In contrast, the two-stage approach required uncertainty to be propagated across both estimation stages, which we did using the Delta method. For the two-stage estimates, we constructed intervals using both normal and *t*-distribution quantiles to evaluate the sensitivity of coverage to different assumptions about sampling uncertainty.
+
+We tested the performance of the two-stage and 4PL approaches across scenarios designed to separate different sources of estimator bias and uncertainty. First, we simulated a strict-equivalence baseline in which survival spanned the full 0–1 range, there was no overdispersion, and only the dose-response midpoint varied with temperature. This scenario tests whether the two approaches recover the same quantities when the assumptions of the classical two-stage model are met. Second, we introduced beta-binomial overdispersion while keeping the same underlying dose-response shape, allowing us to isolate the cost of likelihood misspecification when binomial models are applied to overdispersed count data. Third, we simulated departures from the classical dose-response assumptions by allowing the upper asymptote to decline with temperature, both asymptotes to compress with temperature, or the curve steepness to change with temperature. These scenarios reflect empirical cases in which survival or sublethal responses do not span the full response range, or where the shape of the dose-response curve changes across assay temperatures. Finally, we ran sensitivity analyses that varied the strength of upper-asymptote drift, the overall level of the upper asymptote, and the intensity of the experimental design. 
+
+Experimental designs were chosen to span the scale of published TDT/TLS assays, which often estimate response curves from several static temperatures and exposure durations with modest numbers of individuals, samples, or replicate vials per treatment [@truebano2018; @jorgensen_drosophila_2019; @li2023; @orsted_suzukii_2024; @faber_tdt_plants_2024]. In the simulations, designs included one to five replicate cups per temperature-by-time treatment, with 10 to 20 organisms per cup sampled from a uniform distribution. For each scenario-by-design combination, we simulated 1,000 datasets and fit both the two-stage and 4PL approaches. Overall, we ran 25,000 simulations and were limited to 1000 simulations per run. We report Monte Carlo standard errors (MCSE) for the bias and coverage summaries to better understand across simulation uncertainty [@williams2024; @direnzo2023; @koehler2009].
+
+#### *Simulation results*
+
+When the data-generating process matched the classical assumptions, with survival spanning the full 0-1 range and temperature affecting only the dose-response midpoint, the two-stage approach performed similarly to the joint 4PL model, producing little bias and near-nominal coverage when confidence intervals were constructed with t-distribution quantiles. This distinction was important: using normal (z) quantiles instead produced anti-conservative intervals with coverage well below the nominal 95% level (@fig-sims & Supplement 3.1 & 3.2).
+
+In contrast, the two-stage approach resulted in biased *z* and $CT_{max_{1hr}}$, often with poor coverage, when temperature impacted upper thresholds (up) and rate of decline (k) (@fig-sims). These biases were consistent with larger sample sizes (@fig-sims), but were exacerbated with fewer temperature time combinatons and low levels of replication (See Supplement 3.6). Bias for both *z* and $CT_{max_{1hr}}$ from the two-stage approaches were particularly severe as the upper survival threshold decreased (@fig-sims2). 
+
+Overall, these results confirm that any model misspecfication requires the 4PL to properly recover true *z* and $CT_{max}$, with correct uncertainty. The 4PL model can be fit with the `bayesTLS` package we provide (see Supplement 1.1), defaulting to temperature dependence on all parameters of the 4PL. If no temperaure effect exists on a given parameter it will be estimated at zero and it will be equivalent to simplier models. These models also allow for more sophisicated modelling that the two-stage approaches cannot achieve easily. In our supplement, we also show how readers can build greater flexibility into their models if this is required. 
+
+```{r}
+#| label: fig-sims
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.5
+#| fig-cap: "Simulation performance when the data-generating process violates classical TDT shape assumptions. Row labelled **'u varies with T'**: upper asymptote $u$ declines 0.01 per °C from 0.92 at $T=34$ °C, with $\\text{low}=0.05$ and $k=8$ constant in $T$. Row labelled **'k varies with T'**: slope $k$ ranges from 6 at 30 °C to 10 at 38 °C, with $u=0.92$ and $\\text{low}=0.05$ constant. Both rows use 5 replicate cups per (T × duration) cell, $N_{sim}=1000$ simulated datasets per row, and beta-binomial overdispersion ($\\phi=5$). Panel (a): mean signed bias in $z$ (left column) and $CT_{max,1h}$ (right column) with 95% Monte Carlo SE bars. Panel (b): empirical 95% interval coverage with the same column layout. Dashed lines mark zero bias and nominal coverage. Absolute-scale methods (`joint_4pl_abs` and all two-stage variants) are evaluated against the analytical absolute-50% truth; `joint_4pl` is evaluated against the relative midpoint truth. Two-stage normal- and t-quantile variants share point estimates and differ only in Stage-2 delta-method interval construction."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(patchwork)
+
+# ---- Method ordering + paired colour palette (matches notes writeup) --
+.method_levels <- c("two_stage_bin", "two_stage_bin_t",
+                    "two_stage_bb",  "two_stage_bb_t",
+                    "joint_4pl",     "joint_4pl_abs")
+.method_labels <- c("Two-stage bin (Normal CI)", "Two-stage bin (t CI)",
+                    "Two-stage BB (Normal CI)",  "Two-stage BB (t CI)",
+                    "Joint 4PL (relative)",      "Joint 4PL (absolute)")
+.method_cols <- setNames(c("#54278f","#cbc9e2","#a63603","#fdae6b",
+                           "#006d2c","#a1d99b"), .method_labels)
+
+# ---- Two-truth constants (mid line is fixed across all 25 sim cells) --
+.TRUTH_REL <- c(z = -1 / -0.15,
+                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+# ---- BB Stage-1 pathology screening + two-truth aggregation -----------
+.load_screened <- function(prefix) {
+  files <- list.files(
+    here::here("output", "sim_twostage"),
+    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+    full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z"         & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |>
+    dplyr::mutate(bb_path = TRUE)
+
+  ps |>
+    dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb", "two_stage_bb_t"))) |>
+    dplyr::select(-bb_path) |>
+    dplyr::mutate(
+      truth_use = ifelse(method == "joint_4pl",
+                         .TRUTH_REL[as.character(quantity)],
+                         truth),
+      bias    = estimate - truth_use,
+      covered = is.finite(lower) & is.finite(upper) &
+                lower <= truth_use & truth_use <= upper
+    ) |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n         = dplyr::n(),
+      mean_bias = mean(bias, na.rm = TRUE),
+      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      coverage  = mean(covered, na.rm = TRUE),
+      mcse_cov  = sqrt(mean(covered, na.rm = TRUE) *
+                       (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
+      .groups   = "drop"
+    )
+}
+
+# Use n_reps = 5 cells of Scen 3 and Scen 5 for the manuscript figure.
+.d <- dplyr::bind_rows(.load_screened("scen3"),
+                       .load_screened("scen5")) |>
+  dplyr::filter(grepl("_n5$", scenario)) |>
+  dplyr::mutate(
+    method   = factor(method,   levels = .method_levels,
+                                labels = .method_labels),
+    quantity = factor(quantity, levels = c("z", "CTmax_1hr"),
+                                labels = c("z (°C)",
+                                           "CT[max,1h] (°C)")),
+    scenario_label = dplyr::recode(
+      sub("_n5$", "", scenario),
+      scen3_heat_lowers_u = "u varies with T",
+      scen5_sharpen       = "k varies with T"),
+    bias_lo = mean_bias - 1.96 * mcse_bias,
+    bias_hi = mean_bias + 1.96 * mcse_bias,
+    cov_lo  = coverage  - 1.96 * mcse_cov,
+    cov_hi  = coverage  + 1.96 * mcse_cov
+  )
+
+.theme_proj <- theme_classic(base_size = 11) +
+  theme(strip.background = element_blank(),
+        strip.text       = element_text(face = "bold"),
+        legend.position  = "bottom",
+        legend.title     = element_blank(),
+        legend.text      = element_text(size = 9),
+        panel.spacing    = unit(0.8, "lines"))
+
+.p_bias <- ggplot(.d, aes(x = mean_bias, y = method, colour = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi), height = 0.25) +
+  geom_point(size = 2.4) +
+  facet_grid(scenario_label ~ quantity, scales = "free_x") +
+  scale_colour_manual(values = .method_cols) +
+  labs(x = "Mean bias (estimate − truth)", y = NULL,
+       title = "(a) Bias") +
+  .theme_proj + theme(legend.position = "none")
+
+.p_cov <- ggplot(.d, aes(x = coverage, y = method, colour = method)) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi), height = 0.25) +
+  geom_point(size = 2.4) +
+  facet_grid(scenario_label ~ quantity) +
+  scale_colour_manual(values = .method_cols) +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+  labs(x = "Empirical 95% CI coverage", y = NULL,
+       title = "(b) Coverage") +
+  .theme_proj
+
+.p_bias / .p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+#| label: fig-sims2
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "Bias in $z$ and $CT_{max,1h}$ as the partial-mortality regime is swept along two orthogonal axes. Row labelled **'u drifts with T (varying $\\beta_u$)'**: upper asymptote at $T = \\bar T$ fixed at $u_0 = 0.92$, slope $\\beta_u$ varied across $\\{-0.005, -0.010, -0.015, -0.019\\}$ pp/°C — i.e., $u$ stays high at cool assays and declines progressively at hotter ones. Row labelled **'u is constant but reduced (varying $u_0$)'**: $\\beta_u = 0$ (no temperature drift); the baseline level itself is swept across $\\{0.65, 0.75, 0.85, 0.95, 0.99\\}$ — i.e., a constant fraction of the cohort is never susceptible, regardless of temperature. Both rows: $\\text{low}=0.05$, $k=8$, mid linear in $T$ with slope $-0.15$, beta-binomial likelihood ($\\phi=5$), $n_{reps}=5$, $N_{sim}=1000$ datasets per cell. Points are mean signed bias with 95% Monte Carlo SE bars; dashed lines mark zero bias. Left column: $z$; right column: $CT_{max,1h}$. Only the four distinct point-estimate methods are shown: the two-stage Normal-CI and t-CI variants share point estimates within each Stage-1 family, so bias is identical between them; coverage differences appear in the supplementary writeup. Methods are evaluated against the truth on their own threshold scale (see Methods). The two failure signatures differ: drifting $u$ tilts the Stage-2 slope (large $z$ bias, modest $CT_{max,1h}$ bias); constant low $u$ shifts the Stage-2 intercept (large $CT_{max,1h}$ bias, with $z$ bias of opposite sign growing as $u_0$ falls)."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(patchwork)
+
+# ---- Method ordering + colour palette ---------------------------------
+# Bias is identical for the Normal-CI and t-CI variants of each
+# two-stage Stage-1 family (they share point estimates; only Stage-2 CI
+# construction differs). For this bias-only figure we therefore plot
+# just the four distinct point-estimate methods: two_stage_bin,
+# two_stage_bb, joint_4pl (relative), joint_4pl_abs (absolute).
+.method_levels <- c("two_stage_bin", "two_stage_bb",
+                    "joint_4pl",     "joint_4pl_abs")
+.method_labels <- c("Two-stage bin", "Two-stage BB",
+                    "Joint 4PL (relative)", "Joint 4PL (absolute)")
+.method_cols <- setNames(c("#54278f", "#a63603", "#006d2c", "#a1d99b"),
+                         .method_labels)
+
+# ---- Two-truth constants (mid line is fixed across all 25 sim cells) --
+.TRUTH_REL <- c(z = -1 / -0.15,
+                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+# ---- BB Stage-1 pathology screening + two-truth aggregation -----------
+.load_screened <- function(prefix) {
+  files <- list.files(
+    here::here("output", "sim_twostage"),
+    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+    full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z"         & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |>
+    dplyr::mutate(bb_path = TRUE)
+
+  ps |>
+    dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb", "two_stage_bb_t"))) |>
+    dplyr::select(-bb_path) |>
+    dplyr::mutate(
+      truth_use = ifelse(method == "joint_4pl",
+                         .TRUTH_REL[as.character(quantity)],
+                         truth),
+      bias    = estimate - truth_use,
+      covered = is.finite(lower) & is.finite(upper) &
+                lower <= truth_use & truth_use <= upper
+    ) |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n         = dplyr::n(),
+      mean_bias = mean(bias, na.rm = TRUE),
+      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      .groups   = "drop"
+    )
+}
+
+.scen6 <- .load_screened("scen6") |>
+  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
+                sweep_label = "u drifts with T (varying β_u, pp / °C)")
+
+.scen7 <- .load_screened("scen7") |>
+  dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
+                sweep_label = "u is constant but reduced (varying u_0)")
+
+.shape_fmt <- function(d) {
+  d |>
+    dplyr::filter(method %in% .method_levels) |>
+    dplyr::mutate(
+      method   = factor(method,   levels = .method_levels,
+                                  labels = .method_labels),
+      quantity = factor(quantity, levels = c("z", "CTmax_1hr"),
+                                  labels = c("z (°C)",
+                                             "CT[max,1h] (°C)")),
+      bias_lo = mean_bias - 1.96 * mcse_bias,
+      bias_hi = mean_bias + 1.96 * mcse_bias
+    )
+}
+
+.theme_proj <- theme_classic(base_size = 11) +
+  theme(strip.background = element_blank(),
+        strip.text       = element_text(face = "bold"),
+        legend.position  = "bottom",
+        legend.title     = element_blank(),
+        legend.text      = element_text(size = 9),
+        panel.spacing    = unit(0.8, "lines"))
+
+.build <- function(d, x_label, x_breaks) {
+  ggplot(d, aes(x = sweep_x, y = mean_bias, colour = method)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(aes(ymin = bias_lo, ymax = bias_hi), width = 0) +
+    geom_point(size = 2.4) +
+    geom_line() +
+    facet_wrap(~ quantity, scales = "free_y", nrow = 1) +
+    scale_colour_manual(values = .method_cols) +
+    scale_x_continuous(breaks = x_breaks) +
+    labs(x = x_label, y = "Mean bias (estimate − truth)") +
+    .theme_proj
+}
+
+.p6 <- .build(.shape_fmt(.scen6),
+              x_label  = expression(beta[u]~"(pp / °C, drift of "*italic(u)*" with T)"),
+              x_breaks = c(-0.019, -0.015, -0.010, -0.005)) +
+  ggtitle("(a) u drifts with T (varying β_u)")
+
+.p7 <- .build(.shape_fmt(.scen7),
+              x_label  = expression(u[0]~"(constant upper asymptote, all T)"),
+              x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99)) +
+  ggtitle("(b) u is constant but reduced (varying u_0)")
+
+.p6 / .p7 + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom")
+```
+
 # Application of Bayesian dose-response models to case studies
 
 We applied the 4-parameter (4PL) Bayesian logistic model to four case studies covering a broad range of ectothermic groups. For all case studies, we show how much a modelling framework can retrieve classical parameters of the TLS framework such as $z$ and $CT_{max1h}$ using both lethal and sublethal data. We also show how to derive an estimate of $T_{crit}$ from sublethal data (e.g., time to heat knockdown). 
@@ -308,7 +583,7 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Lethal TDT — hierarchical 4PL on counts
 
-```{r fig-survival-curves}
+```{r}
 #| label: fig-survival-curves
 #| fig-cap: "Posterior survival curves at each lethal-TDT assay temperature, with 95% credible bands and observed survival proportions."
 #| eval: false
@@ -320,7 +595,7 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Reconciling the three endpoints via the Jørgensen ramping equation
 
-```{r fig-tdt-ctmax-reconciliation}
+```{r}
 #| label: fig-tdt-ctmax-reconciliation
 #| fig-cap: "Forward (TDT → dynamic $CT_{max}$) and inverse ($CT_{max}$ → TDT) reconciliation under full posterior propagation."
 #| eval: false
@@ -328,7 +603,7 @@ Source pipeline: R/bayesian_TDT_shrimp.qmd.
 
 ## Field-temperature heat-injury projections under warming scenarios
 
-```{r fig-hi-warming}
+```{r}
 #| label: fig-hi-warming
 #| fig-cap: "Posterior cumulative heat-injury and survival under measured Baltic surface-temperature traces and +1, +2, +3 °C warming scenarios, with and without a Sharpe–Schoolfield repair kernel."
 #| eval: false
