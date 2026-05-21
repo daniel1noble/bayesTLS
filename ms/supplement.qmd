@@ -1768,6 +1768,281 @@ shrimp_summary <- tibble::tibble(
 tinytable::tt(shrimp_summary, digits = 2, escape = TRUE)
 ```
 
+## Classical two-stage TDT fits {#sec-shrimp-twostep}
+
+Before fitting the joint 4PL, we also run the classical two-stage pipeline on the shrimp counts. Stage 1 fits a separate logistic dose-response curve at each assay temperature. Stage 2 regresses the resulting $\log_{10}\text{LT50}$ estimates on assay temperature. We repeat Stage 1 with a binomial likelihood and a beta-binomial likelihood; the latter is a small maximum-likelihood fit with an estimated beta-binomial precision parameter $\phi$.
+
+```{r case-study-two-step-helpers}
+#| label: case-study-two-step-helpers
+#| echo: true
+
+fit_stage1_binomial_case <- function(dat) {
+  validate_stage1_case <- function(log10_lt50, slope, d) {
+    is.finite(log10_lt50) &&
+      is.finite(slope) &&
+      slope < 0 &&
+      abs(slope) > 1e-4 &&
+      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
+      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
+  }
+
+  dat |>
+    dplyr::group_by(temp) |>
+    dplyr::group_modify(function(d, key) {
+      if (dplyr::n_distinct(d$logd) < 3) {
+        return(tibble::tibble(
+          method       = "Two-step binomial",
+          log10_lt50   = NA_real_,
+          stage1_slope = NA_real_,
+          phi          = NA_real_,
+          stage1_ok    = FALSE
+        ))
+      }
+      fit <- stats::glm(cbind(n_surv, n_total - n_surv) ~ logd,
+                        data = d, family = stats::binomial())
+      co <- stats::coef(fit)
+      lt <- as.numeric(-co[1] / co[2])
+      sl <- as.numeric(co[2])
+      tibble::tibble(
+        method       = "Two-step binomial",
+        log10_lt50   = lt,
+        stage1_slope = sl,
+        phi          = NA_real_,
+        stage1_ok    = validate_stage1_case(lt, sl, d)
+      )
+    }) |>
+    dplyr::ungroup()
+}
+
+fit_stage1_betabinom_case <- function(dat) {
+  validate_stage1_case <- function(log10_lt50, slope, d) {
+    is.finite(log10_lt50) &&
+      is.finite(slope) &&
+      slope < 0 &&
+      abs(slope) > 1e-4 &&
+      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
+      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
+  }
+
+  bb_nll <- function(par, y, n, x) {
+    mu  <- stats::plogis(par[1] + par[2] * x)
+    mu  <- pmin(pmax(mu, 1e-8), 1 - 1e-8)
+    phi <- exp(par[3])
+    -sum(
+      lchoose(n, y) +
+        lbeta(y + mu * phi, n - y + (1 - mu) * phi) -
+        lbeta(mu * phi, (1 - mu) * phi)
+    )
+  }
+
+  dat |>
+    dplyr::group_by(temp) |>
+    dplyr::group_modify(function(d, key) {
+      if (dplyr::n_distinct(d$logd) < 3) {
+        return(tibble::tibble(
+          method       = "Two-step beta-binomial",
+          log10_lt50   = NA_real_,
+          stage1_slope = NA_real_,
+          phi          = NA_real_,
+          stage1_ok    = FALSE
+        ))
+      }
+      fit_glm <- suppressWarnings(
+        stats::glm(cbind(n_surv, n_total - n_surv) ~ logd,
+                   data = d, family = stats::binomial())
+      )
+      start <- c(stats::coef(fit_glm), log(50))
+      if (any(!is.finite(start))) {
+        p0 <- pmin(pmax(mean(d$n_surv / d$n_total), 1e-4), 1 - 1e-4)
+        start <- c(stats::qlogis(p0), -1, log(50))
+      }
+
+      fit <- stats::optim(
+        par     = start,
+        fn      = bb_nll,
+        y       = d$n_surv,
+        n       = d$n_total,
+        x       = d$logd,
+        method  = "BFGS",
+        control = list(maxit = 1000)
+      )
+      co <- fit$par
+      lt <- as.numeric(-co[1] / co[2])
+      sl <- as.numeric(co[2])
+      tibble::tibble(
+        method       = "Two-step beta-binomial",
+        log10_lt50   = lt,
+        stage1_slope = sl,
+        phi          = exp(co[3]),
+        stage1_ok    = validate_stage1_case(lt, sl, d)
+      )
+    }) |>
+    dplyr::ungroup()
+}
+
+fit_stage2_case <- function(stage1, time_multiplier = 60, t_ref = 60,
+                            TC_rate_range = c(0.1, 1)) {
+  stage1_all <- stage1
+  stage1 <- stage1 |>
+    dplyr::filter(stage1_ok, is.finite(log10_lt50))
+  if (nrow(stage1) < 3) {
+    return(list(
+      fit = NULL,
+      summary = tibble::tibble(
+        method       = unique(stage1_all$method),
+        intercept    = NA_real_,
+        slope_T      = NA_real_,
+        z            = NA_real_,
+        CTmax_1hr    = NA_real_,
+        T_crit       = NA_real_,
+        r_squared    = NA_real_,
+        n_stage1     = nrow(stage1),
+        n_excluded   = nrow(stage1_all) - nrow(stage1)
+      )
+    ))
+  }
+  fit <- stats::lm(log10_lt50 ~ temp, data = stage1)
+  co  <- stats::coef(fit)
+  intercept_out <- as.numeric(co[1] + log10(time_multiplier))
+  slope         <- as.numeric(co[2])
+  z             <- -1 / slope
+  ctmax         <- (log10(t_ref) - intercept_out) / slope
+  log_rate_mid  <- mean(log10(TC_rate_range / 100))
+
+  list(
+    fit = fit,
+    summary = tibble::tibble(
+      method       = unique(stage1$method),
+      intercept    = intercept_out,
+      slope_T      = slope,
+      z            = z,
+      CTmax_1hr    = ctmax,
+      T_crit       = ctmax + z * log_rate_mid,
+      r_squared    = summary(fit)$r.squared,
+      n_stage1     = nrow(stage1),
+      n_excluded   = nrow(stage1_all) - nrow(stage1)
+    )
+  )
+}
+
+make_twostep_curve_case <- function(stage2, temp_grid,
+                                    time_multiplier = 60,
+                                    output_time_unit = "min") {
+  if (is.null(stage2$fit)) {
+    return(tibble::tibble(
+      temp = temp_grid,
+      duration_median = NA_real_,
+      method = stage2$summary$method,
+      output_time_unit = output_time_unit
+    ))
+  }
+  co <- stats::coef(stage2$fit)
+  tibble::tibble(
+    temp              = temp_grid,
+    duration_median   = 10 ^ (as.numeric(co[1]) +
+                              as.numeric(co[2]) * temp_grid) * time_multiplier,
+    method            = stage2$summary$method,
+    output_time_unit  = output_time_unit
+  )
+}
+```
+
+```{r shrimp-two-step-fit}
+#| label: shrimp-two-step-fit
+#| echo: true
+
+shrimp_stage1_twostep <- dplyr::bind_rows(
+  fit_stage1_binomial_case(shrimp_std),
+  fit_stage1_betabinom_case(shrimp_std)
+)
+
+shrimp_stage2_twostep <- lapply(
+  split(shrimp_stage1_twostep, shrimp_stage1_twostep$method),
+  fit_stage2_case,
+  time_multiplier = 60,
+  t_ref = 60,
+  TC_rate_range = c(0.1, 1)
+)
+
+shrimp_twostep_tdt <- dplyr::bind_rows(
+  lapply(shrimp_stage2_twostep, `[[`, "summary")
+)
+```
+
+```{r shrimp-two-step-lt50-table}
+#| label: tbl-shrimp-two-step-lt50
+#| tbl-cap: "Stage-1 shrimp two-stage estimates: per-temperature $\\log_{10}\\text{LT50}$ in the model time unit (hours). The beta-binomial column also reports the fitted precision parameter $\\phi$; larger $\\phi$ approaches the binomial likelihood."
+
+shrimp_stage1_twostep |>
+  dplyr::mutate(
+    `Temperature (C)` = temp,
+    `Stage-1 likelihood` = method,
+    `log10 LT50 (hours)` = log10_lt50,
+    `Beta-binomial phi` = phi,
+    `Used in Stage 2` = stage1_ok
+  ) |>
+  dplyr::select(`Temperature (C)`, `Stage-1 likelihood`,
+                `log10 LT50 (hours)`, `Beta-binomial phi`,
+                `Used in Stage 2`) |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+```{r shrimp-two-step-tdt-table}
+#| label: tbl-shrimp-two-step-tdt
+#| tbl-cap: "Classical two-stage TDT quantities for brown shrimp. These are point estimates from the Stage-2 regression; $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used for the joint 4PL extraction."
+
+shrimp_twostep_tdt |>
+  dplyr::transmute(
+    `Stage-1 likelihood` = method,
+    `z (C)`              = z,
+    `CTmax_1hr (C)`      = CTmax_1hr,
+    `T_crit (C)`         = T_crit,
+    `Stage-2 R2`         = r_squared,
+    `Stage-1 estimates used` = n_stage1,
+    `Stage-1 estimates excluded` = n_excluded
+  ) |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+```{r shrimp-two-step-tdt-line}
+#| label: fig-shrimp-two-step-tdt-line
+#| fig-cap: "Classical two-stage TDT lines for brown shrimp. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions. The beta-binomial Stage-1 fit allows overdispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
+#| fig-width: 7
+#| fig-height: 4.5
+
+shrimp_twostep_grid <- seq(min(shrimp_std$temp) - 1.5,
+                           max(shrimp_std$temp) + 1.5, by = 0.05)
+
+shrimp_twostep_line_min <- dplyr::bind_rows(lapply(
+  shrimp_stage2_twostep,
+  make_twostep_curve_case,
+  temp_grid = shrimp_twostep_grid,
+  time_multiplier = 60,
+  output_time_unit = "min"
+))
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = dplyr::filter(shrimp_stage1_twostep, stage1_ok),
+    ggplot2::aes(x = temp,
+                 y = log10_lt50 + log10(60),
+                 colour = method),
+    size = 2.5
+  ) +
+  ggplot2::geom_line(
+    data = shrimp_twostep_line_min,
+    ggplot2::aes(x = temp, y = log10(duration_median),
+                 colour = method),
+    linewidth = 1
+  ) +
+  ggplot2::labs(
+    x = "Assay temperature (C)",
+    y = expression(log[10]~LT[50]~"(min)"),
+    colour = "Two-stage fit"
+  ) +
+  ggplot2::theme_classic()
+```
+
 ## Fitting the joint Bayesian 4PL {#sec-shrimp-fit}
 
 `fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL with sensible defaults: a beta-binomial likelihood, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter. We add random intercepts on `mid` for `Date` and `Tank` to absorb the day-to-day and tank-to-tank variation that would otherwise contaminate the dose-response surface.
@@ -1957,6 +2232,101 @@ patchwork::wrap_plots(
                             x_label = expression(T[crit]~("°C"))),
   ncol = 3
 )
+```
+
+## Comparison between approaches {#sec-shrimp-approach-compare}
+
+```{r shrimp-approach-compare-table}
+#| label: tbl-shrimp-approach-compare
+#| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows are point estimates; the 4PL row reports posterior medians with 95 % credible intervals."
+
+shrimp_compare_approaches <- dplyr::bind_rows(
+  shrimp_twostep_tdt |>
+    dplyr::transmute(
+      Approach = method,
+      `z (C)` = sprintf("%.2f", z),
+      `CTmax_1hr (C)` = sprintf("%.2f", CTmax_1hr),
+      `T_crit (C)` = sprintf("%.2f", T_crit)
+    ),
+  tibble::tibble(
+    Approach = "Joint Bayesian 4PL",
+    `z (C)` = format_interval(et_shrimp$z$summary$z_median,
+                              et_shrimp$z$summary$z_lower,
+                              et_shrimp$z$summary$z_upper,
+                              digits = 2),
+    `CTmax_1hr (C)` = format_interval(et_shrimp$CTmax$summary$temp_median,
+                                      et_shrimp$CTmax$summary$temp_lower,
+                                      et_shrimp$CTmax$summary$temp_upper,
+                                      digits = 2),
+    `T_crit (C)` = format_interval(et_shrimp$T_crit$summary$temp_median,
+                                  et_shrimp$T_crit$summary$temp_lower,
+                                  et_shrimp$T_crit$summary$temp_upper,
+                                  digits = 2)
+  )
+)
+
+tinytable::tt(shrimp_compare_approaches, escape = TRUE)
+```
+
+```{r shrimp-approach-compare-tdt-lines}
+#| label: fig-shrimp-approach-compare-tdt-lines
+#| fig-cap: "Brown shrimp TDT-line comparison. The joint 4PL posterior median and 95 % credible band are repeated from @fig-shrimp-tdt-line; the two classical two-stage lines are overlaid as point-estimate regressions."
+#| fig-width: 9
+#| fig-height: 4
+
+shrimp_twostep_line_h <- dplyr::bind_rows(lapply(
+  shrimp_stage2_twostep,
+  make_twostep_curve_case,
+  temp_grid = shrimp_twostep_grid,
+  time_multiplier = 1,
+  output_time_unit = "h"
+))
+
+shrimp_4pl_line_h <- ltx_shrimp$summary |>
+  dplyr::transmute(temp,
+                   duration_median,
+                   duration_lower,
+                   duration_upper,
+                   method = "Joint Bayesian 4PL")
+
+shrimp_method_cols <- c(
+  "Joint Bayesian 4PL" = "#b2182b",
+  "Two-step binomial" = "#2166ac",
+  "Two-step beta-binomial" = "#1b9e77"
+)
+
+p_shrimp_cmp_lin <- ggplot2::ggplot() +
+  ggplot2::geom_ribbon(
+    data = shrimp_4pl_line_h,
+    ggplot2::aes(x = temp, ymin = duration_lower, ymax = duration_upper,
+                 fill = method),
+    alpha = 0.20, colour = NA
+  ) +
+  ggplot2::geom_line(
+    data = shrimp_4pl_line_h,
+    ggplot2::aes(x = temp, y = duration_median, colour = method),
+    linewidth = 1
+  ) +
+  ggplot2::geom_line(
+    data = shrimp_twostep_line_h,
+    ggplot2::aes(x = temp, y = duration_median, colour = method),
+    linewidth = 0.9
+  ) +
+  ggplot2::scale_colour_manual(values = shrimp_method_cols) +
+  ggplot2::scale_fill_manual(values = shrimp_method_cols) +
+  ggplot2::labs(x = "Assay temperature (C)",
+                y = "Time to 50% survival (hours)",
+                colour = "Approach", fill = "Approach") +
+  ggplot2::theme_classic()
+
+p_shrimp_cmp_log <- p_shrimp_cmp_lin +
+  ggplot2::scale_y_log10() +
+  ggplot2::labs(y = expression(log[10]~"time to 50% survival (hours)")) +
+  ggplot2::theme(legend.position = "none")
+
+patchwork::wrap_plots(p_shrimp_cmp_lin, p_shrimp_cmp_log, ncol = 2) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "bottom")
 ```
 
 ## Heat injury under reference traces {#sec-shrimp-hi}
@@ -2532,6 +2902,125 @@ zf_std_by_stage <- lapply(zf_stages, function(s) {
   )
 })
 names(zf_std_by_stage) <- zf_stages
+```
+
+## Classical two-stage TDT fits by life stage {#sec-zebrafish-twostep}
+
+As for the shrimp case study, we first fit the classical two-stage TDT pipeline before moving to the 4PL approaches. Stage 1 is fit separately at each temperature within each life stage, using either a binomial or beta-binomial logistic curve. Stage 2 then regresses the Stage-1 $\log_{10}\text{LT50}$ estimates on assay temperature within each life stage.
+
+```{r zebrafish-two-step-fit}
+#| label: zebrafish-two-step-fit
+#| echo: true
+
+zf_stage1_twostep <- dplyr::bind_rows(lapply(zf_stages, function(s) {
+  dplyr::bind_rows(
+    fit_stage1_binomial_case(zf_std_by_stage[[s]]),
+    fit_stage1_betabinom_case(zf_std_by_stage[[s]])
+  ) |>
+    dplyr::mutate(life_stage = factor(s, levels = zf_stages),
+                  .before = 1)
+}))
+
+zf_stage2_twostep <- lapply(zf_stages, function(s) {
+  d_s <- dplyr::filter(zf_stage1_twostep, life_stage == s)
+  out <- lapply(
+    split(d_s, d_s$method),
+    fit_stage2_case,
+    time_multiplier = 60,
+    t_ref = 60,
+    TC_rate_range = c(0.1, 1)
+  )
+  names(out) <- paste(s, names(out), sep = "||")
+  out
+}) |>
+  unlist(recursive = FALSE)
+
+zf_twostep_tdt <- dplyr::bind_rows(lapply(names(zf_stage2_twostep), function(nm) {
+  parts <- strsplit(nm, "\\|\\|")[[1]]
+  zf_stage2_twostep[[nm]]$summary |>
+    dplyr::mutate(life_stage = factor(parts[1], levels = zf_stages),
+                  .before = 1)
+}))
+```
+
+```{r zebrafish-two-step-lt50-table}
+#| label: tbl-zebrafish-two-step-lt50
+#| tbl-cap: "Stage-1 zebrafish two-stage estimates: per-temperature $\\log_{10}\\text{LT50}$ in the model time unit (hours), by life stage and Stage-1 likelihood."
+
+zf_stage1_twostep |>
+  dplyr::group_by(life_stage, method) |>
+  dplyr::summarise(
+    `Stage-1 curves fit` = dplyr::n(),
+    `Used in Stage 2` = sum(stage1_ok, na.rm = TRUE),
+    `Excluded from Stage 2` = sum(!stage1_ok, na.rm = TRUE),
+    `Median beta-binomial phi` = stats::median(phi, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::rename(`Life stage` = life_stage,
+                `Stage-1 likelihood` = method) |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+```{r zebrafish-two-step-tdt-table}
+#| label: tbl-zebrafish-two-step-tdt
+#| tbl-cap: "Classical two-stage TDT quantities for zebrafish, by life stage. These are point estimates from the Stage-2 regression; $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used by the 4PL extraction."
+
+zf_twostep_tdt |>
+  dplyr::transmute(
+    `Life stage` = life_stage,
+    `Stage-1 likelihood` = method,
+    `z (C)` = z,
+    `CTmax_1hr (C)` = CTmax_1hr,
+    `T_crit (C)` = T_crit,
+    `Stage-2 R2` = r_squared,
+    `Stage-1 estimates used` = n_stage1,
+    `Stage-1 estimates excluded` = n_excluded
+  ) |>
+  tinytable::tt(digits = 3, escape = TRUE)
+```
+
+```{r zebrafish-two-step-tdt-line}
+#| label: fig-zebrafish-two-step-tdt-line
+#| fig-cap: "Classical two-stage TDT lines for zebrafish, by life stage. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions. Solid and dashed lines distinguish binomial and beta-binomial Stage-1 likelihoods."
+#| fig-width: 9
+#| fig-height: 5
+
+zf_temp_grid <- seq(min(zf$assay_temp) - 0.25,
+                    max(zf$assay_temp) + 0.25, by = 0.05)
+
+zf_twostep_line_min <- dplyr::bind_rows(lapply(names(zf_stage2_twostep), function(nm) {
+  parts <- strsplit(nm, "\\|\\|")[[1]]
+  make_twostep_curve_case(
+    zf_stage2_twostep[[nm]],
+    temp_grid = zf_temp_grid,
+    time_multiplier = 60,
+    output_time_unit = "min"
+  ) |>
+    dplyr::mutate(life_stage = factor(parts[1], levels = zf_stages))
+}))
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = dplyr::filter(zf_stage1_twostep, stage1_ok),
+    ggplot2::aes(x = temp, y = log10_lt50 + log10(60),
+                 colour = life_stage, shape = method),
+    size = 2
+  ) +
+  ggplot2::geom_line(
+    data = zf_twostep_line_min,
+    ggplot2::aes(x = temp, y = log10(duration_median),
+                 colour = life_stage, linetype = method,
+                 group = interaction(life_stage, method)),
+    linewidth = 0.9
+  ) +
+  ggplot2::labs(
+    x = "Assay temperature (C)",
+    y = expression(log[10]~LT[50]~"(min)"),
+    colour = "Life stage",
+    shape = "Stage-1 likelihood",
+    linetype = "Stage-1 likelihood"
+  ) +
+  ggplot2::theme_classic()
 ```
 
 ## Approach 1: A separate 4PL model per life stage {#sec-zebrafish-separate}
@@ -3255,6 +3744,138 @@ ggplot2::ggplot(zf_post_long,
 ```
 
 The joint approach is the recommended default when the dataset spans an identifiable grouping factor (life stage here, but it could equally be population, sex, or species). It is the natural extension of the workflow in §[Joint Bayesian 4PL] from a single 4PL surface to a *family* of 4PL surfaces tied together by shared priors and (where the design allows) shared random-effect grouping.
+
+### Comparison with the classical two-stage fits {#sec-zebrafish-twostep-compare}
+
+```{r zebrafish-twostep-joint-compare-table}
+#| label: tbl-zebrafish-twostep-joint-compare
+#| cache: false
+#| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows are point estimates; the 4PL rows report posterior medians with 95 % credible intervals."
+
+zf_joint_compare_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
+  z_summary  <- zf_joint_tdt[[s]]$z$summary
+  tc_summary <- zf_joint_tdt[[s]]$T_crit$summary
+  tibble::tibble(
+    life_stage = factor(s, levels = zf_stages),
+    Approach = "Joint Bayesian 4PL",
+    `z (C)` = format_interval(z_summary$z_median,
+                              z_summary$z_lower,
+                              z_summary$z_upper,
+                              digits = 2),
+    `CTmax_1hr (C)` = format_interval(z_summary$CTmax_median,
+                                      z_summary$CTmax_lower,
+                                      z_summary$CTmax_upper,
+                                      digits = 2),
+    `T_crit (C)` = format_interval(tc_summary$temp_median,
+                                  tc_summary$temp_lower,
+                                  tc_summary$temp_upper,
+                                  digits = 2)
+  )
+}))
+
+zf_twostep_compare_rows <- zf_twostep_tdt |>
+  dplyr::transmute(
+    life_stage,
+    Approach = method,
+    `z (C)` = sprintf("%.2f", z),
+    `CTmax_1hr (C)` = sprintf("%.2f", CTmax_1hr),
+    `T_crit (C)` = sprintf("%.2f", T_crit)
+  )
+
+zf_tdt_compare_all <- dplyr::bind_rows(
+  zf_twostep_compare_rows,
+  zf_joint_compare_rows
+) |>
+  dplyr::arrange(life_stage, Approach) |>
+  dplyr::rename(`Life stage` = life_stage)
+
+tinytable::tt(zf_tdt_compare_all, escape = TRUE)
+```
+
+```{r zebrafish-twostep-joint-tdt-lines}
+#| label: fig-zebrafish-twostep-joint-tdt-lines
+#| cache: false
+#| fig-cap: "Zebrafish TDT-line comparison between the joint 4PL and the classical two-stage fits. The joint 4PL posterior median and 95 % credible band are repeated from @fig-zebrafish-overlay-tdt-line; two-stage lines are point-estimate regressions from binomial and beta-binomial Stage-1 fits."
+#| fig-width: 10
+#| fig-height: 4.5
+
+zf_twostep_joint_overlay <- dplyr::bind_rows(
+  zf_joint_summary |>
+    dplyr::mutate(approach = "Joint Bayesian 4PL"),
+  zf_twostep_line_min |>
+    dplyr::transmute(
+      assay_temp = temp,
+      life_stage,
+      time_med_min = duration_median,
+      time_lo_min = NA_real_,
+      time_hi_min = NA_real_,
+      approach = method
+    )
+) |>
+  dplyr::mutate(
+    approach = factor(approach,
+                      levels = c("Joint Bayesian 4PL",
+                                 "Two-step binomial",
+                                 "Two-step beta-binomial"))
+  )
+
+zf_approach_linetypes <- c(
+  "Joint Bayesian 4PL" = "solid",
+  "Two-step binomial" = "dashed",
+  "Two-step beta-binomial" = "dotdash"
+)
+zf_approach_alphas <- c(
+  "Joint Bayesian 4PL" = 0.28,
+  "Two-step binomial" = 0,
+  "Two-step beta-binomial" = 0
+)
+
+build_zf_twostep_overlay <- function(y_log = FALSE) {
+  p <- ggplot2::ggplot(
+    zf_twostep_joint_overlay,
+    ggplot2::aes(x = assay_temp, y = time_med_min,
+                 colour = life_stage,
+                 fill = life_stage,
+                 linetype = approach,
+                 group = interaction(life_stage, approach))
+  ) +
+    ggplot2::geom_ribbon(
+      data = dplyr::filter(zf_twostep_joint_overlay,
+                           approach == "Joint Bayesian 4PL"),
+      ggplot2::aes(ymin = time_lo_min,
+                   ymax = time_hi_min,
+                   alpha = approach),
+      colour = NA
+    ) +
+    ggplot2::geom_line(linewidth = 0.9) +
+    ggplot2::scale_colour_manual(values = zf_palette) +
+    ggplot2::scale_fill_manual(values = zf_palette) +
+    ggplot2::scale_linetype_manual(values = zf_approach_linetypes,
+                                    name = "Approach") +
+    ggplot2::scale_alpha_manual(values = zf_approach_alphas,
+                                guide = "none") +
+    ggplot2::labs(x = "Assay temperature (C)",
+                  colour = "Life stage", fill = "Life stage") +
+    ggplot2::theme_classic() +
+    ggplot2::theme(panel.border = ggplot2::element_rect(colour = "black",
+                                                        fill = NA,
+                                                        linewidth = 0.6))
+  if (y_log) {
+    p + ggplot2::scale_y_log10() +
+      ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
+      ggplot2::labs(y = expression(log[10] *
+                                    " time to 50% survival (min)"))
+  } else {
+    p + ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
+      ggplot2::labs(y = "Time to 50% survival (min)")
+  }
+}
+
+patchwork::wrap_plots(build_zf_twostep_overlay(FALSE),
+                      build_zf_twostep_overlay(TRUE), ncol = 2) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "bottom")
+```
 
 ## Sensitivity check: an absolute survival threshold {#sec-zebrafish-relative-ltx}
 
