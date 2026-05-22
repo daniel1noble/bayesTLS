@@ -1945,6 +1945,68 @@ make_twostep_curve_case <- function(stage2, temp_grid,
     output_time_unit  = output_time_unit
   )
 }
+
+# Standard two-step uncertainty: treat each Stage-1 LT50 as a known point
+# and propagate only the Stage-2 lm uncertainty.
+#  - z: closed-form CI by inverting the slope's CI from `confint()`.
+#  - CTmax_1hr and T_crit (both ratios of normals): parametric simulation
+#    from MVN(coef, vcov), 1000 draws.
+#  - Line band: `predict.lm(..., interval = "confidence")`, exponentiated.
+propagate_twostep_case <- function(stage2_fit, temp_grid,
+                                   n_sim = 1000,
+                                   time_multiplier = 60,
+                                   t_ref = 60,
+                                   TC_rate_range = c(0.1, 1),
+                                   seed = 123) {
+  if (is.null(stage2_fit)) {
+    return(list(
+      summary_ci = tibble::tibble(
+        z_lower = NA_real_, z_upper = NA_real_,
+        CTmax_lower = NA_real_, CTmax_upper = NA_real_,
+        Tcrit_lower = NA_real_, Tcrit_upper = NA_real_
+      ),
+      curve_ci = tibble::tibble(
+        temp = temp_grid,
+        duration_lower = NA_real_,
+        duration_upper = NA_real_
+      )
+    ))
+  }
+  set.seed(seed)
+  log_rate_mid <- mean(log10(TC_rate_range / 100))
+  beta_ci <- stats::confint(stage2_fit, "temp", level = 0.95)
+  z_lower <- as.numeric(-1 / beta_ci[1, 2])
+  z_upper <- as.numeric(-1 / beta_ci[1, 1])
+
+  draws <- MASS::mvrnorm(n_sim,
+                         mu    = stats::coef(stage2_fit),
+                         Sigma = stats::vcov(stage2_fit))
+  alpha <- draws[, "(Intercept)"]
+  beta  <- draws[, "temp"]
+  ctmax_draws <- (log10(t_ref) -
+                  (alpha + log10(time_multiplier))) / beta
+  tcrit_draws <- ctmax_draws + (-1 / beta) * log_rate_mid
+
+  qfun <- function(x, p) stats::quantile(x, p, na.rm = TRUE, names = FALSE)
+  summary_ci <- tibble::tibble(
+    z_lower     = z_lower,
+    z_upper     = z_upper,
+    CTmax_lower = qfun(ctmax_draws, 0.025),
+    CTmax_upper = qfun(ctmax_draws, 0.975),
+    Tcrit_lower = qfun(tcrit_draws, 0.025),
+    Tcrit_upper = qfun(tcrit_draws, 0.975)
+  )
+
+  pred <- stats::predict(stage2_fit,
+                         newdata  = data.frame(temp = temp_grid),
+                         interval = "confidence", level = 0.95)
+  curve_ci <- tibble::tibble(
+    temp           = temp_grid,
+    duration_lower = 10 ^ as.numeric(pred[, "lwr"]) * time_multiplier,
+    duration_upper = 10 ^ as.numeric(pred[, "upr"]) * time_multiplier
+  )
+  list(summary_ci = summary_ci, curve_ci = curve_ci)
+}
 ```
 
 ```{r shrimp-two-step-fit}
@@ -1967,51 +2029,55 @@ shrimp_stage2_twostep <- lapply(
 shrimp_twostep_tdt <- dplyr::bind_rows(
   lapply(shrimp_stage2_twostep, `[[`, "summary")
 )
-```
 
-```{r shrimp-two-step-lt50-table}
-#| label: tbl-shrimp-two-step-lt50
-#| tbl-cap: "Stage-1 shrimp two-stage estimates: per-temperature $\\log_{10}\\text{LT50}$ in the model time unit (hours). The beta-binomial column also reports the fitted precision parameter $\\phi$; larger $\\phi$ approaches the binomial likelihood."
+shrimp_twostep_grid <- seq(min(shrimp_std$temp) - 1.5,
+                           max(shrimp_std$temp) + 1.5, by = 0.05)
 
-shrimp_stage1_twostep |>
-  dplyr::mutate(
-    `Temperature (C)` = temp,
-    `Stage-1 likelihood` = method,
-    `log10 LT50 (hours)` = log10_lt50,
-    `Beta-binomial phi` = phi,
-    `Used in Stage 2` = stage1_ok
-  ) |>
-  dplyr::select(`Temperature (C)`, `Stage-1 likelihood`,
-                `log10 LT50 (hours)`, `Beta-binomial phi`,
-                `Used in Stage 2`) |>
-  tinytable::tt(digits = 3, escape = TRUE)
+shrimp_twostep_unc <- list(
+  "Two-step binomial" = propagate_twostep_case(
+    shrimp_stage2_twostep[["Two-step binomial"]]$fit,
+    temp_grid = shrimp_twostep_grid,
+    n_sim = 1000, time_multiplier = 60, t_ref = 60,
+    TC_rate_range = c(0.1, 1), seed = 123
+  ),
+  "Two-step beta-binomial" = propagate_twostep_case(
+    shrimp_stage2_twostep[["Two-step beta-binomial"]]$fit,
+    temp_grid = shrimp_twostep_grid,
+    n_sim = 1000, time_multiplier = 60, t_ref = 60,
+    TC_rate_range = c(0.1, 1), seed = 124
+  )
+)
 ```
 
 ```{r shrimp-two-step-tdt-table}
 #| label: tbl-shrimp-two-step-tdt
-#| tbl-cap: "Classical two-stage TDT quantities for brown shrimp. These are point estimates from the Stage-2 regression; $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used for the joint 4PL extraction."
+#| tbl-cap: "Classical two-stage TDT quantities for brown shrimp. Point estimates are from the Stage-2 regression. The 95% CI for $z$ is obtained by inverting the slope's 95% CI from the Stage-2 linear model; CIs for $CT_{max_{1hr}}$ and $T_{crit}$ come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used for the joint 4PL extraction."
 
-shrimp_twostep_tdt |>
-  dplyr::transmute(
-    `Stage-1 likelihood` = method,
-    `z (C)`              = z,
-    `CTmax_1hr (C)`      = CTmax_1hr,
-    `T_crit (C)`         = T_crit,
-    `Stage-2 R2`         = r_squared,
-    `Stage-1 estimates used` = n_stage1,
-    `Stage-1 estimates excluded` = n_excluded
-  ) |>
-  tinytable::tt(digits = 3, escape = TRUE)
+shrimp_twostep_tdt_ci <- dplyr::bind_rows(lapply(
+  names(shrimp_twostep_unc),
+  function(m) {
+    pt <- dplyr::filter(shrimp_twostep_tdt, method == m)
+    ci <- shrimp_twostep_unc[[m]]$summary_ci
+    tibble::tibble(
+      `Stage-1 likelihood` = m,
+      `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
+      `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2),
+      `T_crit (C)`    = format_interval(pt$T_crit,    ci$Tcrit_lower, ci$Tcrit_upper, digits = 2),
+      `Stage-2 R2`                 = round(pt$r_squared, 3),
+      `Stage-1 estimates used`     = pt$n_stage1,
+      `Stage-1 estimates excluded` = pt$n_excluded
+    )
+  }
+))
+
+tinytable::tt(shrimp_twostep_tdt_ci, escape = TRUE)
 ```
 
 ```{r shrimp-two-step-tdt-line}
 #| label: fig-shrimp-two-step-tdt-line
-#| fig-cap: "Classical two-stage TDT lines for brown shrimp. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions. The beta-binomial Stage-1 fit allows overdispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
+#| fig-cap: "Classical two-stage TDT lines for brown shrimp. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). The beta-binomial Stage-1 fit allows overdispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
 #| fig-width: 7
 #| fig-height: 4.5
-
-shrimp_twostep_grid <- seq(min(shrimp_std$temp) - 1.5,
-                           max(shrimp_std$temp) + 1.5, by = 0.05)
 
 shrimp_twostep_line_min <- dplyr::bind_rows(lapply(
   shrimp_stage2_twostep,
@@ -2021,7 +2087,23 @@ shrimp_twostep_line_min <- dplyr::bind_rows(lapply(
   output_time_unit = "min"
 ))
 
+shrimp_twostep_band_min <- dplyr::bind_rows(lapply(
+  names(shrimp_twostep_unc),
+  function(m) {
+    shrimp_twostep_unc[[m]]$curve_ci |>
+      dplyr::mutate(method = m)
+  }
+))
+
 ggplot2::ggplot() +
+  ggplot2::geom_ribbon(
+    data = shrimp_twostep_band_min,
+    ggplot2::aes(x = temp,
+                 ymin = log10(duration_lower),
+                 ymax = log10(duration_upper),
+                 fill = method),
+    alpha = 0.18, colour = NA
+  ) +
   ggplot2::geom_point(
     data = dplyr::filter(shrimp_stage1_twostep, stage1_ok),
     ggplot2::aes(x = temp,
@@ -2038,7 +2120,8 @@ ggplot2::ggplot() +
   ggplot2::labs(
     x = "Assay temperature (C)",
     y = expression(log[10]~LT[50]~"(min)"),
-    colour = "Two-stage fit"
+    colour = "Two-stage fit",
+    fill   = "Two-stage fit"
   ) +
   ggplot2::theme_classic()
 ```
@@ -2238,16 +2321,22 @@ patchwork::wrap_plots(
 
 ```{r shrimp-approach-compare-table}
 #| label: tbl-shrimp-approach-compare
-#| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows are point estimates; the 4PL row reports posterior medians with 95 % credible intervals."
+#| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
 
 shrimp_compare_approaches <- dplyr::bind_rows(
-  shrimp_twostep_tdt |>
-    dplyr::transmute(
-      Approach = method,
-      `z (C)` = sprintf("%.2f", z),
-      `CTmax_1hr (C)` = sprintf("%.2f", CTmax_1hr),
-      `T_crit (C)` = sprintf("%.2f", T_crit)
-    ),
+  dplyr::bind_rows(lapply(
+    names(shrimp_twostep_unc),
+    function(m) {
+      pt <- dplyr::filter(shrimp_twostep_tdt, method == m)
+      ci <- shrimp_twostep_unc[[m]]$summary_ci
+      tibble::tibble(
+        Approach        = m,
+        `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
+        `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2),
+        `T_crit (C)`    = format_interval(pt$T_crit,    ci$Tcrit_lower, ci$Tcrit_upper, digits = 2)
+      )
+    }
+  )),
   tibble::tibble(
     Approach = "Joint Bayesian 4PL",
     `z (C)` = format_interval(et_shrimp$z$summary$z_median,
@@ -2270,7 +2359,7 @@ tinytable::tt(shrimp_compare_approaches, escape = TRUE)
 
 ```{r shrimp-approach-compare-tdt-lines}
 #| label: fig-shrimp-approach-compare-tdt-lines
-#| fig-cap: "Brown shrimp TDT-line comparison. The joint 4PL posterior median and 95 % credible band are repeated from @fig-shrimp-tdt-line; the two classical two-stage lines are overlaid as point-estimate regressions."
+#| fig-cap: "Brown shrimp TDT-line comparison. The joint 4PL posterior median and 95% credible band are repeated from @fig-shrimp-tdt-line; the two classical two-stage lines are overlaid with their pointwise 95% confidence bands from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points)."
 #| fig-width: 9
 #| fig-height: 4
 
@@ -2280,6 +2369,19 @@ shrimp_twostep_line_h <- dplyr::bind_rows(lapply(
   temp_grid = shrimp_twostep_grid,
   time_multiplier = 1,
   output_time_unit = "h"
+))
+
+shrimp_twostep_band_h <- dplyr::bind_rows(lapply(
+  names(shrimp_twostep_unc),
+  function(m) {
+    shrimp_twostep_unc[[m]]$curve_ci |>
+      dplyr::transmute(
+        temp,
+        duration_lower = duration_lower / 60,
+        duration_upper = duration_upper / 60,
+        method = m
+      )
+  }
 ))
 
 shrimp_4pl_line_h <- ltx_shrimp$summary |>
@@ -2301,6 +2403,12 @@ p_shrimp_cmp_lin <- ggplot2::ggplot() +
     ggplot2::aes(x = temp, ymin = duration_lower, ymax = duration_upper,
                  fill = method),
     alpha = 0.20, colour = NA
+  ) +
+  ggplot2::geom_ribbon(
+    data = shrimp_twostep_band_h,
+    ggplot2::aes(x = temp, ymin = duration_lower, ymax = duration_upper,
+                 fill = method),
+    alpha = 0.15, colour = NA
   ) +
   ggplot2::geom_line(
     data = shrimp_4pl_line_h,
@@ -2941,52 +3049,53 @@ zf_twostep_tdt <- dplyr::bind_rows(lapply(names(zf_stage2_twostep), function(nm)
     dplyr::mutate(life_stage = factor(parts[1], levels = zf_stages),
                   .before = 1)
 }))
-```
 
-```{r zebrafish-two-step-lt50-table}
-#| label: tbl-zebrafish-two-step-lt50
-#| tbl-cap: "Stage-1 zebrafish two-stage estimates: per-temperature $\\log_{10}\\text{LT50}$ in the model time unit (hours), by life stage and Stage-1 likelihood."
+zf_temp_grid <- seq(min(zf$assay_temp) - 0.25,
+                    max(zf$assay_temp) + 0.25, by = 0.05)
 
-zf_stage1_twostep |>
-  dplyr::group_by(life_stage, method) |>
-  dplyr::summarise(
-    `Stage-1 curves fit` = dplyr::n(),
-    `Used in Stage 2` = sum(stage1_ok, na.rm = TRUE),
-    `Excluded from Stage 2` = sum(!stage1_ok, na.rm = TRUE),
-    `Median beta-binomial phi` = stats::median(phi, na.rm = TRUE),
-    .groups = "drop"
-  ) |>
-  dplyr::rename(`Life stage` = life_stage,
-                `Stage-1 likelihood` = method) |>
-  tinytable::tt(digits = 3, escape = TRUE)
+zf_twostep_unc <- lapply(seq_along(zf_stage2_twostep), function(i) {
+  propagate_twostep_case(
+    zf_stage2_twostep[[i]]$fit,
+    temp_grid = zf_temp_grid,
+    n_sim = 1000, time_multiplier = 60, t_ref = 60,
+    TC_rate_range = c(0.1, 1), seed = 200L + i
+  )
+})
+names(zf_twostep_unc) <- names(zf_stage2_twostep)
 ```
 
 ```{r zebrafish-two-step-tdt-table}
 #| label: tbl-zebrafish-two-step-tdt
-#| tbl-cap: "Classical two-stage TDT quantities for zebrafish, by life stage. These are point estimates from the Stage-2 regression; $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used by the 4PL extraction."
+#| tbl-cap: "Classical two-stage TDT quantities for zebrafish, by life stage. Point estimates are from the Stage-2 regression. The 95% CI for $z$ is obtained by inverting the slope's 95% CI from the Stage-2 linear model; CIs for $CT_{max_{1hr}}$ and $T_{crit}$ come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used by the 4PL extraction."
 
-zf_twostep_tdt |>
-  dplyr::transmute(
-    `Life stage` = life_stage,
-    `Stage-1 likelihood` = method,
-    `z (C)` = z,
-    `CTmax_1hr (C)` = CTmax_1hr,
-    `T_crit (C)` = T_crit,
-    `Stage-2 R2` = r_squared,
-    `Stage-1 estimates used` = n_stage1,
-    `Stage-1 estimates excluded` = n_excluded
-  ) |>
-  tinytable::tt(digits = 3, escape = TRUE)
+zf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
+  names(zf_twostep_unc),
+  function(nm) {
+    parts <- strsplit(nm, "\\|\\|")[[1]]
+    pt <- dplyr::filter(zf_twostep_tdt,
+                        life_stage == parts[1], method == parts[2])
+    ci <- zf_twostep_unc[[nm]]$summary_ci
+    tibble::tibble(
+      `Life stage`         = parts[1],
+      `Stage-1 likelihood` = parts[2],
+      `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
+      `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2),
+      `T_crit (C)`    = format_interval(pt$T_crit,    ci$Tcrit_lower, ci$Tcrit_upper, digits = 2),
+      `Stage-2 R2`                 = round(pt$r_squared, 3),
+      `Stage-1 estimates used`     = pt$n_stage1,
+      `Stage-1 estimates excluded` = pt$n_excluded
+    )
+  }
+))
+
+tinytable::tt(zf_twostep_tdt_ci, escape = TRUE)
 ```
 
 ```{r zebrafish-two-step-tdt-line}
 #| label: fig-zebrafish-two-step-tdt-line
-#| fig-cap: "Classical two-stage TDT lines for zebrafish, by life stage. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions. Solid and dashed lines distinguish binomial and beta-binomial Stage-1 likelihoods."
+#| fig-cap: "Classical two-stage TDT lines for zebrafish, by life stage. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). Solid and dashed lines distinguish binomial and beta-binomial Stage-1 likelihoods."
 #| fig-width: 9
 #| fig-height: 5
-
-zf_temp_grid <- seq(min(zf$assay_temp) - 0.25,
-                    max(zf$assay_temp) + 0.25, by = 0.05)
 
 zf_twostep_line_min <- dplyr::bind_rows(lapply(names(zf_stage2_twostep), function(nm) {
   parts <- strsplit(nm, "\\|\\|")[[1]]
@@ -2999,7 +3108,23 @@ zf_twostep_line_min <- dplyr::bind_rows(lapply(names(zf_stage2_twostep), functio
     dplyr::mutate(life_stage = factor(parts[1], levels = zf_stages))
 }))
 
+zf_twostep_band_min <- dplyr::bind_rows(lapply(names(zf_twostep_unc), function(nm) {
+  parts <- strsplit(nm, "\\|\\|")[[1]]
+  zf_twostep_unc[[nm]]$curve_ci |>
+    dplyr::mutate(life_stage = factor(parts[1], levels = zf_stages),
+                  method     = parts[2])
+}))
+
 ggplot2::ggplot() +
+  ggplot2::geom_ribbon(
+    data = zf_twostep_band_min,
+    ggplot2::aes(x = temp,
+                 ymin = log10(duration_lower),
+                 ymax = log10(duration_upper),
+                 fill = life_stage,
+                 group = interaction(life_stage, method)),
+    alpha = 0.15, colour = NA
+  ) +
   ggplot2::geom_point(
     data = dplyr::filter(zf_stage1_twostep, stage1_ok),
     ggplot2::aes(x = temp, y = log10_lt50 + log10(60),
@@ -3017,6 +3142,7 @@ ggplot2::ggplot() +
     x = "Assay temperature (C)",
     y = expression(log[10]~LT[50]~"(min)"),
     colour = "Life stage",
+    fill = "Life stage",
     shape = "Stage-1 likelihood",
     linetype = "Stage-1 likelihood"
   ) +
@@ -3750,7 +3876,7 @@ The joint approach is the recommended default when the dataset spans an identifi
 ```{r zebrafish-twostep-joint-compare-table}
 #| label: tbl-zebrafish-twostep-joint-compare
 #| cache: false
-#| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows are point estimates; the 4PL rows report posterior medians with 95 % credible intervals."
+#| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL rows report posterior medians with 95% credible intervals."
 
 zf_joint_compare_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   z_summary  <- zf_joint_tdt[[s]]$z$summary
@@ -3773,14 +3899,22 @@ zf_joint_compare_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   )
 }))
 
-zf_twostep_compare_rows <- zf_twostep_tdt |>
-  dplyr::transmute(
-    life_stage,
-    Approach = method,
-    `z (C)` = sprintf("%.2f", z),
-    `CTmax_1hr (C)` = sprintf("%.2f", CTmax_1hr),
-    `T_crit (C)` = sprintf("%.2f", T_crit)
-  )
+zf_twostep_compare_rows <- dplyr::bind_rows(lapply(
+  names(zf_twostep_unc),
+  function(nm) {
+    parts <- strsplit(nm, "\\|\\|")[[1]]
+    pt <- dplyr::filter(zf_twostep_tdt,
+                        life_stage == parts[1], method == parts[2])
+    ci <- zf_twostep_unc[[nm]]$summary_ci
+    tibble::tibble(
+      life_stage      = factor(parts[1], levels = zf_stages),
+      Approach        = parts[2],
+      `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
+      `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2),
+      `T_crit (C)`    = format_interval(pt$T_crit,    ci$Tcrit_lower, ci$Tcrit_upper, digits = 2)
+    )
+  }
+))
 
 zf_tdt_compare_all <- dplyr::bind_rows(
   zf_twostep_compare_rows,
@@ -3795,22 +3929,32 @@ tinytable::tt(zf_tdt_compare_all, escape = TRUE)
 ```{r zebrafish-twostep-joint-tdt-lines}
 #| label: fig-zebrafish-twostep-joint-tdt-lines
 #| cache: false
-#| fig-cap: "Zebrafish TDT-line comparison between the joint 4PL and the classical two-stage fits. The joint 4PL posterior median and 95 % credible band are repeated from @fig-zebrafish-overlay-tdt-line; two-stage lines are point-estimate regressions from binomial and beta-binomial Stage-1 fits."
+#| fig-cap: "Zebrafish TDT-line comparison between the joint 4PL and the classical two-stage fits. The joint 4PL posterior median and 95% credible band are repeated from @fig-zebrafish-overlay-tdt-line; two-stage lines are point-estimate regressions from binomial and beta-binomial Stage-1 fits, with pointwise 95% confidence bands from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points)."
 #| fig-width: 10
 #| fig-height: 4.5
+
+zf_twostep_compare_lines <- dplyr::bind_rows(lapply(
+  names(zf_twostep_unc),
+  function(nm) {
+    parts <- strsplit(nm, "\\|\\|")[[1]]
+    line <- zf_twostep_line_min |>
+      dplyr::filter(life_stage == parts[1], method == parts[2]) |>
+      dplyr::transmute(assay_temp = temp,
+                       life_stage,
+                       time_med_min = duration_median)
+    band <- zf_twostep_unc[[nm]]$curve_ci |>
+      dplyr::transmute(assay_temp     = temp,
+                       time_lo_min    = duration_lower,
+                       time_hi_min    = duration_upper)
+    dplyr::left_join(line, band, by = "assay_temp") |>
+      dplyr::mutate(approach = parts[2])
+  }
+))
 
 zf_twostep_joint_overlay <- dplyr::bind_rows(
   zf_joint_summary |>
     dplyr::mutate(approach = "Joint Bayesian 4PL"),
-  zf_twostep_line_min |>
-    dplyr::transmute(
-      assay_temp = temp,
-      life_stage,
-      time_med_min = duration_median,
-      time_lo_min = NA_real_,
-      time_hi_min = NA_real_,
-      approach = method
-    )
+  zf_twostep_compare_lines
 ) |>
   dplyr::mutate(
     approach = factor(approach,
@@ -3826,8 +3970,8 @@ zf_approach_linetypes <- c(
 )
 zf_approach_alphas <- c(
   "Joint Bayesian 4PL" = 0.28,
-  "Two-step binomial" = 0,
-  "Two-step beta-binomial" = 0
+  "Two-step binomial" = 0.14,
+  "Two-step beta-binomial" = 0.14
 )
 
 build_zf_twostep_overlay <- function(y_log = FALSE) {
@@ -3840,8 +3984,6 @@ build_zf_twostep_overlay <- function(y_log = FALSE) {
                  group = interaction(life_stage, approach))
   ) +
     ggplot2::geom_ribbon(
-      data = dplyr::filter(zf_twostep_joint_overlay,
-                           approach == "Joint Bayesian 4PL"),
       ggplot2::aes(ymin = time_lo_min,
                    ymax = time_hi_min,
                    alpha = approach),
@@ -4077,6 +4219,1039 @@ tinytable::tt(zf_threshold_compare, escape = TRUE)
 ```
 
 The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summary in @tbl-zebrafish-upper-asymptote: stages whose asymptote is near 1 (`old_embryos`, `larvae`) give essentially identical $z$ and $CT_{max_{1hr}}$ under either threshold, while the stage with a substantially sub-unit asymptote (`young_embryos`) sees $CT_{max_{1hr}}$ shift by a few tenths of a °C when the threshold is switched. The mid-based default is the right choice for cross-group comparisons because it isolates the dose-response shape from the group-level ceiling; the absolute threshold is the right choice for operational questions anchored to a fixed mortality fraction.
+
+# **Case Study 3: Leaf PSII data** {#sec-leaves}
+
+We can also apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` — to photosystem II functional impairment TDT data from snow gum leaves (*Eucalyptus pauciflora* var. *pauciflora*). The data are chlorophyll fluorescence based measurements of the maximum potential quantum efficiency of photosystem II (PSII), known as *F*[V]/*F*[M], from excised leaf segments of 11 individual glasshouse-grown trees. In this experiment, *F*[V]/*F*[M] was measured prior to heat exposure and then 24 h after *F*[V]/*F*[M], such that the response variable was a proportional value of *F*[V]/*F*[M] bounded between 0 and 1.
+
+The TDT trials spanned 28-48 °C and 5 min to 2 hours of exposure, with each replicate plant originating from one of two glasshouse rooms and measured over two days. Similar to Case Study 1, the two grouping factors `Day` and `G_Room` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and glasshouse room-level variation to be partitioned out of the dose-response surface.
+
+## Data and standardisation {#sec-leaf-data}
+
+```{r leaf-load}
+#| label: leaf-load
+#| echo: true
+
+leaf_raw <- readr::read_csv(
+  here::here("data", "data_function_PSII_TDT_snowgum.csv"),
+  show_col_types = FALSE
+)
+
+leaf_raw$fvfm_prop <- leaf_raw$final_fvfm / leaf_raw$initial_fvfm # Response variable 
+str(leaf_raw)
+assay_temp <- as.numeric(leaf_raw$Temp)
+temp_mean <- mean(assay_temp, na.rm = TRUE)
+
+leaf_std <- leaf_raw %>% 
+  mutate(
+    # Constrain to (0,1) for beta distribution
+    fvfm_beta = case_when(
+      fvfm_prop >= 0.999 ~ 0.999,
+      fvfm_prop <= 0.001 ~ 0.001,
+      TRUE ~ fvfm_prop
+    ),
+    assay_temp = Temp,
+    temp = Temp,
+    temp_c = assay_temp - temp_mean,
+    duration = Time,
+    logd = log10(duration),
+    # Convert random effects to factors
+    Day = factor(Day),
+    G_Room = factor(G_Room)
+  )
+
+str(leaf_std)
+
+```
+
+```{r leaf-summary-table}
+#| label: tbl-leaf-summary
+#| tbl-cap: "Summary of the leaf PSII TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
+
+leaf_summary <- tibble::tibble(
+  `n individuals`              = length(unique(leaf_std$Unique_ID)),
+  `Temperature range (°C)`     = paste(range(leaf_std$assay_temp), collapse = "–"),
+  `Duration range (min)`       = paste(round(range(leaf_std$duration), 2), collapse = "–"),
+  `Temperature centre (°C)`    = attr(leaf_std, "tdt_meta")$temp_mean,
+  `n Day`                      = length(unique(leaf_std$Day)),
+  `n glasshouse room`          = length(unique(leaf_std$G_Room))
+)
+tinytable::tt(leaf_summary, digits = 2, escape = TRUE)
+```
+
+## Classical two-stage TDT fits {#sec-leaf-twostep}
+
+Before fitting the joint 4PL, we also run the classical two-stage pipeline on the leaf PSII data. Stage 1 fits a separate logistic dose-response curve at each assay temperature on the continuous FvFm proportion in $(0, 1)$. Stage 2 regresses the resulting $\log_{10}\text{LT50}$ estimates on assay temperature. We repeat Stage 1 with two likelihoods: a quasi-binomial logistic (the proportion analogue of `family = binomial()` used for the count case studies) and a beta regression fit by maximum likelihood with an estimated precision parameter $\phi$ (analogous to the beta-binomial used for counts). $\text{LT50}$ is the duration at which the fitted logistic crosses 0.5 on the linear predictor.
+
+```{r leaf-two-step-helpers}
+#| label: leaf-two-step-helpers
+#| echo: true
+
+fit_stage1_leaf_quasibin_case <- function(dat) {
+  validate_stage1_case <- function(log10_lt50, slope, d) {
+    is.finite(log10_lt50) &&
+      is.finite(slope) &&
+      slope < 0 &&
+      abs(slope) > 1e-4 &&
+      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
+      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
+  }
+
+  dat |>
+    dplyr::group_by(temp) |>
+    dplyr::group_modify(function(d, key) {
+      if (dplyr::n_distinct(d$logd) < 3) {
+        return(tibble::tibble(
+          method       = "Two-step quasi-binomial",
+          log10_lt50   = NA_real_,
+          stage1_slope = NA_real_,
+          phi          = NA_real_,
+          stage1_ok    = FALSE
+        ))
+      }
+      fit <- suppressWarnings(
+        stats::glm(fvfm_beta ~ logd, data = d,
+                   family = stats::quasibinomial(link = "logit"))
+      )
+      co <- stats::coef(fit)
+      lt <- as.numeric(-co[1] / co[2])
+      sl <- as.numeric(co[2])
+      tibble::tibble(
+        method       = "Two-step quasi-binomial",
+        log10_lt50   = lt,
+        stage1_slope = sl,
+        phi          = NA_real_,
+        stage1_ok    = validate_stage1_case(lt, sl, d)
+      )
+    }) |>
+    dplyr::ungroup()
+}
+
+fit_stage1_leaf_beta_case <- function(dat) {
+  validate_stage1_case <- function(log10_lt50, slope, d) {
+    is.finite(log10_lt50) &&
+      is.finite(slope) &&
+      slope < 0 &&
+      abs(slope) > 1e-4 &&
+      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
+      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
+  }
+
+  beta_nll <- function(par, y, x) {
+    mu  <- stats::plogis(par[1] + par[2] * x)
+    mu  <- pmin(pmax(mu, 1e-8), 1 - 1e-8)
+    phi <- exp(par[3])
+    a   <- mu * phi
+    b   <- (1 - mu) * phi
+    -sum(stats::dbeta(y, a, b, log = TRUE))
+  }
+
+  dat |>
+    dplyr::group_by(temp) |>
+    dplyr::group_modify(function(d, key) {
+      if (dplyr::n_distinct(d$logd) < 3) {
+        return(tibble::tibble(
+          method       = "Two-step beta",
+          log10_lt50   = NA_real_,
+          stage1_slope = NA_real_,
+          phi          = NA_real_,
+          stage1_ok    = FALSE
+        ))
+      }
+      fit_glm <- suppressWarnings(
+        stats::glm(fvfm_beta ~ logd, data = d,
+                   family = stats::quasibinomial(link = "logit"))
+      )
+      start <- c(stats::coef(fit_glm), log(20))
+      if (any(!is.finite(start))) {
+        p0 <- pmin(pmax(mean(d$fvfm_beta, na.rm = TRUE), 1e-4), 1 - 1e-4)
+        start <- c(stats::qlogis(p0), -1, log(20))
+      }
+      fit <- try(stats::optim(
+        par     = start,
+        fn      = beta_nll,
+        y       = d$fvfm_beta,
+        x       = d$logd,
+        method  = "BFGS",
+        control = list(maxit = 1000)
+      ), silent = TRUE)
+      if (inherits(fit, "try-error")) {
+        return(tibble::tibble(
+          method       = "Two-step beta",
+          log10_lt50   = NA_real_,
+          stage1_slope = NA_real_,
+          phi          = NA_real_,
+          stage1_ok    = FALSE
+        ))
+      }
+      co <- fit$par
+      lt <- as.numeric(-co[1] / co[2])
+      sl <- as.numeric(co[2])
+      tibble::tibble(
+        method       = "Two-step beta",
+        log10_lt50   = lt,
+        stage1_slope = sl,
+        phi          = exp(co[3]),
+        stage1_ok    = validate_stage1_case(lt, sl, d)
+      )
+    }) |>
+    dplyr::ungroup()
+}
+```
+
+```{r leaf-two-step-fit}
+#| label: leaf-two-step-fit
+#| echo: true
+
+leaf_stage1_twostep <- dplyr::bind_rows(
+  fit_stage1_leaf_quasibin_case(leaf_std),
+  fit_stage1_leaf_beta_case(leaf_std)
+)
+
+leaf_stage2_twostep <- lapply(
+  split(leaf_stage1_twostep, leaf_stage1_twostep$method),
+  fit_stage2_case,
+  time_multiplier = 1,
+  t_ref           = 60,
+  TC_rate_range   = c(0.1, 1)
+)
+
+leaf_twostep_tdt <- dplyr::bind_rows(
+  lapply(leaf_stage2_twostep, `[[`, "summary")
+)
+
+leaf_twostep_grid <- seq(min(leaf_std$temp) - 1.5,
+                         max(leaf_std$temp) + 1.5, by = 0.05)
+
+leaf_twostep_unc <- list(
+  "Two-step quasi-binomial" = propagate_twostep_case(
+    leaf_stage2_twostep[["Two-step quasi-binomial"]]$fit,
+    temp_grid = leaf_twostep_grid,
+    n_sim = 1000, time_multiplier = 1, t_ref = 60,
+    TC_rate_range = c(0.1, 1), seed = 301
+  ),
+  "Two-step beta" = propagate_twostep_case(
+    leaf_stage2_twostep[["Two-step beta"]]$fit,
+    temp_grid = leaf_twostep_grid,
+    n_sim = 1000, time_multiplier = 1, t_ref = 60,
+    TC_rate_range = c(0.1, 1), seed = 302
+  )
+)
+```
+
+```{r leaf-two-step-tdt-table}
+#| label: tbl-leaf-two-step-tdt
+#| tbl-cap: "Classical two-stage TDT quantities for snow gum leaf PSII. Point estimates are from the Stage-2 regression. The 95% CI for $z$ is obtained by inverting the slope's 95% CI from the Stage-2 linear model; the 95% CI for $CT_{max_{1hr}}$ comes from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ is not reported because PSII impairment is a sublethal endpoint and the rate-multiplier $T_{crit}$ is only meaningful for mortality."
+
+leaf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
+  names(leaf_twostep_unc),
+  function(m) {
+    pt <- dplyr::filter(leaf_twostep_tdt, method == m)
+    ci <- leaf_twostep_unc[[m]]$summary_ci
+    tibble::tibble(
+      `Stage-1 likelihood` = m,
+      `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
+      `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2),
+      `Stage-2 R2`                 = round(pt$r_squared, 3),
+      `Stage-1 estimates used`     = pt$n_stage1,
+      `Stage-1 estimates excluded` = pt$n_excluded
+    )
+  }
+))
+
+tinytable::tt(leaf_twostep_tdt_ci, escape = TRUE)
+```
+
+```{r leaf-two-step-tdt-line}
+#| label: fig-leaf-two-step-tdt-line
+#| fig-cap: "Classical two-stage TDT lines for snow gum leaf PSII. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). The beta Stage-1 fit allows extra-binomial dispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
+#| fig-width: 7
+#| fig-height: 4.5
+
+leaf_twostep_line_min <- dplyr::bind_rows(lapply(
+  leaf_stage2_twostep,
+  make_twostep_curve_case,
+  temp_grid = leaf_twostep_grid,
+  time_multiplier = 1,
+  output_time_unit = "min"
+))
+
+leaf_twostep_band_min <- dplyr::bind_rows(lapply(
+  names(leaf_twostep_unc),
+  function(m) {
+    leaf_twostep_unc[[m]]$curve_ci |>
+      dplyr::mutate(method = m)
+  }
+))
+
+ggplot2::ggplot() +
+  ggplot2::geom_ribbon(
+    data = leaf_twostep_band_min,
+    ggplot2::aes(x = temp,
+                 ymin = log10(duration_lower),
+                 ymax = log10(duration_upper),
+                 fill = method),
+    alpha = 0.18, colour = NA
+  ) +
+  ggplot2::geom_point(
+    data = dplyr::filter(leaf_stage1_twostep, stage1_ok),
+    ggplot2::aes(x = temp,
+                 y = log10_lt50,
+                 colour = method),
+    size = 2.5
+  ) +
+  ggplot2::geom_line(
+    data = leaf_twostep_line_min,
+    ggplot2::aes(x = temp, y = log10(duration_median),
+                 colour = method),
+    linewidth = 1
+  ) +
+  ggplot2::labs(
+    x = "Assay temperature (C)",
+    y = expression(log[10]~LT[50]~"(min)"),
+    colour = "Two-stage fit",
+    fill   = "Two-stage fit"
+  ) +
+  ggplot2::theme_classic()
+```
+
+## Fitting the joint Bayesian 4PL {#sec-leaf-fit}
+
+`fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL for proportional response data: a beta distribution, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter. We add random intercepts on `mid` for `Day` and `G_Room` to absorb the day-to-day and room-to-room variation that would otherwise contaminate the dose-response surface.
+
+```{r leaf-fit}
+#| label: leaf-fit
+#| echo: true
+#| cache: false
+
+
+
+# Function to make 4PL formula with beta distribution for Fv/Fm data
+# Simply adds response_var as a user option rather than hardcoding n_surv | n_trials
+make_4pl_formula <- function(random_effects = NULL, 
+                                  lower = 0, 
+                                  upper = 1, 
+                                  family = brms::Beta(link = "logit"),
+                                  response_var = "fvfm_beta") {
+  
+  b <- compute_4pl_bounds(lower, upper)
+  
+  low_expr <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
+  up_expr <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min, b$up_w)
+  
+  main_rhs <- sprintf("%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))", 
+                      low_expr, up_expr, low_expr)
+  
+  mid_terms <- c("temp_c", tdt_format_random_effects(random_effects))
+  mid_rhs <- paste(mid_terms, collapse = " + ")
+  
+  # Check if family is beta
+  family_name <- if (inherits(family, "brmsfamily")) family$family else family$family
+  
+  if (identical(family_name, "beta")) {
+    # Beta regression: no trials() needed
+    response_formula <- sprintf("%s ~ logit(%s)", response_var, main_rhs)
+  } else {
+    # Binomial/beta-binomial: use trials()
+    response_formula <- sprintf("n_surv | trials(n_total) ~ %s", main_rhs)
+  }
+  
+  brms::bf(
+    stats::as.formula(response_formula),
+    stats::as.formula("lowraw ~ temp_c"),
+    stats::as.formula("upraw  ~ temp_c"),
+    stats::as.formula("logk   ~ temp_c"),
+    stats::as.formula(paste("mid    ~", mid_rhs)),
+    stats::as.formula("phi ~ 1"), 
+    nl = TRUE,
+    family = family
+  )
+}
+
+# Then 
+
+
+## Reloading functions that didn't appear when loading bayesTLS
+
+# Compute 4PL pounds
+compute_4pl_bounds <- function(lower = 0, upper = 1,
+                               pad = 0.001, gap = 0.002) {
+  if (upper <= lower)
+    stop("upper must be strictly greater than lower.", call. = FALSE)
+  if (2 * pad + gap >= (upper - lower))
+    stop("pad and gap leave no room for asymptote intervals; ",
+         "reduce pad/gap or widen lower/upper.", call. = FALSE)
+  
+  midpoint <- (lower + upper) / 2
+  low_min  <- lower + pad
+  low_max  <- midpoint - gap / 2
+  up_min   <- midpoint + gap / 2
+  up_max   <- upper - pad
+  
+  list(low_min  = low_min,
+       low_max  = low_max,
+       low_w    = low_max - low_min,
+       up_min   = up_min,
+       up_max   = up_max,
+       up_w     = up_max - up_min,
+       midpoint = midpoint)
+}
+
+# Format random effect specification
+tdt_format_random_effects <- function(random_effects = NULL) {
+  if (is.null(random_effects) || length(random_effects) == 0) return(character())
+  out <- vapply(random_effects, function(term) {
+    term <- trimws(term)
+    if (grepl("^\\(", term)) term else paste0("(1 | ", term, ")")
+  }, character(1))
+  unname(out)
+}
+
+# Make formula
+formula_beta <- make_4pl_formula(
+  random_effects = c("Day", "G_Room"),
+  lower = 0,
+  upper = 1,
+  family = brms::Beta(link = "logit"),
+  response_var = "fvfm_beta"
+)
+
+base_priors <- make_4pl_priors(
+  data = leaf_std,
+  random_effects = c("Day", "G_Room"),
+  prior_phi = NULL
+)
+
+wf_leaf_fit <- brms::brm(
+  formula = formula_beta,
+  data = leaf_std,
+  prior = base_priors,
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
+  init = 0,
+  backend    = "cmdstanr",
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  file_refit = "on_change",
+  file    = file.path(models_dir, "fit_leaf_function_4pl")
+)
+
+wf_leaf <- structure(
+  list(
+    fit = wf_leaf_fit,
+    data = leaf_std,
+    formula = formula_beta,
+    prior = base_priors,
+    meta = list(
+      temp_mean = temp_mean,
+      duration_unit = "minutes",
+      random_effects = c("Day", "G_Room"),
+      lower = 0,
+      upper = 1,
+      bounds = list(low_min = 0.001, low_w = 0.498, up_min = 0.501, up_w = 0.498)
+    )
+  ),
+  class = "bayes_tls"
+)
+
+# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
+print(wf_leaf)
+```
+
+### Sampling diagnostics
+
+```{r leaf-diagnostics}
+#| label: tbl-leaf-diagnostics
+#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, ESS > 4000, 3 divergences, 1 treedepth flag."
+#| cache: false
+
+tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
+
+```
+
+The diagnostics table is a numerical pass/fail summary. The canonical visual check is the chain trace ("fuzzy caterpillar"): healthy chains overlap and explore the same posterior support; chains that drift, diverge, or hang in different regions signal a problem with the fit.
+
+```{r leaf-trace-plot}
+#| label: fig-leaf-trace
+#| fig-cap: "Posterior chain traces for the leaf 4PL fixed-effect parameters and the beta dispersion $\\phi$. Each panel overlays four chains; well-mixed chains overlap throughout."
+#| fig-width: 9
+#| fig-height: 6
+#| cache: false
+
+brms::mcmc_plot(
+  wf_leaf$fit,
+  type     = "trace",
+  variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
+               "b_logk_Intercept",   "b_mid_Intercept",
+               "b_mid_temp_c",       "Intercept_phi")
+) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "bottom")
+
+```
+
+### Posterior parameters on the natural scale
+
+```{r leaf-parameter-table}
+#| label: tbl-leaf-parameters
+#| tbl-cap: "Posterior medians and 95% credible intervals for the leaf 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in hours at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
+
+tinytable::tt(tdt_parameter_table(wf_leaf), digits = 3, escape = TRUE)
+```
+
+## "Survival" curves with observed overlay {#sec-leaf-survival-curves}
+
+Here we use the same survival-type functions as before, but *survival* is instead *functional impairment* of PSII. `predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and exposure durations and returns posterior functional impairment probabilities. Overlaying the per-replicate observed proportions gives a visual check that the fitted curves track the data at every temperature.
+
+```{r leaf-survival-curves}
+#| label: fig-leaf-survival-curves
+#| fig-cap: "Posterior functional impairment curves for snow gum leaf PSII at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate functional impairment proportions."
+#| fig-width: 8
+#| fig-height: 5
+
+psc_leaf <- predict_survival_curves(
+  wf_leaf,
+  temps     = sort(unique(leaf_std$temp)),
+  ndraws    = 500
+)
+
+# Add survival as a variable for plotting, where "survival" = fvfm_prop
+leaf_std$survival <- leaf_std$fvfm_prop
+
+plot_survival_curves(psc_leaf, observed = leaf_std) +
+  ggplot2::labs(x = "Exposure duration (minutes)") +
+  ggplot2::coord_cartesian(xlim = c(0, 120))
+
+```
+
+## TDT landscape {#sec-leaf-landscape}
+
+`derive_tdt_landscape()` evaluates the fitted 4PL on a dense (temperature, duration) grid and `plot_tdt_landscape()` renders it as a heatmap with overlaid contours at 10, 50, and 90% functional impairment This is the two-dimensional view of the dose-response surface that the TDT line summarises with one number per temperature.
+
+```{r leaf-landscape}
+#| label: fig-leaf-landscape
+#| fig-cap: "TDT landscape for snow gum PSII function: posterior median predicted functional impairment across a 120 × 120 grid of assay temperatures × durations. White contours mark 10%, 50%, and 90% functional impairment isolines. Overlaid points are raw observed proportions."
+#| fig-width: 8
+#| fig-height: 6
+#| cache: false
+
+leaf_dur_grid <- seq(min(leaf_std$duration), max(leaf_std$duration),
+                        length.out = 120)
+lsp_leaf <- derive_tdt_landscape(wf_leaf,
+                                   duration_grid = leaf_dur_grid,
+                                   ndraws        = 500)
+plot_tdt_landscape(lsp_leaf, observed = leaf_std)
+```
+
+## TDT line: time to the threshold vs temperature {#sec-leaf-tdt-line}
+
+The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "minutes of exposure half the PSII tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. The default threshold is $\text{mid}$ (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for the classical absolute-$t_{50}$ definition.
+
+```{r leaf-tdt-line}
+#| label: leaf-tdt-line
+#| echo: true
+
+ltx_leaf <- derive_tdt_curve(
+  wf_leaf,
+  temp_grid        = seq(min(leaf_std$temp) - 1.5,
+                         max(leaf_std$temp) + 1.5, by = 0.05),
+  ndraws           = 500,
+  time_multiplier  = 1,
+  output_time_unit = "minutes"
+)
+```
+
+```{r plot-leaf-tdt-line}
+#| label: fig-leaf-tdt-line
+#| fig-cap: "Snow gum leaf PSII function posterior TDT line: predicted time to threshold vs assay temperature, with 95 % credible band. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Both panels share the same posterior."
+#| fig-width: 9
+#| fig-height: 4
+
+plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
+```
+
+## Classical TDT quantities: $z$, $CT_{max_{1hr}}$ {#sec-leaf-extract}
+
+`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature, derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion).
+
+```{r leaf-extract}
+#| label: leaf-extract
+#| echo: true
+
+et_leaf <- extract_tdt(
+  wf_leaf,
+  t_ref         = 60,
+  TC_rate_range = c(0.1, 1),
+  ndraws        = 500,
+  lethal        = FALSE
+)
+```
+
+```{r leaf-extract-table}
+#| label: tbl-leaf-extract
+#| tbl-cap: "Classical TDT summaries for brown leaf, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw)."
+
+leaf_extract <- tibble::tribble(
+  ~Quantity,                        ~Median, ~Lower, ~Upper,
+  "z (°C per order of magnitude)",      et_leaf$z$summary$z_median,
+                                    et_leaf$z$summary$z_lower,
+                                    et_leaf$z$summary$z_upper,
+  "CTmax_1hr (°C)",                 et_leaf$CTmax$summary$temp_median,
+                                    et_leaf$CTmax$summary$temp_lower,
+                                    et_leaf$CTmax$summary$temp_upper
+)
+tinytable::tt(leaf_extract, digits = 2, escape = TRUE)
+```
+
+```{r leaf-ctmax-plot}
+#| label: fig-leaf-ctmax
+#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The ~5 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ is the window between the onset of detectable damage accumulation and the LT50 temperature at 1 h."
+#| fig-width: 11
+#| fig-height: 3.5
+
+z_draws_leaf   <- get_z_draws(et_leaf) |>
+  dplyr::transmute(temp = z)
+z_q <- stats::quantile(z_draws_leaf$temp,
+                       c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+z_post_leaf <- list(
+  draws   = z_draws_leaf,
+  summary = tibble::tibble(temp_lower  = z_q[1],
+                           temp_median = z_q[2],
+                           temp_upper  = z_q[3])
+)
+
+patchwork::wrap_plots(
+  plot_temperature_density(z_post_leaf,
+                            x_label = expression(italic(z)~("°C per decade of time"))),
+  plot_temperature_density(et_leaf$CTmax,
+                            x_label = expression(CT[max[1*hr]]~("°C"))),
+  ncol = 2
+)
+```
+
+
+## Comparison between approaches {#sec-leaf-approach-compare}
+
+```{r leaf-approach-compare-table}
+#| label: tbl-leaf-approach-compare
+#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
+
+leaf_compare_approaches <- dplyr::bind_rows(
+  dplyr::bind_rows(lapply(
+    names(leaf_twostep_unc),
+    function(m) {
+      pt <- dplyr::filter(leaf_twostep_tdt, method == m)
+      ci <- leaf_twostep_unc[[m]]$summary_ci
+      tibble::tibble(
+        Approach        = m,
+        `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
+        `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2)
+      )
+    }
+  )),
+  tibble::tibble(
+    Approach = "Joint Bayesian 4PL",
+    `z (C)` = format_interval(et_leaf$z$summary$z_median,
+                              et_leaf$z$summary$z_lower,
+                              et_leaf$z$summary$z_upper,
+                              digits = 2),
+    `CTmax_1hr (C)` = format_interval(et_leaf$CTmax$summary$temp_median,
+                                      et_leaf$CTmax$summary$temp_lower,
+                                      et_leaf$CTmax$summary$temp_upper,
+                                      digits = 2)
+  )
+)
+
+tinytable::tt(leaf_compare_approaches, escape = TRUE)
+```
+
+```{r leaf-approach-compare-tdt-lines}
+#| label: fig-leaf-approach-compare-tdt-lines
+#| fig-cap: "Snow gum leaf PSII TDT-line comparison. The joint 4PL posterior median and 95% credible band are repeated from @fig-leaf-tdt-line; the two classical two-stage lines are overlaid with their pointwise 95% confidence bands from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points)."
+#| fig-width: 9
+#| fig-height: 4
+
+leaf_twostep_band_cmp <- dplyr::bind_rows(lapply(
+  names(leaf_twostep_unc),
+  function(m) {
+    leaf_twostep_unc[[m]]$curve_ci |>
+      dplyr::transmute(
+        temp,
+        duration_lower,
+        duration_upper,
+        method = m
+      )
+  }
+))
+
+leaf_4pl_line <- ltx_leaf$summary |>
+  dplyr::transmute(temp,
+                   duration_median,
+                   duration_lower,
+                   duration_upper,
+                   method = "Joint Bayesian 4PL")
+
+leaf_method_cols <- c(
+  "Joint Bayesian 4PL"       = "#b2182b",
+  "Two-step quasi-binomial"  = "#2166ac",
+  "Two-step beta"            = "#1b9e77"
+)
+
+p_leaf_cmp_lin <- ggplot2::ggplot() +
+  ggplot2::geom_ribbon(
+    data = leaf_4pl_line,
+    ggplot2::aes(x = temp, ymin = duration_lower, ymax = duration_upper,
+                 fill = method),
+    alpha = 0.20, colour = NA
+  ) +
+  ggplot2::geom_ribbon(
+    data = leaf_twostep_band_cmp,
+    ggplot2::aes(x = temp, ymin = duration_lower, ymax = duration_upper,
+                 fill = method),
+    alpha = 0.15, colour = NA
+  ) +
+  ggplot2::geom_line(
+    data = leaf_4pl_line,
+    ggplot2::aes(x = temp, y = duration_median, colour = method),
+    linewidth = 1
+  ) +
+  ggplot2::geom_line(
+    data = leaf_twostep_line_min,
+    ggplot2::aes(x = temp, y = duration_median, colour = method),
+    linewidth = 0.9
+  ) +
+  ggplot2::scale_colour_manual(values = leaf_method_cols) +
+  ggplot2::scale_fill_manual(values   = leaf_method_cols) +
+  ggplot2::labs(x = "Assay temperature (C)",
+                y = "Time to 50% PSII impairment (min)",
+                colour = "Approach", fill = "Approach") +
+  ggplot2::theme_classic()
+
+p_leaf_cmp_log <- p_leaf_cmp_lin +
+  ggplot2::scale_y_log10() +
+  ggplot2::labs(y = expression(log[10]~"time to 50% PSII impairment (min)")) +
+  ggplot2::theme(legend.position = "none")
+
+patchwork::wrap_plots(p_leaf_cmp_lin, p_leaf_cmp_log, ncol = 2) +
+  patchwork::plot_layout(guides = "collect") &
+  ggplot2::theme(legend.position = "bottom")
+```
+
+## Heat injury under reference traces {#sec-leaf-hi}
+
+`predict_heat_injury()` projects the fitted dose-response surface through a temperature trace and returns cumulative heat injury (HI) and the resulting survival fraction at each time step. The damage threshold $T_c$ below which injury does not accumulate is hand-picked in this case, rather than model derived due to the sublethal nature of functional impairment. 
+
+We illustrate the function on four reference traces built by `make_temperature_scenarios()`: a flat baseline, a single one-hour spike, three one-hour spikes, and a four-day diurnal cycle that mimics a typical summer heatwave. The single-spike trace is calibrated as an analytical sanity check — its spike temperature is set to the posterior median of $CT_{max_{1hr}}$, so by definition the trace delivers approximately one $LT_{50}$ dose by the end of the spike hour. These values are plausible leaf temperatures on sunny, still conditions.
+
+```{r leaf-hi}
+#| label: leaf-hi
+#| echo: true
+
+leaf_T_c       <- 32.5
+leaf_CTmax_med <- et_leaf$CTmax$summary$temp_median
+
+leaf_scens <- make_temperature_scenarios(
+  baseline   = 30,
+  spike_temp = leaf_CTmax_med,
+  n_hours    = 96,
+  spike_times_single = 24,
+  spike_times_multi  = c(24, 48, 72),
+  diurnal_n_days     = 4,
+  diurnal_day_peaks  = c(38.0, 41.0, 44.0, 43.5),
+  diurnal_night_temp = c(20.0, 15.5, 17.5, 19.0),
+  diurnal_peak_fwhm  = 5,
+  diurnal_noise_sd   = 0.5,
+  diurnal_seed       = 1L
+)
+
+leaf_hi <- purrr::map(leaf_scens, function(sc) {
+  predict_heat_injury(trace = sc, workflow = wf_leaf,
+                      T_c = leaf_T_c, ndraws = 500)
+})
+```
+
+Setting `repair = TRUE` adds a temperature-dependent Sharpe-Schoolfield repair kernel so injury accumulated at hot temperatures can be partially cleared during cooler intervals. Here we re-run only the two scenarios that accrue meaningful HI without repair — the multi-spike and the diurnal traces.
+
+```{r leaf-hi-repair}
+#| label: leaf-hi-repair
+#| echo: true
+
+leaf_repair_pars <- list(
+  TA = 14065, TAL = 50000, TAH = 120000,
+  TL = 10.5 + 273.15, TH = 32.5 + 273.15, TREF = 30 + 273.15,
+  r_ref = 0.15
+)
+
+leaf_hi_multi_rep <- predict_heat_injury(
+  leaf_scens$multi_spike, wf_leaf, T_c = leaf_T_c, ndraws = 500,
+  repair = TRUE, repair_pars = leaf_repair_pars
+)
+leaf_hi_diurnal_rep <- predict_heat_injury(
+  leaf_scens$diurnal, wf_leaf, T_c = leaf_T_c, ndraws = 500,
+  repair = TRUE, repair_pars = leaf_repair_pars
+)
+```
+
+```{r leaf-hi-traces}
+#| label: fig-leaf-hi-traces
+#| fig-cap: "The four reference temperature traces used for the leaf heat-injury prediction. Baseline  °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ so each spike delivers approximately one LT50 dose. The diurnal scenario is a clustered 4-day heatwave: a cool day below $T_{crit}$ followed by three progressively hotter days. The dashed line marks the damage threshold $T_c = T_{crit}$."
+#| fig-width: 7
+#| fig-height: 9
+
+plot_temperature_scenarios(leaf_scens, T_c = leaf_T_c)
+```
+
+```{r leaf-hi-single-noreapair}
+#| label: fig-leaf-hi-single-norep
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, ~100% LT50-dose accrues by the end of the spike hour, producing ~50% mortality."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi$single_spike)
+```
+
+```{r leaf-hi-multi-noreapair}
+#| label: fig-leaf-hi-multi-norep
+#| fig-cap: "**Multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver ~3 × LT50-dose, driving cumulative HI well past 100% and survival to near zero."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi$multi_spike)
+```
+
+```{r leaf-hi-multi-rep}
+#| label: fig-leaf-hi-multi-rep
+#| fig-cap: "Same multi-spike trace, **with Sharpe-Schoolfield repair active**. Repair clears most of the dose between spikes, stopping the runaway accumulation seen without repair."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi_multi_rep)
+```
+
+The diurnal scenario (@fig-leaf-hi-diurnal-norep, @fig-leaf-hi-diurnal-rep) is closer to a real coastal record. Day 1 stays below $T_{crit}$ and accrues no injury; days 2–4 each contribute an injury bout that scales with the daily peak. Without repair, cumulative HI is well past 100 % by the end of day 4 and predicted survival has dropped to ~20 %. With repair on, off-peak hours and the cool first day act as recovery phases; the final trajectory is set by the net balance between daily accrual at sub-$CT_{max_{1hr}}$ peaks and overnight/cool-day repair.
+
+```{r leaf-hi-diurnal-noreapair}
+#| label: fig-leaf-hi-diurnal-norep
+#| fig-cap: "**4-day diurnal heatwave** trace, **no repair**. The cool first day flat-lines below $T_{crit}$; days 2–4 each accrue an injury bout scaling with the daily peak."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi$diurnal)
+```
+
+```{r leaf-hi-diurnal-rep}
+#| label: fig-leaf-hi-diurnal-rep
+#| fig-cap: "Same 4-day heatwave trace, **with Sharpe-Schoolfield repair active**. The cool first day and overnight troughs now act as recovery phases."
+#| fig-width: 7
+#| fig-height: 5
+
+plot_heat_injury(leaf_hi_diurnal_rep)
+```
+
+```{r leaf-hi-summary}
+#| label: tbl-leaf-hi-summary
+#| tbl-cap: "Final cumulative HI and predicted survival under each scenario for brown leaf, posterior medians with 95% credible intervals."
+
+final_row <- function(hi) {
+  s <- tail(hi$summary, 1)
+  tibble::tibble(
+    `HI median (%)` = round(s$hi_median, 1),
+    `HI lower`      = round(s$hi_lower,  1),
+    `HI upper`      = round(s$hi_upper,  1),
+    `Survival median`  = round(s$surv_median, 3),
+    `Survival lower`   = round(s$surv_lower,  3),
+    `Survival upper`   = round(s$surv_upper,  3)
+  )
+}
+
+leaf_hi_table <- dplyr::bind_rows(
+  final_row(leaf_hi$flat)         |> dplyr::mutate(Scenario = "Flat",
+                                                     Repair = "None"),
+  final_row(leaf_hi$single_spike) |> dplyr::mutate(Scenario = "Single spike",
+                                                     Repair = "None"),
+  final_row(leaf_hi$multi_spike)  |> dplyr::mutate(Scenario = "Multi spike",
+                                                     Repair = "None"),
+  final_row(leaf_hi_multi_rep)    |> dplyr::mutate(Scenario = "Multi spike",
+                                                     Repair = "Sharpe-Schoolfield"),
+  final_row(leaf_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+                                                     Repair = "None"),
+  final_row(leaf_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+                                                     Repair = "Sharpe-Schoolfield")
+) |>
+  dplyr::select(Scenario, Repair, dplyr::everything())
+
+tinytable::tt(leaf_hi_table, escape = TRUE)
+```
+The snow gum leaf case study covers raw counts → fitted joint 4PL → classical TDT quantities with calibrated uncertainty. Every quantity inherits the posterior of the same single fit.
+
+
+# **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
+
+This figure compiles the headline TDT quantities ($z$ and $CT_{max_{1hr}}$) from the three case studies into a single multi-panel display, intended for the main manuscript. Each panel overlays the joint Bayesian 4PL posterior (green ridge + green median/95% CrI) with the classical two-stage point estimate (orange median/95% CI) at the matched Stage-1 likelihood — beta-binomial for the count-based case studies (shrimp, zebrafish), beta for the proportional case study (snow gum leaf PSII). The zebrafish row splits into three ridges, one per life stage.
+
+```{r ms-fig4-case-study-densities}
+#| label: fig-ms-fig4-case-study-densities
+#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max_{1hr}}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the three case studies (rows). The 4PL posterior median and 95% credible interval are overlaid as a green pointrange. The classical two-stage point estimate (beta-binomial Stage 1 for the brown shrimp and zebrafish counts, beta Stage 1 for the snow gum leaf PSII proportions) is shown for comparison as an orange pointrange (median + 95% CI, #a63603). Dashed vertical lines mark the 4PL posterior median for each entity. The zebrafish panel splits into three ridges, one per life stage."
+#| fig-width: 9
+#| fig-height: 7
+#| cache: false
+
+# 4PL posterior draws (one row per draw, per case study × group × quantity).
+fig4_draws <- dplyr::bind_rows(
+  tibble::tibble(
+    case_study = "Brown shrimp", group = "Brown shrimp",
+    quantity   = "z",         value = get_z_draws(et_shrimp)$z
+  ),
+  tibble::tibble(
+    case_study = "Brown shrimp", group = "Brown shrimp",
+    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_shrimp)$CTmax
+  ),
+  dplyr::bind_rows(lapply(zf_stages, function(s) {
+    dr <- zf_joint_tdt[[s]]$z$draws
+    dplyr::bind_rows(
+      tibble::tibble(case_study = "Zebrafish", group = s,
+                     quantity = "z",         value = dr$z),
+      tibble::tibble(case_study = "Zebrafish", group = s,
+                     quantity = "CTmax_1hr", value = dr$CTmax)
+    )
+  })),
+  tibble::tibble(
+    case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
+    quantity   = "z",         value = get_z_draws(et_leaf)$z
+  ),
+  tibble::tibble(
+    case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
+    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_leaf)$CTmax
+  )
+) |>
+  dplyr::filter(is.finite(value))
+
+# Median + 95% interval rows for both approaches, one row per case × group ×
+# quantity × approach. 4PL = posterior; two-step = analytic / MVN CI.
+mk_row <- function(cs, grp, q, approach, med, lo, hi) {
+  tibble::tibble(case_study = cs, group = grp, quantity = q,
+                 approach = approach, median = med, lower = lo, upper = hi)
+}
+
+shrimp_bb_pt <- dplyr::filter(shrimp_twostep_tdt, method == "Two-step beta-binomial")
+shrimp_bb_ci <- shrimp_twostep_unc[["Two-step beta-binomial"]]$summary_ci
+leaf_bb_pt   <- dplyr::filter(leaf_twostep_tdt,   method == "Two-step beta")
+leaf_bb_ci   <- leaf_twostep_unc[["Two-step beta"]]$summary_ci
+
+zf_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
+  z_sum <- zf_joint_tdt[[s]]$z$summary
+  tw_pt <- dplyr::filter(zf_twostep_tdt, life_stage == s,
+                         method == "Two-step beta-binomial")
+  tw_ci <- zf_twostep_unc[[paste0(s, "||Two-step beta-binomial")]]$summary_ci
+  dplyr::bind_rows(
+    mk_row("Zebrafish", s, "z",         "Joint Bayesian 4PL",
+           z_sum$z_median,     z_sum$z_lower,     z_sum$z_upper),
+    mk_row("Zebrafish", s, "CTmax_1hr", "Joint Bayesian 4PL",
+           z_sum$CTmax_median, z_sum$CTmax_lower, z_sum$CTmax_upper),
+    mk_row("Zebrafish", s, "z",         "Two-step",
+           tw_pt$z,            tw_ci$z_lower,     tw_ci$z_upper),
+    mk_row("Zebrafish", s, "CTmax_1hr", "Two-step",
+           tw_pt$CTmax_1hr,    tw_ci$CTmax_lower, tw_ci$CTmax_upper)
+  )
+}))
+
+fig4_summary <- dplyr::bind_rows(
+  mk_row("Brown shrimp", "Brown shrimp", "z", "Joint Bayesian 4PL",
+         et_shrimp$z$summary$z_median,
+         et_shrimp$z$summary$z_lower,
+         et_shrimp$z$summary$z_upper),
+  mk_row("Brown shrimp", "Brown shrimp", "CTmax_1hr", "Joint Bayesian 4PL",
+         et_shrimp$CTmax$summary$temp_median,
+         et_shrimp$CTmax$summary$temp_lower,
+         et_shrimp$CTmax$summary$temp_upper),
+  mk_row("Brown shrimp", "Brown shrimp", "z", "Two-step",
+         shrimp_bb_pt$z, shrimp_bb_ci$z_lower, shrimp_bb_ci$z_upper),
+  mk_row("Brown shrimp", "Brown shrimp", "CTmax_1hr", "Two-step",
+         shrimp_bb_pt$CTmax_1hr,
+         shrimp_bb_ci$CTmax_lower, shrimp_bb_ci$CTmax_upper),
+  zf_rows,
+  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "z", "Joint Bayesian 4PL",
+         et_leaf$z$summary$z_median,
+         et_leaf$z$summary$z_lower,
+         et_leaf$z$summary$z_upper),
+  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "CTmax_1hr", "Joint Bayesian 4PL",
+         et_leaf$CTmax$summary$temp_median,
+         et_leaf$CTmax$summary$temp_lower,
+         et_leaf$CTmax$summary$temp_upper),
+  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "z", "Two-step",
+         leaf_bb_pt$z, leaf_bb_ci$z_lower, leaf_bb_ci$z_upper),
+  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "CTmax_1hr", "Two-step",
+         leaf_bb_pt$CTmax_1hr,
+         leaf_bb_ci$CTmax_lower, leaf_bb_ci$CTmax_upper)
+)
+
+# Factor ordering: rows are the three case studies; within zebrafish the three
+# life stages are ordered young → old → larvae (top to bottom of the ridge
+# stack, so we reverse for the y-axis levels).
+case_levels  <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII")
+group_levels <- c("Brown shrimp",
+                  rev(zf_stages),
+                  "Snow gum leaf PSII")
+quant_levels <- c("z", "CTmax_1hr")
+
+fig4_draws <- fig4_draws |>
+  dplyr::mutate(
+    case_study = factor(case_study, levels = case_levels),
+    group      = factor(group,      levels = group_levels),
+    quantity   = factor(quantity,   levels = quant_levels)
+  )
+fig4_summary <- fig4_summary |>
+  dplyr::mutate(
+    case_study = factor(case_study, levels = case_levels),
+    group      = factor(group,      levels = group_levels),
+    quantity   = factor(quantity,   levels = quant_levels),
+    approach   = factor(approach,
+                        levels = c("Joint Bayesian 4PL", "Two-step"))
+  )
+
+quantity_labeller <- ggplot2::as_labeller(
+  c(z         = "italic(z)~(degree*C~per~decade~of~time)",
+    CTmax_1hr = "CT[max[1*hr]]~(degree*C)"),
+  default = ggplot2::label_parsed
+)
+
+approach_cols <- c("Joint Bayesian 4PL" = "#006d2c",
+                   "Two-step"           = "#a63603")
+
+ggplot2::ggplot(fig4_draws, ggplot2::aes(x = value, y = group)) +
+  ggridges::geom_density_ridges(
+    fill = "#006d2c", colour = NA, alpha = 0.45, scale = 0.85,
+    rel_min_height = 0.005
+  ) +
+  ggplot2::geom_vline(
+    data = dplyr::filter(fig4_summary, approach == "Joint Bayesian 4PL"),
+    ggplot2::aes(xintercept = median),
+    colour = "#006d2c", linetype = "dashed",
+    linewidth = 0.35, alpha = 0.6
+  ) +
+  ggplot2::geom_pointrange(
+    data = fig4_summary,
+    ggplot2::aes(x = median, xmin = lower, xmax = upper,
+                 y = group, colour = approach, group = approach),
+    position = ggplot2::position_dodge(width = 0.45),
+    size = 0.4, fatten = 2.2, linewidth = 0.6
+  ) +
+  ggplot2::scale_colour_manual(values = approach_cols, name = NULL) +
+  ggplot2::facet_grid(
+    case_study ~ quantity,
+    scales = "free", space = "free_y",
+    labeller = ggplot2::labeller(quantity   = quantity_labeller,
+                                 case_study = ggplot2::label_value)
+  ) +
+  ggplot2::labs(x = NULL, y = NULL) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    legend.position  = "bottom",
+    strip.background = ggplot2::element_blank(),
+    strip.text       = ggplot2::element_text(face = "bold"),
+    panel.border     = ggplot2::element_rect(colour = "black",
+                                              fill = NA, linewidth = 0.5)
+  )
+```
+
 
 # **References**
 
