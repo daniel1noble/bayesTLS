@@ -1743,10 +1743,8 @@ We now apply the full workflow described above — `standardize_data()` → `fit
 #| label: shrimp-load
 #| echo: true
 
-shrimp_raw <- readr::read_csv(
-  here::here("data", "data_lethal_TDT_brown_shrimp.csv"),
-  show_col_types = FALSE
-)
+# Bundled with the package (see ?shrimp_lethal); raw CSV in inst/extdata/.
+shrimp_raw <- shrimp_lethal
 
 shrimp_std <- standardize_data(
   data           = shrimp_raw,
@@ -2615,35 +2613,16 @@ The shrimp data also include a **sublethal** endpoint, time to loss of response 
 
 ### Data preparation {#sec-shrimp-sub-data}
 
-The raw sublethal sheet records one row per cup with the time when its individuals lost response to touch. We parse the time-of-day strings into minutes, restrict to non-excluded rows, and attach grouping factors for date, tank, and cup.
+The bundled `shrimp_sublethal` dataset provides one row per cup with the elapsed time (minutes) to loss of response to touch — the raw clock-time strings have already been parsed and excluded rows dropped (see `?shrimp_sublethal`). We add the $\log_{10}$ time and mean-centred temperature columns the models use, keeping the grouping factors for date, tank, and cup.
 
 ```{r shrimp-sublethal-data}
 #| label: shrimp-sublethal-data
 #| echo: true
 
-sublethal_raw <- readr::read_csv(
-  here::here("data", "data_sublethal_TDT_brown_shrimp.csv"),
-  show_col_types = FALSE
-)
-
-parse_time_min <- function(s) {
-  t <- lubridate::parse_date_time(s, orders = c("I:M:S p", "H:M:S"),
-                                   quiet = TRUE)
-  lubridate::hour(t) * 60 + lubridate::minute(t) + lubridate::second(t) / 60
-}
-
-tdt_sub <- sublethal_raw |>
-  dplyr::filter(Exclude == "no") |>
-  dplyr::mutate(
-    assay_temp      = as.numeric(Assay_temperature),
-    date_experiment = factor(as.character(lubridate::dmy(Date))),
-    tank_ID         = factor(Tank),
-    cup_ID          = factor(paste0(Trial_ID, "_", Sample)),
-    start_min       = parse_time_min(Starting_time),
-    end_min         = parse_time_min(Time_to_death),
-    time_to_event   = end_min - start_min          # minutes
-  ) |>
-  dplyr::filter(is.finite(time_to_event), time_to_event > 0) |>
+# Bundled with the package (see ?shrimp_sublethal): clock-time strings already
+# parsed to elapsed minutes-to-knockdown and excluded rows dropped (raw CSV in
+# inst/extdata/). We add the log-time and centred-temperature columns used below.
+tdt_sub <- shrimp_sublethal |>
   dplyr::mutate(
     log10_time = log10(time_to_event),
     temp_mean  = mean(assay_temp),
@@ -2970,30 +2949,10 @@ The raw spreadsheet has a wide format: one row per replicate trial, with mortali
 #| label: zebrafish-data
 #| echo: true
 
-zf_raw <- readr::read_csv(
-  here::here("data", "data_lethal_TDT_zebrafish.csv"),
-  show_col_types = FALSE
-)
-
-# Sum all daily-mortality columns into a single n_dead per row.
-mort_cols <- grep("^Mortality_day_\\d+_(morning|afternoon)$",
-                  names(zf_raw), value = TRUE)
-
-zf <- zf_raw |>
-  dplyr::filter(Exclude == "no") |>
-  dplyr::mutate(
-    n_total       = as.integer(N_total),
-    n_dead        = as.integer(rowSums(
-      dplyr::across(dplyr::all_of(mort_cols), as.numeric), na.rm = TRUE)),
-    n_surv        = pmax(n_total - n_dead, 0L),
-    assay_temp    = as.numeric(Temperature_assay),
-    duration_h    = as.numeric(Duration_exposure_hours),
-    life_stage    = factor(Life_stage,
-                           levels = c("young_embryos", "old_embryos", "larvae")),
-    Date_experiment = factor(Date_experiment)
-  ) |>
-  dplyr::filter(is.finite(duration_h), duration_h > 0,
-                is.finite(assay_temp), n_total > 0)
+# Bundled with the package (see ?zebrafish_lethal): the per-day morning/afternoon
+# mortality columns have already been summed into n_total / n_surv / n_dead and
+# excluded rows dropped (raw CSV in inst/extdata/). One row per assay trial.
+zf <- zebrafish_lethal
 
 zf_temp_mean <- mean(zf$assay_temp, na.rm = TRUE)
 ```
@@ -4258,12 +4217,9 @@ The trials spanned 28–48 °C and 5 min to 2 h of exposure. Replicate plants or
 #| label: leaf-load
 #| echo: true
 
-leaf_raw <- readr::read_csv(
-  here::here("data", "data_function_PSII_TDT_snowgum.csv"),
-  show_col_types = FALSE
-)
-
-leaf_raw$fvfm_prop <- leaf_raw$final_fvfm / leaf_raw$initial_fvfm # Response variable
+# Bundled with the package (see ?snowgum_psii): fvfm_prop (= final/initial
+# Fv/Fm) is already computed (raw CSV in inst/extdata/).
+leaf_raw <- snowgum_psii
 str(leaf_raw)
 
 # Standardise as a continuous-proportion (Beta) response. `standardize_data()`
@@ -5068,10 +5024,8 @@ We apply `standardize_data()` → `fit_4pl()` → `extract_tdt()` to heat-respon
 #| label: seed-load
 #| echo: true
 
-seed_raw <- readr::read_csv(
-  here::here("data", "data_lethal_TDT_acacia_seeds.csv"),
-  show_col_types = FALSE
-)
+# Bundled with the package (see ?acacia_seeds); raw CSV in inst/extdata/.
+seed_raw <- acacia_seeds
 
 seed_std <- standardize_data(
   data           = seed_raw,
