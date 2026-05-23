@@ -1984,26 +1984,39 @@ propagate_twostep_case <- function(stage2_fit, temp_grid,
   set.seed(seed)
   log_rate_mid <- mean(log10(TC_rate_range / 100))
 
+  # z CI: invert the Stage-2 slope's 95% CI. z = -1/slope is monotonically
+  # increasing in slope on (-Inf, 0), so when the slope CI is entirely
+  # negative the inversion yields a clean, point-containing asymmetric CI for
+  # z. If the slope CI crosses zero (slope poorly identified, as happens when
+  # Stage 1 yields few valid LT50s), z is unidentified — report NA rather
+  # than fabricate finite bounds via MVN simulation, which would give heavy
+  # right-tailed draws that don't contain the point estimate.
+  beta_ci  <- stats::confint(stage2_fit, "temp", level = 0.95)
+  slope_lo <- as.numeric(beta_ci[1, 1])
+  slope_hi <- as.numeric(beta_ci[1, 2])
+  if (is.finite(slope_lo) && is.finite(slope_hi) && slope_hi < 0) {
+    z_lower <- -1 / slope_lo
+    z_upper <- -1 / slope_hi
+  } else {
+    z_lower <- NA_real_
+    z_upper <- NA_real_
+  }
+
+  # CTmax and T_crit CIs come from MVN simulation: both are ratios of
+  # correlated normals (intercept and slope), so joint propagation is needed.
   draws <- MASS::mvrnorm(n_sim,
                          mu    = stats::coef(stage2_fit),
                          Sigma = stats::vcov(stage2_fit))
   alpha <- draws[, "(Intercept)"]
   beta  <- draws[, "temp"]
-  # z, CTmax and T_crit CIs all come from the same MVN coefficient draws. z is
-  # -1/slope; deriving its CI by analytically inverting the slope's confint() is
-  # invalid when the Stage-2 slope is imprecise (sparse Stage-1 points) — the
-  # inversion can reverse the bounds or place the point estimate outside the
-  # interval. Taking quantiles of -1/beta over the draws is order-correct and
-  # consistent with the CTmax/T_crit CIs.
-  z_draws     <- -1 / beta
   ctmax_draws <- (log10(t_ref) -
                   (alpha + log10(time_multiplier))) / beta
-  tcrit_draws <- ctmax_draws + z_draws * log_rate_mid
+  tcrit_draws <- ctmax_draws + (-1 / beta) * log_rate_mid
 
   qfun <- function(x, p) stats::quantile(x, p, na.rm = TRUE, names = FALSE)
   summary_ci <- tibble::tibble(
-    z_lower     = qfun(z_draws, 0.025),
-    z_upper     = qfun(z_draws, 0.975),
+    z_lower     = z_lower,
+    z_upper     = z_upper,
     CTmax_lower = qfun(ctmax_draws, 0.025),
     CTmax_upper = qfun(ctmax_draws, 0.975),
     Tcrit_lower = qfun(tcrit_draws, 0.025),
@@ -2321,7 +2334,7 @@ z_post_shrimp <- list(
 
 patchwork::wrap_plots(
   plot_temperature_density(z_post_shrimp,
-                            x_label = expression(italic(z)~("°C per decade of time"))),
+                            x_label = expression(italic(z)~("°C"))),
   plot_temperature_density(et_shrimp$CTmax,
                             x_label = expression(CT[max[1*hr]]~("°C"))),
   plot_temperature_density(et_shrimp$T_crit,
@@ -4760,7 +4773,7 @@ z_post_leaf <- list(
 
 patchwork::wrap_plots(
   plot_temperature_density(z_post_leaf,
-                            x_label = expression(italic(z)~("°C per decade of time"))),
+                            x_label = expression(italic(z)~("°C"))),
   plot_temperature_density(et_leaf$CTmax,
                             x_label = expression(CT[max[1*hr]]~("°C"))),
   ncol = 2
@@ -5255,7 +5268,7 @@ seed_z_hi   <- round(et_seed$z$summary$z_upper)
 seed_ct_med <- round(et_seed$CTmax$summary$temp_median, 1)
 ```
 
-**A note on what this design can support.** Exposure durations (15–120 min) do not bracket LT50 at most temperatures: at 22–60 °C the proportion respiring never falls below ~0.6 within 120 min, whereas at 70–80 °C most seeds have ceased respiring by the shortest exposure. With only five seeds per cell, the observations also include non-monotone sampling noise. The constant-shape model shares curve shape across temperatures, making $z$ and the response surface estimable with a well-behaved fit, but $z$ is identified through that shared-shape assumption rather than directly observed LT50 crossings at each temperature. Its credible interval is accordingly wide (upper bound ~`r seed_z_hi` °C per decade), and $CT_{max_{1hr}}$ (~`r seed_ct_med` °C) is interpolated between the 60 and 70 °C treatments. Durations that bracket LT50 at each temperature would sharpen these estimates.
+**A note on what this design can support.** Exposure durations (15–120 min) do not bracket LT50 at most temperatures: at 22–60 °C the proportion respiring never falls below ~0.6 within 120 min, whereas at 70–80 °C most seeds have ceased respiring by the shortest exposure. With only five seeds per cell, the observations also include non-monotone sampling noise. The constant-shape model shares curve shape across temperatures, making $z$ and the response surface estimable with a well-behaved fit, but $z$ is identified through that shared-shape assumption rather than directly observed LT50 crossings at each temperature. Its credible interval is accordingly wide (upper bound ~`r seed_z_hi` °C per 10-fold change in time), and $CT_{max_{1hr}}$ (~`r seed_ct_med` °C) is interpolated between the 60 and 70 °C treatments. Durations that bracket LT50 at each temperature would sharpen these estimates.
 
 ```{r seed-tcrit-ctmax-plot}
 #| label: fig-seed-tcrit-ctmax
@@ -5276,7 +5289,7 @@ z_post_seed <- list(
 
 patchwork::wrap_plots(
   plot_temperature_density(z_post_seed,
-                           x_label = expression(italic(z)~("°C per decade of time"))),
+                           x_label = expression(italic(z)~("°C"))),
   plot_temperature_density(et_seed$CTmax,
                            x_label = expression(CT[max[1*hr]]~("°C"))),
   plot_temperature_density(et_seed$T_crit,
@@ -5294,7 +5307,7 @@ This figure compiles the headline TDT quantities ($z$ and $CT_{max_{1hr}}$) from
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig4-case-study-densities
-#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max_{1hr}}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the four case studies (rows). The 4PL posterior median and 95% credible interval are overlaid as a green pointrange. The classical two-stage point estimate (beta-binomial Stage 1 for the brown shrimp and zebrafish counts, beta Stage 1 for the snow gum leaf PSII proportions) is shown for comparison as an orange pointrange (median + 95% CI, #a63603); the *Acacia* seed has no two-stage estimate because its sparse design yields a valid Stage-1 LT50 at too few temperatures. Dashed vertical lines mark the 4PL posterior median for each entity. The zebrafish panel splits into three ridges, one per life stage. Panels use free x-axes; the seed $z$ posterior is wide, reflecting an assay design whose durations do not bracket the LT50 at most temperatures."
+#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max_{1hr}}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the four case studies (rows). The 4PL posterior median and 95% credible interval are overlaid as a green pointrange sitting at the density baseline; the two-step classical estimate (median + 95% CI, orange #a63603) is shown directly below as an orange pointrange — beta-binomial Stage 1 for the brown shrimp and zebrafish counts, beta Stage 1 for the snow gum leaf PSII proportions. The *Acacia* seed has no two-step estimate because its sparse design yields a valid Stage-1 LT50 at too few temperatures. Two-step $z$ intervals are obtained by inverting the Stage-2 slope's 95% CI; intervals are NA (no orange bar) when the slope CI crosses zero, signalling an unidentified Stage-2 slope. Dashed vertical lines mark the 4PL posterior median for each entity. The zebrafish row splits into three ridges, one per life stage. Each case study has independent x-axes in both columns. $z$ is in °C (it is the temperature change required for a 10-fold change in time to the threshold)."
 #| fig-width: 9
 #| fig-height: 7
 #| cache: false
@@ -5434,7 +5447,7 @@ fig4_summary <- fig4_summary |>
   )
 
 quantity_labeller <- ggplot2::as_labeller(
-  c(z         = "italic(z)~(degree*C~per~decade~of~time)",
+  c(z         = "italic(z)~(degree*C)",
     CTmax_1hr = "CT[max[1*hr]]~(degree*C)"),
   default = ggplot2::label_parsed
 )
@@ -5442,40 +5455,84 @@ quantity_labeller <- ggplot2::as_labeller(
 approach_cols <- c("Joint Bayesian 4PL" = "#006d2c",
                    "Two-step"           = "#a63603")
 
-ggplot2::ggplot(fig4_draws, ggplot2::aes(x = value, y = group)) +
-  ggridges::geom_density_ridges(
-    fill = "#006d2c", colour = NA, alpha = 0.45, scale = 0.85,
-    rel_min_height = 0.005
-  ) +
-  ggplot2::geom_vline(
-    data = dplyr::filter(fig4_summary, approach == "Joint Bayesian 4PL"),
-    ggplot2::aes(xintercept = median),
-    colour = "#006d2c", linetype = "dashed",
-    linewidth = 0.35, alpha = 0.6
-  ) +
-  ggplot2::geom_pointrange(
-    data = fig4_summary,
-    ggplot2::aes(x = median, xmin = lower, xmax = upper,
-                 y = group, colour = approach, group = approach),
-    position = ggplot2::position_dodge(width = 0.45),
-    size = 0.4, fatten = 2.2, linewidth = 0.6
-  ) +
-  ggplot2::scale_colour_manual(values = approach_cols, name = NULL) +
-  ggplot2::facet_grid(
-    case_study ~ quantity,
-    scales = "free", space = "free_y",
-    labeller = ggplot2::labeller(quantity   = quantity_labeller,
-                                 case_study = ggplot2::label_value)
-  ) +
-  ggplot2::labs(x = NULL, y = NULL) +
-  ggplot2::theme_classic(base_size = 11) +
-  ggplot2::theme(
-    legend.position  = "bottom",
-    strip.background = ggplot2::element_blank(),
-    strip.text       = ggplot2::element_text(face = "bold"),
-    panel.border     = ggplot2::element_rect(colour = "black",
-                                              fill = NA, linewidth = 0.5)
-  )
+# Per-case-study panel builder. We use patchwork rather than facet_grid so
+# every case study gets its own independent x-axis range in each column —
+# facet_grid forces a shared x within columns, which compresses the
+# narrow-CI rows. The 4PL pointrange is drawn at the density baseline
+# (no nudge), and the two-step pointrange is nudged down so it sits just
+# beneath the 4PL marker rather than overlapping it.
+build_fig4_panel <- function(case) {
+  d <- dplyr::filter(fig4_draws,   case_study == case) |>
+    dplyr::mutate(group = droplevels(group))
+  s <- dplyr::filter(fig4_summary, case_study == case) |>
+    dplyr::mutate(group = droplevels(group))
+  s_4pl <- dplyr::filter(s, approach == "Joint Bayesian 4PL")
+  s_2s  <- dplyr::filter(s, approach == "Two-step",
+                         is.finite(median))
+
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = value, y = group)) +
+    ggridges::geom_density_ridges(
+      fill = "#006d2c", colour = NA, alpha = 0.45, scale = 0.85,
+      rel_min_height = 0.005
+    ) +
+    ggplot2::geom_vline(
+      data = s_4pl,
+      ggplot2::aes(xintercept = median),
+      colour = "#006d2c", linetype = "dashed",
+      linewidth = 0.35, alpha = 0.6
+    ) +
+    ggplot2::geom_pointrange(
+      data = s_4pl,
+      ggplot2::aes(x = median, xmin = lower, xmax = upper, y = group,
+                   colour = "Joint Bayesian 4PL"),
+      size = 0.35, fatten = 2.2, linewidth = 0.6
+    )
+
+  if (nrow(s_2s) > 0) {
+    p <- p +
+      ggplot2::geom_pointrange(
+        data = s_2s,
+        ggplot2::aes(x = median, xmin = lower, xmax = upper, y = group,
+                     colour = "Two-step"),
+        size = 0.35, fatten = 2.2, linewidth = 0.6,
+        position = ggplot2::position_nudge(y = -0.18)
+      )
+  }
+
+  p +
+    ggplot2::scale_colour_manual(values = approach_cols, name = NULL,
+                                  breaks = c("Joint Bayesian 4PL",
+                                             "Two-step")) +
+    ggplot2::facet_wrap(
+      ~ quantity, scales = "free_x", nrow = 1,
+      labeller = ggplot2::labeller(quantity = quantity_labeller)
+    ) +
+    ggplot2::labs(x = NULL, y = NULL, title = case) +
+    ggplot2::theme_classic(base_size = 11) +
+    ggplot2::theme(
+      legend.position  = "bottom",
+      axis.text.y      = ggplot2::element_blank(),
+      axis.ticks.y     = ggplot2::element_blank(),
+      strip.background = ggplot2::element_blank(),
+      strip.text       = ggplot2::element_text(face = "bold"),
+      panel.border     = ggplot2::element_rect(colour = "black",
+                                                fill = NA, linewidth = 0.5),
+      plot.title       = ggplot2::element_text(face = "bold", size = 11,
+                                                hjust = 0)
+    )
+}
+
+fig4_cases <- c("Brown shrimp", "Zebrafish",
+                "Snow gum leaf PSII", "Acacia seed")
+fig4_panels <- lapply(fig4_cases, build_fig4_panel)
+# Row heights proportional to the number of groups in each case study.
+fig4_heights <- vapply(fig4_cases, function(cs) {
+  length(unique(dplyr::filter(fig4_draws, case_study == cs)$group))
+}, integer(1))
+
+patchwork::wrap_plots(fig4_panels, ncol = 1) +
+  patchwork::plot_layout(heights = fig4_heights, guides = "collect") &
+  ggplot2::theme(legend.position = "bottom")
 ```
 
 

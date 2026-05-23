@@ -167,7 +167,7 @@ make_temperature_scenarios <- function(baseline    = 20,
 #'
 #' @param trace      Tibble with columns `time_h` and `temp`, output of
 #'                   [make_temperature_scenarios()].
-#' @param z          Thermal sensitivity, °C per decade of time.
+#' @param z          Thermal sensitivity, °C per 10-fold change in time.
 #' @param CTmax_1hr  Static temperature at which LT50 = 1 hour, °C.
 #' @param T_c        Damage threshold (°C); contributions below `T_c` are zero.
 #' @return The input trace augmented with two new columns:

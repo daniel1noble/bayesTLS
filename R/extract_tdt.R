@@ -262,7 +262,7 @@ derive_temperature_for_duration <- function(workflow,
 #' draw, regress `log10(LT_x duration)` on temperature and read off the
 #' classical TDT quantities:
 #'
-#' - `z = -1 / slope` — thermal sensitivity, in °C per decade of time
+#' - `z = -1 / slope` — thermal sensitivity, in °C per 10-fold change in time
 #' - `CTmax = (log10(t_ref) - intercept) / slope` — temperature at which
 #'   LT_x equals the reference time.
 #'
