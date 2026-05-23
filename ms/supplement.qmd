@@ -4681,10 +4681,13 @@ plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
 
 et_leaf <- extract_tdt(
   wf_leaf,
-  t_ref         = 60,
-  TC_rate_range = c(0.1, 1),
-  ndraws        = 500,
-  lethal        = FALSE
+  t_ref           = 60,
+  time_multiplier = 1,   # leaf model time is MINUTES; t_ref = 60 => CTmax at 1 h.
+                          # extract_tdt() now auto-derives this from duration_unit,
+                          # but we keep it explicit for clarity.
+  TC_rate_range   = c(0.1, 1),
+  ndraws          = 500,
+  lethal          = FALSE
 )
 ```
 
@@ -4733,9 +4736,18 @@ patchwork::wrap_plots(
 
 ## Comparison between approaches {#sec-leaf-approach-compare}
 
+The classical two-stage pipeline fits a 0–1 logistic at each temperature, so its LT50 is necessarily the **absolute** $F_v/F_m = 0.5$ crossing — it cannot represent the fitted PSII plateau ($u \approx 0.78$) or target a relative midpoint. For a like-with-like comparison we therefore extract the joint 4PL at the same absolute threshold (`target_surv = "absolute"`) in this section only; the main leaf analysis (@sec-leaf-extract, @sec-leaf-tdt-line) uses the package-default relative midpoint, which corresponds to a true 50% of the healthy-to-impaired range. Note that $F_v/F_m = 0.5$ is reached only within the assayed 5–120 min window at intermediate temperatures (~39–45 °C); both lines extrapolate outside the 28–48 °C assay range.
+
 ```{r leaf-approach-compare-table}
 #| label: tbl-leaf-approach-compare
-#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
+#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL, compared at a **common absolute threshold** ($F_v/F_m = 0.5$). The two-stage pipeline forces a 0–1 logistic per temperature and so can only target an absolute 0.5 crossing; for a like-with-like comparison the joint 4PL row is therefore extracted with `target_surv = \"absolute\"` rather than the package-default relative midpoint (the main leaf result in @tbl-leaf-extract uses the relative midpoint, which is the more meaningful 50%-of-dynamic-range impairment given the fitted plateau $u \\approx 0.78$). Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
+
+# Compare like-with-like: the forced-0/1 two-stage can only read an absolute 0.5
+# crossing, so extract the joint 4PL at the same absolute threshold here.
+et_leaf_abs <- extract_tdt(
+  wf_leaf, t_ref = 60, time_multiplier = 1, target_surv = "absolute",
+  ndraws = 500, lethal = FALSE
+)
 
 leaf_compare_approaches <- dplyr::bind_rows(
   dplyr::bind_rows(lapply(
@@ -4752,13 +4764,13 @@ leaf_compare_approaches <- dplyr::bind_rows(
   )),
   tibble::tibble(
     Approach = "Joint Bayesian 4PL",
-    `z (C)` = format_interval(et_leaf$z$summary$z_median,
-                              et_leaf$z$summary$z_lower,
-                              et_leaf$z$summary$z_upper,
+    `z (C)` = format_interval(et_leaf_abs$z$summary$z_median,
+                              et_leaf_abs$z$summary$z_lower,
+                              et_leaf_abs$z$summary$z_upper,
                               digits = 2),
-    `CTmax_1hr (C)` = format_interval(et_leaf$CTmax$summary$temp_median,
-                                      et_leaf$CTmax$summary$temp_lower,
-                                      et_leaf$CTmax$summary$temp_upper,
+    `CTmax_1hr (C)` = format_interval(et_leaf_abs$CTmax$summary$temp_median,
+                                      et_leaf_abs$CTmax$summary$temp_lower,
+                                      et_leaf_abs$CTmax$summary$temp_upper,
                                       digits = 2)
   )
 )
@@ -4768,7 +4780,7 @@ tinytable::tt(leaf_compare_approaches, escape = TRUE)
 
 ```{r leaf-approach-compare-tdt-lines}
 #| label: fig-leaf-approach-compare-tdt-lines
-#| fig-cap: "Snow gum leaf PSII TDT-line comparison. The joint 4PL posterior median and 95% credible band are repeated from @fig-leaf-tdt-line; the two classical two-stage lines are overlaid with their pointwise 95% confidence bands from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points)."
+#| fig-cap: "Snow gum leaf PSII TDT-line comparison at a common absolute threshold ($F_v/F_m = 0.5$). The joint 4PL posterior median and 95% credible band are the time to $F_v/F_m = 0.5$ (`target_surv = \"absolute\"`) — the only threshold the forced-0/1 two-stage can target; the two classical two-stage lines are overlaid with their pointwise 95% confidence bands from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points). Outside the assayed 28–48 °C window both methods extrapolate."
 #| fig-width: 9
 #| fig-height: 4
 
@@ -4785,7 +4797,13 @@ leaf_twostep_band_cmp <- dplyr::bind_rows(lapply(
   }
 ))
 
-leaf_4pl_line <- ltx_leaf$summary |>
+# Joint 4PL line at the SAME absolute 0.5 threshold as the two-stage, on the
+# two-stage temperature grid, so the comparison is like-with-like.
+ltx_leaf_abs <- derive_tdt_curve(
+  wf_leaf, temp_grid = leaf_twostep_grid, ndraws = 500,
+  time_multiplier = 1, output_time_unit = "minutes", target_surv = "absolute"
+)
+leaf_4pl_line <- ltx_leaf_abs$summary |>
   dplyr::transmute(temp,
                    duration_median,
                    duration_lower,
@@ -4824,13 +4842,13 @@ p_leaf_cmp_lin <- ggplot2::ggplot() +
   ggplot2::scale_colour_manual(values = leaf_method_cols) +
   ggplot2::scale_fill_manual(values   = leaf_method_cols) +
   ggplot2::labs(x = "Assay temperature (C)",
-                y = "Time to 50% PSII impairment (min)",
+                y = expression("Time to "*italic(F)[v]/italic(F)[m]*" = 0.5 (min)"),
                 colour = "Approach", fill = "Approach") +
   ggplot2::theme_classic()
 
 p_leaf_cmp_log <- p_leaf_cmp_lin +
   ggplot2::scale_y_log10() +
-  ggplot2::labs(y = expression(log[10]~"time to 50% PSII impairment (min)")) +
+  ggplot2::labs(y = expression(log[10]~"time to "*italic(F)[v]/italic(F)[m]*" = 0.5 (min)")) +
   ggplot2::theme(legend.position = "none")
 
 patchwork::wrap_plots(p_leaf_cmp_lin, p_leaf_cmp_log, ncol = 2) +
