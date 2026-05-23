@@ -1,0 +1,102 @@
+# Build the analysis-ready case-study datasets shipped with bayesTLS from the
+# raw CSVs in inst/extdata/. The CSVs are the canonical raw source; this script
+# documents the (light) cleaning that turns each into the model-ready frame, and
+# writes data/<name>.rda via usethis::use_data().
+#
+# Run from the package root:  Rscript data-raw/make_datasets.R
+#
+# Datasets created: shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
+# snowgum_psii, acacia_seeds. Documented in R/data.R.
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(readr)
+})
+
+# Resolve a raw file: prefer the in-tree inst/extdata (when running pre-install),
+# fall back to the installed package location.
+ext <- function(f) {
+  p <- file.path("inst", "extdata", f)
+  if (file.exists(p)) p else system.file("extdata", f, package = "bayesTLS")
+}
+
+## 1. Brown shrimp — lethal TDT (counts) -------------------------------------
+# Already model-ready; keep the columns standardize_data() and the case study
+# use. `Mortality_after_trial` is a death count out of `N_individuals_after_trial`.
+shrimp_lethal <- read_csv(ext("data_lethal_TDT_brown_shrimp.csv"),
+                          show_col_types = FALSE) |>
+  dplyr::transmute(
+    Date,
+    Tank,
+    Temperature_assay        = as.numeric(Temperature_assay),
+    Duration_exposure_hours  = as.numeric(Duration_exposure_hours),
+    N_individuals_after_trial = as.integer(N_individuals_after_trial),
+    Mortality_after_trial    = as.integer(Mortality_after_trial)
+  ) |>
+  as.data.frame()
+
+## 2. Brown shrimp — sublethal time-to-knockdown -----------------------------
+# Parse the clock-time strings into elapsed minutes to knockdown; drop excluded
+# rows. One row per cup.
+parse_time_min <- function(s) {
+  t <- lubridate::parse_date_time(s, orders = c("I:M:S p", "H:M:S"),
+                                  quiet = TRUE)
+  lubridate::hour(t) * 60 + lubridate::minute(t) + lubridate::second(t) / 60
+}
+shrimp_sublethal <- read_csv(ext("data_sublethal_TDT_brown_shrimp.csv"),
+                             show_col_types = FALSE) |>
+  dplyr::filter(Exclude == "no") |>
+  dplyr::mutate(
+    assay_temp      = as.numeric(Assay_temperature),
+    date_experiment = as.character(lubridate::dmy(Date)),
+    tank_ID         = as.character(Tank),
+    cup_ID          = paste0(Trial_ID, "_", Sample),
+    time_to_event   = parse_time_min(Time_to_death) -
+                      parse_time_min(Starting_time)   # minutes
+  ) |>
+  dplyr::filter(is.finite(time_to_event), time_to_event > 0) |>
+  dplyr::select(assay_temp, time_to_event, date_experiment, tank_ID, cup_ID) |>
+  as.data.frame()
+
+## 3. Zebrafish — lethal TDT across life stages (counts) ---------------------
+# Aggregate the per-day morning/afternoon mortality columns into one death count
+# per trial, derive survivors, and keep one row per assay trial.
+zf_raw <- read_csv(ext("data_lethal_TDT_zebrafish.csv"), show_col_types = FALSE)
+mort_cols <- grep("^Mortality_day_\\d+_(morning|afternoon)$",
+                  names(zf_raw), value = TRUE)
+zebrafish_lethal <- zf_raw |>
+  dplyr::filter(Exclude == "no") |>
+  dplyr::mutate(
+    n_total    = as.integer(N_total),
+    n_dead     = as.integer(rowSums(
+      dplyr::across(dplyr::all_of(mort_cols), as.numeric), na.rm = TRUE)),
+    n_surv     = pmax(n_total - n_dead, 0L),
+    assay_temp = as.numeric(Temperature_assay),
+    duration_h = as.numeric(Duration_exposure_hours),
+    life_stage = factor(Life_stage,
+                        levels = c("young_embryos", "old_embryos", "larvae")),
+    Date_experiment = as.character(Date_experiment)
+  ) |>
+  dplyr::filter(is.finite(duration_h), duration_h > 0,
+                is.finite(assay_temp), n_total > 0) |>
+  dplyr::select(assay_temp, duration_h, n_total, n_surv, n_dead,
+                life_stage, Date_experiment) |>
+  as.data.frame()
+
+## 4. Snow gum leaf — PSII functional impairment (continuous proportion) -----
+# Response is the ratio of post- to pre-heat Fv/Fm (a proportion in [0, 1]).
+snowgum_psii <- read_csv(ext("data_function_PSII_TDT_snowgum.csv"),
+                         show_col_types = FALSE) |>
+  dplyr::mutate(fvfm_prop = final_fvfm / initial_fvfm) |>
+  dplyr::select(Temp, Time, initial_fvfm, final_fvfm, fvfm_prop,
+                Unique_ID, G_Room, Day) |>
+  as.data.frame()
+
+## 5. Acacia seed — lethal TDT (counts) --------------------------------------
+# Already model-ready: respiring-seed counts out of 5 per temperature x duration.
+acacia_seeds <- read_csv(ext("data_lethal_TDT_acacia_seeds.csv"),
+                         show_col_types = FALSE) |>
+  as.data.frame()
+
+usethis::use_data(shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
+                  snowgum_psii, acacia_seeds, overwrite = TRUE)
