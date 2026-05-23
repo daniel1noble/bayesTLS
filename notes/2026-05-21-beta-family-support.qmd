@@ -73,9 +73,8 @@ enters `R/`.
 
 ```{r leaf-zeros}
 suppressMessages(library(dplyr))
-leaf <- readr::read_csv(here::here("data", "data_function_PSII_TDT_snowgum.csv"),
-                        show_col_types = FALSE)
-p <- leaf$final_fvfm / leaf$initial_fvfm
+data("snowgum_psii", package = "bayesTLS")   # bundled dataset (fvfm_prop precomputed)
+p <- snowgum_psii$fvfm_prop
 tibble::tibble(
   n              = sum(!is.na(p)),
   exact_zero     = sum(p <= 0, na.rm = TRUE),

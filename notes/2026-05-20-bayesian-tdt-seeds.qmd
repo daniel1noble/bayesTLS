@@ -14,10 +14,8 @@ We now apply the full workflow described above — `standardize_data()` → `fit
 #| label: seed-load
 #| echo: true
 
-seed_raw <- readr::read_csv(
-  here::here("data", "data_lethal_TDT_acacia_seeds.csv"),
-  show_col_types = FALSE
-)
+data("acacia_seeds", package = "bayesTLS")   # bundled dataset
+seed_raw <- acacia_seeds
 
 seed_std <- standardize_data(
   data           = seed_raw,
@@ -26,7 +24,7 @@ seed_std <- standardize_data(
   n_total        = "Seeds_Total",
   n_surv         = "Seeds_Resp",
   random_effects = NULL,
-  duration_unit  = "hours"
+  duration_unit  = "minutes"
 )
 ```
 
