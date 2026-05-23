@@ -5,6 +5,7 @@
 # Session Data files
 .RData
 .RDataTmp
+*.rds
 
 # User-specific files
 .Ruserdata
@@ -103,3 +104,8 @@ scripts/smoke-test-phase1d.R
 # testthat-built fixture (cached small brms fit; auto-rebuilds on first run)
 tests/testthat/fixtures/sim_fit_small.rds
 Rplots.pdf
+output/models/fit_seed_lethal_4pl.rds
+output/models/fit_seed_lethal_4pl.rds
+output/models/fit_seed_lethal_4pl.rds
+output/models/fit_seed_lethal_4pl.rds
+output/models/fit_seed_lethal_4pl.rds
