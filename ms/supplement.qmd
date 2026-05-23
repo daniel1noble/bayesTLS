@@ -143,7 +143,7 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 # **Introduction**
 
-This supplement walks through the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript using the **`bayesTLS`** R package, which ships with this project. It provides functions to fit the 4PL, extract the classical TLS quantities ($z$, $CT_{max_{1hr}}$, $T_{crit}$) with full posterior uncertainty, and use them to predict heat-injury accumulation and survival fraction under arbitrary temperature time-series, optionally with a Sharpe-Schoolfield repair kernel.
+This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript using the **`bayesTLS`** R package included with this project. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty, and predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel.
 
 Install once from GitHub, then load:
 
@@ -165,11 +165,11 @@ The functions chain together as a single pipeline:
 
 1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …).
 2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation.
-3. **Extract** $z$, $CT_{max_{1hr}}$, and $T_{crit}$ — all with full posterior uncertainty.
+3. **Extract** $z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$, all with posterior uncertainty.
 4. **Predict** survival and heat-injury accumulation under fluctuating field temperature traces, with optional repair.
 5. **Plot** each step with shared theming so figures across the workflow read consistently.
 
-Every exported function is documented with roxygen2 (`?fit_4pl`, etc.) and the package ships with `testthat` tests — fast unit tests plus a gated set of `brms`-fitting integration tests that assert recovery of known simulation truths. `R CMD check` runs cleanly. The remainder of the supplement first walks the pipeline through a controlled simulation where the truth is known (§ A Tutorial with Simulations), then applies the same machinery end-to-end to a real lethal-TDT dataset on brown shrimp (§ Case Study 1: Shrimp data).
+Every exported function is documented with roxygen2 (`?fit_4pl`, etc.), and the package includes `testthat` unit tests plus gated `brms` integration tests for recovery of known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to brown shrimp, zebrafish, snow gum leaf PSII, and mountain hickory seed datasets.
 
 ## *What each function does* {#sec-function-tour}
 
@@ -222,7 +222,7 @@ tinytable::tt(tdt_function_tour, escape = TRUE)
 
 # **A Tutorial with Simulations**
 
-This section is a guided tutorial using simulated data. We show, step by step, how the Bayesian hierarchical 4PL — under both binomial sampling and the more realistic beta-binomial (overdispersed) case – can recover thermal sensitivity ($z$) and $CT_{max_{1hr}}$ from the single joint model, yet provide substantial downstream benefits in terms of propagating uncertainty and giving more flexibility. We then complement the simulation with a few case studies which walk through real data that is presented within the main manuscript in other sections.
+This tutorial uses simulated data to show how the Bayesian hierarchical 4PL recovers thermal sensitivity ($z$) and $CT_{max_{1hr}}$ in both binomial and beta-binomial (overdispersed) settings. The joint model propagates uncertainty through downstream quantities and accommodates extensions that are awkward in a two-stage analysis. The subsequent case studies apply the same workflow to data presented in the main manuscript.
 
 ### *Simulating Data*
 #### Step 1 — Setting up parameters {#sec-sim-step1}
@@ -243,9 +243,9 @@ true_params <- list(
 )
 ```
 
-The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$°C — the temperature change that shifts LT50 by a factor of 10. From the same parameters we can also compute the simulation truth for the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the critical thermal limit at 1 hour $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ — both approaches below will be checked against these known values.
+The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess recovery below.
 
-Recall that we can calculate $\alpha\$, $z$ and $CT_{max_{1hr}}$ from the true parameters using the equations in the main manuscript. We'll do that now so we have a comparator for later.
+We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating parameters to provide reference values for the fitted models.
 
 ```{r sim-truth}
 #| label: sim-truth
@@ -269,7 +269,7 @@ true_T_crit <- true_CTmax - 2.5 * true_z
 
 #### Step 2 — Simulated study design {#sec-sim-step2}
 
-We mimic a textbook TDT experiment: a grid of five assay temperatures crossed with six log-spaced exposure durations, repeated 30 times per cell, with 30 individuals tested per replicate. That gives 900 trials and 27,000 individuals — large enough to recover the parameters with negligible uncertainty, but small enough to fit in a few minutes. Of course, in practice we will not have this much data as will be seen in the case studies, but simulations are a good starting point to understand the models being fit and the conversions. 
+We mimic a well-replicated TDT experiment: five assay temperatures crossed with six log-spaced exposure durations, with 30 replicates of 30 individuals per cell. The resulting 900 trials and 27,000 individuals make parameter recovery clear; the case studies below illustrate less information-rich designs.
 
 ```{r sim-design}
 #| label: sim-design
@@ -339,7 +339,7 @@ Notice the curves shift left as temperature rises: hotter temperatures kill fast
 
 #### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
 
-Real survival counts have at least two flavours of noise. **Binomial** sampling is the textbook case: each replicate's survival count is a draw from $\text{Binomial}(n, p)$ with $p$ from the 4PL surface. **Beta-binomial** sampling adds *overdispersion* — replicate-to-replicate variability in $p$ that the binomial cannot capture, e.g., from cohort effects or unmodelled heterogeneity. Real TDT data almost always show overdispersion so in many cases the beta binomial will be a better fit.
+Survival counts may exhibit two forms of variation. Under **binomial** sampling, each replicate's survival count is drawn from $\text{Binomial}(n, p)$, where $p$ is given by the 4PL surface. **Beta-binomial** sampling adds *overdispersion*: replicate-to-replicate variation in $p$, for example from cohort effects or unmodelled heterogeneity. When TDT data show this extra variation, the beta-binomial likelihood is more appropriate.
 
 ```{r sim-data}
 #| label: sim-data
@@ -493,15 +493,15 @@ ggplot2::ggplot(stage1_combined,
 Stage-2 OLS regression of $\log_{10}\text{LT50}$ on assay temperature, fit separately to the binomial and beta-binomial simulated datasets. Points are the Stage-1 per-temperature LT50 estimates; solid coloured lines are the OLS fits; the dashed grey line is the simulation truth. The slope of each line equals $\beta_1$, from which $z = -1/\beta_1$. The horizontal dotted line marks $\log_{10} 60$ (1 hour); the vertical dotted line drops from where the truth crosses 1 hour straight down to the temperature axis, marking $CT_{max_{1hr}}$ visually.
 :::
 
-This is the entire two-stage workflow. The point estimates that come out — $z$ and $CT_{max_{1hr}}$ — are what the field reports. We carry them forward (`ts_bin` and `ts_bb`) for the side-by-side comparison once we have the joint Bayesian results. 
+This completes the two-stage workflow. We carry its point estimates of $z$ and $CT_{max_{1hr}}$ forward (`ts_bin` and `ts_bb`) for comparison with the joint Bayesian results.
 
 ::: {.callout-important}
-Two-stage steps often ignore uncertainty in estimates in both fitting and error propagation. Uncertainty in estimates can be propagated using the SE's and the delta method, but only at each individual stage.
+Classical two-stage analyses often treat Stage-1 LT50 estimates as known when fitting Stage 2. Delta-method or bootstrap procedures can propagate uncertainty, but they require an additional step and must account for uncertainty from both stages.
 :::
 
 ### *A joint Bayesian 4PL* {#sec-joint}
 
-Instead of fitting a separate logistic at each assay temperature and then regressing the LT50s, the joint fit estimates every parameter — $\ell$, $u$, $k$, $\beta_0$ and $\beta_1$ — in a single hierarchical model on the raw counts. We now use the same simulated data to derive the $z$ and $CT_{max_{1hr}}$ from the posterior, in one model rather than two.
+Instead of fitting separate logistic curves and then regressing their LT50 estimates, the joint fit estimates $\ell$, $u$, $k$, $\beta_0$, and $\beta_1$ simultaneously from the raw counts. We use the same simulated data to derive $z$ and $CT_{max_{1hr}}$ directly from this posterior.
 
 #### Specifying the 4PL in `brms` {#sec-joint-spec}
 
@@ -584,7 +584,7 @@ fit_bin <- wf_bin$fit
 fit_bb  <- wf_bb$fit
 ```
 
-We can also get an idea of how much variation our model explains that considers all sources of relevant variation.
+We also summarise the proportion of outcome variation explained by each fitted model using Bayesian $R^2$.
 
 ```{r, r2_bayes}
 #| label: r2_bayes
@@ -598,7 +598,7 @@ brms::bayes_R2(fit_bb)
 
 #### Checking parameter recovery {#sec-joint-recovery}
 
-We can now check how well our fitted model recovered the true parameters that generated the data. The most direct check is to compare posterior medians (with 95% credible intervals) to the known truth (@tbl-recovery). We have big sample sizes here so our values should be pretty close to our true values.
+We assess recovery by comparing posterior medians and 95% credible intervals with the known generating values (@tbl-recovery). Given the large simulated sample, the posterior should concentrate near those values.
 
 ```{r recovery-table}
 #| label: tbl-recovery
@@ -676,24 +676,24 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 ### *Deriving $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the posterior* {#sec-joint-derive}
 
-The whole point of fitting the joint Bayesian 4PL is that the classical TLS quantities fall out as transformations of the posterior we just fit — no second regression, no bootstrap. `extract_tdt()` always returns the first two and, opt-in via `lethal = TRUE`, also returns the third:
+The classical TLS quantities are transformations of the fitted joint posterior. `extract_tdt()` always returns the first two quantities below and returns the third when `lethal = TRUE`:
 
 - **$z$** — thermal sensitivity, derived by a per-draw log-linear regression of $\log_{10}\text{LT}_{\text{threshold}}$ on temperature (Equation 7 of the manuscript).
-- **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 hour exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
-
-The threshold is set by the `target_surv` argument. The default `"relative"` evaluates at $(\text{low} + \text{up})/2$ per draw, which reduces to the classical absolute 50 % survival when the asymptotes are anchored at 0 and 1 but is robust to sub-unit upper asymptotes (e.g. intrinsic background mortality unrelated to heat stress; see @sec-zebrafish-relative-ltx). Passing `target_surv = "absolute"` (or any numeric in $(0, 1)$) recovers the classical absolute threshold. The simulation in this section uses asymptotes anchored near 0 and 1, so the two definitions coincide here and the numbers below are unaffected by the choice.
+- **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 h of exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
 - **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
 
 $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
 $$ {#eq-tcrit}
 
-Different $r^*$ values give different $T_{crit}$ thresholds, and the literature does not converge on a single value. Empirical breakpoint analyses across taxa as different as *Drosophila suzukii* and *Lemna gibba* fall in the range $r^* \in [0.1, 1]$ % HI per hour, corresponding to "$\sim 4$ days to 1000 hours of continuous exposure to reach $LT_{50}$" [@jorgensen_unifying_2021; @arnold_thermal_2025; @faber2026]. Rather than commit to one $r^*$, we treat it as an unknown with a uniform prior on $\log_{10} r^*$ over that range and integrate; the posterior of $T_{crit}$ then carries both parameter uncertainty (in $CT_{max,1hr}$ and $z$) and operational uncertainty (in the choice of $r^*$). The median of that pooled posterior sits at $CT_{max,1hr} - 2.5 \cdot z$, which corresponds to $r^* \approx 0.3$ % HI per hour (the geometric mean of the rate range).
+The threshold is set by `target_surv`. The default `"relative"` evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are anchored at 0 and 1 but accommodates sub-unit upper asymptotes (for example, background mortality unrelated to heat stress; see @sec-zebrafish-relative-ltx). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
+
+Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value. Empirical breakpoint analyses across taxa including *Drosophila suzukii* and *Lemna gibba* place $r^*$ in the range $[0.1, 1]$ % HI per hour, corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$ [@jorgensen_unifying_2021; @arnold_thermal_2025; @faber2026]. We therefore integrate over a uniform prior on $\log_{10} r^*$ in that range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
 ::: {.callout-warning}
 ## $T_{crit}$ is meaningful only for lethal-endpoint data
 
-The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the slope of *damage accumulation* on temperature — strictly a property of lethal-endpoint dose-response data (proportion survival, knock-out counts where the endpoint is irreversible). For **sublethal** endpoints — knockdown time, photosystem-II decline, performance drop — the fitted $z$ instead measures the slope of *performance reduction* with temperature, which is typically far steeper than its damage-accumulation analogue. Plugging a sublethal $z$ into Equation @eq-tcrit pushes $T_{crit}$ implausibly low (the supplement's sublethal shrimp example demonstrates this: a sublethal $z \approx 1$ °C yields a $T_{crit}$ that would predict lethal exposures within ~2 hours at temperatures well within the organism's ecological range). Field practice treats $T_{crit}$ as the breakpoint where the thermal-performance curve and the thermal-death-time curve intersect [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026], which requires *both* lethal and sublethal data — not just one.
+The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate only for lethal-endpoint dose-response data (or irreversible knock-out endpoints). For **sublethal** endpoints such as knockdown time or photosystem-II decline, fitted $z$ instead describes performance loss. Substituting that value into Equation @eq-tcrit can shift $T_{crit}$ substantially and even reverse biological ordering outside the observed assay window. In the shrimp example below, the smaller sublethal $z$ produces a $T_{crit}$ about 3.5 °C higher than the lethal estimate, despite similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
 
 `extract_tdt()` reflects this by making $T_{crit}$ **opt-in**: the default `lethal = FALSE` returns only $z$ and $CT_{max_{1hr}}$, and users with lethal-endpoint data set `lethal = TRUE` to additionally derive $T_{crit}$. When `lethal = TRUE`, a one-line console message reiterates the lethal-only validity of the quantity.
 :::
@@ -812,10 +812,10 @@ ggplot2::ggplot(post_long, ggplot2::aes(value, fill = model)) +
   ggplot2::theme_classic()
 ```
 
-Posterior densities of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the binomial (blue) and beta-binomial (orange) joint fits. Vertical dashed lines mark the simulation truth. All three posteriors concentrate around their respective truths — illustrating that one fit, one library call (`extract_tdt()`), produces every classical TLS quantity with calibrated uncertainty and no extra regression step.
+Posterior densities of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the binomial (blue) and beta-binomial (orange) joint fits. Vertical dashed lines mark the simulation truth. All three posteriors concentrate around their respective truths, illustrating that a single call to `extract_tdt()` produces each classical TLS quantity with posterior uncertainty and no separate Stage-2 regression.
 :::
 
-All three quantities recover their simulation truth in both fits (@tbl-tls-recovery, @fig-tls-recovery), with credible intervals reflecting joint uncertainty in all 4PL parameters. The key practical advantage of the joint approach over the two-step pipeline: every classical TLS quantity is one library call away from the fit we already have, and every quantity inherits the same calibrated uncertainty.
+Both fits recover all three simulation truths (@tbl-tls-recovery, @fig-tls-recovery), with credible intervals reflecting joint uncertainty in the 4PL parameters. In the joint approach, every classical TLS quantity is derived from the same fitted posterior.
 
 Posterior summary statistics — mean, SD, median, and 95% credible interval — are also readily available from the `$draws` slot of `extract_tdt()`'s output:
 
@@ -864,14 +864,14 @@ uncert_summary |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-In short, both $z$ and $CT_{max_{1hr}}$ are estimated with high precision and their credible intervals come straight from the joint posterior. If we fit this model using frequentist approaches we could do the same and use the delta-method, or bootstrapping to get uncertainty. 
+Both $z$ and $CT_{max_{1hr}}$ are estimated precisely, and their credible intervals come directly from the joint posterior. A frequentist joint fit could similarly quantify transformation uncertainty using the delta method or a bootstrap.
 
-Under the binomial likelihood, the standard error (or SD of posterior) for $z$ is `r sd_z_bin` °C with a 95% credible interval `r ci_z_bin` °C wide; $CT_{max_{1hr}}$ has SD `r sd_ct_bin` °C and a 95% credible interval width of `r ci_ct_bin` °C. 
+Under the binomial likelihood, the posterior SD for $z$ is `r sd_z_bin` °C and its 95% credible interval is `r ci_z_bin` °C wide; $CT_{max_{1hr}}$ has SD `r sd_ct_bin` °C and interval width `r ci_ct_bin` °C.
 
-The beta-binomial fit is slightly wider on both quantities (SD on $z$: `r sd_z_bb` °C; on $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ has absorbed the extra-binomial variance and that uncertainty propagates honestly into the derived quantities — none of which falls out of the two-stage pipeline without an additional bootstrap or delta-method step. 
+The beta-binomial fit is slightly wider for both quantities (SD for $z$: `r sd_z_bb` °C; for $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ captures extra-binomial variation and propagates it into the derived quantities. A two-stage pipeline requires an additional bootstrap or delta-method calculation to achieve comparable propagation.
 
 ::: {.callout-important}
-It is always important to evaluate whether a binomial and a beta-binomial model better fits real data. The extra dispersion, typical of real biological data, should be estimated when it's present as it has important consequences for inferences.
+For real data, compare binomial and beta-binomial fits rather than assuming either likelihood is adequate. When extra dispersion is present, estimating it can materially affect uncertainty and inference.
 :::
 
 ### *Comparing the two pipelines* {#sec-compare}
@@ -907,11 +907,11 @@ compare_table |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-All four estimators land on essentially the same point estimates for $z$ and $CT_{max_{1hr}}$, though we notice the two stage is biased upwards slightly, and all sit close to the simulation truth. The joint Bayesian 4PL gives the same answer the classical pipeline gives — it is *not* in disagreement with the field's existing point estimates, it reproduces them.
+All four estimators give similar point estimates for $z$ and $CT_{max_{1hr}}$, close to the simulation truth. Under this simple generating scenario, the joint Bayesian 4PL reproduces the classical pipeline's central estimates while retaining a coherent posterior for downstream inference.
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
-The default `fit_4pl()` already puts a `temp_c` slope on $\ell$, $u$ and $k$, so any temperature effect on the shape parameters is fit alongside the linear midpoint. To validate that `extract_tdt()` returns sensible $z$, $CT_{max_{1hr}}$ and $\log_{10}\text{LT50}(T)$ posteriors when the truth violates the constant-shape assumption, we re-simulate beta-binomial data on the same factorial design as @sec-sim-step2, but now $u$ declines steeply with $T$ and $k$ rises steeply with $T$. The fit is then exactly the same `fit_4pl()` call as before — no special formula, no special priors — and the analysis afterwards is exactly the same `extract_tdt()` call.
+The default `fit_4pl()` places a `temp_c` slope on $\ell$, $u$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. To test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with $u$ declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `extract_tdt()` calls used above, without a specialised formula or priors.
 
 ```{r sim-data-ext}
 #| label: sim-data-ext
@@ -965,7 +965,7 @@ sim_bb_ext <- design |>
   )
 ```
 
-Under this truth the lower asymptote stays flat at $\ell = 0.05$, the upper asymptote $u$ falls from `r round(0.51 + 0.49 * plogis(true_params_ext$u_raw_0 + true_params_ext$u_raw_T * (30 - true_params_ext$T_bar)), 2)` at $T = 30$ to `r round(0.51 + 0.49 * plogis(true_params_ext$u_raw_0 + true_params_ext$u_raw_T * (38 - true_params_ext$T_bar)), 2)` at $T = 38$, and the steepness $k$ rises from `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (30 - true_params_ext$T_bar)), 1)` to `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (38 - true_params_ext$T_bar)), 1)` across the same range. The resulting dose-response curves are visibly different in shape at the two extremes (@fig-true-surface-ext).
+Here the lower asymptote remains at $\ell = 0.05$, while $u$ falls from `r round(0.51 + 0.49 * plogis(true_params_ext$u_raw_0 + true_params_ext$u_raw_T * (30 - true_params_ext$T_bar)), 2)` at $T = 30$ to `r round(0.51 + 0.49 * plogis(true_params_ext$u_raw_0 + true_params_ext$u_raw_T * (38 - true_params_ext$T_bar)), 2)` at $T = 38$, and $k$ rises from `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (30 - true_params_ext$T_bar)), 1)` to `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (38 - true_params_ext$T_bar)), 1)`. The extreme-temperature curves therefore differ in shape, not merely position (@fig-true-surface-ext).
 
 ::: {#fig-true-surface-ext}
 
@@ -1011,7 +1011,7 @@ ggplot2::ggplot() +
 True 4PL dose-response surface (solid lines) for the extended simulation, where $k$ rises and $u$ falls with assay temperature, overlaid on the simulated beta-binomial counts (points). Note how the curves at $T = 30$ and $T = 38$ have very different upper asymptotes and steepness — not just a horizontal shift along the time axis.
 :::
 
-Before fitting we can compute, analytically, what the truth implies for $\log_{10}\text{LT50}(T)$, the local thermal sensitivity $z(T)$ at each assay temperature (defined as $-1$ divided by the local slope of $\log_{10}\text{LT50}$ on $T$), and $CT_{max_{1hr}}$ (the $T$ at which $\log_{10}\text{LT50}$ crosses $\log_{10} 60$). These are the targets we will ask `extract_tdt()` to recover.
+Before fitting, we compute the analytical targets: $\log_{10}\text{LT50}(T)$, local thermal sensitivity $z(T)$ (negative reciprocal of the local slope of $\log_{10}\text{LT50}$ on $T$), and $CT_{max_{1hr}}$ (the temperature at which $\log_{10}\text{LT50}$ crosses $\log_{10} 60$).
 
 ```{r truth-ext-derived}
 #| label: truth-ext-derived
@@ -1073,7 +1073,7 @@ wf_ext <- fit_4pl(std_ext,
                   file_refit = "never")     # see fit-4pl-tutorial note above
 ```
 
-The four 4PL sub-parameters on the natural (biological) scale at each assay temperature are recovered in @tbl-ext-recovery. The lower asymptote $\ell$ stays near $0.05$ at every $T$ (consistent with the truth that $\ell$ does not vary with temperature), while $u$ falls and $k$ rises across the assay range — exactly the truth.
+@tbl-ext-recovery reports recovery of the four 4PL sub-parameters on their natural scale at each assay temperature. The posterior keeps $\ell$ near $0.05$, while recovering the decline in $u$ and increase in $k$ across the assay range.
 
 ```{r ext-recovery-table}
 #| label: tbl-ext-recovery
@@ -1162,7 +1162,7 @@ tibble::tibble(
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-Both posteriors comfortably cover their analytical truth. The single-summary $z$ is the OLS slope across the assay grid — which, on a bent curve, estimates the *average* local slope (truth = `r round(true_mean_local_z, 2)` °C, posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). $CT_{max_{1hr}}$ is recovered by direct 4PL inversion at the reference duration and lands on the truth (`r round(true_CTmax_1hr, 2)` °C → posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C); the numerical inversion does not depend on the asymmetry correction being constant in $T$.
+Both posterior intervals cover their analytical truths. On a bent curve, the single-summary $z$ from OLS across the assay grid estimates an average local sensitivity (truth = `r round(true_mean_local_z, 2)` °C; posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). Direct 4PL inversion at the reference duration also recovers $CT_{max_{1hr}}$ (truth `r round(true_CTmax_1hr, 2)` °C; posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C), without assuming a constant asymmetry correction in $T$.
 
 The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both quantities are built from; it lives in `et_ext$lt50_curve` (the output of `derive_tdt_curve()`) and can be plotted directly (@fig-lt50-curve-ext).
 
@@ -1268,15 +1268,15 @@ ggplot2::ggplot(local_z_summary,
 Local thermal sensitivity $z(T)$ recovered from the per-draw $\log_{10}\text{LT50}(T)$ curve (blue median + 95% CrI), with the analytical truth overlaid (dashed black). Where the constant-shape simple-case fit would give the same $z$ at every assay temperature, here local $z$ varies with $T$ in lock-step with the bent $\log_{10}\text{LT50}(T)$ curve.
 :::
 
-The *same* `fit_4pl()` and `extract_tdt()` calls recover the bent $\log_{10}\text{LT50}(T)$ curve, the average $z$ across the assay grid, and the per-draw $CT_{max_{1hr}}$ without modification. When the truth is constant-shape (as in @sec-joint-derive) the same fit returns near-zero slopes on $u$, $\ell$ and $k$, the bent-curve calculation collapses to the closed-form one.
+The same `fit_4pl()` and `extract_tdt()` calls recover the bent $\log_{10}\text{LT50}(T)$ curve, average $z$ across the assay grid, and per-draw $CT_{max_{1hr}}$. Under the constant-shape truth in @sec-joint-derive, near-zero slopes on $u$, $\ell$, and $k$ reduce this calculation to the closed-form case.
 
 ### Heat injury accumulation and survival under a fluctuating trace
 
-A particularly powerful aspect of TLS models is their ability to translate dynamic temperature time-series from nature and predict how such temperatures lead to heat injury (HI) accumulation towards a threshold (e.g., $LT_{50}$) [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint Bayesian 4PL fit gives us not just point estimates of $z$ and $CT_{max_{1hr}}$ but their full joint posterior, which we can push through the HI integral to obtain a posterior distribution over the predicted HI trajectory. We can also use the *full* 4PL surface to predict the cumulative survival fraction $S_{\text{pred}}(t)$ across the trajectory (Equation 9 of the manuscript). The library function `predict_heat_injury()` does both calculations in a single call and returns both trajectories with full posterior uncertainty.
+TLS models can translate dynamic field temperatures into predicted heat-injury (HI) accumulation toward a threshold such as $LT_{50}$ [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint 4PL posterior propagates uncertainty in $z$ and $CT_{max_{1hr}}$ through the HI integral and uses the fitted surface to predict survival fraction $S_{\text{pred}}(t)$ along the same trajectory (Equation 9 of the manuscript). `predict_heat_injury()` returns both trajectories in one call.
 
 #### A simulated temperature profile across 5 days
 
-To mimic conditions a moderately heat-tolerant ectotherm might experience, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12 °C overnight to a midday peak of 24 °C. The critical temperature $T_c$ — below which damage is repaired as fast as it accrues and so there is no net damage increase [@orsted_finding_2022; @jorgensen_unifying_2021] — is set to 20 °C. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C and $z \approx `r round(true_z, 1)`$°C, so the daily peak at 24 °C remains 8 °C below the 1-hour critical limit — moderate, sub-lethal stress that builds cumulatively.
+To mimic conditions for a moderately heat-tolerant ectotherm, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12 °C overnight to a midday peak of 24 °C. We set the net-accumulation threshold $T_c$ to 20 °C, below which HI does not increase [@orsted_finding_2022; @jorgensen_unifying_2021]. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$ °C and $z \approx `r round(true_z, 1)`$ °C, so the daily peak remains below the 1-hour critical limit and generates gradual sublethal accumulation.
 
 ```{r hi-trace}
 #| label: hi-trace
@@ -1370,7 +1370,7 @@ By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_media
 
 #### Why are the credible bands so wide?
 
-Both posterior bands look generous relative to the precision suggested by @tbl-tls-recovery on the underlying $z$ and $CT_{max_{1hr}}$. That is not a bug — it is the exponential rate-multiplier $10^{(T - CT_{max,1hr})/z}$ doing its job. A 1 °C shift in $CT_{max_{1hr}}$ multiplies the per-hour HI rate by $10^{1/z}$, which for $z \approx 2.6$ °C is a ~2.4× change; a 0.5 °C shift in $z$ at the same peak temperature shifts the rate by a comparable factor. Over a 5-day integral those multiplicative differences compound, so even tight parameter posteriors translate into visibly wide HI bands. The classical two-stage pipeline conceals this by treating the point estimates of $z$ and $CT_{max_{1hr}}$ as known when it computes HI — the joint Bayesian framework instead propagates that uncertainty honestly. The width of the band is therefore a faithful report of how much you should *not* over-interpret a point prediction, not a sign that the fit is too uncertain to be useful.
+The posterior bands are wide relative to the precision in @tbl-tls-recovery because the rate multiplier, $10^{(T - CT_{max,1hr})/z}$, is exponential. A 1 °C shift in $CT_{max_{1hr}}$ multiplies per-hour HI by $10^{1/z}$, which is approximately `r round(10^(1 / true_z), 2)`-fold for the simulated $z \approx `r round(true_z, 1)`$ °C. Across a 5-day integral, such differences accumulate. A two-stage projection based only on point estimates hides this uncertainty; the joint posterior makes it visible.
 
 ### Validation: recovering known planted doses {#sec-hi-validation}
 
@@ -2584,9 +2584,9 @@ shrimp_hi_table <- dplyr::bind_rows(
                                                      Repair = "None"),
   final_row(shrimp_hi_multi_rep)    |> dplyr::mutate(Scenario = "Multi spike",
                                                      Repair = "Sharpe-Schoolfield"),
-  final_row(shrimp_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+  final_row(shrimp_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (4 days)",
                                                      Repair = "None"),
-  final_row(shrimp_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+  final_row(shrimp_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (4 days)",
                                                      Repair = "Sharpe-Schoolfield")
 ) |>
   dplyr::select(Scenario, Repair, dplyr::everything())
@@ -2941,13 +2941,13 @@ The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}
 
 ### A caution on cross-endpoint comparison of $T_{crit}$ {#sec-shrimp-tcrit-endpoint-caveat}
 
-If $T_{crit}$ is derived from both the lethal and the sublethal fit on this dataset, the sublethal value sits ~3.5 °C above the lethal one and their 95 % credible intervals do not overlap. This is *not* a biological signal — loss of response to touch precedes death — but a mechanical consequence of the rate-multiplier formula $T_{crit} = CT_{max_{1hr}} + z \cdot \log_{10}(r^*/100)$, which inherits a 2.5× sensitivity to $z$ around the centre of the integrated $r^*$ range. $CT_{max_{1hr}}$ is similar across endpoints (~31.4–31.6 °C), but $z$ for the sublethal fit ($\approx 1.1$ °C) is less than half the lethal value ($\approx 2.6$ °C); the resulting $T_{crit}$ gap of $\approx 2.5 \times (2.6 - 1.1)$ follows entirely from that. The lethal and sublethal TDT lines therefore cross near $CT_{max_{1hr}}$ and diverge sharply outside the assay window — the steeper sublethal line, extrapolated, predicts times to knockdown longer than times to death, which is biologically impossible. The rate-multiplier $T_{crit}$ is best read as an **endpoint-conditional operational summary** of where the fitted TDT line crosses a low-rate floor, not as a universal physiological threshold [@faber2026; @jorgensen_unifying_2021], and lethal and sublethal $T_{crit}$ should not be compared directly.
+If Equation @eq-tcrit is nevertheless applied to both shrimp endpoints, the sublethal value lies ~3.5 °C above the lethal value and their 95% credible intervals do not overlap. This difference is not a biological threshold shift: loss of response to touch precedes death. Rather, $CT_{max_{1hr}}$ is similar between endpoints (~31.4–31.6 °C), while sublethal $z$ ($\approx 1.1$ °C) is less than half lethal $z$ ($\approx 2.6$ °C), yielding a gap of approximately $2.5 \times (2.6 - 1.1)$ °C in the derived $T_{crit}$. Outside the assay window, this extrapolation makes the sublethal TDT line predict knockdown later than death, which is biologically impossible. Thus, rate-multiplier $T_{crit}$ is an endpoint-conditional operational summary, not a universal physiological threshold [@faber2026; @jorgensen_unifying_2021].
 
 
 
 # **Case Study 2: Zebrafish lethal-TDT across life stages** {#sec-zebrafish}
 
-We now apply the same TLS / TDT workflow to a lethal-TDT dataset on zebrafish (*Danio rerio*) collected across three early life stages — `young_embryos`, `old_embryos`, and `larvae`. Each row records mortality counts across days of post-exposure observation; we collapse those into a single `n_dead` per trial and treat them as proportion-survival data, just like the shrimp panel. The new wrinkle is the **grouping factor** `life_stage`: the same machinery from Case Study 1 can be applied either *separately to each stage* (three independent fits, simple to reason about) or *jointly* (one model with `life_stage` as a covariate on every 4PL sub-parameter, which pools information across stages and lets us read off life-stage contrasts directly from the joint posterior). We work through both, then compare.
+We apply the same TLS/TDT workflow to lethal-TDT data from zebrafish (*Danio rerio*) at three early life stages: `young_embryos`, `old_embryos`, and `larvae`. Mortality observations across post-exposure days are collapsed to a single `n_dead` count per trial and analysed as proportion-survival data. We fit both three independent life-stage models and one joint model in which `life_stage` affects every 4PL sub-parameter, allowing direct posterior contrasts between stages.
 
 ## Data preparation {#sec-zebrafish-data}
 
@@ -4235,9 +4235,9 @@ The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summ
 
 # **Case Study 3: Leaf PSII data** {#sec-leaves}
 
-We can also apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` — to photosystem II functional impairment TDT data from snow gum leaves (*Eucalyptus pauciflora* var. *pauciflora*). The data are chlorophyll fluorescence based measurements of the maximum potential quantum efficiency of photosystem II (PSII), known as *F*[V]/*F*[M], from excised leaf segments of 11 individual glasshouse-grown trees. In this experiment, *F*[V]/*F*[M] was measured prior to heat exposure and then 24 h after *F*[V]/*F*[M], such that the response variable was a proportional value of *F*[V]/*F*[M] bounded between 0 and 1.
+We apply `standardize_data()` → `fit_4pl()` → `extract_tdt()` to photosystem II (PSII) heat-response data from snow gum leaves (*Eucalyptus pauciflora* var. *pauciflora*). Chlorophyll fluorescence measurements of maximum potential quantum efficiency ($F_v/F_m$) were obtained from excised leaf segments of 11 glasshouse-grown trees before heat exposure and again after exposure. The response is retained PSII function, defined as post-exposure $F_v/F_m$ divided by its pre-exposure value and bounded between 0 and 1.
 
-The TDT trials spanned 28-48 °C and 5 min to 2 hours of exposure, with each replicate plant originating from one of two glasshouse rooms and measured over two days. Similar to Case Study 1, the two grouping factors `Day` and `G_Room` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and glasshouse room-level variation to be partitioned out of the dose-response surface.
+The trials spanned 28–48 °C and 5 min to 2 h of exposure. Replicate plants originated from two glasshouse rooms and were measured over two days; `Day` and `G_Room` therefore enter the model as random intercepts on `mid`.
 
 ## Data and standardisation {#sec-leaf-data}
 
@@ -4271,7 +4271,7 @@ temp_mean <- attr(leaf_std, "tdt_meta")$temp_mean
 
 # Aliases for the two-stage comparison and summary chunks below, which were
 # written against the hand-built frame: `fvfm_beta` is the clamped Beta response
-# (== survival), `assay_temp` == temp.
+# (represented by the library's `survival` column), `assay_temp` == temp.
 leaf_std$fvfm_beta  <- leaf_std$survival
 leaf_std$assay_temp <- leaf_std$temp
 
@@ -4286,7 +4286,7 @@ leaf_n_obs    <- sum(!is.na(leaf_raw$fvfm_prop))
 leaf_pct_zero <- round(100 * leaf_n_zero / leaf_n_obs)
 ```
 
-**Response model and a note on the zeros.** Unlike the survival and seed case studies — count data with a beta-binomial likelihood — the leaf response is a *continuous* proportion with no denominator, so we model it with a Beta likelihood (identity link, validated equivalent to the logit parameterisation in our methods note). The Beta density is undefined at exactly 0 or 1, yet `r leaf_n_zero` of `r leaf_n_obs` leaf observations (`r leaf_pct_zero`%) are exact zeros — complete PSII shutdown in heat-killed tissue — which we clamp to 0.001 for a single, uniform Beta model. This is a deliberate simplification: with this many *structural* zeros, a zero-inflated Beta — modelling the probability of complete shutdown separately from the degree of impairment among responding tissue — would be more faithful, at the cost of an extra dose-dependent component. We retain the clamped Beta for pipeline uniformity and flag the trade-off here.
+**Response model and zeros.** Unlike the count-based case studies, the leaf response is a continuous proportion with no denominator, so we use a Beta likelihood. The Beta density is undefined at exactly 0 or 1, but `r leaf_n_zero` of `r leaf_n_obs` observations (`r leaf_pct_zero`%) are zeros, indicating complete loss of measurable PSII function. We clamp these values to 0.001 to retain a single Beta model. A zero-inflated Beta model that separately estimates complete shutdown and retained function among non-zero tissues would represent these structural zeros more faithfully, at the cost of an additional dose-dependent component.
 
 ```{r leaf-summary-table}
 #| label: tbl-leaf-summary
@@ -4305,7 +4305,7 @@ tinytable::tt(leaf_summary, digits = 2, escape = TRUE)
 
 ## Classical two-stage TDT fits {#sec-leaf-twostep}
 
-Before fitting the joint 4PL, we also run the classical two-stage pipeline on the leaf PSII data. Stage 1 fits a separate logistic dose-response curve at each assay temperature on the continuous FvFm proportion in $(0, 1)$. Stage 2 regresses the resulting $\log_{10}\text{LT50}$ estimates on assay temperature. We repeat Stage 1 with two likelihoods: a quasi-binomial logistic (the proportion analogue of `family = binomial()` used for the count case studies) and a beta regression fit by maximum likelihood with an estimated precision parameter $\phi$ (analogous to the beta-binomial used for counts). $\text{LT50}$ is the duration at which the fitted logistic crosses 0.5 on the linear predictor.
+Before fitting the joint 4PL, we run the classical two-stage pipeline on retained PSII function. Stage 1 fits a logistic curve at each assay temperature to the continuous $F_v/F_m$ proportion in $(0, 1)$; Stage 2 regresses the resulting $\log_{10}\text{LT50}$ estimates on assay temperature. We compare a quasi-binomial logistic fit with maximum-likelihood beta regression having estimated precision $\phi$. Here $\text{LT50}$ denotes the duration at which retained function crosses 0.5.
 
 ```{r leaf-two-step-helpers}
 #| label: leaf-two-step-helpers
@@ -4481,7 +4481,7 @@ clip_to_stage1 <- function(df) {
 
 ```{r leaf-two-step-tdt-table}
 #| label: tbl-leaf-two-step-tdt
-#| tbl-cap: "Classical two-stage TDT quantities for snow gum leaf PSII. Point estimates are from the Stage-2 regression. The 95% CIs for $z$ and $CT_{max_{1hr}}$ both come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ is not reported because PSII impairment is a sublethal endpoint and the rate-multiplier $T_{crit}$ is only meaningful for mortality."
+#| tbl-cap: "Classical two-stage TDT quantities for snow gum leaf PSII. Point estimates are from the Stage-2 regression. The 95% CIs for $z$ and $CT_{max_{1hr}}$ both come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ is not reported because loss of PSII function is a sublethal endpoint and the rate-multiplier $T_{crit}$ is only meaningful for lethal endpoints."
 
 leaf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
   names(leaf_twostep_unc),
@@ -4504,7 +4504,7 @@ tinytable::tt(leaf_twostep_tdt_ci, escape = TRUE)
 
 ```{r leaf-two-step-tdt-line}
 #| label: fig-leaf-two-step-tdt-line
-#| fig-cap: "Classical two-stage TDT lines for snow gum leaf PSII. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). Each line/band is shown only over the temperatures with a valid Stage-1 LT50 — only 3-4 assay temperatures yield one (the cool end never reaches 50% impairment within 120 min), so the Stage-2 regression is not extrapolated beyond them. The beta Stage-1 fit allows extra-binomial dispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
+#| fig-cap: "Classical two-stage TDT lines for snow gum leaf PSII. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). Each line/band is shown only over temperatures with a valid Stage-1 LT50: only 3-4 assay temperatures reach 50% retained function within 120 min. The beta Stage-1 fit allows extra dispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
 #| fig-width: 7
 #| fig-height: 4.5
 
@@ -4629,18 +4629,18 @@ brms::mcmc_plot(
 
 ```{r leaf-parameter-table}
 #| label: tbl-leaf-parameters
-#| tbl-cap: "Posterior medians and 95% credible intervals for the leaf 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in hours at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
+#| tbl-cap: "Posterior medians and 95% credible intervals for the leaf 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of retained PSII function at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}$ threshold time in minutes at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
 
 tinytable::tt(tdt_parameter_table(wf_leaf), digits = 3, escape = TRUE)
 ```
 
-## "Survival" curves with observed overlay {#sec-leaf-survival-curves}
+## Retained PSII function curves with observed overlay {#sec-leaf-survival-curves}
 
-Here we use the same survival-type functions as before, but *survival* is instead *functional impairment* of PSII. `predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and exposure durations and returns posterior functional impairment probabilities. Overlaying the per-replicate observed proportions gives a visual check that the fitted curves track the data at every temperature.
+Here the library's `survival` interface represents retained PSII function. `predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and durations and returns posterior retained-function proportions. Overlaying observed proportions checks how closely the fitted curves track the data.
 
 ```{r leaf-survival-curves}
 #| label: fig-leaf-survival-curves
-#| fig-cap: "Posterior functional impairment curves for snow gum leaf PSII at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate functional impairment proportions."
+#| fig-cap: "Posterior curves for retained PSII function in snow gum leaves at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate retained-function proportions."
 #| fig-width: 8
 #| fig-height: 5
 
@@ -4650,7 +4650,7 @@ psc_leaf <- predict_survival_curves(
   ndraws    = 500
 )
 
-# Add survival as a variable for plotting, where "survival" = fvfm_prop
+# Add the library-facing variable for plotting: `survival` = retained function.
 leaf_std$survival <- leaf_std$fvfm_prop
 
 plot_survival_curves(psc_leaf, observed = leaf_std) +
@@ -4661,11 +4661,11 @@ plot_survival_curves(psc_leaf, observed = leaf_std) +
 
 ## TDT landscape {#sec-leaf-landscape}
 
-`derive_tdt_landscape()` evaluates the fitted 4PL on a dense (temperature, duration) grid and `plot_tdt_landscape()` renders it as a heatmap with overlaid contours at 10, 50, and 90% functional impairment This is the two-dimensional view of the dose-response surface that the TDT line summarises with one number per temperature.
+`derive_tdt_landscape()` evaluates the fitted 4PL on a dense temperature-by-duration grid, and `plot_tdt_landscape()` renders it as a heatmap with contours at 10%, 50%, and 90% retained PSII function. This surface is summarised by the TDT line below.
 
 ```{r leaf-landscape}
 #| label: fig-leaf-landscape
-#| fig-cap: "TDT landscape for snow gum PSII function: posterior median predicted functional impairment across a 120 × 120 grid of assay temperatures × durations. White contours mark 10%, 50%, and 90% functional impairment isolines. Overlaid points are raw observed proportions."
+#| fig-cap: "TDT landscape for snow gum PSII function: posterior median retained function across a 120 × 120 grid of assay temperatures × durations. White contours mark 10%, 50%, and 90% retained-function isolines. Overlaid points are observed proportions."
 #| fig-width: 8
 #| fig-height: 6
 #| cache: false
@@ -4680,7 +4680,7 @@ plot_tdt_landscape(lsp_leaf, observed = leaf_std)
 
 ## TDT line: time to the threshold vs temperature {#sec-leaf-tdt-line}
 
-The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "minutes of exposure half the PSII tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. The default threshold is $\text{mid}$ (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for the classical absolute-$t_{50}$ definition.
+The one-dimensional **TDT line** gives the predicted time to the retained-function threshold at each temperature. `derive_tdt_curve()` constructs it from the joint fit, and `plot_tdt_curve()` shows linear and $\log_{10}$ time axes side by side. The default threshold is the midpoint between the fitted asymptotes; pass `target_surv = "absolute"` for an absolute $F_v/F_m = 0.5$ threshold.
 
 ```{r leaf-tdt-line}
 #| label: leaf-tdt-line
@@ -4707,7 +4707,7 @@ plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$ {#sec-leaf-extract}
 
-`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature, derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion).
+`extract_tdt()` returns $z$ (derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the retained-function threshold is reached after 1 h, obtained by per-draw 4PL inversion).
 
 ```{r leaf-extract}
 #| label: leaf-extract
@@ -4727,7 +4727,7 @@ et_leaf <- extract_tdt(
 
 ```{r leaf-extract-table}
 #| label: tbl-leaf-extract
-#| tbl-cap: "Classical TDT summaries for brown leaf, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw)."
+#| tbl-cap: "TDT summaries for snow gum leaf PSII function, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of threshold time on temperature. $CT_{max_{1hr}}$ is the temperature at which the retained-function threshold is reached after 1 h (4PL inversion per draw)."
 
 leaf_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
@@ -4743,7 +4743,7 @@ tinytable::tt(leaf_extract, digits = 2, escape = TRUE)
 
 ```{r leaf-ctmax-plot}
 #| label: fig-leaf-ctmax
-#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. $T_{crit}$ is not shown: it is a rate-multiplier quantity defined only for lethal (damage-accumulation) endpoints, whereas PSII impairment is sublethal."
+#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. $T_{crit}$ is not shown because loss of PSII function is a sublethal endpoint."
 #| fig-width: 11
 #| fig-height: 3.5
 
@@ -4770,11 +4770,11 @@ patchwork::wrap_plots(
 
 ## Comparison between approaches {#sec-leaf-approach-compare}
 
-The classical two-stage pipeline fits a 0–1 logistic at each temperature, so its LT50 is necessarily the **absolute** $F_v/F_m = 0.5$ crossing — it cannot represent the fitted PSII plateau ($u \approx 0.78$) or target a relative midpoint. For a like-with-like comparison we therefore extract the joint 4PL at the same absolute threshold (`target_surv = "absolute"`) in this section only; the main leaf analysis (@sec-leaf-extract, @sec-leaf-tdt-line) uses the package-default relative midpoint, which corresponds to a true 50% of the healthy-to-impaired range. Note that $F_v/F_m = 0.5$ is reached only within the assayed 5–120 min window at intermediate temperatures (~39–45 °C); both lines extrapolate outside the 28–48 °C assay range.
+The classical two-stage pipeline fits a 0–1 logistic at each temperature, so its LT50 is necessarily the **absolute** $F_v/F_m = 0.5$ crossing; it cannot represent the fitted PSII plateau ($u \approx 0.78$) or target a relative midpoint. For a like-with-like comparison, this section extracts the joint 4PL at the same absolute threshold (`target_surv = "absolute"`). The main leaf analysis (@sec-leaf-extract, @sec-leaf-tdt-line) instead uses the package-default relative midpoint, representing 50% of the fitted functional range. The absolute $F_v/F_m = 0.5$ crossing occurs within the assayed 5–120 min window only at intermediate temperatures (~39–45 °C).
 
 ```{r leaf-approach-compare-table}
 #| label: tbl-leaf-approach-compare
-#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL, compared at a **common absolute threshold** ($F_v/F_m = 0.5$). The two-stage pipeline forces a 0–1 logistic per temperature and so can only target an absolute 0.5 crossing; for a like-with-like comparison the joint 4PL row is therefore extracted with `target_surv = \"absolute\"` rather than the package-default relative midpoint (the main leaf result in @tbl-leaf-extract uses the relative midpoint, which is the more meaningful 50%-of-dynamic-range impairment given the fitted plateau $u \\approx 0.78$). Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ and $CT_{max_{1hr}}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
+#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL, compared at a **common absolute threshold** ($F_v/F_m = 0.5$). The two-stage pipeline forces a 0–1 logistic per temperature and so can only target an absolute 0.5 crossing; for a like-with-like comparison the joint 4PL row is therefore extracted with `target_surv = \"absolute\"` rather than the package-default relative midpoint (the main leaf result in @tbl-leaf-extract uses the relative midpoint, representing 50% of the fitted functional range given the plateau $u \\approx 0.78$). Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only; Stage-1 LT50 uncertainty is not propagated. The 4PL row reports posterior medians with 95% credible intervals."
 
 # Compare like-with-like: the forced-0/1 two-stage can only read an absolute 0.5
 # crossing, so extract the joint 4PL at the same absolute threshold here.
@@ -4899,7 +4899,7 @@ patchwork::wrap_plots(p_leaf_cmp_lin, p_leaf_cmp_log, ncol = 2) +
 
 ## Heat injury under reference traces {#sec-leaf-hi}
 
-`predict_heat_injury()` projects the fitted dose-response surface through a temperature trace and returns cumulative heat injury (HI) and the resulting survival fraction at each time step. The damage threshold $T_c$ below which injury does not accumulate is hand-picked in this case, rather than model derived due to the sublethal nature of functional impairment. 
+For this sublethal endpoint, `predict_heat_injury()` is interpreted as projecting cumulative functional injury and retained PSII function through a temperature trace. We specify $T_c$ as an illustrative no-accumulation threshold rather than deriving $T_{crit}$, which is reserved for lethal endpoints.
 
 We illustrate the function on four reference traces built by `make_temperature_scenarios()`: a flat baseline, a single one-hour spike, three one-hour spikes, and a four-day diurnal cycle that mimics a typical summer heatwave. The single-spike trace is calibrated as an analytical sanity check — its spike temperature is set to the posterior median of $CT_{max_{1hr}}$, so by definition the trace delivers approximately one $LT_{50}$ dose by the end of the spike hour. These values are plausible leaf temperatures on sunny, still conditions.
 
@@ -4954,7 +4954,7 @@ leaf_hi_diurnal_rep <- predict_heat_injury(
 
 ```{r leaf-hi-traces}
 #| label: fig-leaf-hi-traces
-#| fig-cap: "The four reference temperature traces used for the leaf heat-injury prediction. Baseline  °C is the natural holding temperature; the 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ so each spike delivers approximately one LT50 dose. The diurnal scenario is a clustered 4-day heatwave: a cool day below $T_{crit}$ followed by three progressively hotter days. The dashed line marks the damage threshold $T_c = T_{crit}$."
+#| fig-cap: "The four reference temperature traces used for the leaf functional-injury prediction. Baseline temperature is 30 °C; 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ so each spike delivers approximately one threshold dose. The diurnal scenario is a clustered 4-day heatwave: a cool day below $T_c$ followed by three hotter days. The dashed line marks the chosen threshold $T_c = 32.5$ °C."
 #| fig-width: 7
 #| fig-height: 9
 
@@ -4963,7 +4963,7 @@ plot_temperature_scenarios(leaf_scens, T_c = leaf_T_c)
 
 ```{r leaf-hi-single-noreapair}
 #| label: fig-leaf-hi-single-norep
-#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, ~100% LT50-dose accrues by the end of the spike hour, producing ~50% mortality."
+#| fig-cap: "Cumulative functional injury (top) and predicted retained PSII function (bottom; plotted through the library's survival interface) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, approximately one threshold dose accrues by the end of the spike hour."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -4972,7 +4972,7 @@ plot_heat_injury(leaf_hi$single_spike)
 
 ```{r leaf-hi-multi-noreapair}
 #| label: fig-leaf-hi-multi-norep
-#| fig-cap: "**Multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver ~3 × LT50-dose, driving cumulative HI well past 100% and survival to near zero."
+#| fig-cap: "**Multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver approximately three threshold doses, driving cumulative functional injury above 100% and retained function toward zero."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -4988,11 +4988,11 @@ plot_heat_injury(leaf_hi$multi_spike)
 plot_heat_injury(leaf_hi_multi_rep)
 ```
 
-The diurnal scenario (@fig-leaf-hi-diurnal-norep, @fig-leaf-hi-diurnal-rep) is closer to a real coastal record. Day 1 stays below $T_{crit}$ and accrues no injury; days 2–4 each contribute an injury bout that scales with the daily peak. Without repair, cumulative HI is well past 100 % by the end of day 4 and predicted survival has dropped to ~20 %. With repair on, off-peak hours and the cool first day act as recovery phases; the final trajectory is set by the net balance between daily accrual at sub-$CT_{max_{1hr}}$ peaks and overnight/cool-day repair.
+The diurnal scenario (@fig-leaf-hi-diurnal-norep, @fig-leaf-hi-diurnal-rep) approximates a field heatwave. Day 1 remains below $T_c$ and accumulates no injury; days 2–4 each add injury as daily peaks rise. Without repair, cumulative functional injury exceeds 100% by day 4 and predicted retained function declines strongly. With repair, cool periods partly offset injury accumulated near daily peaks.
 
 ```{r leaf-hi-diurnal-noreapair}
 #| label: fig-leaf-hi-diurnal-norep
-#| fig-cap: "**4-day diurnal heatwave** trace, **no repair**. The cool first day flat-lines below $T_{crit}$; days 2–4 each accrue an injury bout scaling with the daily peak."
+#| fig-cap: "**4-day diurnal heatwave** trace, **no repair**. The cool first day remains below $T_c$; days 2–4 each accrue functional injury as daily peaks rise."
 #| fig-width: 7
 #| fig-height: 5
 
@@ -5010,7 +5010,7 @@ plot_heat_injury(leaf_hi_diurnal_rep)
 
 ```{r leaf-hi-summary}
 #| label: tbl-leaf-hi-summary
-#| tbl-cap: "Final cumulative HI and predicted survival under each scenario for brown leaf, posterior medians with 95% credible intervals."
+#| tbl-cap: "Final cumulative functional injury and predicted retained PSII function under each scenario for snow gum leaves, posterior medians with 95% credible intervals."
 
 final_row <- function(hi) {
   s <- tail(hi$summary, 1)
@@ -5018,9 +5018,9 @@ final_row <- function(hi) {
     `HI median (%)` = round(s$hi_median, 1),
     `HI lower`      = round(s$hi_lower,  1),
     `HI upper`      = round(s$hi_upper,  1),
-    `Survival median`  = round(s$surv_median, 3),
-    `Survival lower`   = round(s$surv_lower,  3),
-    `Survival upper`   = round(s$surv_upper,  3)
+    `Retained function median` = round(s$surv_median, 3),
+    `Retained function lower`  = round(s$surv_lower,  3),
+    `Retained function upper`  = round(s$surv_upper,  3)
   )
 }
 
@@ -5033,21 +5033,21 @@ leaf_hi_table <- dplyr::bind_rows(
                                                      Repair = "None"),
   final_row(leaf_hi_multi_rep)    |> dplyr::mutate(Scenario = "Multi spike",
                                                      Repair = "Sharpe-Schoolfield"),
-  final_row(leaf_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+  final_row(leaf_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (4 days)",
                                                      Repair = "None"),
-  final_row(leaf_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (7 days)",
+  final_row(leaf_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (4 days)",
                                                      Repair = "Sharpe-Schoolfield")
 ) |>
   dplyr::select(Scenario, Repair, dplyr::everything())
 
 tinytable::tt(leaf_hi_table, escape = TRUE)
 ```
-The snow gum leaf case study covers raw counts → fitted joint 4PL → classical TDT quantities with calibrated uncertainty. Every quantity inherits the posterior of the same single fit.
+The snow gum leaf case study takes continuous retained-function proportions through a fitted joint 4PL to posterior TDT summaries and illustrative functional-injury projections. Every derived quantity inherits the posterior of the same fit.
 
 
 # **Case Study 4: Seed data** {#sec-seed}
 
-We now apply the workflow — `standardize_data()` → `fit_4pl()` → `extract_tdt()` — to lethal-TDT data from imbibed seeds of mountain hickory (*Acacia penninervis* var. *penninervis*). The data are the proportion of seeds respiring following heat exposure. In this experiment, seeds were surface-sterilised, then placed on 1 % agar at 22 °C to imbibe for 24 h. Seeds were exposed to heat treatments (temperature × duration combinations) and then individual seeds were placed in 2 mL tubes containing 1.5 mL paraffin wax and 0.2 mL agar, leading 0.3 mL air volume as headspace to amplify the respiration signal:noise ratio of each ~60 mg seed. Tubes with seeds were placed in a $Q_2$ system that measured respiration through closed-system respirometry, quantifying the rate of oxygen consumption per seed as $\dot V O_2~(mL~seed^{-1}~h^{-1})$. Five replicate seeds were exposed to each heat treatment, and the proportion of respiring seeds were then calculated per treatment. As seed heat tolerance is considerably higher than animals or soft plant tissues, the assay temperatures spanned 22-80 °C and 15 min to 2 hours of exposure.
+We apply `standardize_data()` → `fit_4pl()` → `extract_tdt()` to heat-response data from imbibed seeds of mountain hickory (*Acacia penninervis* var. *penninervis*), using post-exposure respiration as a viability indicator. Seeds were surface-sterilised and imbibed on 1% agar at 22 °C for 24 h before temperature-by-duration heat treatments. Each seed was then placed in a 2 mL tube containing paraffin wax and agar, leaving 0.3 mL of headspace to increase the signal-to-noise ratio for closed-system respirometry. Oxygen consumption per seed was measured as $\dot{V}O_2$ (mL seed$^{-1}$ h$^{-1}$), and the proportion of five replicate seeds respiring was calculated for each treatment. Because seed heat tolerance is high relative to animal or soft leaf tissues, treatments spanned 22–80 °C and 15 min to 2 h.
 
 ## Data and standardisation {#sec-seed-data}
 
@@ -5088,7 +5088,7 @@ tinytable::tt(seed_summary, digits = 2, escape = TRUE)
 
 ## Fitting the joint Bayesian 4PL {#sec-seed-fit}
 
-This is a deliberately sparse design — 5 assay temperatures × 4 durations × 5 seeds per cell (20 cells). The package default puts a `temp_c` slope on all four 4PL sub-parameters (8 fixed effects), which over-fits a dataset this small. We therefore fit the **constant-shape** variant with `temp_effects = "mid"`: temperature acts on the midpoint ($\log_{10}\text{LT50}$) only, while the asymptotes and steepness are shared across temperature. This is the classical TDT assumption and the appropriate parameterisation here — it estimates only the quantity the design can support (the midpoint's temperature slope, $\beta_1 = -1/z$) and shares strength across temperatures for the curve shape. We keep the default `beta_binomial(link = "identity")` likelihood.
+This design is sparse: 5 assay temperatures × 4 durations form 20 treatment cells, each containing 5 seeds. The package default places a `temp_c` slope on all four 4PL sub-parameters (8 fixed effects), which is too flexible for this dataset. We therefore fit the **constant-shape** variant with `temp_effects = "mid"`: temperature affects only the midpoint ($\log_{10}\text{LT50}$), while asymptotes and steepness are shared across temperatures. This classical TDT parameterisation estimates the midpoint temperature slope, $\beta_1 = -1/z$, while sharing information about curve shape. We retain the default `beta_binomial(link = "identity")` likelihood.
 
 ```{r seed-fit}
 #| label: seed-fit
@@ -5214,7 +5214,7 @@ plot_tdt_curve(ltx_seed, panels = "both", colour = "#b2182b")
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-seed-extract}
 
-`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion). Passing `lethal = TRUE` additionally returns $T_{crit}$ under the rate-multiplier definition; this only makes sense when the endpoint is mortality (see @eq-tcrit), so we opt in for the seed data.
+`extract_tdt()` always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 h, obtained by per-draw 4PL inversion). Passing `lethal = TRUE` additionally returns $T_{crit}$ under the rate-multiplier definition. Here we treat absence of respiration after exposure as loss of viability and therefore opt in to this lethal-endpoint summary.
 
 ```{r seed-extract}
 #| label: seed-extract
@@ -5255,7 +5255,7 @@ seed_z_hi   <- round(et_seed$z$summary$z_upper)
 seed_ct_med <- round(et_seed$CTmax$summary$temp_median, 1)
 ```
 
-**A note on what this design can support.** The seed assay's exposure durations (15–120 min) do not bracket the LT50 at most temperatures: at 22–60 °C survival never falls below ~0.6 within 120 min (the LT50 lies beyond the longest exposure), and at 70–80 °C the seeds are largely dead by the shortest exposure, with the small per-cell sample ($n = 5$) adding non-monotone noise. Under the constant-shape model the curve shape is shared across temperatures, so $z$ and the survival surface are still estimable — and the fit is well behaved (zero divergences) where the all-four-parameter default is not — but $z$ is identified through the shared-shape assumption rather than by directly observing the LT50 at each temperature. Its credible interval is therefore wide (upper bound ~`r seed_z_hi` °C per decade), and $CT_{max_{1hr}}$ (~`r seed_ct_med` °C) is interpolated between the 60 and 70 °C assay temperatures. The estimates should be read with that design limitation in mind; a design with exposure durations chosen to bracket the LT50 at each temperature would sharpen them.
+**A note on what this design can support.** Exposure durations (15–120 min) do not bracket LT50 at most temperatures: at 22–60 °C the proportion respiring never falls below ~0.6 within 120 min, whereas at 70–80 °C most seeds have ceased respiring by the shortest exposure. With only five seeds per cell, the observations also include non-monotone sampling noise. The constant-shape model shares curve shape across temperatures, making $z$ and the response surface estimable with a well-behaved fit, but $z$ is identified through that shared-shape assumption rather than directly observed LT50 crossings at each temperature. Its credible interval is accordingly wide (upper bound ~`r seed_z_hi` °C per decade), and $CT_{max_{1hr}}$ (~`r seed_ct_med` °C) is interpolated between the 60 and 70 °C treatments. Durations that bracket LT50 at each temperature would sharpen these estimates.
 
 ```{r seed-tcrit-ctmax-plot}
 #| label: fig-seed-tcrit-ctmax
@@ -5285,7 +5285,7 @@ patchwork::wrap_plots(
 )
 ```
 
-The seed case study covers raw counts → fitted constant-shape joint 4PL → classical TDT quantities with calibrated uncertainty, and illustrates how the diagnostics and credible intervals surface the limits of an under-bracketed assay design.
+The seed case study carries respiration-count data through a constant-shape joint 4PL to posterior TDT quantities, illustrating how diagnostics and credible intervals reveal the limits of an under-bracketed assay design.
 
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
