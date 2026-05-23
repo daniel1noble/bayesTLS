@@ -212,10 +212,11 @@ plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
 
 et_leaf <- extract_tdt(
   wf_leaf,
-  t_ref         = 60,
-  TC_rate_range = c(0.1, 1),
-  ndraws        = 500,
-  lethal        = FALSE
+  t_ref           = 60,
+  time_multiplier = 1,   # leaf model time is MINUTES => CTmax at 60 min (= 1 h).
+  TC_rate_range   = c(0.1, 1),
+  ndraws          = 500,
+  lethal          = FALSE
 )
 ```
 
