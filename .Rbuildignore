@@ -19,8 +19,8 @@
 ^scripts$
 ^Rdata$
 ^fig$
-^data$
 
 # Project conventions / agent memory not relevant to the package distribution.
 ^CLAUDE\.md$
 ^CODEX_MEMORY\.md$
+^data-raw$
