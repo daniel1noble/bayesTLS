@@ -76,6 +76,50 @@ test_that("standardize_data attaches metadata with the right fields", {
   expect_s3_class(std$Date, "factor")
 })
 
+test_that("standardize_data proportion path produces a Beta-ready frame", {
+  raw <- make_raw()
+  raw$fvfm <- c(0, 0.2, 0.5, 0.95, 1, 0.3, 0.6, 0.8, 0.1, 0.4, 0.7, 0.9)
+  std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                          proportion = "fvfm")
+  meta <- attr(std, "tdt_meta")
+  expect_equal(meta$response_type, "proportion")
+  expect_equal(meta$response_var,  "survival")
+  expect_false("n_total" %in% names(std))
+  expect_false("n_surv"  %in% names(std))
+  expect_true(all(c("temp", "duration", "logd", "temp_c", "survival") %in%
+                  names(std)))
+  # Exact 0 and 1 are clamped into the open interval for the Beta likelihood.
+  expect_true(all(std$survival > 0 & std$survival < 1))
+  expect_equal(min(std$survival), 0.001)
+  expect_equal(max(std$survival), 0.999)
+})
+
+test_that("standardize_data proportion path needs no n_total and rejects mixing", {
+  raw <- make_raw()
+  raw$fvfm <- 0.5
+  # No n_total required for a proportion response.
+  expect_s3_class(
+    standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                     proportion = "fvfm"),
+    "tbl_df"
+  )
+  # Proportion combined with a count spec is rejected.
+  expect_error(
+    standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                     n_total = "n", n_surv = "alive", proportion = "fvfm"),
+    "exactly one of"
+  )
+})
+
+test_that("standardize_data count path still requires n_total", {
+  raw <- make_raw()
+  expect_error(
+    standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                     n_surv = "alive"),
+    "require `n_total`"
+  )
+})
+
 test_that("standardize_data respects an explicit temp_mean", {
   raw <- make_raw()
   std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",

@@ -27,28 +27,22 @@ leaf_raw <- readr::read_csv(
   show_col_types = FALSE
 )
 
-leaf_raw$fvfm_prop <- leaf_raw$final_fvfm / leaf_raw$initial_fvfm # Response variable 
+leaf_raw$fvfm_prop <- leaf_raw$final_fvfm / leaf_raw$initial_fvfm # Response variable
 str(leaf_raw)
-assay_temp <- as.numeric(leaf_raw$Temp)
-temp_mean <- mean(assay_temp, na.rm = TRUE)
 
-leaf_std <- leaf_raw %>% 
-  mutate(
-    # Constrain to (0,1) for beta distribution
-    fvfm_beta = case_when(
-      fvfm_prop >= 0.999 ~ 0.999,
-      fvfm_prop <= 0.001 ~ 0.001,
-      TRUE ~ fvfm_prop
-    ),
-    assay_temp = Temp,
-    temp = Temp,
-    temp_c = assay_temp - temp_mean,
-    duration = Time,
-    logd = log10(duration),
-    # Convert random effects to factors
-    Day = factor(Day),
-    G_Room = factor(G_Room)
-  )
+# Continuous-proportion (Beta) response: standardize_data clamps into (0,1) and
+# records response_type = "proportion" (no n_total denominator).
+leaf_std <- standardize_data(
+  leaf_raw,
+  temp           = "Temp",
+  duration       = "Time",
+  proportion     = "fvfm_prop",
+  random_effects = c("Day", "G_Room"),
+  duration_unit  = "minutes"
+)
+temp_mean <- attr(leaf_std, "tdt_meta")$temp_mean
+leaf_std$fvfm_beta  <- leaf_std$survival   # alias (clamped response)
+leaf_std$assay_temp <- leaf_std$temp
 
 str(leaf_std)
 
@@ -79,45 +73,17 @@ tinytable::tt(leaf_summary, digits = 2, escape = TRUE)
 #| cache: false
 
 
-formula_beta <- make_4pl_formula(
+# fit_4pl() builds the Beta (identity-link) 4PL directly from the standardised
+# proportion data and returns a complete bayes_tls workflow.
+wf_leaf <- fit_4pl(
+  leaf_std,
+  family         = brms::Beta(link = "identity"),
   random_effects = c("Day", "G_Room"),
-  lower = 0,
-  upper = 1,
-  family = brms::Beta(link = "logit"),
-  response_var = "fvfm_beta"
-)
-
-base_priors <- make_4pl_priors(
-  data = leaf_std,
-  random_effects = c("Day", "G_Room"),
-  prior_phi = NULL
-)
-
-wf_leaf_fit <- brms::brm(
-  formula = formula_beta,
-  data = leaf_std,
-  prior = base_priors,
-  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-  control = list(adapt_delta = 0.99, max_treedepth = 12),
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123, init = 0,
+  backend = "cmdstanr",
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  file_refit = "on_change",
   file    = file.path(models_dir, "fit_leaf_function_4pl")
-)
-
-wf_leaf <- structure(
-  list(
-    fit = wf_leaf_fit,
-    data = leaf_std,
-    formula = formula_beta,
-    prior = priors_beta,
-    meta = list(
-      temp_mean = temp_mean,
-      duration_unit = "minutes",
-      random_effects = c("Day", "G_Room"),
-      lower = 0,
-      upper = 1,
-      bounds = list(low_min = 0.001, low_w = 0.498, up_min = 0.501, up_w = 0.498)
-    )
-  ),
-  class = "bayes_tls"
 )
 
 # Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
@@ -149,7 +115,7 @@ brms::mcmc_plot(
   type     = "trace",
   variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
                "b_logk_Intercept",   "b_mid_Intercept",
-               "b_mid_temp_c",       "Intercept_phi")
+               "b_mid_temp_c",       "phi")
 ) +
   ggplot2::theme_classic(base_size = 11) +
   ggplot2::theme(legend.position = "bottom")

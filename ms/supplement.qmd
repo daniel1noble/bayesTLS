@@ -4237,32 +4237,43 @@ leaf_raw <- readr::read_csv(
   show_col_types = FALSE
 )
 
-leaf_raw$fvfm_prop <- leaf_raw$final_fvfm / leaf_raw$initial_fvfm # Response variable 
+leaf_raw$fvfm_prop <- leaf_raw$final_fvfm / leaf_raw$initial_fvfm # Response variable
 str(leaf_raw)
-assay_temp <- as.numeric(leaf_raw$Temp)
-temp_mean <- mean(assay_temp, na.rm = TRUE)
 
-leaf_std <- leaf_raw %>% 
-  mutate(
-    # Constrain to (0,1) for beta distribution
-    fvfm_beta = case_when(
-      fvfm_prop >= 0.999 ~ 0.999,
-      fvfm_prop <= 0.001 ~ 0.001,
-      TRUE ~ fvfm_prop
-    ),
-    assay_temp = Temp,
-    temp = Temp,
-    temp_c = assay_temp - temp_mean,
-    duration = Time,
-    logd = log10(duration),
-    # Convert random effects to factors
-    Day = factor(Day),
-    G_Room = factor(G_Room)
-  )
+# Standardise as a continuous-proportion (Beta) response. `standardize_data()`
+# clamps the proportion into the open interval (0.001, 0.999) required by the
+# Beta likelihood and records `response_type = "proportion"`, so the rest of the
+# pipeline knows there is no `n_total` denominator. NB ~19% of `fvfm_prop` values
+# are exact zeros (complete PSII shutdown / dead tissue); these are clamped to
+# 0.001 — a deliberate simplification discussed in the limitation note below.
+leaf_std <- standardize_data(
+  leaf_raw,
+  temp           = "Temp",
+  duration       = "Time",
+  proportion     = "fvfm_prop",
+  random_effects = c("Day", "G_Room"),
+  duration_unit  = "minutes"
+)
+temp_mean <- attr(leaf_std, "tdt_meta")$temp_mean
+
+# Aliases for the two-stage comparison and summary chunks below, which were
+# written against the hand-built frame: `fvfm_beta` is the clamped Beta response
+# (== survival), `assay_temp` == temp.
+leaf_std$fvfm_beta  <- leaf_std$survival
+leaf_std$assay_temp <- leaf_std$temp
 
 str(leaf_std)
 
 ```
+
+```{r leaf-zero-fraction}
+#| echo: false
+leaf_n_zero   <- sum(leaf_raw$fvfm_prop <= 0, na.rm = TRUE)
+leaf_n_obs    <- sum(!is.na(leaf_raw$fvfm_prop))
+leaf_pct_zero <- round(100 * leaf_n_zero / leaf_n_obs)
+```
+
+**Response model and a note on the zeros.** Unlike the survival and seed case studies — count data with a beta-binomial likelihood — the leaf response is a *continuous* proportion with no denominator, so we model it with a Beta likelihood (identity link, validated equivalent to the logit parameterisation in our methods note). The Beta density is undefined at exactly 0 or 1, yet `r leaf_n_zero` of `r leaf_n_obs` leaf observations (`r leaf_pct_zero`%) are exact zeros — complete PSII shutdown in heat-killed tissue — which we clamp to 0.001 for a single, uniform Beta model. This is a deliberate simplification: with this many *structural* zeros, a zero-inflated Beta — modelling the probability of complete shutdown separately from the degree of impairment among responding tissue — would be more faithful, at the cost of an extra dose-dependent component. We retain the clamped Beta for pipeline uniformity and flag the trade-off here.
 
 ```{r leaf-summary-table}
 #| label: tbl-leaf-summary
@@ -4526,130 +4537,22 @@ ggplot2::ggplot() +
 
 
 
-# Function to make 4PL formula with beta distribution for Fv/Fm data
-# Simply adds response_var as a user option rather than hardcoding n_surv | n_trials
-make_4pl_formula <- function(random_effects = NULL, 
-                                  lower = 0, 
-                                  upper = 1, 
-                                  family = brms::Beta(link = "logit"),
-                                  response_var = "fvfm_beta") {
-  
-  b <- compute_4pl_bounds(lower, upper)
-  
-  low_expr <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
-  up_expr <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min, b$up_w)
-  
-  main_rhs <- sprintf("%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))", 
-                      low_expr, up_expr, low_expr)
-  
-  mid_terms <- c("temp_c", tdt_format_random_effects(random_effects))
-  mid_rhs <- paste(mid_terms, collapse = " + ")
-  
-  # Check if family is beta
-  family_name <- if (inherits(family, "brmsfamily")) family$family else family$family
-  
-  if (identical(family_name, "beta")) {
-    # Beta regression: no trials() needed
-    response_formula <- sprintf("%s ~ logit(%s)", response_var, main_rhs)
-  } else {
-    # Binomial/beta-binomial: use trials()
-    response_formula <- sprintf("n_surv | trials(n_total) ~ %s", main_rhs)
-  }
-  
-  brms::bf(
-    stats::as.formula(response_formula),
-    stats::as.formula("lowraw ~ temp_c"),
-    stats::as.formula("upraw  ~ temp_c"),
-    stats::as.formula("logk   ~ temp_c"),
-    stats::as.formula(paste("mid    ~", mid_rhs)),
-    stats::as.formula("phi ~ 1"), 
-    nl = TRUE,
-    family = family
-  )
-}
-
-# Then 
-
-
-## Reloading functions that didn't appear when loading bayesTLS
-
-# Compute 4PL pounds
-compute_4pl_bounds <- function(lower = 0, upper = 1,
-                               pad = 0.001, gap = 0.002) {
-  if (upper <= lower)
-    stop("upper must be strictly greater than lower.", call. = FALSE)
-  if (2 * pad + gap >= (upper - lower))
-    stop("pad and gap leave no room for asymptote intervals; ",
-         "reduce pad/gap or widen lower/upper.", call. = FALSE)
-  
-  midpoint <- (lower + upper) / 2
-  low_min  <- lower + pad
-  low_max  <- midpoint - gap / 2
-  up_min   <- midpoint + gap / 2
-  up_max   <- upper - pad
-  
-  list(low_min  = low_min,
-       low_max  = low_max,
-       low_w    = low_max - low_min,
-       up_min   = up_min,
-       up_max   = up_max,
-       up_w     = up_max - up_min,
-       midpoint = midpoint)
-}
-
-# Format random effect specification
-tdt_format_random_effects <- function(random_effects = NULL) {
-  if (is.null(random_effects) || length(random_effects) == 0) return(character())
-  out <- vapply(random_effects, function(term) {
-    term <- trimws(term)
-    if (grepl("^\\(", term)) term else paste0("(1 | ", term, ")")
-  }, character(1))
-  unname(out)
-}
-
-# Make formula
-formula_beta <- make_4pl_formula(
+# `fit_4pl()` configures the Beta (continuous-proportion) 4PL directly from the
+# standardised data: because `standardize_data()` recorded
+# `response_type = "proportion"`, the default family is `brms::Beta()`. We use
+# the identity link (validated equivalent to the logit form in
+# notes/2026-05-21-beta-family-support.qmd) and add random intercepts on `mid`
+# for `Day` and `G_Room`.
+wf_leaf <- fit_4pl(
+  leaf_std,
+  family         = brms::Beta(link = "identity"),
   random_effects = c("Day", "G_Room"),
-  lower = 0,
-  upper = 1,
-  family = brms::Beta(link = "logit"),
-  response_var = "fvfm_beta"
-)
-
-base_priors <- make_4pl_priors(
-  data = leaf_std,
-  random_effects = c("Day", "G_Room"),
-  prior_phi = NULL
-)
-
-wf_leaf_fit <- brms::brm(
-  formula = formula_beta,
-  data = leaf_std,
-  prior = base_priors,
   chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-  init = 0,
-  backend    = "cmdstanr",
+  init    = 0,
+  backend = "cmdstanr",
   control = list(adapt_delta = 0.99, max_treedepth = 20),
   file_refit = "on_change",
   file    = file.path(models_dir, "fit_leaf_function_4pl")
-)
-
-wf_leaf <- structure(
-  list(
-    fit = wf_leaf_fit,
-    data = leaf_std,
-    formula = formula_beta,
-    prior = base_priors,
-    meta = list(
-      temp_mean = temp_mean,
-      duration_unit = "minutes",
-      random_effects = c("Day", "G_Room"),
-      lower = 0,
-      upper = 1,
-      bounds = list(low_min = 0.001, low_w = 0.498, up_min = 0.501, up_w = 0.498)
-    )
-  ),
-  class = "bayes_tls"
 )
 
 # Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
@@ -4660,7 +4563,7 @@ print(wf_leaf)
 
 ```{r leaf-diagnostics}
 #| label: tbl-leaf-diagnostics
-#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, ESS > 4000, 3 divergences, 1 treedepth flag."
+#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, high ESS, near-zero divergences."
 #| cache: false
 
 tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
@@ -4681,7 +4584,7 @@ brms::mcmc_plot(
   type     = "trace",
   variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
                "b_logk_Intercept",   "b_mid_Intercept",
-               "b_mid_temp_c",       "Intercept_phi")
+               "b_mid_temp_c",       "phi")
 ) +
   ggplot2::theme_classic(base_size = 11) +
   ggplot2::theme(legend.position = "bottom")

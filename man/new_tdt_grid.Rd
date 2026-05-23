@@ -14,8 +14,9 @@ new_tdt_grid(workflow, temps, durations, n_total = NULL)
 \item{durations}{Numeric vector of exposure durations (same unit as the
 training data, typically hours).}
 
-\item{n_total}{Integer trials count. \code{NULL} (default) uses the median of
-the training data.}
+\item{n_total}{Integer trials count for count families. \code{NULL} (default)
+uses the median of the training data. Ignored for a
+continuous-proportion (Beta) fit, which has no denominator.}
 }
 \value{
 A tibble with one row per \verb{(temp, duration)} pair.

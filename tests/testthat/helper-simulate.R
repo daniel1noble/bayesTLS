@@ -26,6 +26,40 @@ simulate_tdt <- function(temps           = c(30, 33, 36),
   d
 }
 
+# Continuous-proportion variant: draws the response directly from a Beta whose
+# mean is the 4PL p_true (no binomial layer), for testing the Beta family path.
+# Same truth/design as simulate_tdt() so truth_summary() applies unchanged.
+simulate_tdt_beta <- function(temps           = c(30, 33, 36),
+                              durations_hours = c(0.05, 0.5, 5, 50),
+                              n_rep           = 8,
+                              phi             = 8,
+                              truth           = list(ell     = 0.05,
+                                                     u       = 0.95,
+                                                     k       = 6,
+                                                     m_beta0 = 1.5,
+                                                     m_beta1 = -0.18,
+                                                     T_bar   = 33),
+                              n_zeros         = 0,
+                              seed            = 1) {
+  set.seed(seed)
+  d <- expand.grid(T = temps, t_hours = durations_hours, rep = seq_len(n_rep))
+  d$log10_t_min <- log10(d$t_hours * 60)
+  d$mid_t       <- truth$m_beta0 + truth$m_beta1 * (d$T - truth$T_bar)
+  d$p_true      <- truth$ell + (truth$u - truth$ell) /
+                   (1 + exp(truth$k * (d$log10_t_min - d$mid_t)))
+  d$p_true      <- pmin(pmax(d$p_true, 1e-6), 1 - 1e-6)
+  d$y_prop      <- rbeta(nrow(d), d$p_true * phi, (1 - d$p_true) * phi)
+  if (n_zeros > 0) {
+    hot <- which(d$T == max(temps) &
+                 d$t_hours >= stats::median(durations_hours))
+    if (length(hot) > 0) {
+      d$y_prop[sample(hot, min(n_zeros, length(hot)))] <- 0
+    }
+  }
+  attr(d, "truth") <- truth
+  d
+}
+
 # Truth values derived from the simulator's default parameters.
 truth_summary <- function(truth = list(ell = 0.05, u = 0.95, k = 6,
                                        m_beta0 = 1.5, m_beta1 = -0.18,

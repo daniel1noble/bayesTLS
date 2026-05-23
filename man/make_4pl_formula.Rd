@@ -8,7 +8,8 @@ make_4pl_formula(
   random_effects = NULL,
   lower = 0,
   upper = 1,
-  family = brms::beta_binomial(link = "identity")
+  family = brms::beta_binomial(link = "identity"),
+  response_var = "survival"
 )
 }
 \arguments{
@@ -21,24 +22,42 @@ data whose response sits well above \code{0}.}
 
 \item{family}{brms family. Default \code{beta_binomial(link = "identity")}.
 Pass \code{binomial(link = "identity")} for the simpler
-no-overdispersion case (no \code{phi} parameter to estimate).}
+no-overdispersion case, or \code{brms::Beta(link = "identity")}
+for a continuous proportion response.}
+
+\item{response_var}{Response column name for a \code{Beta} (continuous
+proportion) fit. Ignored for count families. Default
+\code{"survival"} (the column \code{\link[=standardize_data]{standardize_data()}} writes for
+a \code{proportion} response).}
 }
 \value{
 A \code{brmsformula} object.
 }
 \description{
-Constructs \verb{n_surv | trials(n_total) ~ <4PL>} with the disjoint-bounds
-reparameterisation on the asymptotes (\code{low}, \code{up}) and a positivity reparam
-on \code{k}. All four 4PL sub-parameters (\code{lowraw}, \code{upraw}, \code{logk}, \code{mid}) get
-a \code{temp_c} slope — the model assumes temperature can affect every aspect of
-the dose-response curve. Random intercepts (if any) attach to \code{mid}. Family
-is \code{beta_binomial(link = "identity")}.
+Constructs the joint 4PL with the disjoint-bounds reparameterisation on the
+asymptotes (\code{low}, \code{up}) and a positivity reparam on \code{k}. All four 4PL
+sub-parameters (\code{lowraw}, \code{upraw}, \code{logk}, \code{mid}) get a \code{temp_c} slope — the
+model assumes temperature can affect every aspect of the dose-response curve.
+Random intercepts (if any) attach to \code{mid}.
 }
 \details{
+The response term depends on the family:
+\itemize{
+\item \strong{Count families} (\code{binomial}, \code{beta_binomial}): the response is
+\verb{n_surv | trials(n_total) ~ <4PL>}.
+\item \strong{\code{Beta} family} (continuous proportion): the response is
+\verb{<response_var> ~ <4PL>} with no \code{trials()} term. With \code{link = "identity"}
+the 4PL value is the mean directly (safe because the reparam keeps it in
+\verb{(0, 1)}); with \code{link = "logit"} the 4PL is wrapped in \code{logit()} so the mean
+is still the 4PL value.
+}
+
 If a parameter has no real temperature effect, its \code{temp_c} slope shrinks
 toward zero under the prior and the fit reduces cleanly to the simpler case.
 }
 \examples{
 make_4pl_formula()
 make_4pl_formula(family = binomial(link = "identity"))
+make_4pl_formula(family = brms::Beta(link = "identity"),
+                 response_var = "survival")
 }

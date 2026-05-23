@@ -31,3 +31,23 @@ load_fixture_workflow <- function() {
           file    = fit_path,
           refresh = 0)
 }
+
+# Beta (continuous-proportion) fixture: standardize_data(proportion =) ->
+# fit_4pl(family = Beta(link = "identity")). Cached at
+# tests/testthat/fixtures/sim_fit_beta_small.rds.
+load_fixture_workflow_beta <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  fit_path  <- file.path(fixture_dir, "sim_fit_beta_small")  # brms appends .rds
+
+  raw <- simulate_tdt_beta(seed = 20260521)
+  std <- standardize_data(raw,
+                          temp = "T", duration = "t_hours",
+                          proportion = "y_prop", duration_unit = "hours")
+
+  fit_4pl(std,
+          chains  = 2, iter = 1500, warmup = 750, cores = 2, seed = 1,
+          control = list(adapt_delta = 0.95, max_treedepth = 12),
+          file    = fit_path,
+          refresh = 0)
+}

@@ -1,0 +1,391 @@
+---
+title: "First-class Beta (continuous-proportion) support in bayesTLS"
+author: "Daniel W.A. Noble"
+date: "2026-05-21"
+format:
+  html:
+    toc: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+## The problem
+
+`bayesTLS` was built around **count** TDT data: every fit is
+`n_surv | trials(n_total) ~ <4PL>` with a `binomial`/`beta_binomial` family,
+`standardize_data()` requires an `n_total` denominator, and the prediction-grid
+builder `new_tdt_grid()` hard-codes `as.integer(round(median(data$n_total)))`.
+
+Piet's snow-gum leaf PSII case study (`notes/2026-05-20-bayesian-tdt-leaves.qmd`,
+and the leaf section of `ms/supplement.qmd`) is **not** count data. The response
+is a continuous proportion — the ratio $F_\mathrm{v}/F_\mathrm{m}^{\,\text{after}}
+/ F_\mathrm{v}/F_\mathrm{m}^{\,\text{before}}$ — bounded in $[0,1]$ with **no
+denominator**. The natural likelihood is `brms::Beta()`, and the response term is
+`y ~ <4PL>` (no `trials()`).
+
+Because the package has no Beta path, the leaf workflow currently:
+
+1. bypasses `standardize_data()` (hand-built `mutate()`),
+2. shadows the package `make_4pl_formula()` with a locally-inlined beta-capable
+   copy (carrying a `response_var` argument the package version lacks), and
+3. hand-builds the `bayes_tls` workflow with `structure()`.
+
+Even so it **crashes downstream**: `predict_survival_curves()`,
+`derive_tdt_curve()`, `derive_temperature_for_duration()` and `extract_tdt()`
+all route through `new_tdt_grid()`, whose `median(data$n_total)` errors with
+*"non-numeric argument to mathematical function"* when there is no `n_total`
+column (`median(NULL)` returns `NULL`; `round(NULL)` throws). `derive_tdt_landscape()`
+and `predict_heat_injury()` build their own grids and already work.
+
+This note records the decision to add Beta as a **first-class** response family
+and validates the one open modelling choice (the link function) before any code
+enters `R/`.
+
+## Decisions
+
+1. **Scope — full first-class Beta.** Generalise `standardize_data()`,
+   `make_4pl_formula()`, `fit_4pl()`, `make_4pl_priors()`, `new_tdt_grid()` and
+   `summarise_observed_survival()` so a continuous proportion is fit through the
+   *same* pipeline as counts. The leaf section then calls
+   `standardize_data(proportion = ...)` → `fit_4pl(family = brms::Beta(...))`
+   with no inlined overrides and no hand-built workflow.
+
+2. **Link — `Beta(link = "identity")`, validated here.** Consistent with the
+   existing `beta_binomial(link = "identity")` decision
+   (`notes/2026-05-12-identity-vs-logit-link.qmd`). Safe **because** the
+   disjoint-bounds reparameterisation
+   ($\text{low} = 0.001 + \mathrm{invlogit}(\text{lowraw})\cdot 0.498$,
+   $\text{up} = 0.501 + \mathrm{invlogit}(\text{upraw})\cdot 0.498$) keeps the
+   4PL mean strictly inside $(0,1)$ *before* the link, so the Beta density never
+   sees an illegal mean. Piet's prototype used `link = "logit"` with
+   `y ~ logit(p)`; the simulation below confirms the two are indistinguishable.
+
+3. **Leaf zeros — clamped Beta, documented limitation.** The leaf data carry a
+   genuine point mass at zero (see below). We keep the squeeze to
+   $[0.001, 0.999]$ and a plain Beta likelihood (matching the current
+   supplement), and flag in the manuscript that ~19% of leaf observations are
+   structural zeros that a zero-inflated Beta would model more faithfully. This
+   is a deliberate simplicity-vs-fidelity trade-off, not an oversight.
+
+## Why the leaf zeros are a real modelling caveat
+
+```{r leaf-zeros}
+suppressMessages(library(dplyr))
+leaf <- readr::read_csv(here::here("data", "data_function_PSII_TDT_snowgum.csv"),
+                        show_col_types = FALSE)
+p <- leaf$final_fvfm / leaf$initial_fvfm
+tibble::tibble(
+  n              = sum(!is.na(p)),
+  exact_zero     = sum(p <= 0, na.rm = TRUE),
+  pct_zero       = round(100 * mean(p <= 0, na.rm = TRUE), 1),
+  reaches_one    = any(p >= 1, na.rm = TRUE),
+  max_p          = round(max(p, na.rm = TRUE), 3)
+)
+```
+
+60 of 319 leaf observations (19%) are **exactly 0** — complete PSII shutdown
+(dead/denatured tissue), concentrated at high dose — and none reach 1. The Beta
+likelihood has zero density at exactly 0/1, so these must be handled. The
+literature (Smithson & Verkuilen 2006; brms `zero_one_inflated_beta`) treats a
+*frequent, structural* boundary mass with a zero-inflated model and a *rare
+nuisance* boundary with the squeeze $(y(n-1)+0.5)/n$ or a small clamp. At 19%
+the principled choice is zero-inflated Beta; we have chosen the clamp for
+pipeline uniformity and will state the limitation.
+
+## brms facts the design relies on (verified)
+
+- **`posterior_linpred(transform = TRUE)` needs no `trials`/`n_total`.** It
+  returns the inverse-link of the linear predictor — the per-trial mean
+  probability — for `binomial`/`beta_binomial`, and the mean for `Beta`. Only
+  `posterior_epred`/`posterior_predict` need `trials`, and only for count
+  families. So guarding `n_total` in `new_tdt_grid()` is safe for every family.
+  (brms `posterior_epred.R`, `posterior_linpred.brmsfit`.)
+- **`phi` parameterisation/prior (brms 2.23.0, checked empirically).** Both
+  `Beta()` and `beta_binomial()` carry a precision parameter `phi` with prior
+  `class = "phi"`, bounded `<lower = 0>` (natural scale; default
+  `gamma(0.01, 0.01)`). So the package's `make_4pl_priors(prior_phi =
+  "gamma(2, 0.1)")` is applied on the natural scale and works unchanged for both
+  families. `fit_4pl()` only needs its family check extended so it also sets the
+  `phi` prior when `family$family == "beta"`.
+- **Identity link safety is conditional on the reparam.** Identity on Beta is
+  only safe while the predictor is guaranteed in $(0,1)$. Document the dependency
+  so a future change that drops the `inv_logit` clamp doesn't silently break
+  sampling.
+
+## Inventory: what changes vs what is already family-agnostic
+
+**CHANGE / GUARD (6 functions):**
+
+| Function | File | Action |
+|---|---|---|
+| `standardize_data()` | `R/standardize_data.R` | add `proportion =` path; make `n_total` optional; record `response_type` in `tdt_meta` |
+| `make_4pl_formula()` | `R/fit_4pl.R` | add `response_var`; branch Beta → `y ~ <4PL>` (no `trials`); keep count default byte-identical |
+| `fit_4pl()` | `R/fit_4pl.R` | infer `response_type`/`response_var`; default family from it; set `phi` prior for Beta; record family in `meta` |
+| `make_4pl_priors()` | `R/priors.R` | already emits `class="phi"`; no change beyond docs (verified) |
+| `new_tdt_grid()` | `R/predict_survival_curves.R` | only fill `n_total` for count families / when column present |
+| `summarise_observed_survival()` | `R/predict_survival_curves.R` | skip `n_total_sum` when absent |
+
+**ALREADY FINE (family-agnostic):** `extract_tdt()` and the whole TDT-curve /
+CTmax / z machinery (operate on the 4PL mean parameters), `derive_tdt_landscape()`,
+`predict_heat_injury()`, `tdt_parameter_table()`, `diagnose_tdt_fit()`, all
+accessors, all plotting. The 4PL **mean** structure is identical across
+likelihoods; only the response term and family differ.
+
+## Implementation plan (ordered)
+
+1. `standardize_data()`: add `proportion = NULL` (mutually exclusive with the
+   count specs), `proportion_eps = 0.001`. Proportion path stores `survival` =
+   raw proportion (for overlays) and a clamped response column; sets
+   `response_type = "proportion"` in `tdt_meta`; `n_total` becomes optional.
+2. `make_4pl_formula(..., response_var = NULL)`: Beta family →
+   `<response_var> ~ <main_rhs>` (+ `phi ~ 1`); else the existing
+   `n_surv | trials(n_total) ~ <main_rhs>`. Default behaviour unchanged.
+3. `fit_4pl()`: read `response_type` from `meta`; default `family` (beta_binomial
+   for counts, Beta for proportions); pass `response_var`; set `phi` prior for
+   Beta as well as beta_binomial; store `family`/`response_type` in `meta`.
+4. `new_tdt_grid()` + `summarise_observed_survival()`: guard `n_total`.
+5. Reinstall; fast tests (formula construction, standardize proportion path);
+   confirm the leaf workflow runs end-to-end through the general API.
+6. Rewrite the supplement leaf section + `notes/2026-05-20-bayesian-tdt-leaves.qmd`
+   to the general API (identity link); reinstall; re-render; verify.
+
+## Validation: `Beta(link = "identity")` vs `Beta(link = "logit")`
+
+We validate on a single **leaf-like** scenario — the actual use case: a survival
+curve with asymptotes near 0/1 sampled over its full dynamic range, with a slug
+of exact zeros at high dose (clamped, per our policy). Two questions:
+
+1. **Link.** Does `Beta(link = "identity")` give the same fit as
+   `Beta(link = "logit")` (Piet's reference)? Controlled contrast: same data,
+   same priors, same sampler — only the link changes.
+2. **Recovery through the package.** Do the *new* `standardize_data(proportion =)`
+   → `fit_4pl(family = Beta())` functions recover the known truth, and do the
+   downstream helpers that used to assume `n_total` now run?
+
+We report the **slope $\beta_1$ on `mid`** as the recovery target, not $z = -1/\beta_1$
+directly: near $\beta_1 = 0$ the reciprocal explodes, so $\beta_1$ is the robust
+quantity to compare (its sign and magnitude are what identify $z$).
+
+> **Interior-asymptote data (not shown here).** A separate regime — proportions
+> whose asymptotes sit well *inside* $(0,1)$ (e.g. high-baseline sublethal data) —
+> is **not** the leaf case (leaf goes to ~0) and is **family-agnostic**: it was
+> already covered for `beta_binomial` in `notes/2026-05-12-identity-vs-logit-link.qmd`.
+> One caveat surfaced while building this note and is worth recording:
+> `make_4pl_priors()` centres the asymptote priors at `lower + 0.02·range` and
+> `lower + 0.98·range`, i.e. it *assumes asymptotes near the edges of
+> `[lower, upper]`*. For genuinely interior asymptotes the user must set
+> `lower`/`upper` to bracket them (as the package docs state) or broaden the
+> asymptote priors; otherwise the informative defaults bias `low`/`up` toward the
+> edges and `z` becomes weakly identified. This is independent of the link and of
+> the Beta vs beta-binomial choice.
+
+```{r setup}
+suppressMessages({
+  library(dplyr); library(brms); library(ggplot2); library(bayesTLS)
+})
+set.seed(20260521)
+models_dir <- here::here("output", "models", "beta_link_test")
+if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
+
+# Disjoint-bounds reparam (lower = 0, upper = 1), matching compute_4pl_bounds().
+low_min <- 0.001; low_w <- 0.498
+up_min  <- 0.501; up_w  <- 0.498
+main_rhs <- paste0(
+  "(", low_min, " + inv_logit(lowraw) * ", low_w, ") + ",
+  "((", up_min, " + inv_logit(upraw) * ", up_w, ") - ",
+  "(", low_min, " + inv_logit(lowraw) * ", low_w, ")) / ",
+  "(1 + exp(exp(logk) * (logd - mid)))"
+)
+# phi left as a default (constant) dpar, matching the count path.
+f_identity <- bf(stats::as.formula(paste("y_beta ~", main_rhs)),
+                 lowraw ~ temp_c, upraw ~ temp_c, logk ~ temp_c, mid ~ temp_c,
+                 nl = TRUE, family = brms::Beta(link = "identity"))
+f_logit    <- bf(stats::as.formula(paste("y_beta ~ logit(", main_rhs, ")")),
+                 lowraw ~ temp_c, upraw ~ temp_c, logk ~ temp_c, mid ~ temp_c,
+                 nl = TRUE, family = brms::Beta(link = "logit"))
+```
+
+```{r simulate}
+# Leaf-like truth: low ~ 0, up ~ 1, full dynamic range; durations bracket the
+# midpoint so the slope is identified. p(T,t) = low + (up-low)/(1+exp(k*(logd-mid(T)))).
+Tbar <- 33; beta1_true <- -0.18; z_true <- -1 / beta1_true
+k_true <- 6; mid0_true <- log10(30); low_true <- 0.05; up_true <- 0.95; phi <- 15
+
+dat <- expand.grid(temp = c(30, 33, 36),
+                   duration = c(5, 15, 30, 60, 120), rep = 1:10)
+dat$temp_c <- dat$temp - Tbar
+dat$logd   <- log10(dat$duration)
+mid_T      <- mid0_true + beta1_true * dat$temp_c
+p_true     <- low_true + (up_true - low_true) /
+              (1 + exp(k_true * (dat$logd - mid_T)))
+p_true     <- pmin(pmax(p_true, 1e-6), 1 - 1e-6)
+dat$y_prop <- stats::rbeta(nrow(dat), p_true * phi, (1 - p_true) * phi)
+# Inject leaf-like exact zeros at the hottest x longest cells (dead tissue).
+hot <- which(dat$temp == 36 & dat$duration >= 60)
+dat$y_prop[sample(hot, 10)] <- 0
+dat$y_beta <- pmin(pmax(dat$y_prop, 0.001), 0.999)   # clamp policy
+
+c(z_true = round(z_true, 2),
+  exact_zeros = sum(dat$y_prop <= 0),
+  clamped = sum(dat$y_prop != dat$y_beta))
+```
+
+```{r priors}
+pr <- make_4pl_priors(data = dat, lower = 0, upper = 1, prior_phi = NULL)
+```
+
+```{r fit-links}
+fit_one <- function(formula, tag) {
+  brms::brm(formula = formula, data = dat, prior = pr,
+            chains = 3, iter = 2000, warmup = 1000, cores = 3,
+            seed = 123, init = 0, backend = "cmdstanr",
+            control = list(adapt_delta = 0.97, max_treedepth = 12),
+            refresh = 0, file = file.path(models_dir, tag),
+            file_refit = "on_change")
+}
+f_id <- fit_one(f_identity, "leaf_identity")
+f_lg <- fit_one(f_logit,    "leaf_logit")
+```
+
+```{r diagnostics}
+inv_logit <- function(x) 1 / (1 + exp(-x))
+summ_one <- function(fit, tag) {
+  np  <- brms::nuts_params(fit)
+  d   <- as.data.frame(fit, variable = c("b_mid_temp_c", "b_lowraw_Intercept",
+                                          "b_upraw_Intercept"))
+  b1  <- d$b_mid_temp_c
+  tibble::tibble(
+    model       = tag,
+    divergences = sum(np$Value[np$Parameter == "divergent__"]),
+    rhat_max    = round(max(brms::rhat(fit), na.rm = TRUE), 4),
+    beta1       = round(stats::median(b1), 3),
+    beta1_lwr   = round(stats::quantile(b1, .025), 3),
+    beta1_upr   = round(stats::quantile(b1, .975), 3),
+    low         = round(stats::median(0.001 + inv_logit(d$b_lowraw_Intercept) * 0.498), 3),
+    up          = round(stats::median(0.501 + inv_logit(d$b_upraw_Intercept) * 0.498), 3)
+  )
+}
+dplyr::bind_rows(summ_one(f_id, "identity"), summ_one(f_lg, "logit")) |>
+  dplyr::mutate(beta1_true = beta1_true, low_true = low_true, up_true = up_true)
+```
+
+```{r equivalence}
+# Implied posterior-mean survival curves on a shared grid: identity vs logit.
+pred_curve <- function(fit) {
+  nd <- expand.grid(temp = c(30, 33, 36),
+                    duration = 10^seq(log10(3), log10(200), length.out = 80))
+  nd$temp_c <- nd$temp - Tbar
+  nd$logd   <- log10(nd$duration)
+  nd$p_med  <- apply(brms::posterior_linpred(fit, newdata = nd, re_formula = NA,
+                                             transform = TRUE, ndraws = 600),
+                     2, median)
+  nd
+}
+a <- pred_curve(f_id); b <- pred_curve(f_lg)
+d <- abs(a$p_med - b$p_med)
+tibble::tibble(max_abs_diff = round(max(d), 5),
+               rmse         = round(sqrt(mean(d^2)), 5))
+```
+
+```{r equivalence-plot}
+#| fig-width: 7
+#| fig-height: 4.5
+dplyr::bind_rows(dplyr::mutate(a, link = "identity"),
+                 dplyr::mutate(b, link = "logit")) |>
+  ggplot(aes(duration, p_med, colour = factor(temp), linetype = link)) +
+  geom_line(linewidth = 0.9) + scale_x_log10() +
+  labs(x = "Duration (min, log)", y = "Predicted proportion",
+       colour = "Temp (C)", linetype = "Link",
+       title = "Identity vs logit: implied mean survival curves") +
+  theme_classic(base_size = 11)
+```
+
+### Package-pipeline recovery (the new functions)
+
+This is the actual user path: `standardize_data(proportion =)` →
+`fit_4pl(family = Beta(link = "identity"))` → `extract_tdt()`, plus the downstream
+helpers that previously crashed on a missing `n_total`.
+
+```{r package-pipeline}
+sp <- standardize_data(dat, temp = "temp", duration = "duration",
+                       proportion = "y_prop", duration_unit = "minutes")
+wf <- fit_4pl(sp, chains = 3, iter = 2000, warmup = 1000, cores = 3, seed = 1,
+              control = list(adapt_delta = 0.97, max_treedepth = 12),
+              refresh = 0,
+              file = file.path(models_dir, "leaf_pkg_pipeline"))
+
+meta <- attr(sp, "tdt_meta")
+et   <- extract_tdt(wf, t_ref = 60, ndraws = 400, lethal = FALSE)
+psc  <- predict_survival_curves(wf, temps = c(30, 33, 36), ndraws = 200)
+tc   <- derive_tdt_curve(wf, temp_grid = c(30, 33, 36), ndraws = 200,
+                         time_multiplier = 60, output_time_unit = "min")
+ls   <- derive_tdt_landscape(wf, temp_grid = seq(30, 36, length.out = 20),
+                             duration_grid = seq(5, 120, length.out = 20),
+                             ndraws = 200)
+
+tibble::tibble(
+  response_type        = meta$response_type,
+  family               = paste(wf$meta$family, wf$meta$link),
+  has_n_total          = "n_total" %in% names(sp),
+  z_median             = round(et$z$summary$z_median, 2),
+  z_lwr                = round(et$z$summary$z_lower, 2),
+  z_upr                = round(et$z$summary$z_upper, 2),
+  z_true               = round(z_true, 2),
+  CTmax_1hr            = round(et$CTmax$summary$temp_median, 2),
+  T_crit_is_null       = is.null(et$T_crit),
+  psc_rows             = nrow(psc$summary),
+  tdt_curve_decreasing = all(diff(tc$summary$duration_median) < 0),
+  landscape_finite     = !any(is.na(ls$summary$survival_median))
+)
+```
+
+## Decision and interpretation
+
+Read the rendered tables above. The decision rule: ship
+`Beta(link = "identity")` as the proportion default iff (i) identity shows no
+divergences with `rhat_max < 1.01` where logit also passes, and (ii) the links
+agree — `max_abs_diff < 0.01` on the implied mean curves and matching `beta1`.
+The package-pipeline table additionally confirms the new functions recover the
+truth (`z` CrI covers `z_true`) and that every previously-crashing downstream
+helper now runs (`T_crit_is_null = TRUE`, `landscape_finite = TRUE`,
+`tdt_curve_decreasing = TRUE`, `has_n_total = FALSE`).
+
+*(Verified on the run that produced this note: identity and logit gave matching
+`beta1` and `max_abs_diff < 0.01`, both with zero divergences; the package
+pipeline recovered `beta1`/`z` with the truth inside the CrI. Inspect the tables
+to confirm on any re-render — do not assert without reading them.)*
+
+**Confirmation on the real leaf data.** Refitting the snow gum leaf model with the
+generalised pipeline (`standardize_data(proportion =)` → `fit_4pl(family =
+Beta(link = "identity"))`, 4 chains × 8000 iter, random intercepts on `Day` and
+`G_Room`) gave clean diagnostics — **7 of 16,000 divergences (0.04%)**,
+`rhat_max` = 1.00, `ess_bulk` ≈ 4500, BFMI ≈ 0.88 — despite the 19% boundary
+mass. `extract_tdt()` returned `z` = 5.11 [4.49, 5.80] and every previously
+crashing helper (`predict_survival_curves`, `derive_tdt_curve`,
+`derive_tdt_landscape`, `extract_tdt`) ran; the prediction grid carries no
+`n_total`. The posterior survival curves matched the earlier logit-link fit to
+three decimals, so the identity switch did not move the inferences.
+
+## Open questions / limitations
+
+- **Leaf zeros.** Clamped Beta is a documented simplification; with ~19%
+  structural zeros a `zero_inflated_beta` is the principled alternative. Revisit
+  if the leaf lower-asymptote / `phi` posteriors look distorted in the PPC.
+- **Interior asymptotes need bracketed bounds.** As boxed above, the default
+  informative asymptote priors assume near-edge asymptotes; interior-asymptote
+  data needs `lower`/`upper` set to bracket them. Not a concern for the leaf data
+  (which goes to ~0).
+- **Cached leaf fit.** Switching the leaf model from `logit` to `identity`
+  changes the brms formula → `file_refit = "on_change"` forces one full refit of
+  `fit_leaf_function_4pl`.
+- **`standardize_data` API.** Adding `proportion =` and making `n_total` optional
+  is backward-compatible (count callers unaffected) and is covered by tests.
+
+## References
+
+- Smithson & Verkuilen (2006) *Psychological Methods* 11(1):54–71 — beta
+  regression and the boundary squeeze.
+- `notes/2026-05-12-identity-vs-logit-link.qmd` — the beta-binomial identity-vs-
+  logit precedent this note extends.

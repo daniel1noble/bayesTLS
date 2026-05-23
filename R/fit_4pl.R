@@ -5,12 +5,21 @@
 
 #' Build the brms formula for the joint Bayesian 4PL
 #'
-#' Constructs `n_surv | trials(n_total) ~ <4PL>` with the disjoint-bounds
-#' reparameterisation on the asymptotes (`low`, `up`) and a positivity reparam
-#' on `k`. All four 4PL sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) get
-#' a `temp_c` slope — the model assumes temperature can affect every aspect of
-#' the dose-response curve. Random intercepts (if any) attach to `mid`. Family
-#' is `beta_binomial(link = "identity")`.
+#' Constructs the joint 4PL with the disjoint-bounds reparameterisation on the
+#' asymptotes (`low`, `up`) and a positivity reparam on `k`. All four 4PL
+#' sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) get a `temp_c` slope — the
+#' model assumes temperature can affect every aspect of the dose-response curve.
+#' Random intercepts (if any) attach to `mid`.
+#'
+#' The response term depends on the family:
+#'
+#' - **Count families** (`binomial`, `beta_binomial`): the response is
+#'   `n_surv | trials(n_total) ~ <4PL>`.
+#' - **`Beta` family** (continuous proportion): the response is
+#'   `<response_var> ~ <4PL>` with no `trials()` term. With `link = "identity"`
+#'   the 4PL value is the mean directly (safe because the reparam keeps it in
+#'   `(0, 1)`); with `link = "logit"` the 4PL is wrapped in `logit()` so the mean
+#'   is still the 4PL value.
 #'
 #' If a parameter has no real temperature effect, its `temp_c` slope shrinks
 #' toward zero under the prior and the fit reduces cleanly to the simpler case.
@@ -22,17 +31,25 @@
 #'                       data whose response sits well above `0`.
 #' @param family         brms family. Default `beta_binomial(link = "identity")`.
 #'                       Pass `binomial(link = "identity")` for the simpler
-#'                       no-overdispersion case (no `phi` parameter to estimate).
+#'                       no-overdispersion case, or `brms::Beta(link = "identity")`
+#'                       for a continuous proportion response.
+#' @param response_var   Response column name for a `Beta` (continuous
+#'                       proportion) fit. Ignored for count families. Default
+#'                       `"survival"` (the column [standardize_data()] writes for
+#'                       a `proportion` response).
 #' @return A `brmsformula` object.
 #' @examples
 #' make_4pl_formula()
 #' make_4pl_formula(family = binomial(link = "identity"))
+#' make_4pl_formula(family = brms::Beta(link = "identity"),
+#'                  response_var = "survival")
 #' @export
 make_4pl_formula <- function(random_effects = NULL,
                              lower          = 0,
                              upper          = 1,
                              family         = brms::beta_binomial(
-                               link = "identity")) {
+                               link = "identity"),
+                             response_var   = "survival") {
 
   b <- compute_4pl_bounds(lower, upper)
 
@@ -47,8 +64,19 @@ make_4pl_formula <- function(random_effects = NULL,
   mid_terms <- c("temp_c", tdt_format_random_effects(random_effects))
   mid_rhs   <- paste(mid_terms, collapse = " + ")
 
+  family_name <- family$family
+  if (identical(family_name, "beta")) {
+    # Continuous proportion: no trials() term. Wrap in logit() only when the
+    # family link is logit, so the mean is the 4PL value under either link.
+    resp_rhs <- if (identical(family$link, "logit"))
+                  sprintf("logit(%s)", main_rhs) else main_rhs
+    response_formula <- sprintf("%s ~ %s", response_var, resp_rhs)
+  } else {
+    response_formula <- sprintf("n_surv | trials(n_total) ~ %s", main_rhs)
+  }
+
   brms::bf(
-    stats::as.formula(sprintf("n_surv | trials(n_total) ~ %s", main_rhs)),
+    stats::as.formula(response_formula),
     stats::as.formula("lowraw ~ temp_c"),
     stats::as.formula("upraw  ~ temp_c"),
     stats::as.formula("logk   ~ temp_c"),
@@ -75,9 +103,13 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param lower,upper    Response-scale bounds for the asymptotes. Default
 #'                       `0, 1`; pass `lower = 0.85, upper = 1` for sublethal
 #'                       data bounded above zero.
-#' @param family         brms family. Default `beta_binomial(link = "identity")`.
-#'                       Pass `binomial(link = "identity")` for the simpler
-#'                       no-overdispersion case.
+#' @param family         brms family. `NULL` (default) picks the family from the
+#'                       data's `response_type` metadata:
+#'                       `beta_binomial(link = "identity")` for count data and
+#'                       `brms::Beta(link = "identity")` for a continuous
+#'                       `proportion` response. Pass an explicit family to
+#'                       override (e.g. `binomial(link = "identity")` for the
+#'                       no-overdispersion count case).
 #' @param prior          Optional `brmsprior` object. If `NULL` (default),
 #'                       [make_4pl_priors()] builds defaults from `data`,
 #'                       `lower`, `upper`, and `random_effects`.
@@ -107,7 +139,7 @@ fit_4pl <- function(data,
                     random_effects = NULL,
                     lower          = 0,
                     upper          = 1,
-                    family         = brms::beta_binomial(link = "identity"),
+                    family         = NULL,
                     prior          = NULL,
                     chains         = 4,
                     iter           = 4000,
@@ -126,18 +158,31 @@ fit_4pl <- function(data,
   meta <- attr(data, "tdt_meta") %||%
     list(temp_mean      = mean(data$temp, na.rm = TRUE),
          duration_unit  = "model_units",
-         random_effects = random_effects)
+         random_effects = random_effects,
+         response_type  = "count")
+
+  response_type <- meta$response_type %||% "count"
+  response_var  <- meta$response_var %||% "survival"
+
+  # Default family from the response type when not supplied.
+  if (is.null(family)) {
+    family <- if (identical(response_type, "proportion"))
+                brms::Beta(link = "identity")
+              else
+                brms::beta_binomial(link = "identity")
+  }
 
   formula <- make_4pl_formula(random_effects = random_effects,
                               lower          = lower,
                               upper          = upper,
-                              family         = family)
+                              family         = family,
+                              response_var   = response_var)
 
   if (is.null(prior)) {
-    # Skip the phi prior when family has no overdispersion parameter.
-    family_name <- if (inherits(family, "brmsfamily")) family$family
-                   else family$family
-    prior_phi   <- if (identical(family_name, "beta_binomial"))
+    # Set the phi prior only for families that carry a precision parameter
+    # (beta and beta_binomial); skip it for binomial (no overdispersion).
+    family_name <- family$family
+    prior_phi   <- if (family_name %in% c("beta_binomial", "beta"))
                      "gamma(2, 0.1)" else NULL
     prior <- make_4pl_priors(data           = data,
                              lower          = lower,
@@ -150,7 +195,10 @@ fit_4pl <- function(data,
     random_effects = random_effects,
     lower          = lower,
     upper          = upper,
-    bounds         = compute_4pl_bounds(lower, upper)
+    bounds         = compute_4pl_bounds(lower, upper),
+    response_type  = response_type,
+    family         = family$family,
+    link           = family$link
   ))
 
   workflow <- structure(

@@ -8,11 +8,13 @@ standardize_data(
   data,
   temp,
   duration,
-  n_total,
+  n_total = NULL,
   n_surv = NULL,
   n_dead = NULL,
   survival = NULL,
   mortality = NULL,
+  proportion = NULL,
+  proportion_eps = 0.001,
   random_effects = NULL,
   duration_unit = "hours",
   temp_mean = NULL
@@ -27,7 +29,9 @@ standardize_data(
 whatever is in the source data; record it via
 \code{duration_unit}.}
 
-\item{n_total}{Column name for total individuals per replicate.}
+\item{n_total}{Column name for total individuals per replicate.
+Required for count responses; leave \code{NULL} (default)
+for a continuous \code{proportion} response.}
 
 \item{n_surv}{Column name for survivor counts.}
 
@@ -39,6 +43,15 @@ Converted to integer counts via \code{n_total}.}
 
 \item{mortality}{Column name for mortality proportions in \verb{[0, 1]}.
 Converted to \code{n_surv = round((1 - mortality) * n_total)}.}
+
+\item{proportion}{Column name for a continuous proportion response in
+\verb{[0, 1]} with no denominator (modelled with a Beta
+likelihood). Mutually exclusive with the count
+arguments above.}
+
+\item{proportion_eps}{Half-open clamp applied to \code{proportion} so values sit
+strictly inside \verb{(0, 1)} (the Beta density is undefined
+at exactly 0 or 1). Default \code{0.001}.}
 
 \item{random_effects}{Optional character vector of grouping variables for
 random effects, e.g. \code{c("Date", "Tank")}. These
@@ -54,24 +67,37 @@ value to align multiple datasets to a common centre.}
 }
 \value{
 A tibble with the standardised columns plus a \code{"tdt_meta"} attribute
-storing \code{temp_mean}, \code{duration_unit}, and \code{random_effects}.
+storing \code{temp_mean}, \code{duration_unit}, \code{random_effects},
+\code{response_type} (\code{"count"} or \code{"proportion"}), and \code{response_var}
+(the response column name for a proportion fit, else \code{NULL}).
 }
 \description{
-Rewrites user column names into a single project-standard schema
-(\code{temp}, \code{duration}, \code{logd}, \code{temp_c}, \code{n_total}, \code{n_surv}, \code{n_dead},
-\code{survival}) and attaches metadata used by every downstream fitting and
-prediction helper. This is the single entry point for raw data — everything
-else in the library assumes the output of this function.
+Rewrites user column names into a single project-standard schema and attaches
+metadata used by every downstream fitting and prediction helper. This is the
+single entry point for raw data — everything else in the library assumes the
+output of this function.
 }
 \details{
-Supply \strong{exactly one} of \code{n_surv}, \code{n_dead}, \code{survival}, or \code{mortality}.
-The other counts are derived.
+Two response types are supported:
+\itemize{
+\item \strong{Count data} (binomial / beta-binomial): supply \code{n_total} plus \strong{exactly
+one} of \code{n_surv}, \code{n_dead}, \code{survival}, or \code{mortality}. The other counts
+are derived and the standardised columns include \code{n_total}, \code{n_surv},
+\code{n_dead}, \code{survival}. \code{response_type} is recorded as \code{"count"}.
+\item \strong{Continuous proportion} (Beta), e.g. a chlorophyll-fluorescence
+\eqn{F_v/F_m} ratio with no denominator: supply \code{proportion} and omit the
+count arguments. The value is stored in \code{survival} (clamped into the open
+interval \verb{(proportion_eps, 1 - proportion_eps)} so the Beta likelihood is
+finite); no \code{n_total}/\code{n_surv} columns are created. \code{response_type} is
+recorded as \code{"proportion"}.
+}
 
 If the dataset spans multiple categories (life stages, species, populations,
 etc.), filter to one category before calling this function and fit a separate
 model per subset — the fitter does not estimate category-level effects.
 }
 \examples{
+# Count data
 raw <- data.frame(
   temperature_C = rep(c(30, 32, 34), each = 4),
   exposure_h    = rep(c(1, 2, 4, 8), times = 3),
@@ -83,4 +109,15 @@ standardize_data(raw,
                  duration = "exposure_h",
                  n_total  = "n",
                  n_surv   = "alive")
+
+# Continuous proportion (Beta) data
+raw_p <- data.frame(
+  temperature_C = rep(c(30, 32, 34), each = 4),
+  exposure_h    = rep(c(1, 2, 4, 8), times = 3),
+  fvfm_ratio    = c(0.95, 0.9, 0.7, 0.2, 0.92, 0.6, 0.3, 0, 0.8, 0.4, 0.1, 0)
+)
+standardize_data(raw_p,
+                 temp       = "temperature_C",
+                 duration   = "exposure_h",
+                 proportion = "fvfm_ratio")
 }

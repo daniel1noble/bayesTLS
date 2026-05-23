@@ -52,3 +52,48 @@ test_that("fit_4pl errors are clean when called on bad input", {
   expect_equal(paste(deparse(f$pforms$mid), collapse = " "),
                "mid ~ temp_c")
 })
+
+test_that("make_4pl_formula default count response is unchanged", {
+  f    <- make_4pl_formula()
+  main <- paste(deparse(f$formula), collapse = " ")
+  expect_true(grepl("n_surv \\| trials\\(n_total\\)", main))
+})
+
+test_that("make_4pl_formula Beta(identity) has no trials and no logit wrapper", {
+  f    <- make_4pl_formula(family = brms::Beta(link = "identity"),
+                           response_var = "survival")
+  main <- paste(deparse(f$formula), collapse = " ")
+  expect_true(grepl("^survival ~", main))
+  expect_false(grepl("trials", main))
+  expect_false(grepl("n_surv", main))
+  # identity: the 4PL is the mean, so no `~ logit(` wrapper. (The reparam still
+  # contains `inv_logit(` on the asymptotes, so match the wrapper specifically.)
+  expect_false(grepl("~ logit\\(", main))
+  expect_true(grepl("1 \\+ exp\\(exp\\(logk", main))   # 4PL structure present
+})
+
+test_that("make_4pl_formula Beta(logit) wraps the 4PL in logit()", {
+  f    <- make_4pl_formula(family = brms::Beta(link = "logit"),
+                           response_var = "survival")
+  main <- paste(deparse(f$formula), collapse = " ")
+  expect_true(grepl("survival ~ logit\\(", main))
+})
+
+test_that("fit_4pl(fit = FALSE) on proportion data builds a Beta workflow", {
+  raw <- data.frame(
+    temperature_C = rep(c(30, 32, 34), each = 3),
+    exposure_h    = rep(c(1, 2, 4), times = 3),
+    fvfm          = c(0.95, 0.6, 0.1, 0.9, 0.4, 0.05, 0.8, 0.3, 0.02)
+  )
+  std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                          proportion = "fvfm")
+
+  wf <- fit_4pl(std, fit = FALSE)
+  expect_s3_class(wf, "bayes_tls")
+  expect_equal(wf$meta$response_type, "proportion")
+  expect_equal(wf$meta$family, "beta")
+  expect_equal(wf$meta$link,   "identity")
+  expect_true(any(wf$prior$class == "phi"))     # Beta carries a precision prior
+  main <- paste(deparse(wf$formula$formula), collapse = " ")
+  expect_true(grepl("^survival ~", main))
+})

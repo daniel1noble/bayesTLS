@@ -14,8 +14,9 @@
 #' @param temps     Numeric vector of assay temperatures (°C).
 #' @param durations Numeric vector of exposure durations (same unit as the
 #'                  training data, typically hours).
-#' @param n_total   Integer trials count. `NULL` (default) uses the median of
-#'                  the training data.
+#' @param n_total   Integer trials count for count families. `NULL` (default)
+#'                  uses the median of the training data. Ignored for a
+#'                  continuous-proportion (Beta) fit, which has no denominator.
 #' @return A tibble with one row per `(temp, duration)` pair.
 #' @keywords internal
 new_tdt_grid <- function(workflow,
@@ -25,15 +26,26 @@ new_tdt_grid <- function(workflow,
   data <- workflow$data
   meta <- workflow$meta
 
-  if (is.null(n_total)) {
-    n_total <- as.integer(round(stats::median(data$n_total, na.rm = TRUE)))
-  }
+  # n_total is only meaningful for count families (binomial / beta_binomial). A
+  # Beta (continuous-proportion) fit has no denominator, and posterior_linpred()
+  # does not need one, so the grid omits it. Detect via metadata, falling back
+  # to the presence of an n_total column for hand-built workflows.
+  response_type <- meta$response_type %||%
+    (if ("n_total" %in% names(data)) "count" else "proportion")
+  is_count <- !identical(response_type, "proportion")
 
   nd <- expand.grid(temp     = temps,
                     duration = durations,
                     KEEP.OUT.ATTRS = FALSE,
                     stringsAsFactors = FALSE)
-  nd$n_total <- n_total
+
+  if (is_count) {
+    if (is.null(n_total) && "n_total" %in% names(data)) {
+      n_total <- as.integer(round(stats::median(data$n_total, na.rm = TRUE)))
+    }
+    if (!is.null(n_total)) nd$n_total <- n_total
+  }
+
   nd$logd    <- log10(nd$duration)
   nd$temp_c  <- nd$temp - meta$temp_mean
 
@@ -96,13 +108,17 @@ posterior_linpred_tdt <- function(workflow,
 #' summarise_observed_survival(d)
 #' @export
 summarise_observed_survival <- function(observed) {
-  observed |>
+  # n_total_sum is only available for count data; a continuous-proportion
+  # (Beta) frame has no n_total column, so omit that summary there.
+  has_n_total <- "n_total" %in% names(observed)
+  out <- observed |>
     dplyr::group_by(temp, duration) |>
     dplyr::summarise(
       survival_mean = mean(survival, na.rm = TRUE),
       survival_se   = stats::sd(survival, na.rm = TRUE) / sqrt(dplyr::n()),
       n_units       = dplyr::n(),
-      n_total_sum   = sum(n_total, na.rm = TRUE),
+      n_total_sum   = if (has_n_total) sum(n_total, na.rm = TRUE)
+                      else NA_integer_,
       .groups = "drop"
     ) |>
     dplyr::mutate(
@@ -110,6 +126,8 @@ summarise_observed_survival <- function(observed) {
       survival_lower = pmax(0, survival_mean - survival_se),
       survival_upper = pmin(1, survival_mean + survival_se)
     )
+  if (!has_n_total) out$n_total_sum <- NULL
+  out
 }
 
 #' Posterior survival curves on a temperature × duration grid

@@ -9,7 +9,7 @@ fit_4pl(
   random_effects = NULL,
   lower = 0,
   upper = 1,
-  family = brms::beta_binomial(link = "identity"),
+  family = NULL,
   prior = NULL,
   chains = 4,
   iter = 4000,
@@ -35,9 +35,13 @@ random intercepts on \code{mid}.}
 \verb{0, 1}; pass \verb{lower = 0.85, upper = 1} for sublethal
 data bounded above zero.}
 
-\item{family}{brms family. Default \code{beta_binomial(link = "identity")}.
-Pass \code{binomial(link = "identity")} for the simpler
-no-overdispersion case.}
+\item{family}{brms family. \code{NULL} (default) picks the family from the
+data's \code{response_type} metadata:
+\code{beta_binomial(link = "identity")} for count data and
+\code{brms::Beta(link = "identity")} for a continuous
+\code{proportion} response. Pass an explicit family to
+override (e.g. \code{binomial(link = "identity")} for the
+no-overdispersion count case).}
 
 \item{prior}{Optional \code{brmsprior} object. If \code{NULL} (default),
 \code{\link[=make_4pl_priors]{make_4pl_priors()}} builds defaults from \code{data},
