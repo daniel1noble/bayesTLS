@@ -49,6 +49,33 @@ test_that("tdt_format_random_effects wraps bare names but preserves explicit ter
   expect_equal(tdt_format_random_effects(NULL), character())
 })
 
+test_that("tdt_unit_to_minutes maps common time units", {
+  expect_equal(tdt_unit_to_minutes("minutes"), 1)
+  expect_equal(tdt_unit_to_minutes("min"),     1)
+  expect_equal(tdt_unit_to_minutes("hours"),   60)
+  expect_equal(tdt_unit_to_minutes("h"),       60)
+  expect_equal(tdt_unit_to_minutes("seconds"), 1 / 60)
+  expect_equal(tdt_unit_to_minutes("days"),    1440)
+  expect_error(tdt_unit_to_minutes("fortnights"), "Unrecognised time unit")
+})
+
+test_that("tdt_resolve_time_multiplier derives from duration_unit, override honoured", {
+  # Minutes model -> output min: multiplier 1 (the leaf/seed case the bug hit).
+  expect_equal(
+    tdt_resolve_time_multiplier(NULL, list(duration_unit = "minutes"), "min"), 1)
+  # Hours model -> output min: multiplier 60 (shrimp/zebrafish).
+  expect_equal(
+    tdt_resolve_time_multiplier(NULL, list(duration_unit = "hours"), "min"), 60)
+  # Explicit value overrides the derivation.
+  expect_equal(
+    tdt_resolve_time_multiplier(5, list(duration_unit = "hours"), "min"), 5)
+  # Unknown unit falls back to 1 with a message.
+  expect_message(
+    out <- tdt_resolve_time_multiplier(NULL, list(duration_unit = NULL), "min"),
+    "Could not derive time_multiplier")
+  expect_equal(out, 1)
+})
+
 test_that("clock_to_minutes handles common formats", {
   expect_equal(clock_to_minutes("08:30:00"), 510)
   expect_equal(clock_to_minutes(0.5), 720)

@@ -138,3 +138,58 @@ compute_4pl_bounds <- function(lower = 0, upper = 1,
        up_w     = up_max - up_min,
        midpoint = midpoint)
 }
+
+#' Convert a time-unit label to minutes
+#'
+#' Maps a free-text duration/time unit (e.g. `"hours"`, `"min"`, `"s"`) to its
+#' length in minutes. Used to derive the model-to-output `time_multiplier` in
+#' [extract_tdt()] and [derive_tdt_curve()] from a workflow's `duration_unit`.
+#'
+#' @param unit Character scalar time-unit label.
+#' @return Numeric scalar: the unit's length in minutes.
+#' @keywords internal
+tdt_unit_to_minutes <- function(unit) {
+  if (is.null(unit) || length(unit) != 1L || is.na(unit))
+    stop("time unit is NULL/NA", call. = FALSE)
+  u <- tolower(trimws(as.character(unit)))
+  switch(u,
+         "s" = , "sec" = , "secs" = , "second" = , "seconds" = 1 / 60,
+         "m" = , "min" = , "mins" = , "minute" = , "minutes" = 1,
+         "h" = , "hr" = , "hrs" = , "hour" = , "hours"   = 60,
+         "d" = , "day" = , "days" = 1440,
+         stop("Unrecognised time unit: '", unit, "'. Use seconds/minutes/",
+              "hours/days (or pass time_multiplier explicitly).", call. = FALSE))
+}
+
+#' Resolve the model-to-output time multiplier for TDT helpers
+#'
+#' If `time_multiplier` is supplied it is returned unchanged (explicit override).
+#' Otherwise it is derived from the workflow's `meta$duration_unit` (the unit of
+#' the model's `duration` column) and the requested `output_time_unit`, so that
+#' `model_time * time_multiplier` is in `output_time_unit`. Falls back to `1`
+#' (with a message) when the units cannot be resolved.
+#'
+#' @param time_multiplier Numeric scalar or `NULL`.
+#' @param meta A `bayes_tls` workflow's `meta` list (uses `duration_unit`).
+#' @param output_time_unit Target output time unit (e.g. `"min"`).
+#' @return Numeric scalar multiplier.
+#' @keywords internal
+tdt_resolve_time_multiplier <- function(time_multiplier, meta,
+                                        output_time_unit) {
+  if (!is.null(time_multiplier)) return(time_multiplier)
+
+  du <- meta$duration_unit
+  mins_model  <- tryCatch(tdt_unit_to_minutes(du),
+                          error = function(e) NA_real_)
+  mins_output <- tryCatch(tdt_unit_to_minutes(output_time_unit),
+                          error = function(e) NA_real_)
+
+  if (is.na(mins_model) || is.na(mins_output)) {
+    message("Could not derive time_multiplier from duration_unit ('",
+            du %||% "NULL", "') and output_time_unit ('", output_time_unit,
+            "'); assuming model time unit == output unit (time_multiplier = 1). ",
+            "Pass time_multiplier explicitly to override.")
+    return(1)
+  }
+  mins_model / mins_output
+}

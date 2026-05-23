@@ -70,8 +70,12 @@ resolve_target_surv <- function(target_surv) {
 #' @param ndraws           Posterior draws to use. Default 1000.
 #' @param probs            Quantile probabilities for the summary. Default
 #'                         `c(0.025, 0.5, 0.975)`.
-#' @param time_multiplier  Multiplier from model time units to output time
-#'                         units (e.g. 60 for hours → min). Default 60.
+#' @param time_multiplier  Multiplier from model time units to `output_time_unit`
+#'                         (e.g. 60 for an hours model → min). `NULL` (default)
+#'                         derives it automatically from the workflow's
+#'                         `duration_unit` and `output_time_unit`, so a minutes
+#'                         model and an hours model both give the correct result
+#'                         without manual tuning. Pass a value to override.
 #' @param output_time_unit Label for the output time unit. Default `"min"`.
 #' @return A list with `draws` (per-draw threshold durations; `target_surv`
 #'         column is a character label), `summary` (quantile summary by
@@ -84,11 +88,13 @@ derive_tdt_curve <- function(workflow,
                              target_surv      = "relative",
                              ndraws           = 1000,
                              probs            = c(0.025, 0.5, 0.975),
-                             time_multiplier  = 60,
+                             time_multiplier  = NULL,
                              output_time_unit = "min") {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
+  time_multiplier <- tdt_resolve_time_multiplier(time_multiplier, workflow$meta,
+                                                 output_time_unit)
   ts <- resolve_target_surv(target_surv)
 
   if (ts$mode == "relative") {
@@ -368,7 +374,13 @@ derive_tdt_parameters <- function(ltx_curve,
 #'                    training-data duration range.
 #' @param ndraws      Posterior draws to use. Default 1000.
 #' @param time_multiplier Multiplier from model time units to `output_time_unit`.
-#'                    Default 60 (so hour-scale data → minute-scale outputs).
+#'                    `NULL` (default) derives it from the workflow's
+#'                    `duration_unit` and `output_time_unit` (e.g. 60 for an
+#'                    hours model, 1 for a minutes model). Pass a value to
+#'                    override. This is what makes `t_ref` (in `output_time_unit`)
+#'                    map to the correct exposure regardless of the model's time
+#'                    unit — omitting it on a minutes model used to compute CTmax
+#'                    at `t_ref/60`.
 #' @param output_time_unit Label for the output time unit. Default `"min"`.
 #' @param lethal      Logical. When `TRUE`, also returns the rate-multiplier
 #'                    T_crit and emits a one-line reminder that T_crit is
@@ -403,7 +415,7 @@ extract_tdt <- function(workflow,
                         temp_grid        = NULL,
                         duration_grid    = NULL,
                         ndraws           = 1000,
-                        time_multiplier  = 60,
+                        time_multiplier  = NULL,
                         output_time_unit = "min",
                         lethal           = FALSE) {
   if (!has_fit(workflow))
@@ -414,6 +426,12 @@ extract_tdt <- function(workflow,
       TC_rate_range[1] >= TC_rate_range[2])
     stop("TC_rate_range must be c(low, high) with 0 < low < high (% HI/hour).",
          call. = FALSE)
+
+  # Resolve the model->output time multiplier from the workflow's duration_unit
+  # when not supplied, so t_ref (in output units) is converted to model units
+  # correctly regardless of whether the model was fit in minutes or hours.
+  time_multiplier <- tdt_resolve_time_multiplier(time_multiplier, workflow$meta,
+                                                 output_time_unit)
 
   # Validate up front so both helpers receive a normalised label.
   ts <- resolve_target_surv(target_surv)

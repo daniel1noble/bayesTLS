@@ -11,7 +11,7 @@ derive_tdt_curve(
   target_surv = "relative",
   ndraws = 1000,
   probs = c(0.025, 0.5, 0.975),
-  time_multiplier = 60,
+  time_multiplier = NULL,
   output_time_unit = "min"
 )
 }
@@ -33,8 +33,12 @@ data's duration range.}
 \item{probs}{Quantile probabilities for the summary. Default
 \code{c(0.025, 0.5, 0.975)}.}
 
-\item{time_multiplier}{Multiplier from model time units to output time
-units (e.g. 60 for hours → min). Default 60.}
+\item{time_multiplier}{Multiplier from model time units to \code{output_time_unit}
+(e.g. 60 for an hours model → min). \code{NULL} (default)
+derives it automatically from the workflow's
+\code{duration_unit} and \code{output_time_unit}, so a minutes
+model and an hours model both give the correct result
+without manual tuning. Pass a value to override.}
 
 \item{output_time_unit}{Label for the output time unit. Default \code{"min"}.}
 }

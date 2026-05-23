@@ -12,7 +12,7 @@ extract_tdt(
   temp_grid = NULL,
   duration_grid = NULL,
   ndraws = 1000,
-  time_multiplier = 60,
+  time_multiplier = NULL,
   output_time_unit = "min",
   lethal = FALSE
 )
@@ -44,7 +44,13 @@ training-data duration range.}
 \item{ndraws}{Posterior draws to use. Default 1000.}
 
 \item{time_multiplier}{Multiplier from model time units to \code{output_time_unit}.
-Default 60 (so hour-scale data → minute-scale outputs).}
+\code{NULL} (default) derives it from the workflow's
+\code{duration_unit} and \code{output_time_unit} (e.g. 60 for an
+hours model, 1 for a minutes model). Pass a value to
+override. This is what makes \code{t_ref} (in \code{output_time_unit})
+map to the correct exposure regardless of the model's time
+unit — omitting it on a minutes model used to compute CTmax
+at \code{t_ref/60}.}
 
 \item{output_time_unit}{Label for the output time unit. Default \code{"min"}.}
 
