@@ -238,7 +238,7 @@ tinytable::tt(leaf_extract, digits = 2, escape = TRUE)
 
 ```{r leaf-ctmax-plot}
 #| label: fig-leaf-ctmax
-#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The ~5 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ is the window between the onset of detectable damage accumulation and the LT50 temperature at 1 h."
+#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. $T_{crit}$ is not shown: it is a rate-multiplier quantity defined only for lethal (damage-accumulation) endpoints, whereas PSII impairment is sublethal."
 #| fig-width: 11
 #| fig-height: 3.5
 

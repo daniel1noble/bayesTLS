@@ -126,6 +126,14 @@ pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidy
 # the dependencies are always registered.
 invisible(tinytable::tt(data.frame(x = 1)))
 
+# With `cache: true` set globally, knitr otherwise serves a display chunk's
+# stale cached output even after an *upstream* chunk it depends on has changed
+# (e.g. a table that prints `et_leaf` kept showing the old CTmax after the
+# `et_leaf` computation was fixed). autodep tracks cross-chunk object
+# dependencies so downstream caches are invalidated when upstream ones change.
+knitr::opts_chunk$set(autodep = TRUE)
+knitr::dep_auto()
+
 set.seed(123)
 
 # Cache directory for brms fits (per CLAUDE.md: save fits manually as .rds).
@@ -1948,9 +1956,10 @@ make_twostep_curve_case <- function(stage2, temp_grid,
 
 # Standard two-step uncertainty: treat each Stage-1 LT50 as a known point
 # and propagate only the Stage-2 lm uncertainty.
-#  - z: closed-form CI by inverting the slope's CI from `confint()`.
-#  - CTmax_1hr and T_crit (both ratios of normals): parametric simulation
-#    from MVN(coef, vcov), 1000 draws.
+#  - z (= -1/slope), CTmax_1hr and T_crit: quantiles over 1000 MVN(coef, vcov)
+#    draws of the Stage-2 coefficients. (Using one consistent draw-based method
+#    avoids the reversed/invalid bounds the closed-form -1/confint(slope) gives
+#    when the Stage-2 slope is imprecise.)
 #  - Line band: `predict.lm(..., interval = "confidence")`, exponentiated.
 propagate_twostep_case <- function(stage2_fit, temp_grid,
                                    n_sim = 1000,
@@ -1974,23 +1983,27 @@ propagate_twostep_case <- function(stage2_fit, temp_grid,
   }
   set.seed(seed)
   log_rate_mid <- mean(log10(TC_rate_range / 100))
-  beta_ci <- stats::confint(stage2_fit, "temp", level = 0.95)
-  z_lower <- as.numeric(-1 / beta_ci[1, 2])
-  z_upper <- as.numeric(-1 / beta_ci[1, 1])
 
   draws <- MASS::mvrnorm(n_sim,
                          mu    = stats::coef(stage2_fit),
                          Sigma = stats::vcov(stage2_fit))
   alpha <- draws[, "(Intercept)"]
   beta  <- draws[, "temp"]
+  # z, CTmax and T_crit CIs all come from the same MVN coefficient draws. z is
+  # -1/slope; deriving its CI by analytically inverting the slope's confint() is
+  # invalid when the Stage-2 slope is imprecise (sparse Stage-1 points) — the
+  # inversion can reverse the bounds or place the point estimate outside the
+  # interval. Taking quantiles of -1/beta over the draws is order-correct and
+  # consistent with the CTmax/T_crit CIs.
+  z_draws     <- -1 / beta
   ctmax_draws <- (log10(t_ref) -
                   (alpha + log10(time_multiplier))) / beta
-  tcrit_draws <- ctmax_draws + (-1 / beta) * log_rate_mid
+  tcrit_draws <- ctmax_draws + z_draws * log_rate_mid
 
   qfun <- function(x, p) stats::quantile(x, p, na.rm = TRUE, names = FALSE)
   summary_ci <- tibble::tibble(
-    z_lower     = z_lower,
-    z_upper     = z_upper,
+    z_lower     = qfun(z_draws, 0.025),
+    z_upper     = qfun(z_draws, 0.975),
     CTmax_lower = qfun(ctmax_draws, 0.025),
     CTmax_upper = qfun(ctmax_draws, 0.975),
     Tcrit_lower = qfun(tcrit_draws, 0.025),
@@ -2051,7 +2064,7 @@ shrimp_twostep_unc <- list(
 
 ```{r shrimp-two-step-tdt-table}
 #| label: tbl-shrimp-two-step-tdt
-#| tbl-cap: "Classical two-stage TDT quantities for brown shrimp. Point estimates are from the Stage-2 regression. The 95% CI for $z$ is obtained by inverting the slope's 95% CI from the Stage-2 linear model; CIs for $CT_{max_{1hr}}$ and $T_{crit}$ come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used for the joint 4PL extraction."
+#| tbl-cap: "Classical two-stage TDT quantities for brown shrimp. Point estimates are from the Stage-2 regression. The 95% CIs for $z$, $CT_{max_{1hr}}$ and $T_{crit}$ all come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used for the joint 4PL extraction."
 
 shrimp_twostep_tdt_ci <- dplyr::bind_rows(lapply(
   names(shrimp_twostep_unc),
@@ -2321,7 +2334,7 @@ patchwork::wrap_plots(
 
 ```{r shrimp-approach-compare-table}
 #| label: tbl-shrimp-approach-compare
-#| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
+#| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
 
 shrimp_compare_approaches <- dplyr::bind_rows(
   dplyr::bind_rows(lapply(
@@ -3066,7 +3079,7 @@ names(zf_twostep_unc) <- names(zf_stage2_twostep)
 
 ```{r zebrafish-two-step-tdt-table}
 #| label: tbl-zebrafish-two-step-tdt
-#| tbl-cap: "Classical two-stage TDT quantities for zebrafish, by life stage. Point estimates are from the Stage-2 regression. The 95% CI for $z$ is obtained by inverting the slope's 95% CI from the Stage-2 linear model; CIs for $CT_{max_{1hr}}$ and $T_{crit}$ come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used by the 4PL extraction."
+#| tbl-cap: "Classical two-stage TDT quantities for zebrafish, by life stage. Point estimates are from the Stage-2 regression. The 95% CIs for $z$, $CT_{max_{1hr}}$ and $T_{crit}$ all come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used by the 4PL extraction."
 
 zf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
   names(zf_twostep_unc),
@@ -3876,7 +3889,7 @@ The joint approach is the recommended default when the dataset spans an identifi
 ```{r zebrafish-twostep-joint-compare-table}
 #| label: tbl-zebrafish-twostep-joint-compare
 #| cache: false
-#| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL rows report posterior medians with 95% credible intervals."
+#| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL rows report posterior medians with 95% credible intervals."
 
 zf_joint_compare_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   z_summary  <- zf_joint_tdt[[s]]$z$summary
@@ -4448,11 +4461,27 @@ leaf_twostep_unc <- list(
     TC_rate_range = c(0.1, 1), seed = 302
   )
 )
+
+# The two-stage TDT line/CI are only defined over temperatures that have a valid
+# Stage-1 LT50. Beyond that span the 3-4-point Stage-2 regression extrapolates a
+# bow-tie CI that blows up to ~1e8 min and swamps the plots, so the figures clip
+# each method's line and band to its own Stage-1 temperature range.
+leaf_stage1_range <- leaf_stage1_twostep |>
+  dplyr::filter(stage1_ok) |>
+  dplyr::group_by(method) |>
+  dplyr::summarise(tmin = min(temp), tmax = max(temp), .groups = "drop")
+
+clip_to_stage1 <- function(df) {
+  df |>
+    dplyr::left_join(leaf_stage1_range, by = "method") |>
+    dplyr::filter(temp >= tmin, temp <= tmax) |>
+    dplyr::select(-tmin, -tmax)
+}
 ```
 
 ```{r leaf-two-step-tdt-table}
 #| label: tbl-leaf-two-step-tdt
-#| tbl-cap: "Classical two-stage TDT quantities for snow gum leaf PSII. Point estimates are from the Stage-2 regression. The 95% CI for $z$ is obtained by inverting the slope's 95% CI from the Stage-2 linear model; the 95% CI for $CT_{max_{1hr}}$ comes from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ is not reported because PSII impairment is a sublethal endpoint and the rate-multiplier $T_{crit}$ is only meaningful for mortality."
+#| tbl-cap: "Classical two-stage TDT quantities for snow gum leaf PSII. Point estimates are from the Stage-2 regression. The 95% CIs for $z$ and $CT_{max_{1hr}}$ both come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ is not reported because PSII impairment is a sublethal endpoint and the rate-multiplier $T_{crit}$ is only meaningful for mortality."
 
 leaf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
   names(leaf_twostep_unc),
@@ -4475,7 +4504,7 @@ tinytable::tt(leaf_twostep_tdt_ci, escape = TRUE)
 
 ```{r leaf-two-step-tdt-line}
 #| label: fig-leaf-two-step-tdt-line
-#| fig-cap: "Classical two-stage TDT lines for snow gum leaf PSII. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). The beta Stage-1 fit allows extra-binomial dispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
+#| fig-cap: "Classical two-stage TDT lines for snow gum leaf PSII. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). Each line/band is shown only over the temperatures with a valid Stage-1 LT50 — only 3-4 assay temperatures yield one (the cool end never reaches 50% impairment within 120 min), so the Stage-2 regression is not extrapolated beyond them. The beta Stage-1 fit allows extra-binomial dispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
 #| fig-width: 7
 #| fig-height: 4.5
 
@@ -4494,6 +4523,11 @@ leaf_twostep_band_min <- dplyr::bind_rows(lapply(
       dplyr::mutate(method = m)
   }
 ))
+
+# Clip the line and band to each method's Stage-1 temperature span (no wild
+# extrapolation of the 3-4-point Stage-2 regression).
+leaf_twostep_line_min <- clip_to_stage1(leaf_twostep_line_min)
+leaf_twostep_band_min <- clip_to_stage1(leaf_twostep_band_min)
 
 ggplot2::ggplot() +
   ggplot2::geom_ribbon(
@@ -4709,7 +4743,7 @@ tinytable::tt(leaf_extract, digits = 2, escape = TRUE)
 
 ```{r leaf-ctmax-plot}
 #| label: fig-leaf-ctmax
-#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The ~5 °C gap between $CT_{max_{1hr}}$ and $T_{crit}$ is the window between the onset of detectable damage accumulation and the LT50 temperature at 1 h."
+#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. $T_{crit}$ is not shown: it is a rate-multiplier quantity defined only for lethal (damage-accumulation) endpoints, whereas PSII impairment is sublethal."
 #| fig-width: 11
 #| fig-height: 3.5
 
@@ -4740,7 +4774,7 @@ The classical two-stage pipeline fits a 0–1 logistic at each temperature, so i
 
 ```{r leaf-approach-compare-table}
 #| label: tbl-leaf-approach-compare
-#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL, compared at a **common absolute threshold** ($F_v/F_m = 0.5$). The two-stage pipeline forces a 0–1 logistic per temperature and so can only target an absolute 0.5 crossing; for a like-with-like comparison the joint 4PL row is therefore extracted with `target_surv = \"absolute\"` rather than the package-default relative midpoint (the main leaf result in @tbl-leaf-extract uses the relative midpoint, which is the more meaningful 50%-of-dynamic-range impairment given the fitted plateau $u \\approx 0.78$). Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ from inverting the slope CI, $CT_{max_{1hr}}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
+#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL, compared at a **common absolute threshold** ($F_v/F_m = 0.5$). The two-stage pipeline forces a 0–1 logistic per temperature and so can only target an absolute 0.5 crossing; for a like-with-like comparison the joint 4PL row is therefore extracted with `target_surv = \"absolute\"` rather than the package-default relative midpoint (the main leaf result in @tbl-leaf-extract uses the relative midpoint, which is the more meaningful 50%-of-dynamic-range impairment given the fitted plateau $u \\approx 0.78$). Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$ and $CT_{max_{1hr}}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
 
 # Compare like-with-like: the forced-0/1 two-stage can only read an absolute 0.5
 # crossing, so extract the joint 4PL at the same absolute threshold here.
@@ -4780,7 +4814,7 @@ tinytable::tt(leaf_compare_approaches, escape = TRUE)
 
 ```{r leaf-approach-compare-tdt-lines}
 #| label: fig-leaf-approach-compare-tdt-lines
-#| fig-cap: "Snow gum leaf PSII TDT-line comparison at a common absolute threshold ($F_v/F_m = 0.5$). The joint 4PL posterior median and 95% credible band are the time to $F_v/F_m = 0.5$ (`target_surv = \"absolute\"`) — the only threshold the forced-0/1 two-stage can target; the two classical two-stage lines are overlaid with their pointwise 95% confidence bands from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points). Outside the assayed 28–48 °C window both methods extrapolate."
+#| fig-cap: "Snow gum leaf PSII TDT-line comparison at a common absolute threshold ($F_v/F_m = 0.5$). The joint 4PL posterior median and 95% credible band (time to $F_v/F_m = 0.5$, `target_surv = \"absolute\"` — the only threshold the forced-0/1 two-stage can target) are shown across the assayed 28–48 °C range; the two classical two-stage lines and their pointwise 95% `predict.lm()` confidence bands are shown only over each method's Stage-1 temperature span (39–48 °C quasi-binomial, 39–45 °C beta), since only those assay temperatures yield a valid Stage-1 LT50. Where they overlap the three methods agree closely; the joint 4PL additionally constrains the cooler temperatures the two-stage cannot reach."
 #| fig-width: 9
 #| fig-height: 4
 
@@ -4797,6 +4831,12 @@ leaf_twostep_band_cmp <- dplyr::bind_rows(lapply(
   }
 ))
 
+# Clip the two-stage line + band to each method's Stage-1 temperature span so the
+# extrapolated bow-tie CI (up to ~1e8 min) does not swamp the panel; the joint
+# 4PL is well-defined across the assayed range, so clip it to the assay window.
+leaf_twostep_band_cmp <- clip_to_stage1(leaf_twostep_band_cmp)
+leaf_twostep_line_cmp <- clip_to_stage1(leaf_twostep_line_min)
+
 # Joint 4PL line at the SAME absolute 0.5 threshold as the two-stage, on the
 # two-stage temperature grid, so the comparison is like-with-like.
 ltx_leaf_abs <- derive_tdt_curve(
@@ -4808,7 +4848,8 @@ leaf_4pl_line <- ltx_leaf_abs$summary |>
                    duration_median,
                    duration_lower,
                    duration_upper,
-                   method = "Joint Bayesian 4PL")
+                   method = "Joint Bayesian 4PL") |>
+  dplyr::filter(temp >= min(leaf_std$temp), temp <= max(leaf_std$temp))
 
 leaf_method_cols <- c(
   "Joint Bayesian 4PL"       = "#b2182b",
@@ -4835,7 +4876,7 @@ p_leaf_cmp_lin <- ggplot2::ggplot() +
     linewidth = 1
   ) +
   ggplot2::geom_line(
-    data = leaf_twostep_line_min,
+    data = leaf_twostep_line_cmp,
     ggplot2::aes(x = temp, y = duration_median, colour = method),
     linewidth = 0.9
   ) +
@@ -5004,13 +5045,256 @@ tinytable::tt(leaf_hi_table, escape = TRUE)
 The snow gum leaf case study covers raw counts → fitted joint 4PL → classical TDT quantities with calibrated uncertainty. Every quantity inherits the posterior of the same single fit.
 
 
+# **Case Study 4: Seed data** {#sec-seed}
+
+We now apply the workflow — `standardize_data()` → `fit_4pl()` → `extract_tdt()` — to lethal-TDT data from imbibed seeds of mountain hickory (*Acacia penninervis* var. *penninervis*). The data are the proportion of seeds respiring following heat exposure. In this experiment, seeds were surface-sterilised, then placed on 1 % agar at 22 °C to imbibe for 24 h. Seeds were exposed to heat treatments (temperature × duration combinations) and then individual seeds were placed in 2 mL tubes containing 1.5 mL paraffin wax and 0.2 mL agar, leading 0.3 mL air volume as headspace to amplify the respiration signal:noise ratio of each ~60 mg seed. Tubes with seeds were placed in a $Q_2$ system that measured respiration through closed-system respirometry, quantifying the rate of oxygen consumption per seed as $\dot V O_2~(mL~seed^{-1}~h^{-1})$. Five replicate seeds were exposed to each heat treatment, and the proportion of respiring seeds were then calculated per treatment. As seed heat tolerance is considerably higher than animals or soft plant tissues, the assay temperatures spanned 22-80 °C and 15 min to 2 hours of exposure.
+
+## Data and standardisation {#sec-seed-data}
+
+```{r seed-load}
+#| label: seed-load
+#| echo: true
+
+seed_raw <- readr::read_csv(
+  here::here("data", "data_lethal_TDT_acacia_seeds.csv"),
+  show_col_types = FALSE
+)
+
+seed_std <- standardize_data(
+  data           = seed_raw,
+  temp           = "Temperature",
+  duration       = "Duration",
+  n_total        = "Seeds_Total",
+  n_surv         = "Seeds_Resp",
+  random_effects = NULL,
+  duration_unit  = "minutes"
+)
+```
+
+```{r seed-summary-table}
+#| label: tbl-seed-summary
+#| tbl-cap: "Summary of the seed lethal-TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
+
+seed_summary <- tibble::tibble(
+  `n trials`                 = nrow(seed_std),
+  `Temperature range (°C)`   = paste(range(seed_std$temp), collapse = "–"),
+  `Duration range (min)`     = paste(round(range(seed_std$duration), 2),
+                                     collapse = "–"),
+  `Median individuals/trial` = stats::median(seed_std$n_total),
+  `Temperature centre (°C)`  = attr(seed_std, "tdt_meta")$temp_mean
+)
+tinytable::tt(seed_summary, digits = 2, escape = TRUE)
+```
+
+## Fitting the joint Bayesian 4PL {#sec-seed-fit}
+
+This is a deliberately sparse design — 5 assay temperatures × 4 durations × 5 seeds per cell (20 cells). The package default puts a `temp_c` slope on all four 4PL sub-parameters (8 fixed effects), which over-fits a dataset this small. We therefore fit the **constant-shape** variant with `temp_effects = "mid"`: temperature acts on the midpoint ($\log_{10}\text{LT50}$) only, while the asymptotes and steepness are shared across temperature. This is the classical TDT assumption and the appropriate parameterisation here — it estimates only the quantity the design can support (the midpoint's temperature slope, $\beta_1 = -1/z$) and shares strength across temperatures for the curve shape. We keep the default `beta_binomial(link = "identity")` likelihood.
+
+```{r seed-fit}
+#| label: seed-fit
+#| echo: true
+#| cache: false
+
+wf_seed <- fit_4pl(
+  seed_std,
+  temp_effects = "mid",
+  random_effects = NULL,
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  file    = file.path(models_dir, "fit_seed_lethal_4pl")
+)
+
+# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
+print(wf_seed)
+```
+
+### Sampling diagnostics
+
+```{r seed-diagnostics}
+#| label: tbl-seed-diagnostics
+#| tbl-cap: "Sampling diagnostics for the seed constant-shape 4PL fit. Healthy targets: Rhat < 1.01, high ESS, zero divergences. Treedepth hits (a flagged but non-fatal efficiency warning) are expected here: the sparse design weakly constrains the curve steepness, producing long posterior tails the sampler must traverse."
+#| cache: false
+
+tinytable::tt(diagnose_tdt_fit(wf_seed), digits = 3, escape = TRUE)
+```
+
+The diagnostics table is a numerical pass/fail summary. The canonical visual check is the chain trace ("fuzzy caterpillar"): healthy chains overlap and explore the same posterior support; chains that drift, diverge, or hang in different regions signal a problem with the fit.
+
+```{r seed-trace-plot}
+#| label: fig-seed-trace
+#| fig-cap: "Posterior chain traces for the seed 4PL fixed-effect parameters. Each panel overlays four chains; well-mixed chains overlap throughout."
+#| fig-width: 9
+#| fig-height: 6
+#| cache: false
+
+brms::mcmc_plot(
+  wf_seed$fit,
+  type     = "trace",
+  variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
+               "b_logk_Intercept",   "b_mid_Intercept",
+               "b_mid_temp_c")
+) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+### Posterior parameters on the natural scale
+
+```{r seed-parameter-table}
+#| label: tbl-seed-parameters
+#| tbl-cap: "Posterior medians and 95% credible intervals for the seed 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in minutes at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
+
+tinytable::tt(tdt_parameter_table(wf_seed), digits = 3, escape = TRUE)
+```
+
+## Survival curves with observed overlay {#sec-seed-survival-curves}
+
+`predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and exposure durations and returns posterior survival probabilities. Overlaying the per-replicate observed proportions gives a visual check that the fitted curves track the data at every temperature.
+
+```{r seed-survival-curves}
+#| label: fig-seed-survival-curves
+#| fig-cap: "Posterior survival curves for seeds at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate survival proportions."
+#| fig-width: 8
+#| fig-height: 5
+
+psc_seed <- predict_survival_curves(
+  wf_seed,
+  temps     = sort(unique(seed_std$temp)),
+  ndraws    = 1000
+)
+plot_survival_curves(psc_seed, observed = seed_std) +
+  ggplot2::labs(x = "Exposure duration (minutes)")
+```
+
+## TDT landscape {#sec-seed-landscape}
+
+`derive_tdt_landscape()` evaluates the fitted 4PL on a dense (temperature, duration) grid and `plot_tdt_landscape()` renders it as a heatmap with overlaid contours at 25, 50, and 75% survival. This is the two-dimensional view of the dose-response surface that the TDT line summarises with one number per temperature.
+
+```{r seed-landscape}
+#| label: fig-seed-landscape
+#| fig-cap: "TDT landscape for seeds: posterior median predicted survival across a 120 × 120 grid of assay temperatures × durations. White contours mark 25%, 50%, and 75% survival isolines. Overlaid points are raw observed proportions."
+#| fig-width: 8
+#| fig-height: 6
+#| cache: false
+
+seed_dur_grid <- seq(min(seed_std$duration), max(seed_std$duration),
+                     length.out = 120)
+lsp_seed <- derive_tdt_landscape(wf_seed,
+                                 duration_grid = seed_dur_grid,
+                                 ndraws        = 1000)
+plot_tdt_landscape(lsp_seed, observed = seed_std)
+```
+
+## TDT line: time to the threshold vs temperature {#sec-seed-tdt-line}
+
+The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "minutes of exposure half the seeds tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. The default threshold is $\text{mid}$ (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for the classical absolute-$t_{50}$ definition.
+
+```{r seed-tdt-line}
+#| label: seed-tdt-line
+#| echo: true
+
+ltx_seed <- derive_tdt_curve(
+  wf_seed,
+  temp_grid        = seq(min(seed_std$temp) - 1.5,
+                         max(seed_std$temp) + 1.5, by = 0.05),
+  ndraws           = 500,
+  time_multiplier  = 1,
+  output_time_unit = "minutes"
+)
+```
+
+```{r plot-seed-tdt-line}
+#| label: fig-seed-tdt-line
+#| fig-cap: "Seed posterior TDT line: predicted time to threshold vs assay temperature, with 95 % credible band. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Both panels share the same posterior."
+#| fig-width: 9
+#| fig-height: 4
+
+plot_tdt_curve(ltx_seed, panels = "both", colour = "#b2182b")
+```
+
+## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-seed-extract}
+
+`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion). Passing `lethal = TRUE` additionally returns $T_{crit}$ under the rate-multiplier definition; this only makes sense when the endpoint is mortality (see @eq-tcrit), so we opt in for the seed data.
+
+```{r seed-extract}
+#| label: seed-extract
+#| echo: true
+
+et_seed <- extract_tdt(
+  wf_seed,
+  t_ref         = 60,
+  TC_rate_range = c(0.1, 1),
+  ndraws        = 500,
+  lethal        = TRUE
+)
+```
+
+```{r seed-extract-table}
+#| label: tbl-seed-extract
+#| tbl-cap: "Classical TDT summaries for seeds, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$."
+
+seed_extract <- tibble::tribble(
+  ~Quantity,                        ~Median, ~Lower, ~Upper,
+  "z (°C per order of magnitude)",      et_seed$z$summary$z_median,
+                                    et_seed$z$summary$z_lower,
+                                    et_seed$z$summary$z_upper,
+  "CTmax_1hr (°C)",                 et_seed$CTmax$summary$temp_median,
+                                    et_seed$CTmax$summary$temp_lower,
+                                    et_seed$CTmax$summary$temp_upper,
+  "T_crit (°C, r* in [0.1, 1] per hour)",
+                                    et_seed$T_crit$summary$temp_median,
+                                    et_seed$T_crit$summary$temp_lower,
+                                    et_seed$T_crit$summary$temp_upper
+)
+tinytable::tt(seed_extract, digits = 2, escape = TRUE)
+```
+
+```{r seed-identifiability}
+#| echo: false
+seed_z_hi   <- round(et_seed$z$summary$z_upper)
+seed_ct_med <- round(et_seed$CTmax$summary$temp_median, 1)
+```
+
+**A note on what this design can support.** The seed assay's exposure durations (15–120 min) do not bracket the LT50 at most temperatures: at 22–60 °C survival never falls below ~0.6 within 120 min (the LT50 lies beyond the longest exposure), and at 70–80 °C the seeds are largely dead by the shortest exposure, with the small per-cell sample ($n = 5$) adding non-monotone noise. Under the constant-shape model the curve shape is shared across temperatures, so $z$ and the survival surface are still estimable — and the fit is well behaved (zero divergences) where the all-four-parameter default is not — but $z$ is identified through the shared-shape assumption rather than by directly observing the LT50 at each temperature. Its credible interval is therefore wide (upper bound ~`r seed_z_hi` °C per decade), and $CT_{max_{1hr}}$ (~`r seed_ct_med` °C) is interpolated between the 60 and 70 °C assay temperatures. The estimates should be read with that design limitation in mind; a design with exposure durations chosen to bracket the LT50 at each temperature would sharpen them.
+
+```{r seed-tcrit-ctmax-plot}
+#| label: fig-seed-tcrit-ctmax
+#| fig-cap: "Posterior densities of $z$ (left), $CT_{max_{1hr}}$ (middle), and $T_{crit}$ (right) for seeds. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. The wide $z$ posterior reflects the assay design (durations that do not bracket the LT50 at most temperatures), not a sampling problem."
+#| fig-width: 11
+#| fig-height: 3.5
+
+z_draws_seed <- get_z_draws(et_seed) |>
+  dplyr::transmute(temp = z)
+z_q <- stats::quantile(z_draws_seed$temp,
+                       c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+z_post_seed <- list(
+  draws   = z_draws_seed,
+  summary = tibble::tibble(temp_lower  = z_q[1],
+                           temp_median = z_q[2],
+                           temp_upper  = z_q[3])
+)
+
+patchwork::wrap_plots(
+  plot_temperature_density(z_post_seed,
+                           x_label = expression(italic(z)~("°C per decade of time"))),
+  plot_temperature_density(et_seed$CTmax,
+                           x_label = expression(CT[max[1*hr]]~("°C"))),
+  plot_temperature_density(et_seed$T_crit,
+                           x_label = expression(T[crit]~("°C"))),
+  ncol = 3
+)
+```
+
+The seed case study covers raw counts → fitted constant-shape joint 4PL → classical TDT quantities with calibrated uncertainty, and illustrates how the diagnostics and credible intervals surface the limits of an under-bracketed assay design.
+
+
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
-This figure compiles the headline TDT quantities ($z$ and $CT_{max_{1hr}}$) from the three case studies into a single multi-panel display, intended for the main manuscript. Each panel overlays the joint Bayesian 4PL posterior (green ridge + green median/95% CrI) with the classical two-stage point estimate (orange median/95% CI) at the matched Stage-1 likelihood — beta-binomial for the count-based case studies (shrimp, zebrafish), beta for the proportional case study (snow gum leaf PSII). The zebrafish row splits into three ridges, one per life stage.
+This figure compiles the headline TDT quantities ($z$ and $CT_{max_{1hr}}$) from the four case studies into a single multi-panel display, intended for the main manuscript. Each panel overlays the joint Bayesian 4PL posterior (green ridge + green median/95% CrI) with the classical two-stage point estimate (orange median/95% CI) at the matched Stage-1 likelihood — beta-binomial for the count-based case studies (shrimp, zebrafish, seed), beta for the proportional case study (snow gum leaf PSII). The zebrafish row splits into three ridges, one per life stage. The *Acacia* seed row shows only the joint 4PL: its sparse design yields a valid Stage-1 LT50 at too few temperatures to fit the classical two-stage at all, so there is no two-stage estimate to overlay — itself a useful contrast.
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig4-case-study-densities
-#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max_{1hr}}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the three case studies (rows). The 4PL posterior median and 95% credible interval are overlaid as a green pointrange. The classical two-stage point estimate (beta-binomial Stage 1 for the brown shrimp and zebrafish counts, beta Stage 1 for the snow gum leaf PSII proportions) is shown for comparison as an orange pointrange (median + 95% CI, #a63603). Dashed vertical lines mark the 4PL posterior median for each entity. The zebrafish panel splits into three ridges, one per life stage."
+#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max_{1hr}}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the four case studies (rows). The 4PL posterior median and 95% credible interval are overlaid as a green pointrange. The classical two-stage point estimate (beta-binomial Stage 1 for the brown shrimp and zebrafish counts, beta Stage 1 for the snow gum leaf PSII proportions) is shown for comparison as an orange pointrange (median + 95% CI, #a63603); the *Acacia* seed has no two-stage estimate because its sparse design yields a valid Stage-1 LT50 at too few temperatures. Dashed vertical lines mark the 4PL posterior median for each entity. The zebrafish panel splits into three ridges, one per life stage. Panels use free x-axes; the seed $z$ posterior is wide, reflecting an assay design whose durations do not bracket the LT50 at most temperatures."
 #| fig-width: 9
 #| fig-height: 7
 #| cache: false
@@ -5041,6 +5325,14 @@ fig4_draws <- dplyr::bind_rows(
   tibble::tibble(
     case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
     quantity   = "CTmax_1hr", value = get_ctmax_draws(et_leaf)$CTmax
+  ),
+  tibble::tibble(
+    case_study = "Acacia seed", group = "Acacia seed",
+    quantity   = "z",         value = get_z_draws(et_seed)$z
+  ),
+  tibble::tibble(
+    case_study = "Acacia seed", group = "Acacia seed",
+    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_seed)$CTmax
   )
 ) |>
   dplyr::filter(is.finite(value))
@@ -5101,16 +5393,29 @@ fig4_summary <- dplyr::bind_rows(
          leaf_bb_pt$z, leaf_bb_ci$z_lower, leaf_bb_ci$z_upper),
   mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "CTmax_1hr", "Two-step",
          leaf_bb_pt$CTmax_1hr,
-         leaf_bb_ci$CTmax_lower, leaf_bb_ci$CTmax_upper)
+         leaf_bb_ci$CTmax_lower, leaf_bb_ci$CTmax_upper),
+  # Acacia seed: joint 4PL only. The classical two-stage cannot be fit here —
+  # only 2 of 5 assay temperatures yield a valid Stage-1 LT50 (fewer than the 3
+  # needed for the Stage-2 regression), so there is no two-step estimate to plot.
+  mk_row("Acacia seed", "Acacia seed", "z", "Joint Bayesian 4PL",
+         et_seed$z$summary$z_median,
+         et_seed$z$summary$z_lower,
+         et_seed$z$summary$z_upper),
+  mk_row("Acacia seed", "Acacia seed", "CTmax_1hr", "Joint Bayesian 4PL",
+         et_seed$CTmax$summary$temp_median,
+         et_seed$CTmax$summary$temp_lower,
+         et_seed$CTmax$summary$temp_upper)
 )
 
 # Factor ordering: rows are the three case studies; within zebrafish the three
 # life stages are ordered young → old → larvae (top to bottom of the ridge
 # stack, so we reverse for the y-axis levels).
-case_levels  <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII")
+case_levels  <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII",
+                  "Acacia seed")
 group_levels <- c("Brown shrimp",
                   rev(zf_stages),
-                  "Snow gum leaf PSII")
+                  "Snow gum leaf PSII",
+                  "Acacia seed")
 quant_levels <- c("z", "CTmax_1hr")
 
 fig4_draws <- fig4_draws |>

@@ -7,6 +7,7 @@
 fit_4pl(
   data,
   random_effects = NULL,
+  temp_effects = c("low", "up", "k", "mid"),
   lower = 0,
   upper = 1,
   family = NULL,
@@ -30,6 +31,16 @@ fit_4pl(
 
 \item{random_effects}{Optional character vector of grouping variables for
 random intercepts on \code{mid}.}
+
+\item{temp_effects}{Which 4PL sub-parameters carry a \code{temp_c} slope; a subset
+of \code{c("low", "up", "k", "mid")} (default all four).
+\code{"mid"} is always required. The all-four default needs
+roughly >= 15 cells per fixed effect to be stable; for
+sparse designs (few temperatures x durations, small n)
+prefer \code{temp_effects = "mid"} (constant-shape), which
+estimates only the midpoint's temperature slope (= -1/z)
+and shares the asymptotes and steepness across
+temperature. Passed to \code{\link[=make_4pl_formula]{make_4pl_formula()}}.}
 
 \item{lower, upper}{Response-scale bounds for the asymptotes. Default
 \verb{0, 1}; pass \verb{lower = 0.85, upper = 1} for sublethal
@@ -77,10 +88,11 @@ a workflow object containing the fit, data, formula, prior, and metadata
 that downstream helpers (e.g. \code{\link[=extract_tdt]{extract_tdt()}}) read from.
 }
 \details{
-The model is fixed: all four 4PL sub-parameters get a \code{temp_c} slope, and
-random intercepts attach to \code{mid} only. To fit separate categories (life
-stages, species, populations), filter \code{data} per category and call this
-function once per subset.
+By default all four 4PL sub-parameters get a \code{temp_c} slope, and random
+intercepts attach to \code{mid} only. Use \code{temp_effects = "mid"} for the classical
+constant-shape TDT model (recommended for sparse designs — see \code{temp_effects}).
+To fit separate categories (life stages, species, populations), filter \code{data}
+per category and call this function once per subset.
 }
 \examples{
 \dontrun{

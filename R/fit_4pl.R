@@ -37,10 +37,20 @@
 #'                       proportion) fit. Ignored for count families. Default
 #'                       `"survival"` (the column [standardize_data()] writes for
 #'                       a `proportion` response).
+#' @param temp_effects   Character vector naming which 4PL sub-parameters carry a
+#'                       `temp_c` slope: any subset of `c("low", "up", "k",
+#'                       "mid")`. Default is all four — temperature can affect
+#'                       every aspect of the dose-response curve. `"mid"` must
+#'                       always be present (its slope is \eqn{-1/z}, the core TDT
+#'                       quantity). Restricting to `"mid"` gives the classical
+#'                       *constant-shape* TDT model (asymptotes and slope shared
+#'                       across temperature), which is the right choice for sparse
+#'                       designs where the richer all-four model over-fits.
 #' @return A `brmsformula` object.
 #' @examples
 #' make_4pl_formula()
 #' make_4pl_formula(family = binomial(link = "identity"))
+#' make_4pl_formula(temp_effects = "mid")            # constant-shape TDT
 #' make_4pl_formula(family = brms::Beta(link = "identity"),
 #'                  response_var = "survival")
 #' @export
@@ -49,7 +59,14 @@ make_4pl_formula <- function(random_effects = NULL,
                              upper          = 1,
                              family         = brms::beta_binomial(
                                link = "identity"),
-                             response_var   = "survival") {
+                             response_var   = "survival",
+                             temp_effects   = c("low", "up", "k", "mid")) {
+
+  temp_effects <- match.arg(temp_effects, c("low", "up", "k", "mid"),
+                            several.ok = TRUE)
+  if (!"mid" %in% temp_effects)
+    stop("`mid` must always carry temp_c (its slope is -1/z, the core TDT ",
+         "quantity); include \"mid\" in `temp_effects`.", call. = FALSE)
 
   b <- compute_4pl_bounds(lower, upper)
 
@@ -61,7 +78,10 @@ make_4pl_formula <- function(random_effects = NULL,
     low_expr, up_expr, low_expr
   )
 
-  mid_terms <- c("temp_c", tdt_format_random_effects(random_effects))
+  # Each sub-parameter is "~ temp_c" if selected, else "~ 1" (constant in
+  # temperature). Random intercepts always attach to mid.
+  par_rhs   <- function(par) if (par %in% temp_effects) "temp_c" else "1"
+  mid_terms <- c(par_rhs("mid"), tdt_format_random_effects(random_effects))
   mid_rhs   <- paste(mid_terms, collapse = " + ")
 
   family_name <- family$family
@@ -77,9 +97,9 @@ make_4pl_formula <- function(random_effects = NULL,
 
   brms::bf(
     stats::as.formula(response_formula),
-    stats::as.formula("lowraw ~ temp_c"),
-    stats::as.formula("upraw  ~ temp_c"),
-    stats::as.formula("logk   ~ temp_c"),
+    stats::as.formula(paste("lowraw ~", par_rhs("low"))),
+    stats::as.formula(paste("upraw  ~", par_rhs("up"))),
+    stats::as.formula(paste("logk   ~", par_rhs("k"))),
     stats::as.formula(paste("mid    ~", mid_rhs)),
     nl = TRUE,
     family = family
@@ -92,14 +112,24 @@ make_4pl_formula <- function(random_effects = NULL,
 #' a workflow object containing the fit, data, formula, prior, and metadata
 #' that downstream helpers (e.g. [extract_tdt()]) read from.
 #'
-#' The model is fixed: all four 4PL sub-parameters get a `temp_c` slope, and
-#' random intercepts attach to `mid` only. To fit separate categories (life
-#' stages, species, populations), filter `data` per category and call this
-#' function once per subset.
+#' By default all four 4PL sub-parameters get a `temp_c` slope, and random
+#' intercepts attach to `mid` only. Use `temp_effects = "mid"` for the classical
+#' constant-shape TDT model (recommended for sparse designs — see `temp_effects`).
+#' To fit separate categories (life stages, species, populations), filter `data`
+#' per category and call this function once per subset.
 #'
 #' @param data           Output of [standardize_data()].
 #' @param random_effects Optional character vector of grouping variables for
 #'                       random intercepts on `mid`.
+#' @param temp_effects   Which 4PL sub-parameters carry a `temp_c` slope; a subset
+#'                       of `c("low", "up", "k", "mid")` (default all four).
+#'                       `"mid"` is always required. The all-four default needs
+#'                       roughly >= 15 cells per fixed effect to be stable; for
+#'                       sparse designs (few temperatures x durations, small n)
+#'                       prefer `temp_effects = "mid"` (constant-shape), which
+#'                       estimates only the midpoint's temperature slope (= -1/z)
+#'                       and shares the asymptotes and steepness across
+#'                       temperature. Passed to [make_4pl_formula()].
 #' @param lower,upper    Response-scale bounds for the asymptotes. Default
 #'                       `0, 1`; pass `lower = 0.85, upper = 1` for sublethal
 #'                       data bounded above zero.
@@ -137,6 +167,7 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @export
 fit_4pl <- function(data,
                     random_effects = NULL,
+                    temp_effects   = c("low", "up", "k", "mid"),
                     lower          = 0,
                     upper          = 1,
                     family         = NULL,
@@ -176,7 +207,8 @@ fit_4pl <- function(data,
                               lower          = lower,
                               upper          = upper,
                               family         = family,
-                              response_var   = response_var)
+                              response_var   = response_var,
+                              temp_effects   = temp_effects)
 
   if (is.null(prior)) {
     # Set the phi prior only for families that carry a precision parameter
@@ -193,6 +225,8 @@ fit_4pl <- function(data,
 
   meta_full <- utils::modifyList(meta, list(
     random_effects = random_effects,
+    temp_effects   = match.arg(temp_effects, c("low", "up", "k", "mid"),
+                               several.ok = TRUE),
     lower          = lower,
     upper          = upper,
     bounds         = compute_4pl_bounds(lower, upper),

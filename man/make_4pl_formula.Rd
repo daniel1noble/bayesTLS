@@ -9,7 +9,8 @@ make_4pl_formula(
   lower = 0,
   upper = 1,
   family = brms::beta_binomial(link = "identity"),
-  response_var = "survival"
+  response_var = "survival",
+  temp_effects = c("low", "up", "k", "mid")
 )
 }
 \arguments{
@@ -29,6 +30,15 @@ for a continuous proportion response.}
 proportion) fit. Ignored for count families. Default
 \code{"survival"} (the column \code{\link[=standardize_data]{standardize_data()}} writes for
 a \code{proportion} response).}
+
+\item{temp_effects}{Character vector naming which 4PL sub-parameters carry a
+\code{temp_c} slope: any subset of \code{c("low", "up", "k", "mid")}. Default is all four — temperature can affect
+every aspect of the dose-response curve. \code{"mid"} must
+always be present (its slope is \eqn{-1/z}, the core TDT
+quantity). Restricting to \code{"mid"} gives the classical
+\emph{constant-shape} TDT model (asymptotes and slope shared
+across temperature), which is the right choice for sparse
+designs where the richer all-four model over-fits.}
 }
 \value{
 A \code{brmsformula} object.
@@ -58,6 +68,7 @@ toward zero under the prior and the fit reduces cleanly to the simpler case.
 \examples{
 make_4pl_formula()
 make_4pl_formula(family = binomial(link = "identity"))
+make_4pl_formula(temp_effects = "mid")            # constant-shape TDT
 make_4pl_formula(family = brms::Beta(link = "identity"),
                  response_var = "survival")
 }

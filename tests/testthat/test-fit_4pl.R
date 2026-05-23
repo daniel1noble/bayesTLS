@@ -11,6 +11,31 @@ test_that("make_4pl_formula returns a brmsformula with the expected structure", 
   expect_true(any(grepl("mid\\s*~ temp_c", parts)))
 })
 
+test_that("make_4pl_formula temp_effects controls which sub-params carry temp_c", {
+  # Default: all four carry temp_c (regression guard).
+  pf <- make_4pl_formula()$pforms
+  expect_match(paste(deparse(pf$lowraw), collapse = " "), "temp_c")
+  expect_match(paste(deparse(pf$upraw),  collapse = " "), "temp_c")
+  expect_match(paste(deparse(pf$logk),   collapse = " "), "temp_c")
+  expect_match(paste(deparse(pf$mid),    collapse = " "), "temp_c")
+
+  # Constant-shape: temp_c only on mid; low/up/k are intercept-only.
+  pf2 <- make_4pl_formula(temp_effects = "mid")$pforms
+  expect_equal(paste(deparse(pf2$lowraw), collapse = " "), "lowraw ~ 1")
+  expect_equal(paste(deparse(pf2$upraw),  collapse = " "), "upraw ~ 1")
+  expect_equal(paste(deparse(pf2$logk),   collapse = " "), "logk ~ 1")
+  expect_match(paste(deparse(pf2$mid),    collapse = " "), "mid ~ temp_c")
+
+  # Constant-shape keeps random intercepts on mid.
+  pf3 <- make_4pl_formula(temp_effects = "mid",
+                          random_effects = "Date")$pforms
+  expect_match(paste(deparse(pf3$mid), collapse = " "), "\\(1 \\| Date\\)")
+
+  # mid is mandatory.
+  expect_error(make_4pl_formula(temp_effects = c("low", "up")),
+               "mid.*must always carry")
+})
+
 test_that("make_4pl_formula with random_effects expands mid sub-model", {
   f <- make_4pl_formula(random_effects = c("Date", "Tank"))
   mid_form <- f$pforms$mid
