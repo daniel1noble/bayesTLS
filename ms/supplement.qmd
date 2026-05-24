@@ -202,7 +202,7 @@ tdt_function_tour <- tibble::tribble(
   "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap.",
   "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` or a numeric for an absolute probability.",
   "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes).",
-  "TDT quantities",   "derive_tdt_parameters()",            "Per-draw log-linear regression of LT_x on temperature; z + CTmax.",
+  "TDT quantities",   "derive_z()",                         "Thermal sensitivity z read directly from the posterior (relative: -1/slope of mid(T); absolute: pooled per-draw local z over assay temps); optional local z(T).",
   "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only). Same `target_surv` argument as the primitives above.",
   "Heat injury",      "make_temperature_scenarios()",       "Three reference traces (flat / single spike / multi-spike).",
   "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
@@ -680,7 +680,7 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 The classical TLS quantities are transformations of the fitted joint posterior. `extract_tdt()` always returns the first two quantities below and returns the third when `lethal = TRUE`:
 
-- **$z$** — thermal sensitivity, derived by a per-draw log-linear regression of $\log_{10}\text{LT}_{\text{threshold}}$ on temperature (Equation 7 of the manuscript).
+- **$z$** — thermal sensitivity, read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 7 of the manuscript). Under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is linear, so $z = -1/\beta_1$ exactly; no regression is involved.
 - **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 h of exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
 - **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
 
@@ -710,7 +710,7 @@ $$
 \log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{u(T) - 0.5}{0.5 - \ell(T)}.
 $$ {#eq-lt50-tvarying}
 
-`extract_tdt()` requires no special handling in either regime, because both of its primitives operate on the *fitted 4PL surface* rather than on a closed-form expression: $CT_{max_{1hr}}$ is obtained by inverting the surface at the reference duration $t_\text{ref}$ per posterior draw (`derive_temperature_for_duration()`), and the per-draw OLS regression that yields $z$ runs over the per-draw $\log_{10}\text{LT50}(T)$ curve recovered numerically by `derive_tdt_curve()`. When the curve is straight, the OLS slope returns the closed-form $z$; when it is bent, the same OLS returns the *average local slope* across the assay grid — a sensible single-summary $z$, with the per-temperature local values accessible from the underlying $\text{LT50}(T)$ curve when needed. The worked example in @sec-joint-extend demonstrates this explicitly with a simulation where $u$ and $k$ carry strong $T$ effects.
+`extract_tdt()` requires no special handling in either regime, because both quantities are read **directly from the joint posterior** rather than by fitting a line. It extracts the population-level 4PL coefficient draws once, subsamples once, and computes $z$ and $CT_{max_{1hr}}$ from that single set of draws — so the two quantities share draws and their correlation (and the joint pairing used for $T_{crit}$) is preserved. $CT_{max_{1hr}}$ is the temperature at which $\log_{10}\text{LT}(T)$ crosses $t_\text{ref}$, per draw (closed-form inversion of $\text{mid}(T)$ under the relative threshold; interpolated crossing of the closed-form LT curve under an absolute threshold). For $z$, under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is exactly linear, so $z = -1/\beta_1$ per draw. Under an *absolute* threshold the asymmetry-correction term $\tfrac{1}{k(T)}\log\tfrac{u(T)-0.5}{0.5-\ell(T)}$ bends the curve when $u$, $\ell$ or $k$ carry $T$ effects; then a per-draw **local** $z(T) = -1/(\mathrm{d}\log_{10}\text{LT}_{0.5}/\mathrm{d}T)$ is computed at each assay temperature (slope by central finite difference of the closed-form LT curve, validated against the analytic derivative), and the reported $z$ is the per-draw mean of those local values over the assay range — with the full per-temperature $z(T)$ available via `z_local = TRUE`. The worked example in @sec-joint-extend demonstrates this with a simulation where $u$ and $k$ carry strong $T$ effects.
 :::
 
 ```{r derive-tls}
@@ -1142,7 +1142,7 @@ et_ext <- extract_tdt(wf_ext, t_ref = 60, time_multiplier = 1,
 
 ```{r extract-tdt-ext-table}
 #| label: tbl-extract-ext
-#| tbl-cap: "Classical TDT quantities from `extract_tdt()` on the T-varying fit, compared against analytical truth. The single-summary $z$ is the slope of a per-draw OLS regression of $\\log_{10}\\text{LT50}$ on $T$ across the assay grid; the truth row reports the mean of the analytical local $z(T)$ at the same assay temperatures, which is what the OLS slope estimates when the curve is bent. $CT_{max_{1hr}}$ comes from direct numerical inversion of the fitted 4PL at 60 min per draw."
+#| tbl-cap: "Classical TDT quantities from `extract_tdt()` on the T-varying fit, compared against analytical truth. The single-summary $z$ is read directly from the posterior (under the relative threshold $z = -1/\\beta_1$ per draw — the slope of $\\text{mid}(T)$, with no regression); the truth row reports the mean of the analytical local $z(T)$ of the bent absolute-0.5 $\\log_{10}\\text{LT50}(T)$ curve at the assay temperatures. $CT_{max_{1hr}}$ comes from direct inversion of the fitted 4PL at 60 min per draw."
 
 tibble::tibble(
   Quantity     = c("z (°C)",
@@ -1164,7 +1164,7 @@ tibble::tibble(
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-Both posterior intervals cover their analytical truths. On a bent curve, the single-summary $z$ from OLS across the assay grid estimates an average local sensitivity (truth = `r round(true_mean_local_z, 2)` °C; posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). Direct 4PL inversion at the reference duration also recovers $CT_{max_{1hr}}$ (truth `r round(true_CTmax_1hr, 2)` °C; posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C), without assuming a constant asymmetry correction in $T$.
+Both posterior intervals cover their analytical truths. The single-summary $z$ read from the posterior ($-1/\beta_1$ per draw under the relative threshold) is close to the average local sensitivity of the bent curve, and its credible interval covers the truth (truth = `r round(true_mean_local_z, 2)` °C; posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). The bent absolute-threshold local $z(T)$ itself is available with `target_surv = "absolute", z_local = TRUE`. Direct 4PL inversion at the reference duration also recovers $CT_{max_{1hr}}$ (truth `r round(true_CTmax_1hr, 2)` °C; posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C), without assuming a constant asymmetry correction in $T$.
 
 The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both quantities are built from; it lives in `et_ext$lt50_curve` (the output of `derive_tdt_curve()`) and can be plotted directly (@fig-lt50-curve-ext).
 
@@ -2280,7 +2280,7 @@ plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$, $T_{crit}$ {#sec-shrimp-extract}
 
-`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (the slope of $\log_{10}\text{LT}$ on temperature, derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion). Passing `lethal = TRUE` additionally returns $T_{crit}$ under the rate-multiplier definition; this only makes sense when the endpoint is mortality (see @eq-tcrit), so we opt in for the shrimp data.
+`extract_tdt()` derives the classical thermal-tolerance summaries from a fitted 4PL workflow. It always returns $z$ (thermal sensitivity read directly from the posterior — at the relative threshold $z = -1/\beta_1$ per draw, the slope of $\text{mid}(T)$) and $CT_{max_{1hr}}$ (the temperature at which the threshold is reached after 1 hour of exposure, obtained by per-draw 4PL inversion). Passing `lethal = TRUE` additionally returns $T_{crit}$ under the rate-multiplier definition; this only makes sense when the endpoint is mortality (see @eq-tcrit), so we opt in for the shrimp data.
 
 ```{r shrimp-extract}
 #| label: shrimp-extract
@@ -2297,7 +2297,7 @@ et_shrimp <- extract_tdt(
 
 ```{r shrimp-extract-table}
 #| label: tbl-shrimp-extract
-#| tbl-cap: "Classical TDT summaries for brown shrimp, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$ — the pooled posterior carries both parameter uncertainty and operational uncertainty in $r^*$."
+#| tbl-cap: "Classical TDT summaries for brown shrimp, with full posterior uncertainty. $z$ is read directly from the posterior (the temperature slope on $\\text{mid}$; $z = -1/\\beta_1$ at the relative threshold). $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$ — the pooled posterior carries both parameter uncertainty and operational uncertainty in $r^*$."
 
 shrimp_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
@@ -3656,7 +3656,7 @@ patchwork::wrap_plots(build_overlay(FALSE), build_overlay(TRUE), ncol = 2) +
 
 ### TDT quantities from the joint fit
 
-We can reuse `derive_tdt_parameters()` per life stage by feeding it the per-stage relative-LT line we just built. The result is a posterior of $z$ and $CT_{max_{1hr}}$ per life stage drawn from the *joint* fit's posterior, with all life-stage covariation correctly propagated. Under the relative threshold (`(low + up)/2`), $\log_{10}\text{LT}(T) = \text{mid}(T)$, so $z$ is read directly from the slope posterior and $CT_{max_{1hr}}$ comes from per-draw OLS of $\text{mid}(T)$ on $T$ across the assay grid. Section @sec-zebrafish-relative-ltx reproduces the same quantities under the *absolute* 0.5 threshold for comparison.
+We compute $z$ and $CT_{max_{1hr}}$ per life stage directly from each stage's relative-LT line built from the *joint* fit's posterior, with all life-stage covariation correctly propagated. Under the relative threshold (`(low + up)/2`), $\log_{10}\text{LT}(T) = \text{mid}(T)$ is linear in $T$, so $z = -1/\text{slope}$ and $CT_{max_{1hr}}$ (where the line crosses $\log_{10} t_\text{ref}$) are read straight from the per-draw line — no regression, mirroring `derive_z()` / `derive_temperature_for_duration()` applied to the joint fit. Section @sec-zebrafish-relative-ltx reproduces the same quantities under the *absolute* 0.5 threshold for comparison.
 
 ```{r zebrafish-joint-extract}
 #| label: zebrafish-joint-extract
@@ -3682,9 +3682,34 @@ zf_joint_tdt <- lapply(zf_stages, function(s) {
     dplyr::filter(is.finite(duration_out), duration_out > 0) |>
     dplyr::select(.draw, temp, target_surv, duration_model, duration_out)
 
-  ltx_obj <- list(draws = long, target_surv = "(low+up)/2",
-                  time_multiplier = 60, output_time_unit = "min")
-  zct  <- derive_tdt_parameters(ltx_obj, t_ref = 60)
+  # z and CTmax per draw read directly from this stage's relative-LT line.
+  # Under the relative threshold log10 LT(T) = mid(T) is linear in T, so the
+  # slope (hence z = -1/slope) and the temperature at which the line crosses
+  # log10(t_ref) (CTmax) are read straight from the per-draw line — no
+  # regression. This mirrors derive_z() / derive_temperature_for_duration()
+  # applied to the joint fit, per life stage.
+  zct_draws <- long |>
+    dplyr::mutate(log10_dur = log10(duration_out)) |>
+    dplyr::group_by(.draw) |>
+    dplyr::summarise(
+      slope     = (log10_dur[which.max(temp)] - log10_dur[which.min(temp)]) /
+                  (max(temp) - min(temp)),
+      base_logd = log10_dur[which.min(temp)],
+      base_temp = min(temp),
+      .groups   = "drop") |>
+    dplyr::transmute(.draw,
+                     z     = -1 / slope,
+                     CTmax = base_temp + (log10(60) - base_logd) / slope) |>
+    dplyr::filter(is.finite(z), is.finite(CTmax))
+  zct <- list(
+    draws   = zct_draws,
+    summary = tibble::tibble(
+      z_median     = stats::median(zct_draws$z),
+      z_lower      = stats::quantile(zct_draws$z, 0.025, names = FALSE),
+      z_upper      = stats::quantile(zct_draws$z, 0.975, names = FALSE),
+      CTmax_median = stats::median(zct_draws$CTmax),
+      CTmax_lower  = stats::quantile(zct_draws$CTmax, 0.025, names = FALSE),
+      CTmax_upper  = stats::quantile(zct_draws$CTmax, 0.975, names = FALSE)))
 
   per_draw <- zct$draws |>
     dplyr::select(.draw, z, CTmax) |>
@@ -3786,9 +3811,9 @@ zf_post_long <- dplyr::bind_rows(
         dplyr::transmute(quantity = "T_crit",    value = T_crit)
     ) |>
       dplyr::mutate(life_stage = s, method = "Separate")
-    # zf_joint_tdt[[s]] is a custom object: $z$draws carries BOTH z and
-    # CTmax columns (output of derive_tdt_parameters), so we keep its
-    # bespoke access pattern here.
+    # zf_joint_tdt[[s]] is a custom object: $z$draws carries BOTH z and CTmax
+    # columns (computed directly from the per-stage relative-LT line above), so
+    # we keep its bespoke access pattern here.
     joint_long <- dplyr::bind_rows(
       tibble::tibble(life_stage = s, quantity = "z",         method = "Joint",
                      value = zf_joint_tdt[[s]]$z$draws$z),
@@ -4678,7 +4703,7 @@ plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
 
 ## Classical TDT quantities: $z$, $CT_{max_{1hr}}$ {#sec-leaf-extract}
 
-`extract_tdt()` returns $z$ (derived by per-draw OLS on the TDT curve) and $CT_{max_{1hr}}$ (the temperature at which the retained-function threshold is reached after 1 h, obtained by per-draw 4PL inversion).
+`extract_tdt()` returns $z$ (read directly from the posterior — at the relative threshold $z = -1/\beta_1$ per draw, the slope of $\text{mid}(T)$) and $CT_{max_{1hr}}$ (the temperature at which the retained-function threshold is reached after 1 h, obtained by per-draw 4PL inversion).
 
 ```{r leaf-extract}
 #| label: leaf-extract
@@ -4698,7 +4723,7 @@ et_leaf <- extract_tdt(
 
 ```{r leaf-extract-table}
 #| label: tbl-leaf-extract
-#| tbl-cap: "TDT summaries for snow gum leaf PSII function, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of threshold time on temperature. $CT_{max_{1hr}}$ is the temperature at which the retained-function threshold is reached after 1 h (4PL inversion per draw)."
+#| tbl-cap: "TDT summaries for snow gum leaf PSII function, with full posterior uncertainty. $z$ is read directly from the posterior (the temperature slope on $\\text{mid}$; $z = -1/\\beta_1$ at the relative threshold). $CT_{max_{1hr}}$ is the temperature at which the retained-function threshold is reached after 1 h (4PL inversion per draw)."
 
 leaf_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
@@ -5200,7 +5225,7 @@ et_seed <- extract_tdt(
 
 ```{r seed-extract-table}
 #| label: tbl-seed-extract
-#| tbl-cap: "Classical TDT summaries for seeds, with full posterior uncertainty. $z$ comes from a per-draw log-linear regression of $\\log_{10}\\text{LT50}$ on temperature. $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$."
+#| tbl-cap: "Classical TDT summaries for seeds, with full posterior uncertainty. $z$ is read directly from the posterior (the temperature slope on $\\text{mid}$; $z = -1/\\beta_1$ at the relative threshold). $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$."
 
 seed_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
