@@ -579,9 +579,11 @@ wf_bb  <- fit_4pl(std_bb,
 print(wf_bin)
 print(wf_bb)
 
-# Convenience: extract the brmsfit object for downstream brms helpers.
-fit_bin <- wf_bin$fit
-fit_bb  <- wf_bb$fit
+# Convenience: extract the underlying brmsfit object for downstream brms
+# helpers. `get_brmsfit()` is the package accessor — it pulls `wf$fit` and
+# errors clearly if the workflow was never fitted (pairs with `has_fit()`).
+fit_bin <- get_brmsfit(wf_bin)
+fit_bb  <- get_brmsfit(wf_bb)
 ```
 
 We also summarise the proportion of outcome variation explained by each fitted model using Bayesian $R^2$.
@@ -1079,7 +1081,7 @@ wf_ext <- fit_4pl(std_ext,
 #| label: tbl-ext-recovery
 #| tbl-cap: "Posterior recovery of the four 4PL sub-parameters on the natural scale at each assay temperature. The fit uses the disjoint-bounds reparameterisation ($\\ell$, $u$ via inv_logit, $k$ via exp); raw posterior columns are transformed back to the biological scale before summarising. Posterior medians and 95% credible intervals are reported alongside the analytical truth."
 
-ext_post  <- posterior::as_draws_df(wf_ext$fit) |> as.data.frame()
+ext_post  <- posterior::as_draws_df(get_brmsfit(wf_ext)) |> as.data.frame()
 ext_meta  <- wf_ext$meta
 ext_bnds  <- ext_meta$bounds         # compute_4pl_bounds(0, 1)
 ext_temp_mean <- ext_meta$temp_mean  # what the fit centred on
@@ -2191,7 +2193,7 @@ The diagnostics table is a numerical pass/fail summary. The canonical visual che
 #| cache: false
 
 brms::mcmc_plot(
-  wf_shrimp$fit,
+  get_brmsfit(wf_shrimp),
   type     = "trace",
   variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
                "b_logk_Intercept",   "b_mid_Intercept",
@@ -4583,7 +4585,7 @@ The diagnostics table is a numerical pass/fail summary. The canonical visual che
 #| cache: false
 
 brms::mcmc_plot(
-  wf_leaf$fit,
+  get_brmsfit(wf_leaf),
   type     = "trace",
   variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
                "b_logk_Intercept",   "b_mid_Intercept",
@@ -5095,7 +5097,7 @@ The diagnostics table is a numerical pass/fail summary. The canonical visual che
 #| cache: false
 
 brms::mcmc_plot(
-  wf_seed$fit,
+  get_brmsfit(wf_seed),
   type     = "trace",
   variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
                "b_logk_Intercept",   "b_mid_Intercept",
