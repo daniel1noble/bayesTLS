@@ -1,0 +1,137 @@
+---
+title: "How `extract_tdt()` derives z and CTmax — a per-draw posterior transform, not a two-stage model"
+date: 2026-05-24
+format: html
+---
+
+## The question
+
+`derive_tdt_parameters()` runs a per-draw OLS, `lm(log10_duration ~ temp)`, to
+obtain `z`, and (until 2026-05-24) called `summary(fit)$r.squared` to record R².
+On the face of it this looks like the **classical two-stage TDT model** the paper
+critiques: fit a line to LT50-vs-temperature. Is `bayesTLS` secretly two-stage?
+Where do `z` and `CTmax` actually come from?
+
+## Answer: no, it is not two-stage
+
+There is **one** joint Bayesian 4PL fit (`fit_4pl()` → `brms`). Every classical
+TDT quantity is a deterministic transform of that single joint posterior,
+computed **inside each posterior draw**, so full joint uncertainty in
+$(\ell, u, k, \beta_0, \beta_1)$ propagates.
+
+|                         | Classical two-stage (critiqued)                                  | `extract_tdt()`                                              |
+|-------------------------|------------------------------------------------------------------|-------------------------------------------------------------|
+| Input to the TDT line   | Separate logistic fits to the **raw data** at each temperature    | The **fitted 4PL surface** evaluated per draw               |
+| Number of fits          | One logistic per temperature + one regression                    | One joint 4PL                                               |
+| Uncertainty             | Stage-1 LT50s treated as known in Stage 2 (discarded)            | Recomputed within every draw → joint posterior preserved    |
+
+The `lm()` never sees data. `derive_tdt_curve()` builds the per-draw
+$\log_{10}\mathrm{LT}_x(T)$ curve from the posterior:
+
+- **relative threshold (default):** `posterior_linpred(nlpar = "mid")` gives
+  $\mathrm{mid}(T)$ per draw, and $\log_{10}\mathrm{LT}_{\text{relative}}(T) =
+  \mathrm{mid}(T)$ exactly.
+- **absolute / numeric threshold:** invert the fitted survival surface at the
+  target probability per draw (`threshold_x_by_draw()`).
+
+`derive_tdt_parameters()` then regresses those *model-derived* points per draw.
+It is a per-draw **summary of the fitted surface**, not an estimation stage.
+
+## Why an OLS at all (instead of `z = -1/β₁`)?
+
+Because the package default puts temperature on **all four** sub-parameters
+($\ell, u, k, \mathrm{mid}$). Two regimes:
+
+- **Straight:** constant shape, or the default *relative* threshold →
+  $\log_{10}\mathrm{LT}(T) = \beta_0 + \beta_1 (T-\bar T)$ is exactly linear, so
+  the OLS slope is $\beta_1$ and $z = -1/\beta_1$ exactly.
+- **Bent:** an *absolute* threshold while $\ell/u/k$ vary with $T$ → the
+  asymmetry-correction term $\tfrac{1}{k(T)}\log\tfrac{u(T)-0.5}{0.5-\ell(T)}$
+  bends the curve. No closed-form $z$; the OLS returns the **average local
+  slope** over the assay grid.
+
+A single OLS path covers both. In the straight regime it simply re-derives the
+closed form — which is **why every draw is a "perfect fit"** (R² = 1) and why
+`summary.lm()` emitted thousands of "essentially perfect fit" warnings before we
+switched to computing R² directly from residuals.
+
+### CTmax is the surface inversion, not the OLS line
+
+`extract_tdt()` reports CTmax from `derive_temperature_for_duration()` — a direct
+per-draw inversion of the fitted surface at `t_ref` (which carries the $\ell/u/k$
+asymmetry correction in absolute mode). The line-based CTmax computed inside
+`derive_tdt_parameters()` is **dropped** by `extract_tdt()` (it selects only
+`.draw, z`); it is vestigial dead output and a candidate for removal.
+
+## Validation
+
+### Fitted Beta fixture (real joint model)
+
+`z` from the per-draw OLS vs `z` read straight off the posterior as
+$-1/\beta_1$ (`b_mid_temp_c`), relative threshold:
+
+```
+z via per-draw OLS (reported):    5.27659
+z via -1/b_mid_temp_c (analytic): 5.25138   (median over a different draw subset)
+relative-mode per-draw R^2:       min = 1.0000000000,  median = 1.0000000000
+```
+
+Per draw the two are identical (R² = 1 ⇒ OLS slope = $\beta_1$); the 0.025 gap is
+Monte-Carlo noise from medians over different `ndraws` subsamples.
+
+### Self-contained mechanism check (no brms needed)
+
+```{r mechanism}
+#| message: false
+set.seed(1)
+Tg <- seq(28, 38, by = 0.5)
+
+## (1) Straight regime: log10 LT(T) = b0 + b1 (T - Tbar)  -> mid(T) only
+b0 <- 2; b1 <- -0.30; Tbar <- mean(Tg)
+y_straight <- b0 + b1 * (Tg - Tbar)
+f1 <- lm(y_straight ~ Tg)
+r2_straight <- {
+  ss <- sum((y_straight - mean(y_straight))^2); 1 - sum(residuals(f1)^2) / ss
+}
+c(slope = unname(coef(f1)[2]), b1 = b1,
+  z_ols = -1 / unname(coef(f1)[2]), z_closed = -1 / b1,
+  R2 = r2_straight)
+
+## (2) Bent regime: add a temperature-varying asymmetry-correction term
+##     (1/k(T)) * log((u(T)-0.5)/(0.5-l(T))), with k, u, l linear in T.
+kT <- exp(1.6 - 0.04 * (Tg - Tbar))
+uT <- 0.95 + 0.010 * (Tg - Tbar)
+lT <- 0.05 + 0.004 * (Tg - Tbar)
+corr <- (1 / kT) * log((uT - 0.5) / (0.5 - lT))
+y_bent <- b0 + b1 * (Tg - Tbar) + corr
+f2 <- lm(y_bent ~ Tg)
+r2_bent <- {
+  ss <- sum((y_bent - mean(y_bent))^2); 1 - sum(residuals(f2)^2) / ss
+}
+# Local slopes (finite differences) vs the single OLS "average local slope".
+local_slopes <- diff(y_bent) / diff(Tg)
+c(ols_slope = unname(coef(f2)[2]),
+  mean_local_slope = mean(local_slopes),
+  z_ols = -1 / unname(coef(f2)[2]),
+  R2 = r2_bent)
+```
+
+Expected: regime (1) gives `slope == b1`, `z_ols == z_closed`, `R2 == 1`
+(the OLS is redundant); regime (2) gives `R2 < 1` and `ols_slope ≈
+mean_local_slope` (the OLS earns its keep as an average-slope summary of a bent
+curve).
+
+## Decisions / open items
+
+- **Correctness:** confirmed — `z` and CTmax both derive from the joint
+  posterior; nothing is two-stage; uncertainty propagates.
+- **R² computation:** now `1 - SS_res/SS_tot` from residuals (identical to
+  `summary.lm()` to machine precision), eliminating the per-draw "perfect fit"
+  warning.
+- **Open (judgment call):** make `z` analytic ($-1/\beta_1$) in the linear
+  regime and keep the OLS only for the bent absolute-threshold case; and delete
+  the vestigial line-based CTmax in `derive_tdt_parameters()`. Correctness-neutral
+  clarity/efficiency change — pending Daniel's call.
+
+Related: supplement §"Deriving z, CTmax, and T_crit from the posterior"
+(callout-note on straight vs bent curves); [[project_tcrit_definition]].
