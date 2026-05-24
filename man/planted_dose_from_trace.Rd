@@ -10,7 +10,7 @@ planted_dose_from_trace(trace, z, CTmax_1hr, T_c)
 \item{trace}{Tibble with columns \code{time_h} and \code{temp}, output of
 \code{\link[=make_temperature_scenarios]{make_temperature_scenarios()}}.}
 
-\item{z}{Thermal sensitivity, °C per decade of time.}
+\item{z}{Thermal sensitivity, °C per 10-fold change in time.}
 
 \item{CTmax_1hr}{Static temperature at which LT50 = 1 hour, °C.}
 

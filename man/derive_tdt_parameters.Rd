@@ -26,7 +26,7 @@ classical TDT quantities:
 }
 \details{
 \itemize{
-\item \code{z = -1 / slope} — thermal sensitivity, in °C per decade of time
+\item \code{z = -1 / slope} — thermal sensitivity, in °C per 10-fold change in time
 \item \code{CTmax = (log10(t_ref) - intercept) / slope} — temperature at which
 LT_x equals the reference time.
 }

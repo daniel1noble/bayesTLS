@@ -44,6 +44,33 @@ test_that("plot.bayes_tls errors when the workflow is not fitted", {
   expect_error(plot(wf), "no fit")
 })
 
+test_that("get_brmsfit errors on a spec-only (unfitted) workflow", {
+  raw <- data.frame(
+    temperature_C = rep(c(30, 32, 34), each = 3),
+    exposure_h    = rep(c(1, 2, 4), times = 3),
+    n             = 30L,
+    alive         = c(29, 25, 5, 30, 18, 2, 28, 10, 1)
+  )
+  std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                          n_total = "n", n_surv = "alive")
+  wf <- fit_4pl(std, fit = FALSE)
+  expect_false(has_fit(wf))
+  expect_error(get_brmsfit(wf), "no fit")
+  # Also rejects a non-workflow object outright.
+  expect_error(get_brmsfit(list(fit = NULL)), "no fit")
+})
+
+test_that("get_brmsfit returns the underlying brmsfit on a fitted workflow", {
+  skip_unless_brms()
+
+  wf  <- load_fixture_workflow()
+  fit <- get_brmsfit(wf)
+  expect_s3_class(fit, "brmsfit")
+  expect_identical(fit, wf$fit)
+  # The returned object is usable by brms helpers downstream.
+  expect_true(brms::ndraws(fit) > 0)
+})
+
 test_that("summary.bayes_tls returns the expected structure", {
   skip_unless_brms()
 

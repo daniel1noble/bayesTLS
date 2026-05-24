@@ -274,3 +274,27 @@ fit_4pl <- function(data,
 has_fit <- function(workflow) {
   inherits(workflow, "bayes_tls") && !is.null(workflow$fit)
 }
+
+#' Extract the fitted brms model from a workflow
+#'
+#' Returns the underlying [brms::brmsfit] object held in a `bayes_tls`
+#' workflow, ready for any brms / posterior / bayesplot helper (e.g.
+#' [brms::bayes_R2()], [brms::mcmc_plot()], [posterior::as_draws_df()]).
+#' Prefer this over reaching into `workflow$fit` directly: it errors clearly
+#' on an unfitted workflow instead of silently returning `NULL`. Pairs with
+#' the predicate [has_fit()].
+#'
+#' @param workflow A fitted `bayes_tls` workflow returned by [fit_4pl()].
+#' @return The `brmsfit` object stored in the workflow.
+#' @examples
+#' \dontrun{
+#' wf  <- fit_4pl(std)
+#' fit <- get_brmsfit(wf)
+#' brms::bayes_R2(fit)
+#' }
+#' @export
+get_brmsfit <- function(workflow) {
+  if (!has_fit(workflow))
+    stop("workflow has no fit; call fit_4pl() first.", call. = FALSE)
+  workflow$fit
+}
