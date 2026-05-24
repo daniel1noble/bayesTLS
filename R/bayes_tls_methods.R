@@ -44,10 +44,10 @@ print.bayes_tls <- function(x, ...) {
 
 #' Summarise a fitted `bayes_tls` workflow
 #'
-#' Delegates to `summary()` on the underlying `brmsfit` (`x$fit`), so the
-#' returned object is a `summary.brmsfit` with the population-level
-#' coefficient table, group-level standard deviations, family parameters,
-#' and HMC diagnostics already laid out by brms.
+#' Delegates to `summary()` on the underlying `brmsfit` (via
+#' [get_brmsfit()]), so the returned object is a brms `brmssummary` with the
+#' population-level coefficient table, group-level standard deviations,
+#' family parameters, and HMC diagnostics already laid out by brms.
 #'
 #' The high-level workflow context (data shape, $\bar T$, asymptote
 #' bounds, random-effect grouping, draw count) is available via
@@ -58,7 +58,7 @@ print.bayes_tls <- function(x, ...) {
 #' @param object A fitted `bayes_tls` workflow.
 #' @param ...    Passed through to [brms::summary.brmsfit()] (e.g.
 #'               `prob`, `mc_se`, `priors`, `robust`).
-#' @return A `summary.brmsfit` object (brms handles printing).
+#' @return A brms `brmssummary` object (brms handles printing).
 #' @examples
 #' \dontrun{
 #' summary(wf)
@@ -66,33 +66,29 @@ print.bayes_tls <- function(x, ...) {
 #' }
 #' @export
 summary.bayes_tls <- function(object, ...) {
-  if (!has_fit(object))
-    stop("workflow has no fit; call fit_4pl() first.", call. = FALSE)
-  summary(object$fit, ...)
+  summary(get_brmsfit(object), ...)
 }
 
 #' MCMC mixing plot for a fitted `bayes_tls` workflow
 #'
-#' Delegates to `plot()` on the underlying `brmsfit` (`x$fit`), which
-#' produces brms's default `mcmc_combo` layout (per-parameter density
-#' on the left, post-warmup trace on the right, chains coloured). Use
-#' this to eyeball chain mixing alongside the numeric Rhat / ESS in
+#' Delegates to `plot()` on the underlying `brmsfit` (via [get_brmsfit()]),
+#' which produces brms's default `mcmc_combo` layout (per-parameter density
+#' on the left, post-warmup trace on the right, chains coloured). Use this
+#' to eyeball chain mixing alongside the numeric Rhat / ESS in
 #' [summary.bayes_tls()].
 #'
 #' @param x    A fitted `bayes_tls` workflow.
 #' @param ...  Passed through to `brms`'s `plot.brmsfit` method (e.g.
-#'             `pars`, `combo`, `N`, `ask`).
-#' @return The brms plot output (invisibly), typically a list of
-#'         `bayesplot` ggplots.
+#'             `variable`, `combo`, `N`, `ask`).
+#' @return The brms plot output (invisibly): a list of `bayesplot_grid`
+#'         grid objects, one per plotted page.
 #' @examples
 #' \dontrun{
 #' plot(wf)
-#' plot(wf, pars = "^b_mid")
+#' plot(wf, variable = "^b_mid", regex = TRUE)
 #' plot(wf, combo = c("dens_overlay", "trace"))
 #' }
 #' @export
 plot.bayes_tls <- function(x, ...) {
-  if (!has_fit(x))
-    stop("workflow has no fit; call fit_4pl() first.", call. = FALSE)
-  plot(x$fit, ...)
+  plot(get_brmsfit(x), ...)
 }

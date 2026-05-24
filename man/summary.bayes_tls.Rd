@@ -13,13 +13,13 @@
 \code{prob}, \code{mc_se}, \code{priors}, \code{robust}).}
 }
 \value{
-A \code{summary.brmsfit} object (brms handles printing).
+A brms \code{brmssummary} object (brms handles printing).
 }
 \description{
-Delegates to \code{summary()} on the underlying \code{brmsfit} (\code{x$fit}), so the
-returned object is a \code{summary.brmsfit} with the population-level
-coefficient table, group-level standard deviations, family parameters,
-and HMC diagnostics already laid out by brms.
+Delegates to \code{summary()} on the underlying \code{brmsfit} (via
+\code{\link[=get_brmsfit]{get_brmsfit()}}), so the returned object is a brms \code{brmssummary} with the
+population-level coefficient table, group-level standard deviations,
+family parameters, and HMC diagnostics already laid out by brms.
 }
 \details{
 The high-level workflow context (data shape, $\bar T$, asymptote

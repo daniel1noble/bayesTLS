@@ -71,47 +71,52 @@ test_that("get_brmsfit returns the underlying brmsfit on a fitted workflow", {
   expect_true(brms::ndraws(fit) > 0)
 })
 
-test_that("summary.bayes_tls returns the expected structure", {
+test_that("summary.bayes_tls delegates to brms and forwards `...`", {
   skip_unless_brms()
 
   wf <- load_fixture_workflow()
   s  <- summary(wf)
 
-  expect_s3_class(s, "summary.bayes_tls")
-  expect_named(s, c("meta", "shape", "parameters", "diagnostics"),
-               ignore.order = TRUE)
-  expect_true(all(c("variable", "mean", "rhat", "ess_bulk") %in%
-                  names(s$parameters)))
-  expect_named(s$diagnostics,
-               c("max_rhat", "min_ess_bulk", "min_ess_tail",
-                 "divergences", "treedepth_hits"),
-               ignore.order = TRUE)
+  # The method delegates to brms::summary.brmsfit, so the object is the brms
+  # summary, not a custom structure.
+  expect_s3_class(s, "brmssummary")
+  # The population-level coefficient table carries our 4PL sub-parameters
+  # (brms strips the `b_` prefix in the printed/fixed table).
+  expect_true(all(c("Estimate", "Rhat", "Bulk_ESS") %in% colnames(s$fixed)))
+  expect_true("mid_Intercept" %in% rownames(s$fixed))
 
-  # The fixture is a small, well-behaved fit: expect Rhat under a safe ceiling.
-  expect_lt(s$diagnostics$max_rhat, 1.1)
+  # The fixture is a small, well-behaved fit: Rhat under a safe ceiling.
+  expect_lt(max(s$fixed[, "Rhat"], na.rm = TRUE), 1.1)
+
+  # `...` is forwarded to brms::summary.brmsfit — e.g. credible-interval width.
+  s90 <- summary(wf, prob = 0.9)
+  expect_true(any(grepl("90% CI", colnames(s90$fixed))))
 })
 
-test_that("print.summary.bayes_tls prints diagnostics + posterior table", {
+test_that("printing summary(bayes_tls) shows the brms summary of our model", {
   skip_unless_brms()
 
   wf  <- load_fixture_workflow()
   out <- capture.output(print(summary(wf)))
-  expect_true(any(grepl("^<bayes_tls summary>", out)))
-  expect_true(any(grepl("HMC diagnostics", out)))
-  expect_true(any(grepl("Posterior summary", out)))
-  expect_true(any(grepl("b_mid_Intercept", out)))
+  # brms's summary print header plus our model's parameter names.
+  expect_true(any(grepl("Family:", out)))
+  expect_true(any(grepl("mid_Intercept", out)))
 })
 
-test_that("plot.bayes_tls returns a ggplot of trace plots", {
+test_that("plot.bayes_tls delegates to brms and returns its trace-plot output", {
   skip_unless_brms()
 
   wf <- load_fixture_workflow()
   g  <- plot(wf)
-  expect_s3_class(g, "ggplot")
+  # brms::plot.brmsfit returns the bayesplot grid object(s) it draws.
+  expect_type(g, "list")
+  expect_s3_class(g[[1]], "bayesplot_grid")
 
-  # Subset to a single parameter — should still return a ggplot.
-  g2 <- plot(wf, pars = "b_mid_Intercept")
-  expect_s3_class(g2, "ggplot")
+  # `...` is forwarded: subset to a single parameter via brms's `variable`.
+  g2 <- plot(wf, variable = "b_mid_Intercept")
+  expect_type(g2, "list")
 
-  expect_error(plot(wf, pars = "nonexistent_param"), "Unknown parameter")
+  # A non-existent parameter raises brms's own error.
+  expect_error(plot(wf, variable = "nonexistent_param"),
+               "missing in the draws object")
 })

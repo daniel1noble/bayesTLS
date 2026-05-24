@@ -10,23 +10,23 @@
 \item{x}{A fitted \code{bayes_tls} workflow.}
 
 \item{...}{Passed through to \code{brms}'s \code{plot.brmsfit} method (e.g.
-\code{pars}, \code{combo}, \code{N}, \code{ask}).}
+\code{variable}, \code{combo}, \code{N}, \code{ask}).}
 }
 \value{
-The brms plot output (invisibly), typically a list of
-\code{bayesplot} ggplots.
+The brms plot output (invisibly): a list of \code{bayesplot_grid}
+grid objects, one per plotted page.
 }
 \description{
-Delegates to \code{plot()} on the underlying \code{brmsfit} (\code{x$fit}), which
-produces brms's default \code{mcmc_combo} layout (per-parameter density
-on the left, post-warmup trace on the right, chains coloured). Use
-this to eyeball chain mixing alongside the numeric Rhat / ESS in
+Delegates to \code{plot()} on the underlying \code{brmsfit} (via \code{\link[=get_brmsfit]{get_brmsfit()}}),
+which produces brms's default \code{mcmc_combo} layout (per-parameter density
+on the left, post-warmup trace on the right, chains coloured). Use this
+to eyeball chain mixing alongside the numeric Rhat / ESS in
 \code{\link[=summary.bayes_tls]{summary.bayes_tls()}}.
 }
 \examples{
 \dontrun{
 plot(wf)
-plot(wf, pars = "^b_mid")
+plot(wf, variable = "^b_mid", regex = TRUE)
 plot(wf, combo = c("dens_overlay", "trace"))
 }
 }
