@@ -88,7 +88,7 @@
 #'   \item{initial_fvfm}{\eqn{F_v/F_m} measured before heat exposure.}
 #'   \item{final_fvfm}{\eqn{F_v/F_m} measured 24 h after heat exposure.}
 #'   \item{fvfm_prop}{Retained PSII function, \code{final_fvfm / initial_fvfm}
-#'         (a proportion in [0, 1]).}
+#'         (a proportion in the unit interval).}
 #'   \item{Unique_ID}{Leaf-segment / tree identifier.}
 #'   \item{G_Room}{Glasshouse room (grouping factor).}
 #'   \item{Day}{Measurement day (grouping factor).}
