@@ -121,17 +121,49 @@ Expected: regime (1) gives `slope == b1`, `z_ols == z_closed`, `R2 == 1`
 mean_local_slope` (the OLS earns its keep as an average-slope summary of a bent
 curve).
 
-## Decisions / open items
+## Resolution (2026-05-24) — the OLS is gone
 
-- **Correctness:** confirmed — `z` and CTmax both derive from the joint
-  posterior; nothing is two-stage; uncertainty propagates.
-- **R² computation:** now `1 - SS_res/SS_tot` from residuals (identical to
-  `summary.lm()` to machine precision), eliminating the per-draw "perfect fit"
-  warning.
-- **Open (judgment call):** make `z` analytic ($-1/\beta_1$) in the linear
-  regime and keep the OLS only for the bent absolute-threshold case; and delete
-  the vestigial line-based CTmax in `derive_tdt_parameters()`. Correctness-neutral
-  clarity/efficiency change — pending Daniel's call.
+`derive_tdt_parameters()` (per-draw OLS) was **removed** and replaced by
+`derive_z()`, which reads z straight from the joint posterior. The architecture:
+
+- `extract_tdt()` extracts the population-level 4PL coefficient draws **once**,
+  subsamples **once** (`tdt_extract_pars()`), and computes **both** z and CTmax
+  from that single set of draws. They therefore share draws by construction —
+  their correlation, and the per-`.draw` pairing used for `T_crit`, are preserved
+  with no `draw_ids` bookkeeping and no `posterior_linpred` in the z/CTmax path.
+- **z:** relative threshold → `z = -1/b_mid_temp_c` per draw (exact). Absolute
+  threshold → per-draw local `z(T) = -1/m(T)` with `m(T)` a central finite
+  difference (h = 1e-3) of the closed-form LT curve; default reported z is the
+  per-draw mean of local z over the **observed assay temperatures**; full local
+  `z(T)` via `z_local = TRUE`.
+- **CTmax:** temperature where `log10 LT(T) = log10(t_ref)`, per draw — closed
+  form (relative) or interpolated crossing of the closed-form LT curve
+  (absolute). Numerically identical to the previous surface-inversion.
+- **R²:** dropped from `extract_tdt()`; use `brms::bayes_R2(get_brmsfit(wf))`.
+
+### Validation
+
+- Draw alignment exact; relative z == `-1/b_mid_temp_c` to 1.8e-15.
+- Finite-difference local slope == analytic derivative to **4.8e-10**.
+- Bent simulation (u↓, k↑ with T): local z(T) CrI covers truth at every assay
+  temperature; pooled z 5.41 vs truth 5.43.
+
+### Magnitude of change vs the old OLS / surface-inversion (deterministic, all draws)
+
+| Quantity | Threshold | old → new |
+|---|---|---|
+| z | relative (default — ~all of supplement) | **0.0000** (identical) |
+| z | absolute, count/survival | **+0.022 °C** (0.35%) — the intended OLS→pooled-local change |
+| z | absolute, beta/leaf (shape ~flat in T) | 0.0000 |
+| CTmax | relative | −0.0003 °C |
+| CTmax | absolute | 0.0000 °C |
+
+So every supplement result is identical to reported precision except
+absolute-threshold z (only §sec-zebrafish-relative-ltx), which shifts ≤ ~0.02 °C
+by design. Largest difference anywhere: 0.022 °C.
+
+Related: supplement §"Deriving z, CTmax, and T_crit from the posterior";
+[[project_z_ctmax_derivation]], [[project_tcrit_definition]].
 
 Related: supplement §"Deriving z, CTmax, and T_crit from the posterior"
 (callout-note on straight vs bent curves); [[project_tcrit_definition]].
