@@ -21,12 +21,11 @@ utils::globalVariables(c(
   "assay_temp", "duration", "duration_model", "duration_out",
   "duration_lower", "duration_median", "duration_upper",
   "hi", "hi_lower", "hi_median", "hi_upper",
-  "log10_duration", "log10_rate", "log10_t", "logd",
+  "log10_rate", "log10_t", "logd",
   "mortality", "mort_lower", "mort_median", "mort_upper",
   "n", "n_total", "n_surv",
   "p_true", "Parameter",
-  "r_squared",
-  "scenario", "slope_T",
+  "scenario",
   "survival", "survival_lower", "survival_median", "survival_upper",
   "survival_mean", "survival_se", "n_units",
   "surv_lower", "surv_median", "surv_upper",
@@ -44,6 +43,6 @@ utils::globalVariables(c(
   "ell", "u", "ellraw", "uraw", "logk",
   # NSE references used in plotting helpers:
   "T_c", "duration_mid", "y_ci",
-  # additional NSE references in derive_tdt_parameters / plot_repair_rate:
+  # additional NSE references in extract_tdt / plot_repair_rate:
   "CTmax", "repair_rate"
 ))
