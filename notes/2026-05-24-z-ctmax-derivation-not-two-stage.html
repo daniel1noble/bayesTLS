@@ -248,14 +248,70 @@ relative-mode per-draw R^2:       min = 1.0000000000,  median = 1.0000000000</co
 <p>Expected: regime (1) gives <code>slope == b1</code>, <code>z_ols == z_closed</code>, <code>R2 == 1</code> (the OLS is redundant); regime (2) gives <code>R2 &lt; 1</code> and <code>ols_slope ≈ mean_local_slope</code> (the OLS earns its keep as an average-slope summary of a bent curve).</p>
 </section>
 </section>
-<section id="decisions-open-items" class="level2">
-<h2 class="anchored" data-anchor-id="decisions-open-items">Decisions / open items</h2>
+<section id="resolution-2026-05-24-the-ols-is-gone" class="level2">
+<h2 class="anchored" data-anchor-id="resolution-2026-05-24-the-ols-is-gone">Resolution (2026-05-24) — the OLS is gone</h2>
+<p><code>derive_tdt_parameters()</code> (per-draw OLS) was <strong>removed</strong> and replaced by <code>derive_z()</code>, which reads z straight from the joint posterior. The architecture:</p>
 <ul>
-<li><strong>Correctness:</strong> confirmed — <code>z</code> and CTmax both derive from the joint posterior; nothing is two-stage; uncertainty propagates.</li>
-<li><strong>R² computation:</strong> now <code>1 - SS_res/SS_tot</code> from residuals (identical to <code>summary.lm()</code> to machine precision), eliminating the per-draw “perfect fit” warning.</li>
-<li><strong>Open (judgment call):</strong> make <code>z</code> analytic (<span class="math inline">\(-1/\beta_1\)</span>) in the linear regime and keep the OLS only for the bent absolute-threshold case; and delete the vestigial line-based CTmax in <code>derive_tdt_parameters()</code>. Correctness-neutral clarity/efficiency change — pending Daniel’s call.</li>
+<li><code>extract_tdt()</code> extracts the population-level 4PL coefficient draws <strong>once</strong>, subsamples <strong>once</strong> (<code>tdt_extract_pars()</code>), and computes <strong>both</strong> z and CTmax from that single set of draws. They therefore share draws by construction — their correlation, and the per-<code>.draw</code> pairing used for <code>T_crit</code>, are preserved with no <code>draw_ids</code> bookkeeping and no <code>posterior_linpred</code> in the z/CTmax path.</li>
+<li><strong>z:</strong> relative threshold → <code>z = -1/b_mid_temp_c</code> per draw (exact). Absolute threshold → per-draw local <code>z(T) = -1/m(T)</code> with <code>m(T)</code> a central finite difference (h = 1e-3) of the closed-form LT curve; default reported z is the per-draw mean of local z over the <strong>observed assay temperatures</strong>; full local <code>z(T)</code> via <code>z_local = TRUE</code>.</li>
+<li><strong>CTmax:</strong> temperature where <code>log10 LT(T) = log10(t_ref)</code>, per draw — closed form (relative) or interpolated crossing of the closed-form LT curve (absolute). Numerically identical to the previous surface-inversion.</li>
+<li><strong>R²:</strong> dropped from <code>extract_tdt()</code>; use <code>brms::bayes_R2(get_brmsfit(wf))</code>.</li>
 </ul>
+<section id="validation-1" class="level3">
+<h3 class="anchored" data-anchor-id="validation-1">Validation</h3>
+<ul>
+<li>Draw alignment exact; relative z == <code>-1/b_mid_temp_c</code> to 1.8e-15.</li>
+<li>Finite-difference local slope == analytic derivative to <strong>4.8e-10</strong>.</li>
+<li>Bent simulation (u↓, k↑ with T): local z(T) CrI covers truth at every assay temperature; pooled z 5.41 vs truth 5.43.</li>
+</ul>
+</section>
+<section id="magnitude-of-change-vs-the-old-ols-surface-inversion-deterministic-all-draws" class="level3">
+<h3 class="anchored" data-anchor-id="magnitude-of-change-vs-the-old-ols-surface-inversion-deterministic-all-draws">Magnitude of change vs the old OLS / surface-inversion (deterministic, all draws)</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Quantity</th>
+<th>Threshold</th>
+<th>old → new</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>z</td>
+<td>relative (default — ~all of supplement)</td>
+<td><strong>0.0000</strong> (identical)</td>
+</tr>
+<tr class="even">
+<td>z</td>
+<td>absolute, count/survival</td>
+<td><strong>+0.022 °C</strong> (0.35%) — the intended OLS→pooled-local change</td>
+</tr>
+<tr class="odd">
+<td>z</td>
+<td>absolute, beta/leaf (shape ~flat in T)</td>
+<td>0.0000</td>
+</tr>
+<tr class="even">
+<td>CTmax</td>
+<td>relative</td>
+<td>−0.0003 °C</td>
+</tr>
+<tr class="odd">
+<td>CTmax</td>
+<td>absolute</td>
+<td>0.0000 °C</td>
+</tr>
+</tbody>
+</table>
+<p>So every supplement result is identical to reported precision except absolute-threshold z (only §sec-zebrafish-relative-ltx), which shifts ≤ ~0.02 °C by design. Largest difference anywhere: 0.022 °C.</p>
+<p>Related: supplement §“Deriving z, CTmax, and T_crit from the posterior”; [[project_z_ctmax_derivation]], [[project_tcrit_definition]].</p>
 <p>Related: supplement §“Deriving z, CTmax, and T_crit from the posterior” (callout-note on straight vs bent curves); [[project_tcrit_definition]].</p>
+</section>
 </section>
 
 </main>
