@@ -55,6 +55,32 @@ test_that("extract_tdt with lethal = TRUE returns a sensible T_crit", {
   expect_gt(ci_width, 0.5 * ts$z)
 })
 
+test_that("extract_tdt z is read from the posterior and z_local is opt-in", {
+  skip_unless_brms()
+
+  wf <- load_fixture_workflow()
+
+  # Default: no local-z block.
+  out <- extract_tdt(wf, t_ref = 60, ndraws = 500)
+  expect_null(out$z$local)
+  expect_named(out$z, c("draws", "summary", "local"), ignore.order = TRUE)
+
+  # Relative z equals -1 / b_mid_temp_c read straight from the posterior — no
+  # regression. (Compare medians over all draws; extract_tdt subsamples.)
+  d  <- posterior::as_draws_df(get_brmsfit(wf)) |> as.data.frame()
+  out_all <- extract_tdt(wf, t_ref = 60, ndraws = brms::ndraws(get_brmsfit(wf)))
+  expect_equal(out_all$z$summary$z_median,
+               stats::median(-1 / d$b_mid_temp_c), tolerance = 1e-8)
+
+  # z_local = TRUE returns per-temperature local z(T).
+  out_loc <- extract_tdt(wf, t_ref = 60, ndraws = 500,
+                         target_surv = "absolute", z_local = TRUE)
+  expect_false(is.null(out_loc$z$local))
+  expect_true(all(c("temp", "z_median", "z_lower", "z_upper") %in%
+                  names(out_loc$z$local$summary)))
+  expect_true(all(is.finite(out_loc$z$local$summary$z_median)))
+})
+
 test_that("predict_heat_injury recovers analytical planted dose within CrI", {
   skip_unless_brms()
 

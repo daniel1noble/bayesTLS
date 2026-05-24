@@ -23,7 +23,8 @@ derive_temperature_for_duration(
 \item{target_surv}{Threshold mode. \code{"relative"} (default), \code{"absolute"},
 or a numeric in \verb{(0, 1)}.}
 
-\item{ndraws}{Posterior draws. Default 1000.}
+\item{ndraws}{Posterior draws to subsample, or \code{NULL} for all.
+Default 1000.}
 
 \item{probs}{Quantile probabilities. Default \code{c(0.025, 0.5, 0.975)}.}
 }

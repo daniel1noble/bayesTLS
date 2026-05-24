@@ -14,7 +14,8 @@ extract_tdt(
   ndraws = 1000,
   time_multiplier = NULL,
   output_time_unit = "min",
-  lethal = FALSE
+  lethal = FALSE,
+  z_local = FALSE
 )
 }
 \arguments{
@@ -58,15 +59,27 @@ at \code{t_ref/60}.}
 T_crit and emits a one-line reminder that T_crit is
 valid only for damage-accumulation (lethal) endpoints.
 Default \code{FALSE}.}
+
+\item{z_local}{Logical. When \code{TRUE}, additionally returns the per-draw
+local \code{z(T)} at each assay temperature in
+\code{z$local} (relevant when an absolute threshold and
+temperature-varying asymptotes bend the LT curve). Default
+\code{FALSE}. For a model R\eqn{^2}, call
+\code{brms::bayes_R2(get_brmsfit(workflow))}.}
 }
 \value{
 A list with elements:
 \itemize{
-\item \code{z}: list with \code{draws} (per-draw z, slope, intercept, R²) and \code{summary}.
+\item \code{z}: list with \code{draws} (per-draw pooled z) and \code{summary}; plus \code{local}
+(\code{draws} + per-temperature \code{summary}) when \code{z_local = TRUE}, else \code{NULL}.
+z is read directly from the posterior — relative threshold gives
+\code{-1 / b_mid_temp_c} per draw; an absolute threshold pools the per-draw
+local \code{z(T)} over the assay temperatures (see \code{\link[=derive_z]{derive_z()}}).
 \item \code{CTmax}: list with \code{draws} (per-draw temperature) and \code{summary}.
 \item \code{T_crit}: list with \code{draws} and \code{summary} when \code{lethal = TRUE};
-\code{NULL} otherwise.
-\item \code{lt50_curve}: output of \code{\link[=derive_tdt_curve]{derive_tdt_curve()}} (intermediate).
+\code{NULL} otherwise. z and CTmax share the same posterior draws, so the
+pairing is genuinely joint.
+\item \code{lt50_curve}: output of \code{\link[=derive_tdt_curve]{derive_tdt_curve()}} (descriptive intermediate).
 \item \code{meta}: list of inputs used (\code{t_ref}, \code{TC_rate_range}, \code{lethal},
 \code{output_time_unit}).
 }
@@ -76,12 +89,14 @@ Always returns:
 }
 \details{
 \itemize{
-\item \strong{z} — thermal sensitivity, derived by per-draw log-linear regression of
-\code{log10(LT_x)} on temperature (see \code{\link[=derive_tdt_parameters]{derive_tdt_parameters()}}). The
-threshold defining the LT_x curve is controlled by \code{target_surv}.
+\item \strong{z} — thermal sensitivity, read directly from the joint posterior (no
+regression): the relative threshold gives \code{z = -1 / b_mid_temp_c} per
+draw; an absolute threshold pools the per-draw local \code{z(T)} over the assay
+temperatures (see \code{\link[=derive_z]{derive_z()}}). The threshold is controlled by
+\code{target_surv}.
 \item \strong{CTmax} — temperature at which survival reaches the chosen threshold
 after \code{t_ref} exposure; the temperature where the LT_x curve crosses
-\code{t_ref}.
+\code{t_ref}, by per-draw inversion of the fitted surface.
 }
 
 By default (\code{target_surv = "relative"}), the threshold is the per-draw

@@ -38,6 +38,117 @@ resolve_target_surv <- function(target_surv) {
        call. = FALSE)
 }
 
+# --- Shared posterior machinery for z and CTmax ------------------------------
+# Both z and CTmax are deterministic transforms of the SAME population-level 4PL
+# coefficient draws. extract_tdt() pulls ONE subsample with tdt_extract_pars()
+# and feeds it to tdt_z_from_pars() and tdt_ctmax_from_pars(), so the two
+# quantities share draws by construction — their correlation, and the joint
+# pairing used for T_crit, are preserved with no draw-id bookkeeping and no
+# random re-subsampling between quantities.
+
+# Population-level 4PL coefficient draws, optionally subsampled to `ndraws`.
+tdt_extract_pars <- function(workflow, ndraws = NULL) {
+  if (!has_fit(workflow))
+    stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
+  d <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
+  if (!is.null(ndraws) && is.finite(ndraws) && ndraws < nrow(d))
+    d <- d[sort(sample.int(nrow(d), ndraws)), , drop = FALSE]
+  d
+}
+
+# log10 LT_threshold(T) per draw, a [nrow(pars) x length(T)] matrix, from the
+# coefficient draws. Relative threshold: log10 LT = mid(T). Absolute p:
+# mid(T) + log((u - p)/(p - low))/k. A missing temp_c column (a dropped
+# temp_effects slope) counts as zero slope — population level, no random effects.
+tdt_loglt <- function(pars, Tbar, bnd, ts, T) {
+  np  <- nrow(pars)
+  col <- function(nm) if (nm %in% names(pars)) pars[[nm]] else rep(0, np)
+  lp  <- function(nlpar, Tv)
+    outer(col(paste0("b_", nlpar, "_temp_c")), Tv - Tbar) +
+      col(paste0("b_", nlpar, "_Intercept"))
+  mid <- lp("mid", T)
+  if (ts$mode == "relative") return(mid)
+  p   <- ts$prob
+  l   <- bnd$low_min + bnd$low_w * stats::plogis(lp("lowraw", T))
+  u   <- bnd$up_min  + bnd$up_w  * stats::plogis(lp("upraw",  T))
+  k   <- exp(lp("logk", T))
+  arg <- (u - p) / (p - l)
+  out <- mid + log(arg) / k
+  out[!is.finite(arg) | arg <= 0] <- NA_real_
+  out
+}
+
+# z per draw from coefficient draws. See derive_z() for the documented maths.
+tdt_z_from_pars <- function(pars, Tbar, bnd, ts, temp_grid,
+                            probs = c(0.025, 0.5, 0.975), h = 1e-3) {
+  np <- nrow(pars)
+  if (ts$mode == "relative") {
+    # log10 LT_rel(T) = mid(T) is linear, so z = -1 / b_mid_temp_c at every T.
+    zvec <- -1 / (if ("b_mid_temp_c" %in% names(pars)) pars$b_mid_temp_c
+                  else rep(0, np))
+    zloc <- matrix(zvec, nrow = np, ncol = length(temp_grid))
+  } else {
+    # Local slope of the bent log10 LT_p(T) by central finite difference.
+    slope <- (tdt_loglt(pars, Tbar, bnd, ts, temp_grid + h) -
+              tdt_loglt(pars, Tbar, bnd, ts, temp_grid - h)) / (2 * h)
+    zloc  <- -1 / slope
+    zloc[!is.finite(zloc)] <- NA_real_
+  }
+  z_pooled <- rowMeans(zloc, na.rm = TRUE)
+  z_pooled[is.nan(z_pooled)] <- NA_real_
+
+  draws <- tibble::tibble(.draw = seq_len(np), z = z_pooled) |>
+    dplyr::filter(is.finite(z))
+  qz <- stats::quantile(draws$z, probs, names = FALSE, na.rm = TRUE)
+  local_draws <- tibble::tibble(
+    .draw = rep(seq_len(np), times = length(temp_grid)),
+    temp  = rep(temp_grid, each = np),
+    z     = as.vector(zloc)
+  ) |>
+    dplyr::filter(is.finite(z))
+  local_summary <- local_draws |>
+    dplyr::group_by(temp) |>
+    dplyr::summarise(
+      z_median = stats::median(z),
+      z_lower  = stats::quantile(z, probs[1], names = FALSE),
+      z_upper  = stats::quantile(z, probs[3], names = FALSE),
+      .groups  = "drop"
+    )
+  list(draws = draws,
+       summary = tibble::tibble(z_median = qz[2], z_lower = qz[1],
+                                z_upper = qz[3]),
+       local_draws = local_draws, local_summary = local_summary,
+       target_surv = ts$label, temp_grid = temp_grid)
+}
+
+# CTmax per draw: temperature where log10 LT(T) = log10(exposure_model). Relative
+# is the closed-form inverse of the linear mid(T); absolute interpolates the
+# crossing of the closed-form LT curve over temp_grid, per draw.
+tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
+                                probs = c(0.025, 0.5, 0.975)) {
+  np     <- nrow(pars)
+  target <- log10(exposure_model)
+  if (ts$mode == "relative") {
+    col <- function(nm) if (nm %in% names(pars)) pars[[nm]] else rep(0, np)
+    Tc  <- Tbar + (target - col("b_mid_Intercept")) / col("b_mid_temp_c")
+  } else {
+    M  <- tdt_loglt(pars, Tbar, bnd, ts, temp_grid)   # [np x nT]
+    Tc <- vapply(seq_len(np), function(i) {
+      y <- M[i, ]; ok <- is.finite(y)
+      if (sum(ok) < 2L) return(NA_real_)
+      o <- order(y[ok])
+      suppressWarnings(stats::approx(y[ok][o], temp_grid[ok][o],
+                                     xout = target)$y)
+    }, numeric(1))
+  }
+  draws <- tibble::tibble(.draw = seq_len(np), temp = Tc) |>
+    dplyr::filter(is.finite(temp))
+  q <- stats::quantile(draws$temp, probs, names = FALSE, na.rm = TRUE)
+  list(draws   = draws,
+       summary = tibble::tibble(temp_lower = q[1], temp_median = q[2],
+                                temp_upper = q[3]))
+}
+
 #' Posterior LT_x curve: time to reach a survival target at each temperature
 #'
 #' Returns the per-draw duration at which population-level survival crosses
@@ -190,7 +301,8 @@ derive_tdt_curve <- function(workflow,
 #' @param temp_grid        Numeric vector of temperatures to search over.
 #' @param target_surv      Threshold mode. `"relative"` (default), `"absolute"`,
 #'                         or a numeric in `(0, 1)`.
-#' @param ndraws           Posterior draws. Default 1000.
+#' @param ndraws           Posterior draws to subsample, or `NULL` for all.
+#'                         Default 1000.
 #' @param probs            Quantile probabilities. Default `c(0.025, 0.5, 0.975)`.
 #' @return A list with `draws` (per-draw threshold temperatures; `target_surv`
 #'         column is a character label), `summary` (quantile summary),
@@ -205,48 +317,18 @@ derive_temperature_for_duration <- function(workflow,
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
-  ts <- resolve_target_surv(target_surv)
+  ts   <- resolve_target_surv(target_surv)
+  pars <- tdt_extract_pars(workflow, ndraws)
+  ct   <- tdt_ctmax_from_pars(pars, workflow$meta$temp_mean,
+                              workflow$meta$bounds, ts, exposure_duration,
+                              temp_grid, probs)
 
-  if (ts$mode == "relative") {
-    # Per-draw inversion of mid(T) = log10(exposure_duration) in model time.
-    nd_mid <- new_tdt_grid(workflow, temps = temp_grid, durations = 1)
-    pp_mid <- brms::posterior_linpred(workflow$fit, newdata = nd_mid,
-                                       nlpar = "mid", re_formula = NA,
-                                       ndraws = ndraws)
-    target_logd <- log10(exposure_duration)
-    # pp_mid is [ndraws x length(temp_grid)] of mid(T) per draw.
-    thr <- vapply(seq_len(nrow(pp_mid)), function(d) {
-      mid_vec <- pp_mid[d, ]
-      if (!any(is.finite(mid_vec))) return(NA_real_)
-      ord <- order(mid_vec)
-      suppressWarnings(
-        stats::approx(mid_vec[ord], temp_grid[ord], xout = target_logd)$y
-      )
-    }, numeric(1))
-  } else {
-    nd   <- new_tdt_grid(workflow, temps = temp_grid,
-                         durations = exposure_duration)
-    pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws,
-                                   re_formula = NA)
-    thr  <- threshold_x_by_draw(pred_mat = pred,
-                                x        = nd$temp,
-                                target   = ts$prob)
-  }
-
-  draws <- tibble::tibble(
-    .draw       = seq_along(thr),
-    target_surv = ts$label,
-    temp        = thr
-  ) |>
-    dplyr::filter(is.finite(temp))
-
-  summary <- draws |>
-    dplyr::summarise(
-      target_surv = ts$label,
-      temp_lower  = stats::quantile(temp, probs[1], na.rm = TRUE),
-      temp_median = stats::quantile(temp, probs[2], na.rm = TRUE),
-      temp_upper  = stats::quantile(temp, probs[3], na.rm = TRUE)
-    )
+  draws <- ct$draws |>
+    dplyr::mutate(target_surv = ts$label) |>
+    dplyr::select(.draw, target_surv, temp)
+  summary <- ct$summary |>
+    dplyr::mutate(target_surv = ts$label) |>
+    dplyr::select(target_surv, temp_lower, temp_median, temp_upper)
 
   list(draws             = draws,
        summary           = summary,
@@ -256,88 +338,91 @@ derive_temperature_for_duration <- function(workflow,
        target_prob       = ts$prob)
 }
 
-#' Per-draw z and CTmax from an LT_x curve via per-draw log-linear regression
+#' Per-draw thermal sensitivity z directly from the joint posterior
 #'
-#' Bayesian analogue of fitting the classical TDT line. For each posterior
-#' draw, regress `log10(LT_x duration)` on temperature and read off the
-#' classical TDT quantities:
+#' Derives \eqn{z = -1 / (\mathrm{d}/\mathrm{d}T\,\log_{10}\mathrm{LT}(T))} per
+#' posterior draw, read straight from the fitted 4PL coefficients — **no
+#' regression**. There are two regimes:
 #'
-#' - `z = -1 / slope` — thermal sensitivity, in °C per 10-fold change in time
-#' - `CTmax = (log10(t_ref) - intercept) / slope` — temperature at which
-#'   LT_x equals the reference time.
+#' - **Relative threshold** (default; the \eqn{(\ell+u)/2} midpoint):
+#'   \eqn{\log_{10}\mathrm{LT}_{\text{rel}}(T) = \mathrm{mid}(T) =
+#'   \beta_0 + \beta_1 (T-\bar T)} is exactly linear, so
+#'   \eqn{z = -1/\beta_1} where \eqn{\beta_1} is the temperature slope on
+#'   `mid` (`b_mid_temp_c`). The asymptotes \eqn{\ell, u} and slope \eqn{k}
+#'   do not enter (the midpoint cancels the curve asymmetry). z is constant in
+#'   temperature.
+#' - **Absolute threshold** \eqn{p}: the LT curve gains the asymmetry-correction
+#'   term, \eqn{\log_{10}\mathrm{LT}_p(T) = \mathrm{mid}(T) +
+#'   \tfrac{1}{k(T)}\log\tfrac{u(T)-p}{p-\ell(T)}}. When \eqn{\ell}, \eqn{u} or
+#'   \eqn{k} carry temperature effects this bends the curve, so z varies with
+#'   temperature. A **local** \eqn{z(T) = -1/m(T)} is computed at each assay
+#'   temperature, where the local slope \eqn{m(T)} is obtained by a central
+#'   finite difference of the closed-form LT curve (step `h`). When the shape
+#'   parameters are constant in T the correction is flat and this reduces to
+#'   \eqn{-1/\beta_1}.
 #'
-#' @param ltx_curve  Output of [derive_tdt_curve()].
-#' @param t_ref      Reference time (in `output_time_unit` of `ltx_curve`) for
-#'                   computing CTmax. Default 60 (i.e. CTmax_1hr in min units).
-#' @param min_points Minimum number of temperatures a draw must have to be
-#'                   included. Default 5.
-#' @return A list with `draws` (per-draw slope, z, CTmax, R²), `summary`,
-#'         `t_ref`.
+#' The returned **pooled** z (the default single summary) is the per-draw mean
+#' of the local \eqn{z(T)} over `temp_grid`. The full per-temperature local
+#' \eqn{z(T)} is also returned. z is invariant to the time unit (a constant
+#' time-multiplier shifts the LT intercept, not its slope), so no
+#' `time_multiplier` is needed here.
+#'
+#' @param workflow    Fitted `bayes_tls`.
+#' @param target_surv Threshold mode: `"relative"` (default), `"absolute"`
+#'                    (= 0.5), or a numeric in `(0, 1)`.
+#' @param temp_grid   Temperatures at which to evaluate local z and over which
+#'                    to pool. Default: the observed (unique) assay temperatures
+#'                    — pooling only where the data inform the curve.
+#' @param ndraws      Posterior draws to subsample, or `NULL` (default) for all.
+#' @param probs       Quantile probabilities for the summaries. Default
+#'                    `c(0.025, 0.5, 0.975)`.
+#' @param h           Temperature step (°C) for the central finite difference
+#'                    used in absolute mode. Default `1e-3`.
+#' @return A list with:
+#'   - `draws`: tibble `(.draw, z)` — pooled per-draw z.
+#'   - `summary`: tibble `(z_median, z_lower, z_upper)`.
+#'   - `local_draws`: tibble `(.draw, temp, z)` — local z(T) per draw.
+#'   - `local_summary`: tibble `(temp, z_median, z_lower, z_upper)`.
+#'   - `target_surv`, `temp_grid`.
+#' @examples
+#' \dontrun{
+#' wf <- fit_4pl(std)
+#' z  <- derive_z(wf)             # relative: z = -1 / b_mid_temp_c per draw
+#' z$summary
+#' derive_z(wf, target_surv = "absolute")$local_summary  # local z(T)
+#' }
 #' @export
-derive_tdt_parameters <- function(ltx_curve,
-                                  t_ref      = 60,
-                                  min_points = 5) {
-  draws <- ltx_curve$draws |>
-    dplyr::filter(is.finite(duration_out), duration_out > 0) |>
-    dplyr::mutate(log10_duration = log10(duration_out))
+derive_z <- function(workflow,
+                     target_surv = "relative",
+                     temp_grid   = NULL,
+                     ndraws      = NULL,
+                     probs       = c(0.025, 0.5, 0.975),
+                     h           = 1e-3) {
+  if (!has_fit(workflow))
+    stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
+  ts <- resolve_target_surv(target_surv)
 
-  params <- draws |>
-    dplyr::group_by(target_surv, .draw) |>
-    dplyr::filter(dplyr::n() >= min_points) |>
-    dplyr::group_modify(function(d, key) {
-      fit <- stats::lm(log10_duration ~ temp, data = d)
-      co  <- stats::coef(fit)
-      # R^2 computed directly from residuals rather than via summary.lm():
-      # for an intercept model R^2 == 1 - SS_res / SS_tot exactly, and
-      # summary.lm() would otherwise emit base R's "essentially perfect fit:
-      # summary may be unreliable" warning once per draw whenever the per-draw
-      # LT50(T) curve is near-perfectly linear (the constant-shape regime),
-      # flooding any extract_tdt() run with thousands of spurious warnings.
-      ss_tot <- sum((d$log10_duration - mean(d$log10_duration))^2)
-      r2     <- if (ss_tot > 0) {
-        1 - sum(stats::residuals(fit)^2) / ss_tot
-      } else {
-        NA_real_
-      }
-      data.frame(
-        intercept = unname(co[1]),
-        slope_T   = unname(co[2]),
-        z         = -1 / unname(co[2]),
-        CTmax     = (log10(t_ref) - unname(co[1])) / unname(co[2]),
-        r_squared = r2
-      )
-    }) |>
-    dplyr::ungroup()
+  if (is.null(temp_grid)) temp_grid <- sort(unique(workflow$data$temp))
+  temp_grid <- temp_grid[is.finite(temp_grid)]
+  if (length(temp_grid) < 1L) stop("temp_grid is empty.", call. = FALSE)
 
-  summary <- params |>
-    dplyr::group_by(target_surv) |>
-    dplyr::summarise(
-      slope_median = stats::median(slope_T, na.rm = TRUE),
-      slope_lower  = stats::quantile(slope_T, 0.025, na.rm = TRUE),
-      slope_upper  = stats::quantile(slope_T, 0.975, na.rm = TRUE),
-      z_median     = stats::median(z, na.rm = TRUE),
-      z_lower      = stats::quantile(z, 0.025, na.rm = TRUE),
-      z_upper      = stats::quantile(z, 0.975, na.rm = TRUE),
-      CTmax_median = stats::median(CTmax, na.rm = TRUE),
-      CTmax_lower  = stats::quantile(CTmax, 0.025, na.rm = TRUE),
-      CTmax_upper  = stats::quantile(CTmax, 0.975, na.rm = TRUE),
-      r2_median    = stats::median(r_squared, na.rm = TRUE),
-      .groups      = "drop"
-    )
-
-  list(draws = params, summary = summary, t_ref = t_ref)
+  pars <- tdt_extract_pars(workflow, ndraws)
+  tdt_z_from_pars(pars, workflow$meta$temp_mean, workflow$meta$bounds,
+                  ts, temp_grid, probs, h)
 }
 
 #' Extract classical TDT quantities from a fitted 4PL: z, CTmax (optional T_crit)
 #'
 #' Always returns:
 #'
-#' - **z** — thermal sensitivity, derived by per-draw log-linear regression of
-#'   `log10(LT_x)` on temperature (see [derive_tdt_parameters()]). The
-#'   threshold defining the LT_x curve is controlled by `target_surv`.
+#' - **z** — thermal sensitivity, read directly from the joint posterior (no
+#'   regression): the relative threshold gives `z = -1 / b_mid_temp_c` per
+#'   draw; an absolute threshold pools the per-draw local `z(T)` over the assay
+#'   temperatures (see [derive_z()]). The threshold is controlled by
+#'   `target_surv`.
 #' - **CTmax** — temperature at which survival reaches the chosen threshold
 #'   after `t_ref` exposure; the temperature where the LT_x curve crosses
-#'   `t_ref`.
+#'   `t_ref`, by per-draw inversion of the fitted surface.
 #'
 #' By default (`target_surv = "relative"`), the threshold is the per-draw
 #' midpoint between the fitted lower and upper asymptotes (`(low + up)/2`).
@@ -398,12 +483,23 @@ derive_tdt_parameters <- function(ltx_curve,
 #'                    T_crit and emits a one-line reminder that T_crit is
 #'                    valid only for damage-accumulation (lethal) endpoints.
 #'                    Default `FALSE`.
+#' @param z_local     Logical. When `TRUE`, additionally returns the per-draw
+#'                    local `z(T)` at each assay temperature in
+#'                    `z$local` (relevant when an absolute threshold and
+#'                    temperature-varying asymptotes bend the LT curve). Default
+#'                    `FALSE`. For a model R\eqn{^2}, call
+#'                    `brms::bayes_R2(get_brmsfit(workflow))`.
 #' @return A list with elements:
-#'   - `z`: list with `draws` (per-draw z, slope, intercept, R²) and `summary`.
+#'   - `z`: list with `draws` (per-draw pooled z) and `summary`; plus `local`
+#'     (`draws` + per-temperature `summary`) when `z_local = TRUE`, else `NULL`.
+#'     z is read directly from the posterior — relative threshold gives
+#'     `-1 / b_mid_temp_c` per draw; an absolute threshold pools the per-draw
+#'     local `z(T)` over the assay temperatures (see [derive_z()]).
 #'   - `CTmax`: list with `draws` (per-draw temperature) and `summary`.
 #'   - `T_crit`: list with `draws` and `summary` when `lethal = TRUE`;
-#'     `NULL` otherwise.
-#'   - `lt50_curve`: output of [derive_tdt_curve()] (intermediate).
+#'     `NULL` otherwise. z and CTmax share the same posterior draws, so the
+#'     pairing is genuinely joint.
+#'   - `lt50_curve`: output of [derive_tdt_curve()] (descriptive intermediate).
 #'   - `meta`: list of inputs used (`t_ref`, `TC_rate_range`, `lethal`,
 #'     `output_time_unit`).
 #' @examples
@@ -429,7 +525,8 @@ extract_tdt <- function(workflow,
                         ndraws           = 1000,
                         time_multiplier  = NULL,
                         output_time_unit = "min",
-                        lethal           = FALSE) {
+                        lethal           = FALSE,
+                        z_local          = FALSE) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
   if (length(TC_rate_range) != 2L ||
@@ -454,9 +551,29 @@ extract_tdt <- function(workflow,
     temp_grid <- seq(trange[1] - 2, trange[2] + 2, by = 0.05)
   }
 
-  # LT_x curve → z + CTmax via per-draw log-linear regression. The threshold
-  # for the curve is set by target_surv; `"relative"` (default) returns mid(T)
-  # directly.
+  # Extract the population-level 4PL coefficient posterior ONCE and subsample
+  # ONCE, then compute BOTH z and CTmax from this single set of draws. They
+  # therefore share draws by construction — their correlation, and the per-
+  # `.draw` pairing used for T_crit below, are preserved without any draw-id
+  # bookkeeping. z is read directly (no regression): relative => -1/b_mid_temp_c
+  # per draw; absolute => pooled local z over the observed assay temperatures.
+  pars        <- tdt_extract_pars(workflow, ndraws)
+  Tbar        <- workflow$meta$temp_mean
+  bnd         <- workflow$meta$bounds
+  z_temp_grid <- sort(unique(data$temp))
+  z_temp_grid <- z_temp_grid[is.finite(z_temp_grid)]
+
+  z_obj <- tdt_z_from_pars(pars, Tbar, bnd, ts, z_temp_grid)
+
+  # Express the t_ref reference duration back in model time units so the
+  # inverse-4PL lookup uses the same scale as the fitted model.
+  exposure_in_model_units <- t_ref / time_multiplier
+  ctmax <- tdt_ctmax_from_pars(pars, Tbar, bnd, ts, exposure_in_model_units,
+                               temp_grid)
+
+  # LT_x curve retained as descriptive output (plotting / inspection); it is no
+  # longer used to compute z or CTmax. The threshold is set by target_surv;
+  # `"relative"` (default) returns mid(T) directly.
   lt50_curve <- derive_tdt_curve(
     workflow         = workflow,
     temp_grid        = temp_grid,
@@ -465,19 +582,6 @@ extract_tdt <- function(workflow,
     ndraws           = ndraws,
     time_multiplier  = time_multiplier,
     output_time_unit = output_time_unit
-  )
-  z_ctmax <- derive_tdt_parameters(lt50_curve, t_ref = t_ref)
-
-  # Express the t_ref reference duration back in model time units so the
-  # inverse-4PL lookup uses the same scale as the fitted model.
-  exposure_in_model_units <- t_ref / time_multiplier
-
-  ctmax <- derive_temperature_for_duration(
-    workflow          = workflow,
-    exposure_duration = exposure_in_model_units,
-    temp_grid         = temp_grid,
-    target_surv       = target_surv,
-    ndraws            = ndraws
   )
 
   t_crit_block <- NULL
@@ -489,10 +593,10 @@ extract_tdt <- function(workflow,
 
     # T_crit via rate-multiplier integration. For each posterior draw, sample
     # r* uniformly on log10 across TC_rate_range, then compute
-    # T_crit = CTmax + z * log10(r*/100). Pairs z and CTmax by .draw index
-    # so the joint posterior is preserved.
-    z_df     <- z_ctmax$draws   |> dplyr::select(.draw, z)
-    ctmax_df <- ctmax$draws     |> dplyr::select(.draw, CTmax_temp = temp)
+    # T_crit = CTmax + z * log10(r*/100). z and CTmax were computed from the
+    # same `pars` draws, so pairing by `.draw` is genuinely joint.
+    z_df     <- z_obj$draws  |> dplyr::select(.draw, z)
+    ctmax_df <- ctmax$draws  |> dplyr::select(.draw, CTmax_temp = temp)
     paired   <- dplyr::inner_join(z_df, ctmax_df, by = ".draw")
 
     log10_low  <- log10(TC_rate_range[1] / 100)
@@ -517,9 +621,14 @@ extract_tdt <- function(workflow,
   }
 
   list(
-    z          = list(draws   = z_ctmax$draws |> dplyr::select(.draw, z),
-                      summary = z_ctmax$summary |>
-                        dplyr::select(z_median, z_lower, z_upper)),
+    z          = list(draws   = z_obj$draws,
+                      summary = z_obj$summary,
+                      local   = if (isTRUE(z_local)) {
+                        list(draws = z_obj$local_draws,
+                             summary = z_obj$local_summary)
+                      } else {
+                        NULL
+                      }),
     CTmax      = list(draws   = ctmax$draws,
                       summary = ctmax$summary),
     T_crit     = t_crit_block,
