@@ -287,12 +287,24 @@ derive_tdt_parameters <- function(ltx_curve,
     dplyr::group_modify(function(d, key) {
       fit <- stats::lm(log10_duration ~ temp, data = d)
       co  <- stats::coef(fit)
+      # R^2 computed directly from residuals rather than via summary.lm():
+      # for an intercept model R^2 == 1 - SS_res / SS_tot exactly, and
+      # summary.lm() would otherwise emit base R's "essentially perfect fit:
+      # summary may be unreliable" warning once per draw whenever the per-draw
+      # LT50(T) curve is near-perfectly linear (the constant-shape regime),
+      # flooding any extract_tdt() run with thousands of spurious warnings.
+      ss_tot <- sum((d$log10_duration - mean(d$log10_duration))^2)
+      r2     <- if (ss_tot > 0) {
+        1 - sum(stats::residuals(fit)^2) / ss_tot
+      } else {
+        NA_real_
+      }
       data.frame(
         intercept = unname(co[1]),
         slope_T   = unname(co[2]),
         z         = -1 / unname(co[2]),
         CTmax     = (log10(t_ref) - unname(co[1])) / unname(co[2]),
-        r_squared = summary(fit)$r.squared
+        r_squared = r2
       )
     }) |>
     dplyr::ungroup()
