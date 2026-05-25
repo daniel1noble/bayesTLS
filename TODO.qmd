@@ -1,0 +1,121 @@
+---
+title: "bayesTLS / TLS model-equivalence — outstanding work"
+subtitle: "Toward the *Ecology Letters* (Methods) submission"
+date: last-modified
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    theme: cosmo
+---
+
+> Working tracker of what is **left to do**. Completed work is summarised in the
+> status snapshot for context, but the live items are in the sections below.
+> Decisions and rationale live in `notes/` and `CLAUDE.md`; this file is the
+> checklist, not the reasoning.
+
+## Status snapshot (done)
+
+- [x] **`bayesTLS` package** built, documented (`man/`), and tested
+  (fast unit tests + a `RUN_BRMS_TESTS=true` gated brms integration suite).
+  Installable from GitHub.
+- [x] **Decoupled pipeline** complete: `standardize_data()` → `make_4pl_priors()` /
+  `make_4pl_formula()` → `fit_4pl()` → `extract_tdt()` → `predict_survival_curves()` /
+  `predict_heat_injury()` → plotting helpers + accessors.
+- [x] **Count (beta-binomial) and continuous-proportion (Beta) responses** both
+  first-class; identity link throughout.
+- [x] **`extract_tdt()` is a posterior transform**, not a two-stage regression
+  (OLS removed 2026-05-24; `derive_z()` added; *z* and CTmax share one subsample).
+- [x] **Four case studies fully worked in the supplement**: brown shrimp (lethal +
+  sublethal), zebrafish (separate + joint fits, relative/absolute-threshold
+  sensitivity), snowgum leaf PSII (Beta), *Acacia* seeds (sparse design,
+  `temp_effects = "mid"`).
+- [x] **Two-stage-bias simulation** + sensitivity sweeps complete; results +
+  sweeps in the supplement; manuscript simulation section and figures
+  (`fig-sims`, `fig-sims2`) drafted.
+- [x] **Conceptual figure** (`fig-joint-4pl-conceptual`) present.
+
+## Manuscript (`ms/ms.qmd`)
+
+### Front matter
+
+- [ ] **Abstract — replace the `XXX (XXX)` placeholder** and reconcile the
+  case-study list. The abstract names three case studies (shrimp, zebrafish,
+  XXX) but four are worked. Decide which to feature in the abstract/text and name
+  them (leaf PSII *Eucalyptus* snowgum, *Acacia* seeds).
+
+### Worked example: brown shrimp (§ "Worked example: brown shrimp")
+
+- [ ] **Decide the fate of this section — it is currently all skeleton.** Empty
+  subheaders (Data and experimental design, Lethal TDT, Sublethal time-to-death,
+  Dynamic $CT_{max}$, Reconciling endpoints, Field-temperature projections), three
+  `eval: false` figure chunks, and placeholder comments that point at the retired
+  `R/bayesian_TDT_shrimp.qmd` pipeline. All four case studies are now fully worked
+  in the supplement and summarised by the cross-case-study figure (Manuscript
+  Figure 4, generated in the supplement). **Decision needed:**
+    - (a) Write a condensed in-text narrative that pulls the headline numbers from
+      the supplement, **or**
+    - (b) cut the section and rely on the "Application … to case studies" section +
+      Figure 4.
+  A submission should not carry disabled figure chunks or dangling empty
+  subheaders either way.
+- [ ] *If kept:* wire `fig-survival-curves`, `fig-tdt-ctmax-reconciliation`, and
+  `fig-hi-warming` to the current package fits in `output/models/` (the
+  commented `readRDS()` names in the setup chunk — `fit_lethal_TDT_4pl.rds`,
+  `fit_sublethal_TDT.rds`, `fit_ctmax.rds` — are stale and do not exist).
+
+### Discussion / conclusions
+
+- [ ] **Discussion** — three empty subheaders to write: "What changes for the
+  field if the hierarchical 4PL becomes the default", "Limits of the present
+  analysis" (outline already in an HTML comment: fixed repair kernel; `nls()`-per-draw
+  dynamic-$CT_{max}$ reconciliation vs a joint Stan likelihood; Arrhenius /
+  1-Kelvin sensitivity check belongs in the supplement; endpoint heterogeneity is
+  made *visible*, not eliminated), and "Recommendations for primary studies and
+  meta-analyses". Follow the **equivalence-as-enhancement** framing — recommend the
+  joint 4PL unconditionally; do not soften to "use either".
+- [ ] **Conclusions** — empty.
+- [ ] **Acknowledgements** — empty.
+- [ ] **Author contributions** — empty (fill CRediT roles).
+- [x] Data and code availability — has content.
+- [x] Conflict of interest — has content.
+
+### Housekeeping in `ms.qmd`
+
+- [ ] Clean stale setup-chunk comments (~top of the file): reference to
+  "R/bayesian_TDT_shrimp.qmd or equivalent scripts" and the commented `readRDS()`
+  lines naming fits that no longer exist (`fit_lethal_TDT_4pl.rds`, etc.).
+
+## Package / infrastructure
+
+- [ ] **CI is not set up.** There is no `.github/workflows/`. CLAUDE.md §6 calls
+  for GitHub Actions running `testthat` + rendering `ms.qmd` and `supplement.qmd`
+  + lint on push/PR, with a failing workflow blocking merge. Add before submission.
+- [ ] **`fit_linear_TDT()` + `extract_tdt_linear()`** — deferred to a
+  post-submission package release. The supplement's sublethal section currently
+  calls `brms::brm()` inline for the linear time-to-event model. The wrapper would
+  expose the same downstream interface as `fit_4pl()` / `extract_tdt()`, with a
+  heteroscedastic-likelihood option. Not blocking this paper.
+- [ ] **Data documentation completeness.** Datasets carry roxygen column docs
+  (`man/*.Rd`); confirm CLAUDE.md §9 metadata (source, collection date/window,
+  licence, ethics, sharing restrictions) is captured for each before submission.
+
+## References / housekeeping
+
+- [ ] Pete to fold in any of his references that fit the existing prose.
+- [ ] Replace any "book — needs primary-source verification" citations with
+  primary sources where possible.
+- [ ] Verify outstanding literature flagged in
+  `notes/2026-04-21-tdt-literature-deep-dive.qmd` (Willot ants DOI; Rodrigues 2023
+  *Enchytraeus*; Mesas 2021; Kingsolver/Buckley 2019) — only if cited.
+- **Reminder:** `bib/tdt_problems.bib` is auto-exported from Zotero — add
+  citations on the Zotero side, never edit the `.bib` directly.
+
+## Deferred to companion papers (out of scope here)
+
+- [ ] **Paper 2** — flow-cytometry / cell-level application of the framework.
+- [ ] **Paper 3** — static-$CT_{max}$ → TDT conversion: infer the *z*-distribution
+  behind an observed $CT_{max}$ × ramping-rate pattern with uncertainty
+  propagation; validate across datasets where both pipelines exist; demonstrate the
+  fixed-*z* assumption is unsupportable.
+</content>
