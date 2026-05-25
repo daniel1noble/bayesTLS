@@ -2,7 +2,7 @@
 % Please edit documentation in R/accessors.R
 \name{get_z_draws}
 \alias{get_z_draws}
-\title{Posterior draws of z (TDT slope, °C per log10-time)}
+\title{Posterior draws of z (thermal sensitivity, °C per 10-fold change in time)}
 \usage{
 get_z_draws(et)
 }

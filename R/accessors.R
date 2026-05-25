@@ -5,7 +5,7 @@
 # per-draw posteriors so a user can compute the posterior of (group A −
 # group B) directly.
 
-#' Posterior draws of z (TDT slope, °C per log10-time)
+#' Posterior draws of z (thermal sensitivity, °C per 10-fold change in time)
 #'
 #' Pulls the per-draw values of z from an [extract_tdt()] result.
 #'
