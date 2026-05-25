@@ -1263,7 +1263,7 @@ ggplot2::ggplot(local_z_summary,
                      linetype = "dashed", colour = "black",
                      inherit.aes = FALSE) +
   ggplot2::labs(x = "Assay temperature (°C)",
-                y = expression(local~italic(z)~"(°C)")) +
+                y = expression(local~italic(z)~"(°C per 10-fold change in time)")) +
   ggplot2::theme_classic()
 ```
 
@@ -2301,7 +2301,7 @@ et_shrimp <- extract_tdt(
 
 shrimp_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
-  "z (°C per order of magnitude)",      et_shrimp$z$summary$z_median,
+  "z (°C)",                             et_shrimp$z$summary$z_median,
                                     et_shrimp$z$summary$z_lower,
                                     et_shrimp$z$summary$z_upper,
   "CTmax_1hr (°C)",                 et_shrimp$CTmax$summary$temp_median,
@@ -2334,7 +2334,7 @@ z_post_shrimp <- list(
 
 patchwork::wrap_plots(
   plot_temperature_density(z_post_shrimp,
-                            x_label = expression(italic(z)~("°C"))),
+                            x_label = expression(italic(z)~"(°C per 10-fold change in time)")),
   plot_temperature_density(et_shrimp$CTmax,
                             x_label = expression(CT[max[1*hr]]~("°C"))),
   plot_temperature_density(et_shrimp$T_crit,
@@ -3844,7 +3844,7 @@ zf_post_summary <- zf_post_long |>
 method_colours <- c("Separate" = "#2c7fb8", "Joint" = "#d95f02")
 
 quantity_labels <- ggplot2::as_labeller(
-  c(z         = "italic(z)~(degree*C~per~log[10]~time)",
+  c(z         = "italic(z)~\"(°C per 10-fold change in time)\"",
     CTmax_1hr = "CT[max[1*hr]]~(degree*C)",
     T_crit    = "T[crit]~(degree*C)"),
   default = ggplot2::label_parsed
@@ -4727,7 +4727,7 @@ et_leaf <- extract_tdt(
 
 leaf_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
-  "z (°C per order of magnitude)",      et_leaf$z$summary$z_median,
+  "z (°C)",                             et_leaf$z$summary$z_median,
                                     et_leaf$z$summary$z_lower,
                                     et_leaf$z$summary$z_upper,
   "CTmax_1hr (°C)",                 et_leaf$CTmax$summary$temp_median,
@@ -4756,7 +4756,7 @@ z_post_leaf <- list(
 
 patchwork::wrap_plots(
   plot_temperature_density(z_post_leaf,
-                            x_label = expression(italic(z)~("°C"))),
+                            x_label = expression(italic(z)~"(°C per 10-fold change in time)")),
   plot_temperature_density(et_leaf$CTmax,
                             x_label = expression(CT[max[1*hr]]~("°C"))),
   ncol = 2
@@ -5229,7 +5229,7 @@ et_seed <- extract_tdt(
 
 seed_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
-  "z (°C per order of magnitude)",      et_seed$z$summary$z_median,
+  "z (°C)",                             et_seed$z$summary$z_median,
                                     et_seed$z$summary$z_lower,
                                     et_seed$z$summary$z_upper,
   "CTmax_1hr (°C)",                 et_seed$CTmax$summary$temp_median,
@@ -5270,7 +5270,7 @@ z_post_seed <- list(
 
 patchwork::wrap_plots(
   plot_temperature_density(z_post_seed,
-                           x_label = expression(italic(z)~("°C"))),
+                           x_label = expression(italic(z)~"(°C per 10-fold change in time)")),
   plot_temperature_density(et_seed$CTmax,
                            x_label = expression(CT[max[1*hr]]~("°C"))),
   plot_temperature_density(et_seed$T_crit,
@@ -5428,7 +5428,7 @@ fig4_summary <- fig4_summary |>
   )
 
 quantity_labeller <- ggplot2::as_labeller(
-  c(z         = "italic(z)~(degree*C)",
+  c(z         = "italic(z)~\"(°C per 10-fold change in time)\"",
     CTmax_1hr = "CT[max[1*hr]]~(degree*C)"),
   default = ggplot2::label_parsed
 )
