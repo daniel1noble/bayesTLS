@@ -1,0 +1,207 @@
+---
+title: "What is root-mean-square error (RMSE)? Units, calculation, and why lower is better"
+date: 2026-05-25
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+# Question
+
+In the two-stage-vs-joint-4PL simulation, what is the **root-mean-square error
+(RMSE)**? What are its units, how is it calculated, and why do we want it as low
+as possible?
+
+# Short answer
+
+RMSE is the *typical magnitude of an estimator's error* — how far, on average,
+its estimates fall from the true value. It is reported **in the same units as the
+estimated quantity** (°C for both $z$ and $CT_{max_{1hr}}$). It is the square root
+of the mean squared error, and because $\text{MSE} = \text{bias}^2 +
+\text{variance}$, RMSE folds **both systematic error (bias) and imprecision
+(variance)** into a single number. Lower RMSE means estimates are reliably close
+to the truth on a per-dataset basis — exactly the property we want when a reader
+fits the model once to one real dataset.
+
+# What RMSE measures
+
+In a simulation we know the true parameter $\theta$ (e.g. true $z$) and obtain
+$n_{sim}$ estimates $\hat\theta_1,\dots,\hat\theta_{n_{sim}}$, one per simulated
+dataset. The **error** of estimate $i$ is $\hat\theta_i - \theta$. RMSE summarises
+the whole collection of errors into one "typical error size".
+
+It answers the practical question: *if I apply this method to a single dataset,
+how far off is the estimate likely to be?* That is different from bias (which asks
+whether errors cancel **on average**) and from coverage (which asks whether the
+**intervals** are calibrated).
+
+# How it is calculated
+
+$$
+\text{RMSE} \;=\; \sqrt{\frac{1}{n_{sim}}\sum_{i=1}^{n_{sim}} \left(\hat\theta_i - \theta\right)^2 }
+$$
+
+Step by step: (1) form each error $\hat\theta_i - \theta$; (2) **square** it (so
+positive and negative errors do not cancel, and large errors are penalised more);
+(3) **average** the squared errors — this is the mean squared error (MSE); (4) take
+the **square root** to return to the original measurement scale.
+
+# Units
+
+RMSE has the **same units as the estimated quantity**. Squaring the errors gives
+units$^2$; the final square root undoes that. So for $z$ the RMSE is in °C, and for
+$CT_{max_{1hr}}$ it is in °C. This is the whole reason we use the *root* of the MSE
+rather than the MSE itself — MSE for $z$ would be in °C$^2$, which is not
+interpretable on the parameter's scale.
+
+# Why we want it as low as possible
+
+There is an exact identity (the bias–variance decomposition):
+
+$$
+\text{MSE} \;=\; \text{RMSE}^2 \;=\; \underbrace{\left(\bar{\hat\theta}-\theta\right)^2}_{\text{bias}^2} \;+\; \underbrace{\frac{1}{n_{sim}}\sum_i\left(\hat\theta_i-\bar{\hat\theta}\right)^2}_{\text{variance (precision)}}
+$$
+
+where $\bar{\hat\theta}$ is the mean estimate. RMSE therefore penalises **both**
+sources of error:
+
+- An estimator that is **unbiased but noisy** (large variance) still has a large
+  RMSE.
+- An estimator that is **precise but biased** also has a large RMSE.
+
+Low RMSE means the estimates are reliably close to the truth *for an individual
+dataset* — combining accuracy and precision in one number. In the method
+comparison, the approach with the lower RMSE for $z$ (or $CT_{max_{1hr}}$) recovers
+the true value more dependably across replicate datasets.
+
+## A small self-contained demonstration
+
+The decomposition is exact when the variance is computed with the population
+divisor ($\div n$, using the same mean as the bias). The chunk below confirms that
+`RMSE` equals `sqrt(bias^2 + variance)` to machine precision, and that the result
+is on the parameter's own scale (°C).
+
+```{r}
+#| label: rmse-demo
+#| echo: true
+#| message: false
+#| warning: false
+set.seed(1)
+theta <- 6.7                                   # true z (°C)
+est   <- theta + rnorm(2000, mean = 0.3, sd = 0.8)  # biased (+0.3 °C), noisy
+
+rmse <- sqrt(mean((est - theta)^2))            # direct definition
+bias <- mean(est) - theta                      # systematic error
+varp <- mean((est - mean(est))^2)              # population variance (÷ n)
+
+round(c(rmse                = rmse,
+        sqrt_bias2_plus_var = sqrt(bias^2 + varp),
+        bias                = bias,
+        sd_precision        = sqrt(varp)), 4)
+```
+
+The first two values are identical (the decomposition holds); `bias` and
+`sd_precision` are the two ingredients, both in °C.
+
+# What counts as a *large* RMSE for $z$?
+
+There is no universal cutoff — "large" is judged **relative to the magnitude of
+$z$ and to the differences you are trying to resolve**, not on an absolute scale.
+Three anchors.
+
+**1. Relative to $z$ itself.** Published $z$ values sit in the low single digits of
+°C (roughly 1–7 °C across taxa; sublethal-assay $z$ is often ~1–2 °C). The portable
+yardstick is therefore the **relative RMSE**, $\text{RMSE}/z$:
+
+- $\lesssim 10\%$ — small; precise and accurate.
+- $\sim 10\text{–}25\%$ — moderate to concerning.
+- $> 25\%$ — large; the point estimate is unreliable for distinguishing
+  biologically meaningful $z$ differences.
+
+**2. Concrete reference points from this study** ($z_{\text{true}} \approx 6.67$
+°C; RMSE for $z$ computed as $\sqrt{\operatorname{mean}(\text{bias}^2)}$ over the
+screened, successful sims, same screening as the manuscript figure):
+
+| Scenario | $n_{reps}$ | Joint 4PL RMSE (°C) | Two-stage RMSE (°C) |
+|---|---|---|---|
+| Baseline (shape constant) | 3 | 0.50 (7.5%) | 0.69 (10.3%) |
+| $u$ falls with $T$ | 3 | 0.60 (9.1%) | 0.83 (12.6%) |
+| $k$ changes with $T$ | 3 | 0.62 (9.2%) | 1.18 (17.7%) |
+| Baseline (shape constant) | 5 | 0.34 (5.2%) | 0.45 (6.7%) |
+| $u$ falls with $T$ | 5 | 0.45 (6.8%) | 0.62 (9.5%) |
+| $k$ changes with $T$ | 5 | 0.49 (7.4%) | 1.01 (15.2%) |
+
+Percentages are $\text{RMSE}/z_{\text{true}}$. In this study a **small** $z$ RMSE
+is ~0.3–0.6 °C (~5–9%, what the joint 4PL achieves); the **large** end is ~1 °C
+(~15–18%, where the two-stage lands when $k$ varies with temperature).
+
+**3. The same absolute RMSE is far more damaging for a small $z$.** Because the
+yardstick is relative, an RMSE of ~1 °C is ~15% on a tolerant lethal $z \approx
+6.7$ but ~50–100% on a sublethal $z \approx 1\text{–}2$ °C. An RMSE that is
+acceptable for one endpoint can be disqualifying for another — relevant here
+because the case studies span lethal $z$ (shrimp ~2.6 °C) and sublethal $z$
+(shrimp time-to-knockdown ~1.1 °C). Always interpret $z$ RMSE against the $z$ of
+the dataset in hand, and against the between-group/species $z$ differences you want
+to detect: once RMSE approaches the size of those differences, the method can no
+longer tell the groups apart.
+
+*Numbers computed 2026-05-25 from `output/sim_twostage/per_sim_*` (scenarios scen2
+/ scen3 / scen5), same beta-binomial Stage-1 screening as the manuscript
+simulation figure.*
+
+# How RMSE complements the metrics already in the manuscript
+
+The simulation currently reports **bias** and **95% interval coverage**. RMSE adds
+the missing piece — overall point-estimate error on the parameter's scale:
+
+| Metric | What it captures | What it misses |
+|---|---|---|
+| Bias | Direction and size of *systematic* error | Scatter (an unbiased-but-noisy method looks fine) |
+| Coverage | Whether the *intervals* are calibrated | Point-estimate accuracy |
+| **RMSE** | Point-estimate error = **bias *and* precision** | Direction of bias; interval calibration |
+
+Reported together, these three are the standard ADEMP simulation-metric set
+[@williams2024].
+
+# Cautions
+
+1. **Outlier sensitivity.** Because errors are squared, a few wild estimates
+   inflate RMSE disproportionately. This is material here: the two-stage
+   beta-binomial Stage-1 occasionally produces pathological $z$/$CT_{max_{1hr}}$
+   estimates (the reason the manuscript figure screens them; see
+   [[project_z_ctmax_derivation]] context). Report RMSE *alongside* bias and
+   coverage, and consider **median absolute error** as a tail-robust companion if
+   the squared metric is dominated by rare failures.
+2. **Monte Carlo uncertainty.** RMSE is itself estimated from a finite number of
+   simulations, so it carries Monte Carlo error [@koehler2009; @direnzo2023]. Use
+   enough replicates and, ideally, report its MCSE — consistent with how the
+   manuscript already reports MCSE for bias and coverage.
+
+# Implications for the manuscript
+
+- Adding RMSE is a one-liner from the existing outputs:
+  `RMSE = sqrt(mean(bias^2))` computed from the `per_sim_*` `bias` column, grouped
+  by `method × quantity × scenario`. No re-running of the simulation is needed.
+- A natural presentation is a third panel (bias → coverage → RMSE) or a
+  supplementary table, keeping the equivalence framing: at the strict-equivalence
+  baseline the two-stage and joint 4PL have comparable RMSE; under shape
+  violations ($u$, $k$, $\ell$ vary with $T$) the two-stage RMSE inflates while the
+  joint 4PL stays low.
+- Keep wording neutral (report the numbers; do not editorialise), per the
+  project's reporting norm.
+
+# Verification status
+
+- The bias–variance decomposition and the RMSE definition are standard results;
+  the self-contained chunk above verifies the identity numerically on render.
+- Citations used (`@williams2024`, `@koehler2009`, `@direnzo2023`) are confirmed
+  present in `bib/tdt_problems.bib`. The canonical simulation-metrics reference
+  Morris, White & Crowther (2019, *Statistics in Medicine*) is **not yet a
+  standalone key** in the bib (it appears only inside `williams2024`'s abstract);
+  add it via Zotero if we want to cite it directly in the manuscript.
