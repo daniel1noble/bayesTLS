@@ -1,0 +1,230 @@
+---
+title: "Bullard, Buckley & Kingsolver (2026, *PLoS Biol*) — relationship to our paper"
+date: 2026-05-26
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+# Question
+
+A new paper — @bullard2026 (*PLoS Biology*, 21 May 2026) — sounds close to what
+our paper is doing. Read it carefully, summarise it, and compare/contrast its
+claims with our manuscript. Where are we saying the same things? Where do we
+differ? Accuracy is key.
+
+# Short answer
+
+Same *problem class* (the field's constant-shape-across-T assumption fails and
+matters for fluctuating-T predictions), but **different data type** (individual
+continuous failure times vs our aggregated proportion/count data) and
+**different model parameterisation** (a frequentist log-logistic AFT with shape
+linear in T vs our hierarchical Bayesian 4PL with T-effects on all four 4PL
+parameters and estimated asymptotes). Mathematically, their log-logistic
+survival model is the **special case of our 4PL with asymptotes forced to 0/1**;
+our framework strictly generalises theirs but on a different (more common) data
+structure. This is complementary, not duplicative. The bib entry `@bullard2026`
+already exists from the Zotero auto-export but the paper is not yet cited
+anywhere in `ms.qmd` / `supplement.qmd` — that needs fixing.
+
+# Summary of Bullard et al. 2026
+
+**Question.** When TDT models are extended from constant to fluctuating
+temperatures, two assumptions become load-bearing: (a) *additivity* of injury
+accumulation across temperatures [@jorgensen_unifying_2021] and (b) the shape of
+the cumulative survival curve $S(t)$ does not change with temperature
+[@rezende_drosophila_mortality_2020]. Do these hold, and what happens when they
+don't?
+
+**Model.** Log-logistic accelerated failure time (AFT) survival model:
+$$
+S(t) = (1 + (t/a)^k)^{-1}
+$$
+with scale $a$ = median $t_f$ and shape $k$ inversely related to the variance
+of log failure time: $\operatorname{var}(t_f) = \pi^2/(3k^2)$. Proportional
+hazards (PH) explicitly rejected via LR test ($\chi^2 = 5403, p < 2\times 10^{-16}$).
+Log-logistic preferred over Weibull, log-normal, Gompertz, exponential via AIC
+(9/11 species).
+
+**Constant-T results** (their Fig 2). Refit individual knockdown times for 11
+*Drosophila* species at multiple stressful temperatures (~32.5–43 °C; data from
+@jorgensen_drosophila_2019).
+
+- Median $\log(t_f)$ declines linearly with $T$ (TDT location holds; residuals
+  in their Fig S2).
+- Shape $k$ generally *decreases* (so $\operatorname{var}[\log t_f]$ *increases*)
+  with $T$ across species (mixed-effects LR test: $\chi^2 = 33.7, p < 0.0001$),
+  invalidating the constant-shape assumption of @rezende_drosophila_mortality_2020.
+  Heterogeneous across species (their Fig S3).
+
+**Fluctuating-T results** (their Fig 4). Predict median $t_f$ and full survival
+curves for 26 sets of *D. melanogaster* under fluctuating 34–42 °C
+[@jorgensen_unifying_2021]. Three models compared:
+
+1. @jorgensen_unifying_2021 (deterministic, additive injury).
+2. @rezende_drosophila_mortality_2020 (probabilistic, single average $S(t)$).
+3. Their "increasing-variance" log-logistic (parametric AFT, shape linear in T).
+
+Findings: Jørgensen and log-logistic predict **median $t_f$** comparably well;
+both substantially better than Rezende. Log-logistic predicts the **survival
+curves** better than Rezende (paired *t*-test, $p = 0.0019$; 20/26 wins).
+**All three models underestimate median $t_f$ at lower stressful T**, which they
+argue (via flat residuals in their Fig S2) indicates non-additivity of HI
+accumulation rather than non-linearity in the TDT trend.
+
+**Discussion.** Mechanistic candidates for increasing variance with T: HSP/ROS
+kinetics, individual heterogeneity ("frail" vs "robust"), cryptic genetic
+variation expressed only under stress, microbial "tailing" of survival curves,
+fanning-out of TDT lines if individuals vary in slope not just intercept.
+Explicitly out of scope: permissive temperatures, repair, recovery, full field
+conditions.
+
+# Side-by-side comparison
+
+| Dimension | @bullard2026 | This paper (Noble, Arnold & Pottier) |
+|---|---|---|
+| **Headline claim** | Variance in $\log(t_f)$ changes with T; constant-shape assumption fails; allowing shape to vary improves fluctuating-T predictions | The two-stage pipeline mishandles uncertainty, hierarchy, asymmetric shape; a single Bayesian 4PL recovers everything with calibrated uncertainty |
+| **Data type** | Individual continuous failure times | Aggregated proportion/count data at (T × duration) cells; continuous proportions (Beta) for PSII |
+| **Model class** | Frequentist parametric AFT (log-logistic), `flexsurv` | Hierarchical Bayesian 4PL on counts/proportions, `brms`; packaged as `bayesTLS` |
+| **What varies with T** | scale (linear), shape (linear) | All four 4PL parameters can carry T-effects; `temp_effects` configurable |
+| **Asymptotes** | Forced to 0 and 1 | Estimated, with disjoint-bounds reparam |
+| **Hierarchy / random effects** | None | Random intercepts on `mid` (date / tank / cup / life stage …) |
+| **Uncertainty** | Parametric CIs (`flexsurv`) | Full posteriors through $z$, $CT_{max,1h}$, $T_{crit}$, HI, survival curves |
+| **Fluctuating-T prediction** | Time-stepped simulation under time-varying $S(t,T)$; **tested against empirical $D$. *melanogaster* fluctuating data** | Jørgensen HI integral with posterior $z$ & $CT_{max,1h}$; optional Sharpe–Schoolfield repair; **validation via planted-dose recovery on simulated traces** |
+| **Comparator critiqued** | @rezende_drosophila_mortality_2020 + additivity | Classical two-stage GLM → OLS pipeline |
+| **Case studies** | 11 *Drosophila* species (constant T) + 1 fluctuating-T set | Shrimp (lethal + sublethal), zebrafish life stages, snowgum leaf PSII, *Acacia* seeds |
+| **Repair / recovery** | Out of scope | In scope (Sharpe–Schoolfield) |
+| **Software** | `flexsurv` | `bayesTLS` (own package) |
+| **Venue** | *PLOS Biology* | *Ecology Letters* (Methods) |
+
+# Genuine overlap (where we are saying related things)
+
+1. **Both reject the constant-shape assumption.** Bullard's empirical
+   evidence (shape $k$ varies with T in most *Drosophila*, their Fig 2D)
+   directly supports our supplement worked example
+   §sec-joint-extend ("temperature effects on every shape parameter"), where
+   we simulate T-varying $u$ and $k$ and show the 4PL recovers them. Their
+   empirical evidence + our simulation evidence + the `fit_4pl` default of
+   T-effects on all four parameters together make a strong package.
+2. **Both critique @rezende_drosophila_mortality_2020's average-$S(t)$
+   assumption.** Our manuscript currently cites Rezende positively as
+   foundational; Bullard's critique is more pointed. Worth sharpening ours
+   without strawmanning [[feedback_equivalence_framing]].
+3. **Both highlight that mean/median estimates aren't enough.** Bullard,
+   Discussion: *"studies to date have emphasized estimates or predictions of
+   mean or median failure times. However, many important biological questions
+   require information about cumulative survival curves…"*. We make the same
+   case via Bayesian posteriors over derived quantities.
+
+# Where they go further than us (honest)
+
+1. **Empirical evidence across 11 species that the assumption fails.** We
+   *show* (via simulation) that *if* shape varies with T, two-stage estimates
+   are biased; they *show* (via real *Drosophila* data) that shape *does* vary
+   with T in most species. These complement; we should cite the empirical side.
+2. **Direct empirical model comparison under fluctuating T** (their Fig 4).
+   Our validation under fluctuating T is via planted-dose recovery on simulated
+   traces, not against an empirical fluctuating-T benchmark. Real gap.
+3. **Residual analysis suggesting non-additivity of HI accumulation across
+   the stressful range** (Bullard, Discussion, "Modeling survival in
+   fluctuating temperatures"). Our paper uses the Jørgensen HI integral
+   as-is with posterior $z$, $CT_{max,1h}$; we don't test additivity.
+4. **Mechanistic discussion of *why* variance changes with T** — cryptic
+   genetic variation, individual heterogeneity, HSP/ROS, "tailing", TDT-line
+   fanning. Our discussion is structural/statistical; theirs is mechanistic.
+
+# Where we go further than them
+
+1. **Asymptote estimation** — critical for sublethal endpoints (leaf PSII,
+   fertility) and partial-mortality designs. Their log-logistic forces $\ell=0$,
+   $u=1$. The case studies (snowgum PSII, *Acacia* seeds) would not be analysable
+   under their framework.
+2. **Aggregated count/proportion data** — the dominant assay type in
+   ectotherm thermal biology (individual continuous times are the exception, not
+   the rule).
+3. **Hierarchical structure** with random effects on `mid` for
+   experimental nesting (date, tank, cup, life stage).
+4. **Bayesian uncertainty propagation through all derived quantities**
+   ($z$, $CT_{max,1h}$, $T_{crit}$, HI, $\tau_{eff}$, $S(t)$).
+5. **Repair via Sharpe–Schoolfield** in `predict_heat_injury(repair = TRUE)`
+   (Bullard list it as future work).
+6. **Comparison to the field-dominant two-stage pipeline** (GLM Stage-1 →
+   OLS Stage-2), not only @rezende_drosophila_mortality_2020. The two-stage is
+   the *de facto* default; Rezende is one influential probabilistic model.
+7. **`bayesTLS` R package** — reusable, tested, documented.
+8. **$T_{crit}$ rate-multiplier definition** [@faber2026] integrated as a
+   first-class derived quantity [[project_tcrit_definition]].
+
+# A mathematical fact to flag
+
+Their log-logistic $S(t) = (1 + (t/a)^k)^{-1}$ is the special case of our 4PL
+with $\ell = 0$, $u = 1$, $\text{mid} = \log_{10}(a)$. Modulo log base — their
+$k$ (natural log) and our 4PL $k$ (log$_{10}$ time) are related by
+$k_{\text{theirs}} = k_{\text{ours}} \cdot \ln 10$. This is the same "asymptotes
+forced to 0/1" reduction we already criticise as the 2PL/two-stage assumption
+(ms.qmd line 170: *"simpler nested models (3PL, with one asymptote fixed; 2PL,
+with both fixed at 0 and 1) … can be implemented within the same general
+framework"*). The honest framing: **our model is a hierarchical Bayesian
+generalisation of the log-logistic AFT of @bullard2026, additionally
+estimating asymptotes and accommodating aggregated proportion/count designs.**
+
+# One nuance — the *sign* of $k$ with $T$
+
+Bullard's empirical finding (their Fig 2D, Discussion): in *Drosophila*, the
+log-logistic shape $k$ generally **decreases** with $T$ (variance of $\log t_f$
+**increases**; survival curves get flatter at hotter $T$). Our supplement
+§sec-joint-extend simulates $k$ **increasing** with $T$ (`log_k_T = 0.30`, the
+curves get *sharper* at hotter $T$). Likewise `scripts/run_sweep_queue.sh`
+scen5 is labelled "sharpen" (k rises with T). Both are valid violations of
+constant-shape, and our framework is sign-agnostic — but we are exploring the
+**opposite sign** from Bullard's empirical observation. Options:
+
+1. Add a sentence in the worked example acknowledging this and noting
+   sign-agnosticism; cite @bullard2026 for the empirical evidence on the other
+   sign.
+2. Add a companion scenario / cell with $\log k_T < 0$ (matching Bullard's
+   direction) to mirror the empirically-observed case in the simulation.
+
+# Concrete recommendations for the manuscript
+
+Where to cite `@bullard2026` (currently not cited anywhere):
+
+- **Intro, ms.qmd line ~166–168** (two-step pipeline limitations) — as direct
+  empirical evidence that the constant-shape assumption fails in real data.
+- **Supplement §sec-joint-extend** (T-varying shape worked example) — Bullard's
+  Fig 2B,D is the strongest empirical demonstration that shape varies with T in
+  ectotherms, motivating exactly the scenario we simulate.
+- **Discussion / "Limits of the present analysis"** (currently empty
+  subheaders, ms.qmd ~614–626): (a) we don't empirically validate against
+  fluctuating-T data the way they do (their Fig 4); (b) we assume Jørgensen
+  HI-integral additivity whose validity their residuals call into question
+  across the full stressful range.
+- **Model section** — note our 4PL subsumes their log-logistic as the
+  $\ell=0, u=1$ case (cite as positional framing).
+- **Simulation results discussion (ms.qmd ~273–277)** — Bullard's empirical
+  evidence strengthens the case that the shape-violation scenarios (scen3,
+  scen5) are realistic rather than adversarial.
+
+# Verification status
+
+- I have read the full @bullard2026 PDF (PLOS Biology 24(5): e3003623, 21 May
+  2026) once carefully. All section/figure/equation references above are from
+  that read; quote-check before paraphrasing into the manuscript.
+- Confirmed: `bullard2026` exists in `bib/tdt_problems.bib` (full Zotero
+  entry); not cited in `ms.qmd`, `supplement.qmd`, or any current `notes/*.qmd`.
+- Confirmed: existing manuscript text at ms.qmd:162, 164, 166, 170, 241, 247
+  cites @rezende_drosophila_mortality_2020, @rezende_landscapes_2014,
+  @jorgensen_drosophila_2019, @jorgensen_unifying_2021, @jorgensen_nature_2022,
+  @orsted_finding_2022 — Bullard's reference network overlaps strongly.
+- Confirmed: supplement §sec-joint-extend (supplement.qmd:914) simulates
+  $u$ declining and $k$ rising with $T$; `log_k_T = 0.30` (positive sign).
+- The mathematical-equivalence claim (log-logistic = 4PL with $\ell=0, u=1$) is
+  derivable from first principles — no citation needed but should be sanity-
+  checked when written into the manuscript prose.
+- Related memories: [[project_function_architecture]],
+  [[project_tcrit_definition]], [[feedback_equivalence_framing]].
