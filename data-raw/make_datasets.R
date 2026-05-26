@@ -6,7 +6,7 @@
 # Run from the package root:  Rscript data-raw/make_datasets.R
 #
 # Datasets created: shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
-# snowgum_psii, acacia_seeds. Documented in R/data.R.
+# snowgum_psii. Documented in R/data.R.
 
 suppressPackageStartupMessages({
   library(dplyr)
@@ -92,11 +92,5 @@ snowgum_psii <- read_csv(ext("data_function_PSII_TDT_snowgum.csv"),
                 Unique_ID, G_Room, Day) |>
   as.data.frame()
 
-## 5. Acacia seed — lethal TDT (counts) --------------------------------------
-# Already model-ready: respiring-seed counts out of 5 per temperature x duration.
-acacia_seeds <- read_csv(ext("data_lethal_TDT_acacia_seeds.csv"),
-                         show_col_types = FALSE) |>
-  as.data.frame()
-
 usethis::use_data(shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
-                  snowgum_psii, acacia_seeds, overwrite = TRUE)
+                  snowgum_psii, overwrite = TRUE)

@@ -131,7 +131,6 @@ Five datasets ship with the package:
 | `shrimp_sublethal` | `?shrimp_sublethal` | Brown-shrimp sublethal time-to-knockdown |
 | `zebrafish_lethal` | `?zebrafish_lethal` | Zebrafish lethal TDT across life stages |
 | `snowgum_psii` | `?snowgum_psii` | Snowgum leaf PSII (continuous proportion) |
-| `acacia_seeds` | `?acacia_seeds` | *Acacia* seed lethal TDT (sparse design) |
 
 Each is built from a raw CSV in `inst/extdata/` by `data-raw/make_datasets.R` and
 carries column-by-column roxygen documentation in `man/`. Raw data are read-only.

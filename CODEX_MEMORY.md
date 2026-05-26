@@ -176,16 +176,15 @@ both via the relative/absolute threshold modes).
 
 ## Data
 
-Five datasets ship as `.rda` in `data/`, built from raw CSVs in `inst/extdata/` by
+Four datasets ship as `.rda` in `data/`, built from raw CSVs in `inst/extdata/` by
 `data-raw/make_datasets.R`, each documented in `man/`:
 
-- `shrimp_lethal`, `shrimp_sublethal`, `zebrafish_lethal`, `snowgum_psii`,
-  `acacia_seeds`.
+- `shrimp_lethal`, `shrimp_sublethal`, `zebrafish_lethal`, `snowgum_psii`.
 
 `Rdata/` holds older shrimp intermediate objects from the legacy notebook; not
 part of the current package-based workflow. Cached fits live in `output/models/`
 (`fit_shrimp_lethal_4pl.rds`, `fit_zf_joint_4pl.rds`, `fit_leaf_function_4pl.rds`,
-`fit_seed_lethal_4pl.rds`, the `sim_4pl_*` tutorial fits, etc.).
+the `sim_4pl_*` tutorial fits, etc.).
 
 ## Documents
 
