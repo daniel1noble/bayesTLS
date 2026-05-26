@@ -1446,6 +1446,13 @@ baseline, likelihood misspecification alone, symmetric asymptote
 compression, and the design-impact — plus the coverage panels
 for the two sweeps reported as bias-only in the main text.
 
+For each scenario we also tabulate the root-mean-square error (RMSE, in °C) of
+*z* and $CT_{max,1h}$ — the typical magnitude of the estimation error, combining
+bias and variance in a single number on the parameter's own scale — for the four
+distinct point estimators. Because RMSE depends only on the point estimates, the
+Normal- and *t*-quantile two-stage CI variants share a value and are reported
+once each.
+
 ```{r sim-supp-setup}
 #| label: sim-supp-setup
 #| echo: false
@@ -1514,12 +1521,14 @@ library(patchwork)
       n         = dplyr::n(),
       mean_bias = mean(bias, na.rm = TRUE),
       mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      rmse      = sqrt(mean(bias^2, na.rm = TRUE)),
       coverage  = mean(covered, na.rm = TRUE),
       mcse_cov  = sqrt(mean(covered, na.rm = TRUE) *
                        (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
       .groups   = "drop"
     ) |>
     dplyr::mutate(
+      method_code = as.character(method),
       method   = factor(method,   levels = .method_levels,
                                   labels = .method_labels),
       quantity = factor(quantity, levels = c("CTmax_1hr","z")),
@@ -1572,6 +1581,26 @@ library(patchwork)
     labs(x = x_label, y = "Empirical 95% CI coverage") +
     .theme_proj
 }
+
+# RMSE table (absolute °C) of z and CTmax for the four distinct point
+# estimators. RMSE is a point-estimate property, so the Normal- and t-quantile
+# CI variants share values and are collapsed to one row each. Expects a `Cell`
+# column on the input (the within-section replication / design / sweep level).
+.rmse_table <- function(d, cell_name = "Cell") {
+  pe <- c(two_stage_bin = "Two-stage (binomial)",
+          two_stage_bb  = "Two-stage (beta-binomial)",
+          joint_4pl     = "Joint 4PL (relative)",
+          joint_4pl_abs = "Joint 4PL (absolute)")
+  out <- d |>
+    dplyr::filter(method_code %in% names(pe)) |>
+    dplyr::transmute(Cell, Method = factor(pe[method_code], levels = pe),
+                     quantity = as.character(quantity), rmse = round(rmse, 2)) |>
+    tidyr::pivot_wider(names_from = quantity, values_from = rmse) |>
+    dplyr::arrange(Cell, Method) |>
+    dplyr::select(Cell, Method, `z (°C)` = z, `CTmax (°C)` = CTmax_1hr)
+  names(out)[1] <- cell_name
+  tinytable::tt(out)
+}
 ```
 
 ## *Strict equivalence baseline*
@@ -1595,6 +1624,17 @@ We included this scenario to check whether the estimators agree when the classic
 .plot_forest(.d, panel_var = "panel_n")
 ```
 
+```{r}
+#| label: tbl-sim-supp-scen1-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ at the strict-equivalence baseline, by point estimator and replication budget ($N_{sim}=1000$ per cell). Lower is better; RMSE combines bias and precision on the parameter's own scale."
+#| warning: false
+#| message: false
+.load_screened("scen1") |>
+  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
+                              levels = c("3", "5"))) |>
+  .rmse_table(cell_name = "n_reps")
+```
+
 ## *Likelihood misspecification alone*
 
 This scenario keeps the same mean dose-response shape as the strict-equivalence baseline, but generates counts from a beta-binomial likelihood with overdispersion $\phi = 5$. We again used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
@@ -1614,6 +1654,17 @@ We included this scenario to isolate the cost of likelihood misspecification: th
   dplyr::mutate(panel_n = paste0("n[reps] = ",
                                   sub(".*_n([0-9]+)$", "\\1", scenario)))
 .plot_forest(.d, panel_var = "panel_n")
+```
+
+```{r}
+#| label: tbl-sim-supp-scen2-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ under likelihood misspecification only (beta-binomial DGP, $\\phi=5$; curve shape as in the baseline), by point estimator and replication budget."
+#| warning: false
+#| message: false
+.load_screened("scen2") |>
+  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
+                              levels = c("3", "5"))) |>
+  .rmse_table(cell_name = "n_reps")
 ```
 
 ## *Asymptotes compress symmetrically*
@@ -1637,6 +1688,17 @@ Bias was smaller than in the asymmetric upper-asymptote scenario, but the two-st
 .plot_forest(.d, panel_var = "panel_n")
 ```
 
+```{r}
+#| label: tbl-sim-supp-scen4-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ when both asymptotes compress symmetrically with temperature, by point estimator and replication budget."
+#| warning: false
+#| message: false
+.load_screened("scen4") |>
+  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
+                              levels = c("3", "5"))) |>
+  .rmse_table(cell_name = "n_reps")
+```
+
 ## *Coverage for the drifting-$u$ across temperatures ($\beta_u$)*
 
 This complements the main-text $\beta_u$ bias sweep with the matching
@@ -1656,6 +1718,18 @@ coverage panels.
 .plot_sweep_cov(.d, "sweep_x",
                 expression(beta[u]~"(pp / °C, drift of "*italic(u)*" with T)"),
                 x_breaks = c(-0.019, -0.015, -0.010, -0.005))
+```
+
+```{r}
+#| label: tbl-sim-supp-scen6-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\beta_u$ drift sweep (Scen 6), by point estimator. $\\beta_u$ is the per-°C drift of the upper asymptote (pp/°C)."
+#| warning: false
+#| message: false
+.load_screened("scen6") |>
+  dplyr::mutate(bu   = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
+                Cell = factor(sprintf("%.3f", bu),
+                              levels = sprintf("%.3f", sort(unique(bu))))) |>
+  .rmse_table(cell_name = "beta_u (pp/°C)")
 ```
 
 ## *Coverage for the constant-but-reduced-$u$ ($u_0$)*
@@ -1679,6 +1753,18 @@ below nominal even after the t-quantile small-sample correction.
 .plot_sweep_cov(.d, "sweep_x",
                 expression(u[0]~"(constant upper asymptote, all T)"),
                 x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99))
+```
+
+```{r}
+#| label: tbl-sim-supp-scen7-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $u_0$ sweep (Scen 7), by point estimator. $u_0$ is the constant upper asymptote held across all temperatures."
+#| warning: false
+#| message: false
+.load_screened("scen7") |>
+  dplyr::mutate(u0   = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
+                Cell = factor(sprintf("%.2f", u0),
+                              levels = sprintf("%.2f", sort(unique(u0))))) |>
+  .rmse_table(cell_name = "u_0")
 ```
 
 ## *Design variation impacts*
@@ -1733,6 +1819,21 @@ p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
 
 p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
   theme(legend.position = "bottom")
+```
+
+```{r}
+#| label: tbl-sim-supp-scen8-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the six design × replication cells (Scen 8), by point estimator. The sparse, single-replicate design is the most demanding for the two-stage reduction."
+#| warning: false
+#| message: false
+.load_screened("scen8") |>
+  dplyr::mutate(design = ifelse(grepl("full", scenario), "full", "sparse"),
+                n_reps = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
+                Cell   = factor(sprintf("%s x %d", design, n_reps),
+                                levels = c("sparse x 1", "full x 1",
+                                           "sparse x 3", "full x 3",
+                                           "sparse x 5", "full x 5"))) |>
+  .rmse_table(cell_name = "Design x reps")
 ```
 
 # **Case Study 1: Shrimp data** {#sec-shrimp}
