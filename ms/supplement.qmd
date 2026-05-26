@@ -5617,6 +5617,241 @@ patchwork::wrap_plots(fig4_panels, ncol = 1) +
   ggplot2::theme(legend.position = "bottom")
 ```
 
+# Derivation of the correction factors for threshold summaries
+
+The manuscript states two correction factors without showing the algebra: an
+asymmetry correction *added* to $\text{mid}(T)$ to recover
+$\log_{10}t_{50}(T)$ from a 4PL whose asymptotes are not 0 and 1 (Eq. (4)),
+and the corresponding correction *subtracted* from the naive
+$CT_{max}(t_{\text{ref}})$ (Eq. (5)). Here we derive both expressions, extend
+them to an arbitrary survival threshold $x/100$, and check them against direct
+4PL inversion.
+
+## Why a correction is needed {#sec-supp-corr-why}
+
+The 4PL midpoint is the $\log_{10}$-time value at which survival reaches the
+average of the two asymptotes, $(\text{up}+\text{low})/2$. When
+$\text{low}\approx0$ and $\text{up}\approx1$, this point is also near 50%
+survival. With partial endpoints, however, the midpoint need not occur at
+$p=0.5$: if $\text{up}=0.85$ and $\text{low}=0.05$, it occurs at 0.45. The
+absolute $\log_{10}t_{50}$ therefore comes from inverting the 4PL at $p=0.5$.
+The signed offset between $\text{mid}(T)$ and this absolute crossing is the
+**asymmetry correction**.
+
+## Step-by-step derivation of the $\log_{10}t_{50}$ correction {#sec-supp-corr-lt50}
+
+Starting from Eq. (2) of the manuscript with the temperature-dependent midpoint
+from Eq. (3), the survival probability is
+$$
+p(t, T) \;=\; \text{low} \;+\; \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k\,(\log_{10}t - \text{mid}(T))\bigr)}.
+$$
+
+By definition $\log_{10}t_{50}(T)$ is the value of $\log_{10}t$ at which
+$p = 0.5$. Solving for it gives:
+
+**Step 1 — set $p = 0.5$:**
+$$
+0.5 \;=\; \text{low} \;+\; \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k\,(\log_{10}t_{50}(T) - \text{mid}(T))\bigr)}.
+$$
+
+**Step 2 — move $\text{low}$ to the left:**
+$$
+0.5 - \text{low} \;=\; \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k\,(\log_{10}t_{50}(T) - \text{mid}(T))\bigr)}.
+$$
+
+**Step 3 — invert both sides:**
+$$
+\frac{1}{0.5 - \text{low}} \;=\; \frac{1 + \exp\!\bigl(k\,(\log_{10}t_{50}(T) - \text{mid}(T))\bigr)}{\text{up} - \text{low}}.
+$$
+
+**Step 4 — multiply both sides by $(\text{up} - \text{low})$:**
+$$
+\frac{\text{up} - \text{low}}{0.5 - \text{low}} \;=\; 1 + \exp\!\bigl(k\,(\log_{10}t_{50}(T) - \text{mid}(T))\bigr).
+$$
+
+**Step 5 — subtract 1 to isolate the exponential:**
+$$
+\frac{\text{up} - \text{low}}{0.5 - \text{low}} \;-\; 1 \;=\; \exp\!\bigl(k\,(\log_{10}t_{50}(T) - \text{mid}(T))\bigr).
+$$
+
+The left-hand side simplifies:
+$$
+\frac{\text{up} - \text{low}}{0.5 - \text{low}} - 1 \;=\; \frac{(\text{up} - \text{low}) - (0.5 - \text{low})}{0.5 - \text{low}} \;=\; \frac{\text{up} - 0.5}{0.5 - \text{low}}.
+$$
+
+Hence
+$$
+\frac{\text{up} - 0.5}{0.5 - \text{low}} \;=\; \exp\!\bigl(k\,(\log_{10}t_{50}(T) - \text{mid}(T))\bigr).
+$$
+
+**Step 6 — take natural logs of both sides:**
+$$
+\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}} \;=\; k\,\bigl(\log_{10}t_{50}(T) - \text{mid}(T)\bigr).
+$$
+
+**Step 7 — divide by $k$ and add $\text{mid}(T)$:**
+$$
+\log_{10}t_{50}(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.
+$$ {#eq-supp-corr-lt50}
+
+Thus $\log_{10}t_{50}$ is the midpoint at that temperature plus a correction
+that depends only on $(\text{low}, \text{up})$ and $k$, not on $T$. This is Eq.
+(4) of the manuscript.
+
+**Step 8 — substitute the temperature-dependent midpoint** from Eq. (3) of the
+manuscript:
+$$
+\log_{10}t_{50}(T) \;=\; \bigl[\beta_0 + \beta_1(T - \bar T)\bigr] \;+\; \frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.
+$$
+
+**Step 9 — distribute and group all $T$-independent terms into an intercept
+$\alpha$:**
+$$
+\boxed{\quad\log_{10}t_{50}(T) \;=\; \alpha + \beta_1 T, \qquad \alpha \;=\; \beta_0 - \beta_1 \bar T \;+\; \frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.\quad}
+$$ {#eq-supp-tdt-line}
+
+This recovers the classical TDT relation: $\log_{10}t_{50}$ is linear in $T$.
+
+## From $\log_{10}t_{50}$ to the $CT_{max}$ correction {#sec-supp-corr-ctmax}
+
+By definition, $CT_{max}(t_{\text{ref}})$ is the temperature at which
+$t_{50}=t_{\text{ref}}$, or
+$\log_{10}t_{50}(T)=\log_{10}t_{\text{ref}}$. From @eq-supp-tdt-line:
+$$
+\log_{10}t_{\text{ref}} \;=\; \alpha \;+\; \beta_1\,CT_{max}(t_{\text{ref}})
+\quad\Longrightarrow\quad
+CT_{max}(t_{\text{ref}}) \;=\; \frac{\log_{10}t_{\text{ref}} - \alpha}{\beta_1}.
+$$
+
+Substituting the full $\alpha$ from @eq-supp-tdt-line and tidying:
+$$
+CT_{max}(t_{\text{ref}}) \;=\; \bar T \;+\; \frac{\log_{10}t_{\text{ref}} - \beta_0}{\beta_1} \;-\; \frac{1}{\beta_1}\cdot\frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.
+$$ {#eq-supp-corr-ctmax}
+
+The first two terms are the *naive* $CT_{max}$: the temperature at which
+$\beta_0 + \beta_1(T-\bar T)$ crosses $\log_{10}t_{\text{ref}}$. The final term
+is the asymmetry correction divided by $\beta_1$, appearing as a subtraction
+because a vertical shift on the log-time axis becomes a horizontal temperature
+shift when divided by the TDT slope. This is Eq. (5) of the manuscript.
+
+## Generalisation to arbitrary survival thresholds $x/100$ {#sec-supp-corr-ltx}
+
+Replacing $p = 0.5$ with $p = x/100$ gives
+$$
+\log_{10}t_x(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\log\!\frac{\text{up} - x/100}{x/100 - \text{low}},
+$$ {#eq-supp-corr-ltx}
+which reduces to @eq-supp-corr-lt50 when $x = 50$. The correction is still
+added to $\text{mid}(T)$; its sign is set by the ratio inside the log. For
+$x < 50$ (e.g. LT10), the correction is positive and LT$_x$ occurs later than
+the midpoint. For $x > 50$ (e.g. LT90), it is negative and LT$_x$ occurs
+earlier. The corresponding $CT_{max,x}(t_{\text{ref}})$ follows by substituting
+this LT$_x$ correction into @eq-supp-corr-ctmax.
+
+## The slope (and hence $z$) is robust to the correction {#sec-supp-corr-z-robust}
+
+Because the correction in @eq-supp-corr-lt50 does not depend on $T$, it shifts
+$\log_{10}t_{50}(T)$ vertically without changing the slope:
+$$
+z \;=\; -\frac{1}{\beta_1}
+$$
+holds provided the 4PL is correctly specified. This is why the joint Bayesian
+4PL and the classical two-stage pipeline can recover the same $z$ even when
+their $CT_{max}$ estimates differ. $CT_{max}$ has no analogous protection: the
+same asymmetry term enters @eq-supp-corr-ctmax divided by $\beta_1$, so errors
+in $\text{low}$, $\text{up}$, or $k$ shift the temperature estimate directly.
+
+## When the correction vanishes {#sec-supp-corr-vanish}
+
+When the experimental design anchors $\text{low} \approx 0$ and $\text{up}
+\approx 1$:
+$$
+\frac{\text{up} - 0.5}{0.5 - \text{low}} \;\approx\; \frac{1 - 0.5}{0.5 - 0} \;=\; 1
+\quad\Longrightarrow\quad
+\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}} \;\approx\; \log 1 \;=\; 0.
+$$
+The correction then shrinks to zero and
+$\text{mid}(T)\approx\log_{10}t_{50}(T)$. This is the equivalence regime in
+@sec-twostage and @sec-joint, and the strict-equivalence baseline of the
+simulation in §3.1. The correction matters when the design is partial:
+sublethal endpoints, sparse survival-range coverage, or asymptotes that vary
+with $T$ (the last case is analysed in @sec-joint-extend).
+
+## Numerical sanity check {#sec-supp-corr-numerical}
+
+The chunk below uses asymmetric asymptotes so the correction is non-zero. It
+checks that @eq-supp-corr-lt50 matches direct 4PL inversion at $p = 0.5$, and
+that @eq-supp-corr-ctmax matches the temperature obtained by direct inversion
+at $t_{\text{ref}}=60$ min.
+
+```{r}
+#| label: tbl-supp-corr-check
+#| tbl-cap: "Verification that the closed-form $\\log_{10}t_{50}$ correction (@eq-supp-corr-lt50) agrees with direct numerical inversion of the 4PL at $p = 0.5$, and that $CT_{max,1h}$ from @eq-supp-corr-ctmax agrees with direct inversion at $t = 60$ min."
+#| message: false
+#| warning: false
+
+low_a  <- 0.05
+up_a   <- 0.85           # asymmetric: (up - 0.5) != (0.5 - low), so the correction is non-zero
+kk     <- 4
+beta_0 <- log10(60)      # midpoint at T_bar sits exactly at log10(60 min)
+beta_1 <- -0.25          # so z = -1/beta_1 = 4 °C
+T_bar  <- 36
+
+correction <- (1 / kk) * log((up_a - 0.5) / (0.5 - low_a))
+
+# Closed form (eq-supp-corr-lt50) at T = 38 °C.
+T_test <- 38
+mid_T  <- beta_0 + beta_1 * (T_test - T_bar)
+log10_LT50_closed <- mid_T + correction
+
+# Direct numerical inversion: find log10 t such that p(t, T) = 0.5.
+p_4pl <- function(log10_t, T_val) {
+  midT <- beta_0 + beta_1 * (T_val - T_bar)
+  low_a + (up_a - low_a) / (1 + exp(kk * (log10_t - midT)))
+}
+log10_LT50_direct <- stats::uniroot(
+  function(x) p_4pl(x, T_test) - 0.5,
+  interval = c(-5, 10)
+)$root
+
+# Closed-form CTmax_1hr from eq-supp-corr-ctmax.
+alpha             <- beta_0 - beta_1 * T_bar + correction
+CT_max_1hr_closed <- (log10(60) - alpha) / beta_1
+z_from_b1         <- -1 / beta_1
+
+# Direct cross-check for CTmax_1hr: find T such that the 4PL crosses p = 0.5
+# exactly at t = 60 min.
+CT_max_1hr_direct <- stats::uniroot(
+  function(T_val) p_4pl(log10(60), T_val) - 0.5,
+  interval = c(20, 50)
+)$root
+
+data.frame(
+  Quantity = c("Asymmetry correction (1/k) log[(up-0.5)/(0.5-low)]",
+               "log10(LT50) at T = 38 °C, closed form (eq-supp-corr-lt50)",
+               "log10(LT50) at T = 38 °C, direct 4PL inversion",
+               "  |closed - direct|",
+               "z derived from beta_1 (expected: 4)",
+               "CTmax_1hr, closed form (eq-supp-corr-ctmax)",
+               "CTmax_1hr, direct 4PL inversion at t = 60 min",
+               "  |closed - direct|"),
+  Value    = c(sprintf("%+.6f", correction),
+               sprintf("%.6f", log10_LT50_closed),
+               sprintf("%.6f", log10_LT50_direct),
+               sprintf("%.3e", abs(log10_LT50_closed - log10_LT50_direct)),
+               sprintf("%.4f °C", z_from_b1),
+               sprintf("%.4f °C", CT_max_1hr_closed),
+               sprintf("%.4f °C", CT_max_1hr_direct),
+               sprintf("%.3e", abs(CT_max_1hr_closed - CT_max_1hr_direct)))
+) |>
+  tinytable::tt()
+```
+
+Here the correction is **non-zero** (`{r} sprintf("%+.4f", correction)`), and
+the closed forms match direct inversion to floating-point precision. The slope
+still gives $z=-1/\beta_1=4$ °C. In contrast, $CT_{max,1h}$ is shifted from
+$\bar T=36$ °C by about $-\text{correction}/\beta_1$, showing why the
+correction matters when $\text{low}$ and $\text{up}$ are not equidistant from
+0.5.
 
 # **References**
 
