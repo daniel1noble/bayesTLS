@@ -143,8 +143,6 @@ carries column-by-column roxygen documentation in `man/`. Raw data are read-only
    4PLs vs a joint model with `life_stage` as a covariate), with a relative-vs-absolute
    survival-threshold sensitivity check.
 3. **Snowgum leaf PSII** — continuous-proportion (Beta) response.
-4. **Acacia seeds** — sparse design demonstrating the constant-shape
-   (`temp_effects = "mid"`) parameterisation.
 
 The supplement also contains the full two-stage-bias simulation results and
 sensitivity sweeps.

@@ -17,9 +17,9 @@ non-negotiables; this file is orientation, not rules.
 - Target journal: **Ecology Letters** (Methods article). (Earlier drafts aimed at
   Methods in Ecology and Evolution — that target is retired.)
 - Authors: Daniel W. A. Noble, Pieter A. Arnold, Patrice Pottier.
-- Empirical scope: four worked case studies — brown shrimp (lethal + sublethal),
-  zebrafish (lethal across life stages), snowgum leaf PSII (continuous
-  proportion), *Acacia* seeds (sparse lethal design).
+- Empirical scope: three worked case studies — brown shrimp (lethal + sublethal),
+  zebrafish (lethal across life stages), and snowgum leaf PSII (continuous
+  proportion).
 
 ### Scientific pitch
 
@@ -210,8 +210,9 @@ part of the current package-based workflow. Cached fits live in `output/models/`
   old per-draw OLS was removed (2026-05-24), `derive_tdt_parameters()` deleted,
   `derive_z()` added. Keep *z* and CTmax on the same `pars` subsample if you touch
   this path.
-- **`temp_effects = "mid"`** for sparse designs (the *Acacia* seed case study had
-  ~1900 divergences and an unidentified *z* under the all-four default).
+- **`temp_effects = "mid"`** for sparse designs — the all-four default can
+  produce divergences and an unidentified *z* when cells, replication, or
+  coverage of the survival range are limited.
 - **Relative vs absolute survival threshold** — relative (mid-based) is the
   default; absolute is a sensitivity option (zebrafish §). They differ only when
   shape parameters vary with temperature.

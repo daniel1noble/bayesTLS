@@ -97,7 +97,7 @@ conditions.
 | **Uncertainty** | Parametric CIs (`flexsurv`) | Full posteriors through $z$, $CT_{max,1h}$, $T_{crit}$, HI, survival curves |
 | **Fluctuating-T prediction** | Time-stepped simulation under time-varying $S(t,T)$; **tested against empirical $D$. *melanogaster* fluctuating data** | Jørgensen HI integral with posterior $z$ & $CT_{max,1h}$; optional Sharpe–Schoolfield repair; **validation via planted-dose recovery on simulated traces** |
 | **Comparator critiqued** | @rezende_drosophila_mortality_2020 + additivity | Classical two-stage GLM → OLS pipeline |
-| **Case studies** | 11 *Drosophila* species (constant T) + 1 fluctuating-T set | Shrimp (lethal + sublethal), zebrafish life stages, snowgum leaf PSII, *Acacia* seeds |
+| **Case studies** | 11 *Drosophila* species (constant T) + 1 fluctuating-T set | Shrimp (lethal + sublethal), zebrafish life stages, snowgum leaf PSII |
 | **Repair / recovery** | Out of scope | In scope (Sharpe–Schoolfield) |
 | **Software** | `flexsurv` | `bayesTLS` (own package) |
 | **Venue** | *PLOS Biology* | *Ecology Letters* (Methods) |
@@ -142,8 +142,8 @@ conditions.
 
 1. **Asymptote estimation** — critical for sublethal endpoints (leaf PSII,
    fertility) and partial-mortality designs. Their log-logistic forces $\ell=0$,
-   $u=1$. The case studies (snowgum PSII, *Acacia* seeds) would not be analysable
-   under their framework.
+   $u=1$. The snowgum PSII case study would not be analysable under their
+   framework.
 2. **Aggregated count/proportion data** — the dominant assay type in
    ectotherm thermal biology (individual continuous times are the exception, not
    the rule).

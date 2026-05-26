@@ -26,10 +26,9 @@ format:
   first-class; identity link throughout.
 - [x] **`extract_tdt()` is a posterior transform**, not a two-stage regression
   (OLS removed 2026-05-24; `derive_z()` added; *z* and CTmax share one subsample).
-- [x] **Four case studies fully worked in the supplement**: brown shrimp (lethal +
-  sublethal), zebrafish (separate + joint fits, relative/absolute-threshold
-  sensitivity), snowgum leaf PSII (Beta), *Acacia* seeds (sparse design,
-  `temp_effects = "mid"`).
+- [x] **Three case studies fully worked in the supplement**: brown shrimp
+  (lethal + sublethal), zebrafish (separate + joint fits, relative/absolute-
+  threshold sensitivity), and snowgum leaf PSII (Beta).
 - [x] **Two-stage-bias simulation** + sensitivity sweeps complete; results +
   sweeps in the supplement; manuscript simulation section and figures
   (`fig-sims`, `fig-sims2`) drafted.
@@ -39,10 +38,11 @@ format:
 
 ### Front matter
 
-- [ ] **Abstract — replace the `XXX (XXX)` placeholder** and reconcile the
-  case-study list. The abstract names three case studies (shrimp, zebrafish,
-  XXX) but four are worked. Decide which to feature in the abstract/text and name
-  them (leaf PSII *Eucalyptus* snowgum, *Acacia* seeds).
+- [ ] **Abstract — replace the `XXX (XXX)` placeholder** with the third worked
+  case study (now that three are worked: shrimp, zebrafish, and snowgum leaf
+  PSII *Eucalyptus pauciflora*). Note: the abstract at `ms.qmd:120` already
+  names *Eucalyptus pauciflora*; the intro at `ms.qmd:172` still has
+  `XXX (XXX)` — make them consistent.
 
 ### Worked example: brown shrimp (§ "Worked example: brown shrimp")
 
