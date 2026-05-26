@@ -9,6 +9,7 @@
 
 # User-specific files
 .Ruserdata
+orstead2024/
 
 # Example code in package build process
 *-Ex.R
