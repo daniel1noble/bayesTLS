@@ -143,13 +143,14 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 # **Introduction**
 
-This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript using the **`bayesTLS`** R package included with this project. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty, and predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel.
+This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript using the **`bayesTLS`** R package included with this project. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty, and predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel. It also contains all the data used throughout the manuscript and supplement. 
 
 Install once from GitHub, then load:
 
 ```{r install-bayesTLS}
 #| eval: false
 #| echo: true
+#| code-fold: false
 # install.packages("remotes")   # if not already installed
 remotes::install_github("daniel1noble/bayesTLS")
 ```
@@ -158,6 +159,7 @@ remotes::install_github("daniel1noble/bayesTLS")
 #| label: load-bayesTLS
 #| echo: true
 #| cache: false
+#| code-fold: false
 library(bayesTLS)
 ```
 
@@ -169,11 +171,11 @@ The functions chain together as a single pipeline:
 4. **Predict** survival and heat-injury accumulation under fluctuating field temperature traces, with optional repair.
 5. **Plot** each step with shared theming so figures across the workflow read consistently.
 
-Every exported function is documented with roxygen2 (`?fit_4pl`, etc.), and the package includes `testthat` unit tests plus gated `brms` integration tests for recovery of known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to brown shrimp, zebrafish, and snow gum leaf PSII datasets.
+Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to brown shrimp, zebrafish, and snow gum leaf PSII datasets.
 
 ## *What each function does* {#sec-function-tour}
 
-@tbl-function-tour lists every exported function in the library, grouped by pipeline stage. Each function is single-purpose; the full roxygen2 documentation (with runnable `@examples`) lives in the corresponding R file.
+@tbl-function-tour lists every exported function in the library, grouped by pipeline stage. Each function is single-purpose; the full documentation (with runnable `@examples`) lives in the corresponding R file.
 
 ```{r function-tour-table}
 #| label: tbl-function-tour
@@ -222,16 +224,17 @@ tinytable::tt(tdt_function_tour, escape = TRUE)
 
 # **A Tutorial with Simulations**
 
-This tutorial uses simulated data to show how the Bayesian hierarchical 4PL recovers thermal sensitivity ($z$) and $CT_{max_{1hr}}$ in both binomial and beta-binomial (overdispersed) settings. The joint model propagates uncertainty through downstream quantities and accommodates extensions that are awkward in a two-stage analysis. The subsequent case studies apply the same workflow to data presented in the main manuscript.
+This tutorial uses simulated data and case studies to show how the Bayesian hierarchical 4PL recovers thermal sensitivity ($z$) and $CT_{max_{1hr}}$ in both binomial and beta-binomial (overdispersed) settings. The joint model propagates uncertainty through downstream quantities and accommodates extensions that are awkward in a two-stage analysis. The subsequent case studies apply the same workflow to data presented in the main manuscript.
 
 ### *Simulating Data*
 #### Step 1 — Setting up parameters {#sec-sim-step1}
 
-We choose values that might be typical of a thermal mortality assay. The four 4PL parameters are the lower and upper asymptotes ($\ell, u$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value below has a clear biological meaning.
+We choose values that might be typical of a thermal mortality assay. The four parameters are the lower and upper asymptotes ($\ell, u$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value has a clear biological meaning (detailed in code below).
 
 ```{r sim-params}
 #| label: sim-params
 #| echo: true
+#| code-fold: false
 
 true_params <- list(
   ell      = 0.03,   # 3% of individuals survive even at the longest exposures
@@ -243,13 +246,14 @@ true_params <- list(
 )
 ```
 
-The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess recovery below.
+The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
 
 We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating parameters to provide reference values for the fitted models.
 
 ```{r sim-truth}
 #| label: sim-truth
 #| echo: true
+#| code-fold: false
 
 true_z      <- -1 / true_params$m_beta1
 true_alpha  <- true_params$m_beta0 +
@@ -269,11 +273,12 @@ true_T_crit <- true_CTmax - 2.5 * true_z
 
 #### Step 2 — Simulated study design {#sec-sim-step2}
 
-We mimic a well-replicated TDT experiment: five assay temperatures crossed with six log-spaced exposure durations, with 30 replicates of 30 individuals per cell. The resulting 900 trials and 27,000 individuals make parameter recovery clear; the case studies below illustrate less information-rich designs.
+We mimic a well-replicated TDT experiment: five assay temperatures crossed with six log-spaced exposure durations, with 30 replicates of 30 individuals per cell. The resulting 900 trials and 27,000 individuals make parameter recovery clear but the the case studies below and simulations illustrate less information-rich designs.
 
 ```{r sim-design}
 #| label: sim-design
 #| echo: true
+#| code-fold: false 
 
 temps     <- c(30, 32, 34, 36, 38)             # 5 assay temperatures (°C)
 durations <- c(1, 5, 15, 45, 135, 405)         # 6 durations (minutes, log-spaced)
@@ -335,7 +340,7 @@ ggplot2::ggplot(truth_grid,
 The known 4PL dose-response surface used to generate the simulated data, evaluated on a dense time grid at each of the five assay temperatures. The horizontal line marks 50% survival; where each curve crosses it gives the true LT50 at that temperature.
 :::
 
-Notice the curves shift left as temperature rises: hotter temperatures kill faster, so the LT50 is reached at shorter durations. That horizontal shift in midpoints is exactly what $\beta_1$ encodes. 
+Notice the curves shift left as temperature rises: hotter temperatures kill faster, so the LT50 is reached at shorter durations. 
 
 #### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
 
@@ -344,6 +349,7 @@ Survival counts may exhibit two forms of variation. Under **binomial** sampling,
 ```{r sim-data}
 #| label: sim-data
 #| echo: true
+#| code-fold: false 
 
 # (a) Binomial: y ~ Binomial(n, p_true)
 sim_bin <- design |>
@@ -367,11 +373,12 @@ We first run the simulated data through the **classical two-stage TDT pipeline**
 
 #### Stage 1 — Dose-response curves at each temperature {#sec-twostage-step1}
 
-We fit a binomial GLM with a logit link separately at each assay temperature. This is the most-common Stage-1 specification in the TDT literature: a two-parameter logistic with asymptotes constrained to 0% and 100%. The midpoint $\log_{10}\text{LT50}_T = -\beta_0/\beta_1$ falls out of the GLM's two coefficients.
+We fit a binomial GLM with a logit link separately at each assay temperature. This is a common Stage-1 specification in the TDT literature: a two-parameter logistic with asymptotes constrained to 0% and 100% [e.g., @orsted_suzukii_2024]. The midpoint $\log_{10}\text{LT50}_T = -\beta_0/\beta_1$ falls out of the GLM's two coefficients.
 
 ```{r stage1-twostage}
 #| label: stage1-twostage
 #| echo: true
+#| code-fold: false
 
 fit_stage1 <- function(sim_data) {
   sim_data |>
@@ -412,7 +419,7 @@ stage1_table <- dplyr::full_join(
 tinytable::tt(stage1_table, digits = 3, escape = TRUE)
 ```
 
-With the simulation's true asymptotes near 0 and 1, the 2PL's forced-asymptote constraint introduces negligible bias here, so each Stage-1 estimate sits close to the simulation truth.
+With the simulation's true asymptotes near 0 and 1, the two-parameter dose-response function forced-asymptote constraint introduces negligible bias here, so each Stage-1 estimate sits close to the simulation truth.
 
 #### Stage 2 — log-linear TDT regression {#sec-twostage-step2}
 
@@ -421,7 +428,8 @@ Stage 2 regresses Stage-1 $\log_{10}\text{LT50}$ on assay temperature with ordin
 ```{r stage2-twostage}
 #| label: stage2-twostage
 #| echo: true
-
+#| code-fold: false
+ 
 fit_stage2 <- function(stage1) {
   fit2 <- lm(log10_lt50 ~ T, data = stage1)
   co   <- coef(fit2)
@@ -493,19 +501,19 @@ ggplot2::ggplot(stage1_combined,
 Stage-2 OLS regression of $\log_{10}\text{LT50}$ on assay temperature, fit separately to the binomial and beta-binomial simulated datasets. Points are the Stage-1 per-temperature LT50 estimates; solid coloured lines are the OLS fits; the dashed grey line is the simulation truth. The slope of each line equals $\beta_1$, from which $z = -1/\beta_1$. The horizontal dotted line marks $\log_{10} 60$ (1 hour); the vertical dotted line drops from where the truth crosses 1 hour straight down to the temperature axis, marking $CT_{max_{1hr}}$ visually.
 :::
 
-This completes the two-stage workflow. We carry its point estimates of $z$ and $CT_{max_{1hr}}$ forward (`ts_bin` and `ts_bb`) for comparison with the joint Bayesian results.
+Point estimates of $z$ and $CT_{max_{1hr}}$ are than used as is often without uncertainty associated with these estimates. We compare these to the joint Bayesian results to show the 4PL gives the same values under these ideal conditions.
 
 ::: {.callout-important}
-Classical two-stage analyses often treat Stage-1 LT50 estimates as known when fitting Stage 2. Delta-method or bootstrap procedures can propagate uncertainty, but they require an additional step and must account for uncertainty from both stages.
+Classical two-stage analyses often treat Stage-1 LT50 estimates as known when fitting Stage 2. Delta-method or bootstrap procedures can propagate uncertainty, but they require an additional step and must account for uncertainty from both stages. Hence, often uncertainty is ignored. Without propagating uncertainty properly across stages these will systematically bias true variance downwards compromising inferences and leading to optimistic predictions. 
 :::
 
 ### *A joint Bayesian 4PL* {#sec-joint}
 
-Instead of fitting separate logistic curves and then regressing their LT50 estimates, the joint fit estimates $\ell$, $u$, $k$, $\beta_0$, and $\beta_1$ simultaneously from the raw counts. We use the same simulated data to derive $z$ and $CT_{max_{1hr}}$ directly from this posterior.
+Instead of fitting separate logistic curves and then regressing their LT50 estimates, the joint fit estimates $\ell$, $u$, $k$, $\beta_0$, and $\beta_1$ simultaneously from the raw counts. We use the same simulated data to derive $z$ and $CT_{max_{1hr}}$ directly from this model from the posteriors of these parameters.
 
 #### Specifying the 4PL in `brms` {#sec-joint-spec}
 
-The model has two pieces. The first is the 4PL itself — survival probability as a function of $\log_{10}$ exposure time:
+The model has two pieces. The first is the 4PL itself — probability as a function of $\log_{10}$ exposure time:
 
 $$
 p_{ij} \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - \text{mid}_{ij})\bigr)},
@@ -1433,7 +1441,7 @@ tinytable::tt(val_table, digits = 2, escape = TRUE)
 The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. This sanity-check pattern — three traces with known doses, plus the recovery check — is what each new dataset's heat-injury prediction should pass before being trusted.
 
 
-# **Extended Simulation Results**
+# **Extended Simulation Results** {#sec-extendsims}
 
 This section provides more detail on the simulation results from the
 various scenarios we explored to understand bias and coverage of *z*
