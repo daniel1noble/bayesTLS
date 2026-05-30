@@ -516,13 +516,13 @@ Instead of fitting separate logistic curves and then regressing their LT50 estim
 The model has two pieces. The first is the 4PL itself — probability as a function of $\log_{10}$ exposure time:
 
 $$
-p_{ij} \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t_{ij} - \text{mid}_{ij})\bigr)},
+p \;=\; \ell \;+\; \frac{u - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t - \text{mid})\bigr)},
 $$ {#eq-supp-4pl}
 
-where $\ell$ and $u$ are the lower and upper asymptotes, $k$ is the slope on the $\log_{10} t$ axis, and $\text{mid}_{ij}$ is the value of $\log_{10} t$ at which the curve crosses the midpoint between $\ell$ and $u$. The second piece lets the midpoint vary linearly with mean-centred temperature:
+where $\ell$ and $u$ are the lower and upper asymptotes, $k$ is the slope on the $\log_{10} t$ axis, and $\text{mid}$ is the value of $\log_{10} t$ at which the curve crosses the midpoint between $\ell$ and $u$. The second piece lets the midpoint vary linearly with mean-centred temperature:
 
 $$
-\text{mid}_{ij} \;=\; \beta_0 + \beta_1\,(T_{ij} - \bar{T}),
+\text{mid} \;=\; \beta_0 + \beta_1\,(T - \bar{T}),
 $$ {#eq-supp-mid-temp}
 
 so that $\beta_1$ encodes how fast the dose-response curve shifts on the time axis as assay temperature changes; $\bar{T}$ is the grand-mean temperature, included so that $\beta_0$ is interpretable as the midpoint at the average assay temperature.
