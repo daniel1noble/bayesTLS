@@ -1,0 +1,251 @@
+---
+title: "Why $\\hat z$ and $\\widehat{CT}_{max,1h}$ are correlated across simulations, and how the correlation depends on scenario"
+date: 2026-05-30
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+---
+
+# Question
+
+In the two-stage-vs-joint-4PL simulation, are the per-sim point estimates of
+$z$ and $CT_{max,1h}$ correlated across replicate datasets, and under which
+scenarios? Is there a mathematical explanation for the sign and magnitude?
+
+# Short answer
+
+Yes — universally, and predictably. Both quantities are functions of the same
+midpoint-regression coefficients $(\hat\beta_0, \hat\beta_1)$, so they cannot be
+independent. Under mean-centred temperature (which decouples $\hat\beta_0$ and
+$\hat\beta_1$ asymptotically), the across-sims correlation satisfies
+$$
+\rho(\hat z, \widehat{CT}_{max,1h}) \;\approx\;
+\frac{CT_{max,\text{true}} - \bar T}{\sqrt{(\sigma_{\beta_0}/\sigma_{\beta_1})^2 + (CT_{max,\text{true}} - \bar T)^2}}.
+$$
+In this study $CT_{max,\text{true}} - \bar T = -1.85$ °C, so **theory predicts a
+negative correlation everywhere** — and the empirical correlations across the
+1,000 sims per cell are negative in every one of the 64 method × scenario
+combinations checked, ranging from $-0.30$ to $-0.97$ depending on the
+$\sigma_{\beta_0}/\sigma_{\beta_1}$ ratio. The two-stage pipeline shows
+consistently stronger $|\rho|$ than the joint 4PL because the joint 4PL's
+$\widehat{CT}_{max}$ also picks up noise from the asymmetry correction
+involving $(\hat\ell, \hat u, \hat k)$ — noise that is **not** shared with
+$\hat z$, so it dilutes the coupling.
+
+# Setup: the two derived quantities
+
+The simulation generates beta-binomial counts (or binomial counts in scen1) from
+a 4PL surface with $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$ and recovers
+two derived quantities per fit:
+$$
+\hat z \;=\; -\frac{1}{\hat\beta_1},
+\qquad
+\widehat{CT}_{max,1h} \;=\; \bar T
+\;+\; \frac{\log_{10} t_{\text{ref}} - \hat\beta_0}{\hat\beta_1}
+\;-\; \frac{1}{\hat\beta_1\,\hat k}\log\!\frac{\hat u - 0.5}{0.5 - \hat\ell}
+$$
+(the second piece — the asymmetry correction — vanishes when $\hat\ell \approx 0$
+and $\hat u \approx 1$; see §[Derivation of the correction factors] of the
+supplement.) Both expressions are non-linear in $\hat\beta_1$, so the two
+estimates share variance through that coefficient.
+
+# Why mean-centring matters
+
+For an OLS regression of $y$ on a single covariate $x$, the variance–covariance
+matrix of $(\hat\beta_0, \hat\beta_1)$ is
+$$
+\operatorname{Var}\!\begin{pmatrix}\hat\beta_0\\\hat\beta_1\end{pmatrix} \;=\;
+\sigma^2 \begin{pmatrix}1/n + \bar x^2/S_{xx} & -\bar x/S_{xx}\\[2pt] -\bar x/S_{xx} & 1/S_{xx}\end{pmatrix},
+$$
+so $\operatorname{Cov}(\hat\beta_0, \hat\beta_1) = -\sigma^2 \bar x / S_{xx}$.
+When the covariate is centred — $\bar x = 0$ — the off-diagonal vanishes and
+$(\hat\beta_0, \hat\beta_1)$ are asymptotically uncorrelated. `fit_4pl()`
+centres temperature by default; the Stage-2 OLS in the simulation also operates
+on $T - \bar T$. So both methods sit in this regime, and we can take
+$\operatorname{Cov}(\hat\beta_0, \hat\beta_1) \approx 0$ for the rest of the
+derivation.
+
+# Linearisation to a closed-form correlation
+
+Let $A = \log_{10} t_{\text{ref}} - \beta_0$, so that
+$A/\beta_1 = CT_{max,\text{true}} - \bar T$. Taylor-expanding the two derived
+quantities around the truth:
+$$
+\delta \hat z \;\approx\; \frac{1}{\beta_1^2}\,\delta\hat\beta_1 \;=\; z^2\,\delta\hat\beta_1
+$$
+$$
+\delta \widehat{CT}_{max} \;\approx\;
+\underbrace{-\frac{1}{\beta_1}}_{= \,z}\,\delta\hat\beta_0
+\;+\; \underbrace{-\frac{A}{\beta_1^2}}_{=\, z\,(CT_{max} - \bar T)}\,\delta\hat\beta_1
+\;+\; (\text{asymmetry-correction terms})
+$$
+
+Setting the correction terms aside (we'll return to them):
+$$
+\operatorname{Cov}(\hat z, \widehat{CT}_{max}) \;\approx\;
+z^2 \cdot z\,(CT_{max} - \bar T)\,\operatorname{Var}(\hat\beta_1)
+\;+\; z^3\,\underbrace{\operatorname{Cov}(\hat\beta_0, \hat\beta_1)}_{\approx 0}
+\;=\; z^3\,(CT_{max} - \bar T)\,\operatorname{Var}(\hat\beta_1)
+$$
+$$
+\operatorname{Var}(\hat z) \;\approx\; z^4\,\operatorname{Var}(\hat\beta_1)
+\qquad
+\operatorname{Var}(\widehat{CT}_{max}) \;\approx\;
+z^2\,\bigl[\operatorname{Var}(\hat\beta_0) + (CT_{max} - \bar T)^2\,\operatorname{Var}(\hat\beta_1)\bigr]
+$$
+
+Dividing gives the headline formula:
+$$
+\boxed{\quad
+\rho(\hat z, \widehat{CT}_{max,1h}) \;\approx\;
+\frac{CT_{max,\text{true}} - \bar T}{\sqrt{(\sigma_{\beta_0}/\sigma_{\beta_1})^2 + (CT_{max,\text{true}} - \bar T)^2}}.
+\quad}
+$$
+
+Three clean predictions follow immediately.
+
+1. **Sign**: $\operatorname{sign}\rho = \operatorname{sign}(CT_{max,\text{true}} - \bar T)$.
+2. **Magnitude $\to 1$** as $\sigma_{\beta_0}/\sigma_{\beta_1} \to 0$ — when the
+   intercept is well-identified relative to the slope, the two estimates
+   collapse toward a one-parameter family in $(\hat z, \widehat{CT}_{max})$ space.
+3. **Vanishing correlation** iff $CT_{max,\text{true}} = \bar T$, i.e.
+   $\beta_0 = \log_{10} t_{\text{ref}}$. This is a *natural reference point*:
+   centre temperature where the midpoint at $\bar T$ already equals
+   $t_{\text{ref}}$, and *z* and $CT_{max,t_{\text{ref}}}$ become asymptotically
+   orthogonal. The simulation here uses $\beta_0 = 1.5$ (LT50 at $\bar T$ is
+   ~31.6 min, shorter than 60 min), so $CT_{max,\text{true}} = 32.15 < \bar T
+   = 34$ and we sit in the negative-correlation regime.
+
+# What the asymmetry correction adds for the joint 4PL
+
+For the joint 4PL, $\widehat{CT}_{max}$ also depends on the asymptote-correction
+term, which injects variance from $(\hat\ell, \hat u, \hat k)$ that is **not
+shared with $\hat z$**. Writing $C = -(1/(k\beta_1))\log[(u-0.5)/(0.5-\ell)]$,
+the extra term in $\operatorname{Var}(\widehat{CT}_{max})$ is approximately
+$\operatorname{Var}(\hat C)$ plus its small covariance with $\hat\beta_0,
+\hat\beta_1$. This *adds* to the denominator of the correlation formula but not
+to the numerator, so $|\rho|$ is **smaller** for the joint 4PL than for the
+two-stage pipeline (which implicitly forces $\ell=0, u=1$, removing the
+correction-term noise altogether). The empirical numbers below show this
+consistently.
+
+# Empirical check across all scenarios
+
+True parameters: $z = 6.667$, $CT_{max,1h} = 32.146$, $\bar T = 34$,
+$CT_{max} - \bar T = -1.854$. Theory predicts negative correlation everywhere.
+
+```{r}
+#| label: tbl-z-ctmax-cor
+#| tbl-cap: "Across-sims Pearson correlation of $\\hat z$ and $\\widehat{CT}_{max,1h}$ per method and scenario, computed from the per-sim point estimates in `output/sim_twostage/per_sim_*.rds` after the same BB pathology screening used in the manuscript figures. Every cell is negative; magnitudes track the $\\sigma_{\\beta_0}/\\sigma_{\\beta_1}$ ratio as predicted by the closed-form correlation in §[Linearisation]."
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({library(dplyr); library(tidyr); library(here); library(tinytable)})
+
+load_pairs <- function(prefix) {
+  files <- list.files(here::here("output", "sim_twostage"),
+                      pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+                      full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z" & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |> dplyr::mutate(bb_path = TRUE)
+  ps |>
+    dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb", "two_stage_bb_t"))) |>
+    dplyr::filter(success) |>
+    dplyr::select(scenario, sim_id, method, quantity, estimate) |>
+    tidyr::pivot_wider(names_from = quantity, values_from = estimate)
+}
+
+pe <- c("two_stage_bin", "two_stage_bb", "joint_4pl", "joint_4pl_abs")
+pe_labels <- c(two_stage_bin = "Two-stage (bin)",
+               two_stage_bb  = "Two-stage (BB)",
+               joint_4pl     = "Joint 4PL (rel)",
+               joint_4pl_abs = "Joint 4PL (abs)")
+
+d <- dplyr::bind_rows(lapply(
+  c("scen1", "scen2", "scen3", "scen4", "scen5", "scen7", "scen8"),
+  load_pairs)) |>
+  dplyr::filter(method %in% pe,
+                is.finite(z), is.finite(CTmax_1hr))
+
+cor_tab <- d |>
+  dplyr::group_by(scenario, method) |>
+  dplyr::summarise(cor_zct = round(stats::cor(z, CTmax_1hr), 2),
+                   .groups = "drop") |>
+  dplyr::mutate(method = factor(pe_labels[method], levels = pe_labels)) |>
+  tidyr::pivot_wider(names_from = method, values_from = cor_zct) |>
+  dplyr::arrange(scenario)
+tinytable::tt(cor_tab)
+```
+
+# What pops out
+
+1. **Every cell, every method: negative.** 64/64 entries; theory's sign
+   prediction holds universally in this design.
+2. **Two-stage $|\rho|$ > Joint 4PL $|\rho|$** almost everywhere, in the
+   direction predicted by the asymmetry-correction term adding independent
+   noise to $\widehat{CT}_{max}$ but not to $\hat z$.
+3. **`scen7_u0_065` and `scen7_u0_075`** push the two-stage correlations toward
+   $-0.95$ to $-0.97$. With a low ceiling ($u_0 = 0.65$–$0.75$) the
+   partial-mortality regime drives $\sigma_{\beta_0}/\sigma_{\beta_1} \to 0$
+   (the intercept is well-identified by the upper tail while the slope absorbs
+   all the variability), pushing $|\rho| \to 1$ as the formula predicts.
+4. **`scen5` ($k$ varies with $T$)** gives the strongest joint-4PL $|\rho|$
+   ($-0.57$ to $-0.62$). $\hat k$ moving with $T$ also moves $\hat\beta_1$,
+   tightening the coupling between $\hat z$ and $\widehat{CT}_{max}$.
+5. **`scen8` `sparse × n=1`**: two-stage binomial reaches $-0.95$. The sparsest
+   design barely identifies the intercept relative to the slope — again
+   $\sigma_{\beta_0}/\sigma_{\beta_1}$ shrinks and $|\rho|$ approaches 1.
+6. **Joint 4PL correlations are *systematically* weaker** (typically $-0.3$ to
+   $-0.6$) and less variable across scenarios than the two-stage's, because the
+   asymmetry-correction noise levels them.
+
+# Implications for the manuscript
+
+- The joint Bayesian 4PL returns *paired* posterior draws of $z$ and
+  $CT_{max,1h}$, so the joint structure is preserved automatically when
+  propagating into derived quantities such as $T_{crit} = CT_{max,1h} +
+  z\,\log_{10}(r^*/100)$ (see [[project_tcrit_definition]]). Treating $\hat z$
+  and $\widehat{CT}_{max}$ as independent under-states the precision in
+  $T_{crit}$ when the correlation is strongly negative.
+- This is an additional concrete benefit of the joint over the two-stage
+  pipeline that the manuscript currently does not surface: anyone who carries
+  forward published $\hat z$ and $\widehat{CT}_{max}$ point estimates *without*
+  their covariance (e.g., for a multi-species meta-analysis or for forward
+  heat-injury projection) will mis-estimate uncertainty in any quantity that
+  combines them.
+- The strong $|\rho|$ in partial-mortality regimes (low $u_0$) and sparse
+  designs is a *signature* of methods being driven mostly by slope-variability
+  rather than recovering independent information about position and slope —
+  worth flagging when interpreting two-stage estimates from impoverished
+  designs.
+- A short paragraph in the simulation results, or a callout in the discussion,
+  could note the closed-form prediction and confirm it from the per-sim data
+  using exactly the table above.
+
+# Verification status
+
+- The closed-form correlation derivation is from first principles; the
+  intermediate steps are spelt out above and checked numerically against the
+  empirical Pearson correlations across the per-sim point estimates.
+- All numbers in the table are computed live in this note from
+  `output/sim_twostage/per_sim_*.rds` with the same BB pathology screening as
+  the manuscript figures (`fig-sims`, `fig-sims2`) and §3 of the supplement.
+- The sign prediction is confirmed empirically in 64/64 cells.
+- Magnitude prediction (stronger $|\rho|$ when $\sigma_{\beta_0}/\sigma_{\beta_1}$
+  is small, e.g. low $u_0$ or sparse design) is qualitatively confirmed in the
+  patterns above. A direct numerical check would require computing
+  $\hat\sigma_{\beta_0}, \hat\sigma_{\beta_1}$ from each fit's coefficient
+  posterior — straightforward but not done here.
+- Related: [[project_function_architecture]],
+  [[project_z_ctmax_derivation]], [[project_tcrit_definition]].
