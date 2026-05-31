@@ -5151,7 +5151,9 @@ The snow gum leaf case study takes continuous retained-function proportions thro
 
 # Case Study 4: *Drosophila* species
 
-We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TDTs for productivity (offspring number; a measure of fertility), time to coma and mortality using *Drosophila suzukii*. 
+We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TDTs for productivity (offspring number; a measure of fertility), time to coma (sublethal) and mortality using *Drosophila suzukii*. 
+
+
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
