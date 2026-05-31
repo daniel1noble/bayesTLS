@@ -1,0 +1,336 @@
+---
+title: "How the Delta method propagates uncertainty to z and CTmax(1 hr) in the two-stage estimator"
+author: "Daniel W.A. Noble (clarification dialogue with Claude)"
+date: 2026-05-31
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: false
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+editor_options:
+  chunk_output_type: console
+---
+
+## Question
+
+In the two-stage simulation comparison, exactly how is the Delta method used to
+get standard errors (and 95% CIs) for **z** and **CTmax(1 hr)**? Stepwise, what
+are we actually computing?
+
+## Short answer
+
+The two-stage estimators apply the Delta method **at two separate stages**:
+
+1. **Stage 1 (per assay temperature):** a logistic GLM (binomial or beta-binomial)
+   gives the LT50 as $\log_{10}\!\widehat{LT}_{50}(T_j) = -\hat\beta_0/\hat\beta_1$,
+   and the Delta method turns the GLM coefficient covariance into a standard error
+   for that $\log_{10}LT_{50}$.
+2. **Stage 2 (across temperatures):** an **unweighted** OLS line
+   $\log_{10}LT_{50} \sim T$ gives slope $b_1$ and intercept $b_0$; the Delta
+   method turns the OLS coefficient covariance $V_2 = \widehat{\mathrm{Var}}(b_0,b_1)$
+   into standard errors for $z=-1/b_1$ and $CTmax(1\,\text{hr})=(\log_{10}60 - b_0)/b_1$.
+
+The headline caveat is in §4: the Stage-1 SEs are **computed but not carried into
+Stage 2**. The only uncertainty entering the z / CTmax intervals is the Stage-2
+OLS scatter of the 3–5 LT50 *point* estimates around the line. That is precisely
+the generated-regressor anticonservativeness [@pagan1984; @murphytopel1985] the
+manuscript critiques — the simulation reproduces the *field-standard* pipeline,
+not a corrected one.
+
+Code: [`fit_two_stage_classical()`](../scripts/sim_twostage_helpers.R) (binomial
+Stage 1) and [`fit_two_stage_betabin()`](../scripts/sim_twostage_helpers.R)
+(beta-binomial Stage 1) — the z/CTmax Delta-method blocks are byte-identical
+between them; only the Stage-1 likelihood differs.
+
+## The Delta method in one line
+
+For a smooth scalar function $h(\boldsymbol\theta)$ of an estimated parameter
+vector $\hat{\boldsymbol\theta}$ with covariance $V=\widehat{\mathrm{Var}}(\hat{\boldsymbol\theta})$,
+
+$$
+\widehat{\mathrm{Var}}\big(h(\hat{\boldsymbol\theta})\big)\;\approx\;
+\mathbf{g}^\top V\,\mathbf{g},
+\qquad
+\mathbf{g}=\left.\frac{\partial h}{\partial\boldsymbol\theta}\right|_{\hat{\boldsymbol\theta}},
+$$
+
+i.e. a first-order Taylor expansion of $h$ around $\hat{\boldsymbol\theta}$. The
+SE is $\sqrt{\mathbf{g}^\top V \mathbf{g}}$. Everything below is just this formula
+with different $h$ and $V$.
+
+## Stepwise
+
+### Stage 1 — LT50 and its SE at each temperature $T_j$
+
+For each assay temperature we fit a logistic dose–response in $\log_{10}$ time,
+modelling the **survival** proportion:
+
+$$
+\operatorname{logit}\big(P(\text{survive})\big)=\beta_0+\beta_1\,\log_{10}t .
+$$
+
+LT50 is the time at which survival $=0.5$, i.e. $\operatorname{logit}=0$, so
+
+$$
+\log_{10}\!\widehat{LT}_{50}= -\hat\beta_0/\hat\beta_1 .
+$$
+
+With GLM coefficient covariance $V=\mathrm{vcov}(\text{fit})$ (the `$cond` block
+for the `glmmTMB` beta-binomial), the Delta-method gradient of $h(\beta_0,\beta_1)=-\beta_0/\beta_1$ is
+
+$$
+\mathbf{g}=\Big(\tfrac{\partial h}{\partial\beta_0},\,\tfrac{\partial h}{\partial\beta_1}\Big)
+=\Big(-\tfrac{1}{\beta_1},\;\tfrac{\beta_0}{\beta_1^{2}}\Big),
+\qquad
+\mathrm{SE}\big(\log_{10}LT_{50}\big)=\sqrt{\mathbf{g}^\top V\,\mathbf{g}}.
+$$
+
+In code (`fit_two_stage_classical`):
+
+```r
+b0 <- co[["(Intercept)"]]; b1 <- co[["log10_t"]]
+log10_LT50    <- -b0 / b1
+g             <- c(-1 / b1, b0 / b1^2)        # d(log10_LT50)/d(b0, b1)
+se_log10_LT50 <- sqrt(as.numeric(t(g) %*% V %*% g))
+```
+
+This produces one `(log10_LT50, se_log10_LT50)` pair per temperature
+(3 temperatures in the sparse design, 5 in the full design).
+
+### Stage 2 — OLS line, then z and CTmax
+
+Stage 2 regresses the Stage-1 LT50 point estimates on temperature, **unweighted**:
+
+```r
+s2 <- stats::lm(log10_LT50 ~ T, data = s1)     # NB: no weights = se_log10_LT50 unused
+co <- coef(s2);  V2 <- vcov(s2)
+b0 <- co[["(Intercept)"]]; b1 <- co[["T"]]      # intercept, slope (°C^-1)
+```
+
+Here $V_2=\widehat{\mathrm{Var}}(b_0,b_1)=\hat\sigma^2 (X^\top X)^{-1}$, where
+$\hat\sigma^2$ is the residual variance of the few LT50 points about the line —
+**this is the only variance that flows into z and CTmax.**
+
+#### z = $-1/b_1$ (single-parameter Delta)
+
+$z$ depends only on the slope, so the gradient collapses to a scalar derivative
+$\mathrm{d}z/\mathrm{d}b_1 = 1/b_1^{2}$:
+
+$$
+\hat z=-\tfrac{1}{b_1},\qquad
+\mathrm{SE}(\hat z)=\Big|\tfrac{1}{b_1^{2}}\Big|\,\sqrt{V_2[T,T]}
+=\Big|\tfrac{1}{b_1^{2}}\Big|\,\mathrm{SE}(b_1).
+$$
+
+```r
+z_point <- -1 / b1
+z_se    <- abs(1 / b1^2) * sqrt(V2["T", "T"])
+```
+
+#### CTmax(1 hr) = $(\log_{10}60 - b_0)/b_1$ (two-parameter Delta)
+
+CTmax depends on **both** coefficients, so the full gradient is used and the
+intercept–slope covariance $V_2[\text{Int},T]$ enters:
+
+$$
+\widehat{CTmax}=\frac{\log_{10}60-b_0}{b_1},\qquad
+\mathbf{g}=\Big(-\tfrac{1}{b_1},\;-\tfrac{\log_{10}60-b_0}{b_1^{2}}\Big),
+\qquad
+\mathrm{SE}=\sqrt{\mathbf{g}^\top V_2\,\mathbf{g}}.
+$$
+
+```r
+log10_tref <- log10(t_ref_min)                 # t_ref_min = 60
+CTmax_pt   <- (log10_tref - b0) / b1
+g          <- c(-1 / b1, -(log10_tref - b0) / b1^2)  # d/d(b0, b1)
+CTmax_se   <- sqrt(as.numeric(t(g) %*% V2 %*% g))
+```
+
+### CIs — Normal and small-sample t
+
+Both estimands get Wald intervals `point ± q * SE`, with **two** multipliers
+returned so the simulation can compare coverage:
+
+```r
+df_resid <- df.residual(s2)          # n_T - 2  → 3 (full design), 1 (sparse 3-T)
+z_norm   <- qnorm(0.975)             # 1.96
+z_t      <- qt(0.975, df = df_resid) # small-sample fix
+# lower/upper use z_norm; lower_t/upper_t use z_t
+```
+
+With only 1 residual df in the sparse design, $t_{0.975,1}\approx 12.7$ — the
+Normal interval badly under-covers, which is exactly why both are carried.
+
+## What the Delta method here does *not* do {#sec-not-propagated}
+
+This is the crux for interpreting the simulation:
+
+- **Stage-1 uncertainty is discarded.** `se_log10_LT50` is computed (and useful as
+  a diagnostic) but the Stage-2 `lm()` is **unweighted** and never sees it. The
+  LT50s enter Stage 2 as if they were error-free observations.
+- So $\mathrm{SE}(\hat z)$ and $\mathrm{SE}(\widehat{CTmax})$ reflect **only** the
+  scatter of 3–5 LT50 point estimates around the OLS line — not how precisely each
+  LT50 was itself estimated. This is the generated-regressor problem
+  [@pagan1984; @murphytopel1985]: feeding fitted quantities into a second
+  regression as if observed gives anticonservative downstream intervals.
+- This is **deliberate** — the two-stage functions reproduce the field-standard
+  pipeline so the simulation can show what the joint Bayesian 4PL recovers and
+  where the two-stage's calibration fails (see [[2026-05-16-two-stage-bias-sim-writeup]]).
+  The joint 4PL propagates all of this through the posterior in one pass
+  (see [[2026-05-24-z-ctmax-derivation-not-two-stage]]).
+
+## Should Stage-1 uncertainty feed Stage 2? (the ladder of fixes) {#sec-ladder}
+
+A natural objection: the Stage-2 regression *depends* on the Stage-1 LT50s, so
+surely it should depend on their uncertainty too. Correct in principle — but
+there are two reasons it is unused here, and the "obvious" fix is only partial.
+
+**Two reasons it is unused in our functions:**
+
+1. **Faithfulness to the field default.** The workhorse TDT pipeline
+   [@rezende_landscapes_2014; @jorgensen_unifying_2021; @orsted_suzukii_2024;
+   @cook_cumulative_plants_2024] does *unweighted* OLS of $\log_{10}LT_{50}\sim T$.
+   Our two-stage functions reproduce that so the simulation characterises what
+   the literature actually runs (cf. [[feedback_equivalence_framing]] — compare
+   against the most-common spec, don't steelman it).
+2. **Internal consistency with the estimand.** The simulation's *truth* is itself
+   defined as the **unweighted** OLS slope/intercept through the true
+   $\log_{10}LT_{50}(T)$ surface — [`compute_ols_truth()`](../scripts/sim_twostage_helpers.R)
+   uses `lm(log10_lt50 ~ Ts)` with no weights (line ~154). So unweighted OLS is
+   the estimator *matched* to that estimand; weighting would target a slightly
+   different line and would require redefining the truth.
+
+**The ladder of how much Stage-1 uncertainty one could propagate:**
+
+- **Level 0 — unweighted OLS (field default; what we do).** Each LT50 enters as if
+  exact. Ignores *both* (a) heteroscedasticity — LT50 is tightly estimated near
+  CTmax (steep sigmoid) and loosely at cool temperatures (shallow sigmoid), yet
+  OLS gives equal leverage — and (b) that the LT50s are estimates at all. Point
+  (a) is the "discards heteroscedasticity" issue already flagged in `tdt_problems.qmd`.
+- **Level 1 — WLS with weights $1/\mathrm{se}_{\log_{10}LT_{50}}^2$.** Fixes the
+  heteroscedasticity but only partially propagates: `lm(..., weights=w)` still
+  estimates an extra residual scale $\hat\sigma^2_w$ and reports
+  $\hat\sigma^2_w (X^\top W X)^{-1}$, conflating measurement error with line
+  misfit. Treating the Stage-1 variances as *known* requires $(X^\top W X)^{-1}$
+  with no estimated scale — a fixed-variance meta-regression (`metafor::rma`),
+  not vanilla WLS. And with only 3–5 temperatures the weights are themselves
+  estimated from 3–5 noisy SEs, so WLS can be *less* stable than OLS.
+- **Level 2 — known-within-variance / errors-in-variables meta-regression.** Treat
+  $\log_{10}LT_{50,j}$ as a noisy draw around the true line with *known* variance
+  $\mathrm{se}_j^2$, plus an optional between-temperature heterogeneity term. This
+  is two-stage IPD meta-analysis done correctly [@burke_ipd_2017; @riley_ipd_2010;
+  @riley_twostage_2023] and *does* carry Stage-1 uncertainty. Still assumes
+  $\log_{10}LT_{50}$ is normal with known se (it is skewed near the assay
+  envelope) and cannot handle right-censored (un-killed) temperatures.
+- **Level 3 — do not use an `lm` at all; fit jointly.** A single hierarchical
+  likelihood on the raw counts (the joint Bayesian 4PL); $z$ and CTmax are
+  posterior transforms. No Stage-1→Stage-2 handoff, so nothing to propagate —
+  uncertainty flows automatically (see [[2026-05-24-z-ctmax-derivation-not-two-stage]]).
+
+**Why even Level 2 is not the recommendation.** Pagan's generated-regressor result
+is asymptotic; plugging in estimated variances still discards the joint
+correlation across temperatures and the skew of the LT50 sampling distribution
+[@pagan1984]. And there is a *point-estimate* problem no weighting can fix: when
+asymptotes/shape vary with $T$, per-temperature LT50 extraction conditions on a
+possibly-misspecified per-$T$ curve, and the asymmetry term
+$\tfrac{1}{k}\log\tfrac{u-0.5}{0.5-\ell}$ couples the intercept to all four 4PL
+parameters — the joint fit sees this, the two-stage cannot. Plus censoring. So
+WLS buys calibration, not correctness; the joint model is why.
+
+**Direct answers.** *Should it be used?* For a corrected estimator, yes (WLS at
+minimum, fixed-variance meta-regression ideally); for our comparator, deliberately
+no. *Should an `lm` simply not be used?* As the recommended method, correct —
+abandon the two-stage `lm` for the joint fit; as a description of the field
+default, the unweighted `lm` is exactly right to keep.
+
+**Design decision this raises (open).** We could add a **WLS / fixed-variance
+meta-regression variant** as an intermediate comparator to isolate the
+*weighting/propagation* component of the two-stage deficit — analogous to how
+[`fit_two_stage_betabin()`](../scripts/sim_twostage_helpers.R) isolates the
+*likelihood* component. Caveat: a weighted estimator targets a different line than
+the unweighted-OLS truth, so it needs either a WLS-defined truth or an explicit
+statement that it is scored against the OLS line. Decide before the simulation
+write-up locks.
+
+## Runnable check of the gradient formulas
+
+A self-contained demonstration that the analytic gradients above match a
+finite-difference Delta method on a toy Stage-2 fit (base R only):
+
+```{r delta-check}
+set.seed(1)
+# Toy Stage-1 output: log10(LT50) declining with temperature.
+s1 <- data.frame(T = c(30, 33, 36, 39, 42))
+s1$log10_LT50 <- 3.2 - 0.12 * s1$T + rnorm(5, 0, 0.02)
+
+s2 <- lm(log10_LT50 ~ T, data = s1)
+co <- coef(s2); V2 <- vcov(s2)
+b0 <- co[["(Intercept)"]]; b1 <- co[["T"]]
+log10_tref <- log10(60)
+
+## --- analytic (as in sim_twostage_helpers.R) ---
+z_se_analytic <- abs(1 / b1^2) * sqrt(V2["T", "T"])
+g_ctmax       <- c(-1 / b1, -(log10_tref - b0) / b1^2)
+ctmax_se_analytic <- sqrt(as.numeric(t(g_ctmax) %*% V2 %*% g_ctmax))
+
+## --- numerical gradient (central finite difference) of the same functions ---
+z_fun     <- function(b) -1 / b[2]
+ctmax_fun <- function(b) (log10_tref - b[1]) / b[2]
+num_grad <- function(f, b, h = 1e-6) {
+  sapply(seq_along(b), function(i) {
+    bp <- b; bm <- b; bp[i] <- bp[i] + h; bm[i] <- bm[i] - h
+    (f(bp) - f(bm)) / (2 * h)
+  })
+}
+beta <- c(b0, b1)
+gz_num <- num_grad(z_fun, beta)
+gc_num <- num_grad(ctmax_fun, beta)
+z_se_numeric     <- sqrt(as.numeric(t(gz_num) %*% V2 %*% gz_num))
+ctmax_se_numeric <- sqrt(as.numeric(t(gc_num) %*% V2 %*% gc_num))
+
+cat(sprintf("z      : SE analytic = %.6f | SE numeric = %.6f | diff = %.2e\n",
+            z_se_analytic, z_se_numeric, abs(z_se_analytic - z_se_numeric)))
+cat(sprintf("CTmax  : SE analytic = %.6f | SE numeric = %.6f | diff = %.2e\n",
+            ctmax_se_analytic, ctmax_se_numeric,
+            abs(ctmax_se_analytic - ctmax_se_numeric)))
+```
+
+If the two SEs agree to machine precision, the hand-coded gradients in the
+helpers are correct.
+
+## Implications for the manuscript
+
+- The Methods (simulation) section should state plainly that the two-stage z and
+  CTmax intervals are **Delta-method Wald intervals on the Stage-2 OLS
+  coefficients**, with **Stage-1 LT50 uncertainty not propagated** (unweighted
+  Stage 2). This is the honest description of the field default and the lever for
+  the equivalence-then-calibration argument [@pagan1984].
+- Report which quantile is used. The default analysis uses the **t-quantile**
+  intervals (`lower_t`/`upper_t`) for the small-df designs; the Normal intervals
+  are the comparison showing under-coverage. Confirm which one each coverage
+  figure/table uses before writing the numbers.
+- **Distinction from the case-study Figure 4 (manuscript).** The Fig-4 *case-study*
+  two-step overlay does **not** use the Delta method for z — its z interval is
+  obtained by **inverting the Stage-2 slope's 95% CI** ($[-1/b_{1,\text{upper}},\,
+  -1/b_{1,\text{lower}}]$), reported NA when the slope CI crosses zero (see the
+  `fig-ms-fig4` caption in `ms/supplement.qmd`). So "two-stage z interval" means
+  two different things in the simulation (Delta) vs the case-study figure
+  (slope-CI inversion). Worth a one-line clarification in the text so a reader
+  doesn't conflate them.
+
+## Verification status
+
+- Code paths quoted verbatim from `scripts/sim_twostage_helpers.R`
+  (`fit_two_stage_classical` lines ~283–381; `fit_two_stage_betabin` ~402–end),
+  read 2026-05-31. The z/CTmax Delta blocks are identical across the two.
+- The Stage-2 `lm()` is unweighted in both — verified there is no `weights =`
+  argument and `se_log10_LT50` is not referenced after Stage 1.
+- The gradient algebra is validated numerically by the chunk above on render.
+- The Fig-4 slope-CI-inversion claim is from the figure caption in
+  `ms/supplement.qmd`; if you want, I can also trace the exact Fig-4 code block to
+  confirm the implementation matches the caption.
