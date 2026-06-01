@@ -136,7 +136,7 @@ knitr::dep_auto()
 
 set.seed(123)
 
-# Cache directory for brms fits (per CLAUDE.md: save fits manually as .rds).
+# Cache directory for brms fits.
 models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
@@ -161,6 +161,12 @@ remotes::install_github("daniel1noble/bayesTLS")
 #| cache: false
 #| code-fold: false
 library(bayesTLS)
+
+# Cache directory for brms fits (also set in the setup chunk). Defined here too
+# so the fitting chunks downstream can be run independently after just loading
+# the library, without re-running the full setup chunk.
+models_dir <- here::here("output", "models")
+if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
 
 The functions chain together as a single pipeline:
@@ -582,10 +588,11 @@ wf_bb  <- fit_4pl(std_bb,
                   file       = file.path(models_dir, "sim_4pl_betabinomial_v2"),
                   file_refit = "never")
 
-# `print()` on a bayes_tls workflow gives the one-screen header view: data
-# shape, centred-temperature mean, asymptote bounds, draws count.
-print(wf_bin)
-print(wf_bb)
+# `summary()` on a bayes_tls workflow delegates to brms: the population-level
+# coefficient table, group-level SDs, family parameters, and HMC diagnostics
+# (Rhat/ESS). (`print()` gives the compact workflow header instead.)
+summary(wf_bin)
+summary(wf_bb)
 
 # Convenience: extract the underlying brmsfit object for downstream brms
 # helpers. `get_brmsfit()` is the package accessor — it pulls `wf$fit` and
@@ -2278,8 +2285,9 @@ wf_shrimp <- fit_4pl(
   file    = file.path(models_dir, "fit_shrimp_lethal_4pl")
 )
 
-# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
-print(wf_shrimp)
+# Full posterior summary (brms): coefficient table, group-level SDs, family
+# parameters, and HMC diagnostics (Rhat/ESS).
+summary(wf_shrimp)
 ```
 
 ### Sampling diagnostics
@@ -3270,9 +3278,9 @@ zf_fits_sep <- lapply(zf_stages, function(s) {
 })
 names(zf_fits_sep) <- zf_stages
 
-# Workflow header for one stage as a discoverability cue; the other two have
-# the same structure with different data shape.
-print(zf_fits_sep[[zf_stages[1]]])
+# Full posterior summary (brms) for one stage as a discoverability cue; the
+# other two have the same structure with different data shape.
+summary(zf_fits_sep[[zf_stages[1]]])
 ```
 
 ### Sampling diagnostics for the separate fits
@@ -4694,8 +4702,9 @@ wf_leaf <- fit_4pl(
   file    = file.path(models_dir, "fit_leaf_function_4pl")
 )
 
-# Workflow header: data shape, T_bar, asymptote bounds, random effects, draws.
-print(wf_leaf)
+# Full posterior summary (brms): coefficient table, group-level SDs, family
+# parameters, and HMC diagnostics (Rhat/ESS).
+summary(wf_leaf)
 ```
 
 ### Sampling diagnostics
@@ -5155,6 +5164,9 @@ We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TD
 
 We'll first load the data and start with the mortality data:
 
+
+#### Load the data
+
 ```{r}
 #| label: flydat
 #| echo: true
@@ -5165,21 +5177,127 @@ We'll first load the data and start with the mortality data:
 data(dsuzukii)
 
 # This is the long format data. We want to take the summary. We'll do that for survival data first
-sum_dros <- dsuzukii |> 
+mort_dros <- dsuzukii |> 
             dplyr::group_by(temp, time, sex) |> 
             dplyr::summarise(n_total = dplyr::n(), n_dead = sum(dead), .groups = "drop") |>
             arrange(temp, time, sex)
 
-# Now we can standardise these data for our modelling     
-std_dros <- standardize_data(sum_dros, temp = "temp",  duration = "time",
-                                 n_total = "n_total", n_dead = "n_dead", 
-                           duration_unit = "minutes")
+# Ørsted et al. (2024) estimated the sexes separately, so we keep `sex` here
+# and split + standardise per sex in the fitting chunk below.
 
 ```
 
 
+#### Fitting the 4PL model
+Now that we have the data set up we'll fit the 4PL model:
+
+```{r}
+#| label: dros_fit
+#| echo: true
+#| code-fold: false
+#| warning: false
+
+# Sexes were estimated separately so we'll create two data frames for each sex
+mort_dros_F <- dplyr::filter(mort_dros, sex == "F")
+mort_dros_M <- dplyr::filter(mort_dros, sex == "M")
+
+# Standardise each sex's counts for the modelling schema.
+std_mort_F <- standardize_data(mort_dros_F, temp = "temp", duration = "time",
+                               n_total = "n_total", n_dead = "n_dead",
+                               duration_unit = "minutes")
+std_mort_M <- standardize_data(mort_dros_M, temp = "temp", duration = "time",
+                               n_total = "n_total", n_dead = "n_dead",
+                               duration_unit = "minutes")
+
+# Fit one joint Bayesian 4PL per sex. We'll show below how to include sex as a covariate as we have done in the Zebrafish example.
+wf_dros_mort_F <- fit_4pl(
+  std_mort_F,
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 12),
+  file    = file.path(models_dir, "fit_dsuzukii_mortality_4pl_F")
+)
+
+wf_dros_mort_M <- fit_4pl(
+  std_mort_M,
+  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 12),
+  file    = file.path(models_dir, "fit_dsuzukii_mortality_4pl_M")
+)
+
+# Full posterior summary (brms) per sex: coefficient table, group-level SDs,
+# family parameters, and HMC diagnostics (Rhat/ESS).
+summary(wf_dros_mort_F)
+summary(wf_dros_mort_M)
+
+# R2 on model fits
+bayes_R2(wf_dros_mort_M$fit)
+bayes_R2(wf_dros_mort_F$fit)
+
+```
+
+Now that we have the models we can extract the TDT for each sex. Note that the models have converged well with base don the Rhat, but we can also look at the MCMC chains if we need do as per below:
+
+```{r}
+#| label: dros_chains
+#| echo: true
+#| include: false
+#| eval: false
+
+plot(wf_dros_mort_M)
+plot(wf_dros_mort_F)
+```
+
+#### Extracting *z* and $CT_{max_{1hr}}$ for males and females
+
+We can extract the TDT parameters now as we have done in other case studies:
+
+```{r}
+#| label: extractTDT
+#| echo: true
+
+# Extract the TDT parameters and also Tcrit as we have lethal data. Remember this uses a heat injury threshold (1%) to help decide where the Tcrit zone occurs. We want the LT50, so we'll use absolute. NOte that they use a CTmax 4hour threshold, instead of 1 hour.
+  tdt_dros_m <- extract_tdt(wf_dros_mort_M, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
+  tdt_dros_f <- extract_tdt(wf_dros_mort_F, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
+
+# We have can now have a look at the 
+# Summary of z
+  z_m <- get_z_summary(tdt_dros_m)
+  z_f <- get_z_summary(tdt_dros_f)
+
+# Summary CTmax 4hours
+  ctmax4_m  <- get_ctmax_summary(tdt_dros_m)
+  ctmax4_f  <- get_ctmax_summary(tdt_dros_f)
+
+# Check out predicted tcrit 
+  tcrit_m <- get_tcrit_summary(tdt_dros_m)
+  tcrit_f <- get_tcrit_summary(tdt_dros_f)
+
+```
+
+We see that our *z* values (their Table 1: 3.28 for males, 3.03 for females) as well as $CT_{max_{4hr}}$ (35.2 °C for both sexes) pretty much match @orsted_suzukii_2024 quite well for mortality. 
+
+We could ask whether males and females are significantly different or not from each other by simply comparing the posterior distributions. Since we have the full posetrior draws, this is easy to do:
+
+```{r}
+#| label: post_comps_dros
+#| echo: true
+#| code-fold: false
+#| message: false
+#| warning: false
+
+# Get the full posteriors for z. Note that we sub-sampled to 1000 draws. 
+  z_draws_m  <- get_z_draws(tdt_dros_m)
+  z_draws_f  <- get_z_draws(tdt_dros_f)
+
+# Now, if we want to compare whether the sexes are different we can create a contrasts  
+  diff_sex_z <- z_draws_m - z_draws_f
+```
 
 
+
+#### Fitting a model to compare sexes directly
+
+We can see
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
