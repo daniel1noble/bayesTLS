@@ -1,0 +1,134 @@
+---
+title: "Shipping the Ørsted (2024) Drosophila suzukii data as `dsuzukii` — and how the long file reconciles with the published summary"
+author: "Daniel W.A. Noble (with Claude)"
+date: 2026-06-01
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+editor_options:
+  chunk_output_type: console
+---
+
+## What was added
+
+`dsuzukii` now ships with **bayesTLS** as the Case Study 4 dataset — the
+*Drosophila suzukii* multi-trait thermal-tolerance data of @orsted_suzukii_2024.
+
+- **Source:** Ørsted, Willot, Olsen, Kongsgaard & Overgaard (2024), *Data for:
+  Thermal limits of survival and reproduction depend on stress duration*, Zenodo
+  `10.5281/zenodo.10602268`, **CC BY 4.0** (redistribution permitted with
+  attribution; compatible with bayesTLS's own CC BY 4.0). Associated article
+  `10.1111/ele.14421`.
+- **Form shipped (decision):** the **long per-individual** file
+  (`all_data_long_R3.csv`, 1407 flies), *not* the cell-level summary
+  (`alltraits_summary_R3.csv`). The long file supports all three endpoints in
+  their proper form — mortality → counts (aggregate `dead`), heat coma →
+  time-to-event (`t_coma`), productivity → continuous (`prod`) — and matches the
+  package's existing count / time-to-event idioms. The summary has no
+  denominators for `surv`/`awake` and many exact 0/1 proportions.
+- **Columns** (authors' README definitions): `id`, `temp` (°C), `lvl` (exposure
+  duration as % of the estimated median time-to-coma from the authors' initial
+  TDT curves), `time` (min), `sex`, `rep` (replicate vial), `prod`
+  (offspring/female/day), `dead` (1 = died), `t_coma` (min; `NA` where no coma
+  recorded — 583/1407).
+
+### Build pipeline (matches the other case studies)
+
+1. Raw CSV copied to `inst/extdata/data_multitrait_TDT_drosophila_suzukii.csv`
+   (canonical raw source that ships with the package).
+2. Light cleaning block added to `data-raw/make_datasets.R` (types + column
+   order only; **no rows dropped**), included in the `usethis::use_data()` call.
+3. Documented in `R/data.R`; `man/dsuzukii.Rd` generated via
+   `devtools::document()`.
+
+## Reconciliation: the long file does **not** fully reproduce the published summary
+
+This is the non-obvious part and the reason for this note. Aggregating the long
+per-individual file back to cells does **not** exactly reproduce
+`alltraits_summary_R3.csv` on three counts.
+
+```{r reconcile}
+#| message: false
+#| warning: false
+library(dplyr)
+base <- "../data-raw/orstead2024"
+L <- read.csv(file.path(base, "all_data_long_R3.csv"))
+S <- read.csv(file.path(base, "alltraits_summary_R3.csv"))
+
+agg <- L |>
+  group_by(temp, lvl, sex) |>
+  summarise(n_long = n(), surv_long = 1 - mean(dead),
+            prod_long = mean(prod), .groups = "drop")
+m <- merge(S, agg, by = c("temp", "lvl", "sex"), all = TRUE)
+
+cat("summary cells:", nrow(S), "| long-agg cells:", nrow(agg),
+    "| summary-only (no long match):", sum(is.na(m$n_long)), "\n")
+cat("  of those, lvl==0 controls:", sum(S$lvl == 0), "\n\n")
+
+surv_mismatch <- m |>
+  filter(!is.na(surv_long), abs(surv - surv_long) > 1e-3) |>
+  transmute(temp, lvl, sex, surv_summary = round(surv, 4),
+            surv_long = round(surv_long, 4), n_long, d = round(surv - surv_long, 4))
+cat("survival cells differing >0.001:", nrow(surv_mismatch), "of",
+    sum(!is.na(m$surv_long)), "\n")
+print(surv_mismatch, row.names = FALSE)
+
+cat("\nprod cells differing >0.01 (summary vs naive per-individual mean):",
+    sum(abs(m$prod - m$prod_long) > 0.01, na.rm = TRUE), "of",
+    sum(!is.na(m$prod_long)), "\n")
+```
+
+**Three findings:**
+
+1. **No `lvl = 0` controls in the long file.** The summary carries 10 `lvl = 0`
+   baseline cells (and 4 further temperature×duration cells) absent from the
+   per-individual file. So the shipped `dsuzukii` has **no unexposed controls** —
+   relevant if a relative-productivity (% of control) analysis is intended.
+2. **Four survival cells differ.** The summary used **smaller denominators**
+   (13–14 vs 15), i.e. the authors **excluded a few individuals** that the long
+   file still contains (e.g. 36-200-F: summary 3/13 = 0.231 vs long 5/15 = 0.333;
+   38-200-F: 1/13 vs 3/15). The exclusion flag is not in the long file, so
+   aggregating `dead` reproduces the published `surv` for **90/94** cells but not
+   these four.
+3. **`prod` is not the naive per-individual mean.** The summary's "average
+   offspring/female/day" differs from `mean(prod)` per cell in **74/108** cells
+   (often ~1.5–2×), so the summary applied a normalisation we cannot reconstruct
+   from the long file's per-individual `prod` by a simple mean. The shipped
+   per-individual `prod` is faithful to the authors' raw values; it is **not** the
+   summary quantity.
+
+## Implications
+
+- For the **lethal** endpoint, aggregating `dead` to counts reproduces the
+  published survival for all but 4 cells; the joint 4PL on those counts is the
+  intended Case Study 4 lethal fit. Note the 4-cell exclusion difference if
+  comparing point estimates to the paper's `drc` fit on the summary.
+- For **coma**, `t_coma` is a genuine per-individual time-to-event (use the
+  time-to-event branch); this is *richer* than the summary's `awake` proportion.
+- For **productivity**, ship/use the per-individual `prod` as the authors defined
+  it; do **not** claim it reproduces the summary's averaged `prod`. If Case Study 4
+  needs the published productivity TDT, that must come from the summary or from
+  the authors' normalisation, not from a naive long-file mean.
+
+## Open question for Daniel
+
+The user chose the long per-individual form. Given the three gaps above, decide
+whether to **also** ship (a) the `lvl = 0` controls and/or (b) the
+`alltraits_summary_R3.csv` aggregate as a second object (e.g. `dsuzukii_summary`),
+so the published survival/productivity TDT is reproducible from the package. Left
+as long-only for now, with these caveats documented.
+
+## Verification status
+
+- `data/dsuzukii.rda` built via `usethis::use_data()`; loads as 1407 × 9.
+- Spot-checks: 38-500-M → surv 0 (matches summary); 34-25-M → 14/15 = 0.933
+  (matches); 36-200-F → 5/15 differs from summary 3/13 (finding 2).
+- Documented `@example` (aggregate `dead` → `standardize_data`) runs end-to-end
+  (94 cells) under `pkgload::load_all()`.
+- Reconciliation numbers above are reproduced live by this note's chunk.
