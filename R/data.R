@@ -101,3 +101,47 @@
 #'                         random_effects = c("Day", "G_Room"),
 #'                         duration_unit = "minutes")
 "snowgum_psii"
+
+#' Drosophila suzukii multi-trait thermal-tolerance data
+#'
+#' Per-individual thermal-tolerance assays for the spotted-wing fly
+#' (\emph{Drosophila suzukii}), one row per fly, carrying three thermal-tolerance
+#' endpoints measured under static heat exposures at 34--38 \eqn{^{\circ}}C:
+#' a lethal endpoint (\code{dead}), a sublethal knockdown time-to-event
+#' (\code{t_coma}), and a sublethal reproductive endpoint (\code{prod}). The
+#' model-ready frame for Case Study 4; aggregate \code{dead} to counts for the
+#' beta-binomial lethal fit, or use \code{t_coma} / \code{prod} directly for the
+#' sublethal endpoints. \code{lvl} indexes the exposure-duration grid as a
+#' percentage of the estimated median time-to-coma from the authors' initial TDT
+#' curves; \code{time} is the realised duration in minutes.
+#'
+#' @format A data frame with 1407 rows and 9 variables:
+#' \describe{
+#'   \item{id}{Unique individual identifier (\code{temp-lvl-sex-rep}).}
+#'   \item{temp}{Assay temperature (degrees C).}
+#'   \item{lvl}{Exposure duration as a percentage of the estimated median
+#'         time-to-coma from the authors' initial TDT curves.}
+#'   \item{time}{Exposure duration (minutes).}
+#'   \item{sex}{Sex, a factor with levels \code{F}, \code{M}.}
+#'   \item{rep}{Replicate vial within a temperature x lvl x sex cell.}
+#'   \item{prod}{Reproductive productivity (offspring per female per day).}
+#'   \item{dead}{Mortality indicator: \code{1} = died, \code{0} = survived.}
+#'   \item{t_coma}{Time to heat coma (minutes); \code{NA} where no coma was
+#'         recorded for that individual.}
+#' }
+#' @source \enc{Ørsted}{Orsted} M, Willot Q, Olsen AK, Kongsgaard V, Overgaard J
+#'   (2024). Data for: Thermal limits of survival and reproduction depend on
+#'   stress duration: a case study of \emph{Drosophila suzukii}. Zenodo,
+#'   \doi{10.5281/zenodo.10602268} (distributed under CC BY 4.0). Associated
+#'   article: \doi{10.1111/ele.14421}. Raw file:
+#'   \code{system.file("extdata", "data_multitrait_TDT_drosophila_suzukii.csv", package = "bayesTLS")}.
+#' @examples
+#' # Lethal endpoint: aggregate per-individual deaths to cell counts, then
+#' # standardise for the beta-binomial 4PL.
+#' cells <- dplyr::summarise(
+#'   dplyr::group_by(dsuzukii, temp, time, sex),
+#'   n_total = dplyr::n(), n_dead = sum(dead), .groups = "drop")
+#' std <- standardize_data(cells, temp = "temp", duration = "time",
+#'                         n_total = "n_total", n_dead = "n_dead",
+#'                         random_effects = "sex", duration_unit = "minutes")
+"dsuzukii"
