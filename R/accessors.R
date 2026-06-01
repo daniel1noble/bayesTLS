@@ -11,6 +11,7 @@
 #'
 #' @param et The list returned by [extract_tdt()].
 #' @return A tibble with columns `.draw` and `z`.
+#' @seealso [get_z_summary()] for the median + 95% credible-interval summary.
 #' @examples
 #' \dontrun{
 #' et_a <- extract_tdt(wf_group_a)
@@ -26,6 +27,25 @@ get_z_draws <- function(et) {
   tibble::as_tibble(et$z$draws)
 }
 
+#' Posterior summary of z (median and 95% credible interval)
+#'
+#' Pulls the z summary table from an [extract_tdt()] result — the headline
+#' median and credible-interval numbers, as opposed to the per-draw values
+#' returned by [get_z_draws()].
+#'
+#' @param et The list returned by [extract_tdt()].
+#' @return A tibble with columns `z_median`, `z_lower`, `z_upper`.
+#' @seealso [get_z_draws()] for the per-draw posterior.
+#' @examples
+#' \dontrun{
+#' get_z_summary(extract_tdt(wf))
+#' }
+#' @export
+get_z_summary <- function(et) {
+  stop_if_not_extract_tdt(et)
+  tibble::as_tibble(et$z$summary)
+}
+
 #' Posterior draws of CTmax at the reference duration
 #'
 #' Pulls the per-draw CTmax temperature: the temperature at which the
@@ -36,6 +56,7 @@ get_z_draws <- function(et) {
 #'
 #' @param et The list returned by [extract_tdt()].
 #' @return A tibble with columns `.draw` and `CTmax`.
+#' @seealso [get_ctmax_summary()] for the median + 95% credible-interval summary.
 #' @examples
 #' \dontrun{
 #' get_ctmax_draws(extract_tdt(wf))
@@ -47,6 +68,25 @@ get_ctmax_draws <- function(et) {
   tibble::tibble(.draw = d$.draw, CTmax = d$temp)
 }
 
+#' Posterior summary of CTmax at the reference duration
+#'
+#' Pulls the CTmax summary table from an [extract_tdt()] result (the
+#' temperature at which the threshold is reached after `t_ref` exposure), as
+#' opposed to the per-draw values returned by [get_ctmax_draws()].
+#'
+#' @param et The list returned by [extract_tdt()].
+#' @return A tibble with columns `temp_lower`, `temp_median`, `temp_upper`.
+#' @seealso [get_ctmax_draws()] for the per-draw posterior.
+#' @examples
+#' \dontrun{
+#' get_ctmax_summary(extract_tdt(wf))
+#' }
+#' @export
+get_ctmax_summary <- function(et) {
+  stop_if_not_extract_tdt(et)
+  tibble::as_tibble(et$CTmax$summary)
+}
+
 #' Posterior draws of T_crit (rate-multiplier definition)
 #'
 #' Pulls the per-draw T_crit values from an [extract_tdt()] result. Errors if
@@ -56,6 +96,7 @@ get_ctmax_draws <- function(et) {
 #' @param et The list returned by `extract_tdt(..., lethal = TRUE)`.
 #' @return A tibble with columns `.draw`, `T_crit`, and `log10_rate` (the
 #'         sampled log10 rate-multiplier for that posterior draw).
+#' @seealso [get_tcrit_summary()] for the median + 95% credible-interval summary.
 #' @examples
 #' \dontrun{
 #' get_tcrit_draws(extract_tdt(wf, lethal = TRUE))
@@ -68,6 +109,31 @@ get_tcrit_draws <- function(et) {
          "Refit with `lethal = TRUE`.", call. = FALSE)
   d <- et$T_crit$draws
   tibble::tibble(.draw = d$.draw, T_crit = d$temp, log10_rate = d$log10_rate)
+}
+
+#' Posterior summary of T_crit (rate-multiplier definition)
+#'
+#' Pulls the T_crit summary table from an [extract_tdt()] result — median and
+#' credible interval, plus the rate-floor range used — as opposed to the
+#' per-draw values returned by [get_tcrit_draws()]. Errors if `extract_tdt()`
+#' was called with the default `lethal = FALSE`; T_crit is only meaningful for
+#' lethal-endpoint data.
+#'
+#' @param et The list returned by `extract_tdt(..., lethal = TRUE)`.
+#' @return A tibble with columns `TC_rate_low`, `TC_rate_high`, `temp_lower`,
+#'         `temp_median`, `temp_upper`.
+#' @seealso [get_tcrit_draws()] for the per-draw posterior.
+#' @examples
+#' \dontrun{
+#' get_tcrit_summary(extract_tdt(wf, lethal = TRUE))
+#' }
+#' @export
+get_tcrit_summary <- function(et) {
+  stop_if_not_extract_tdt(et)
+  if (is.null(et$T_crit))
+    stop("This extract_tdt() result has no T_crit. ",
+         "Refit with `lethal = TRUE`.", call. = FALSE)
+  tibble::as_tibble(et$T_crit$summary)
 }
 
 #' Posterior draws of heat-injury trajectory

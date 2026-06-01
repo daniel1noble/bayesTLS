@@ -131,13 +131,19 @@ to avoid that pitfall; users with lethal data opt in by passing
 \dontrun{
 wf  <- fit_4pl(d, ...)
 out <- extract_tdt(wf)                  # z + CTmax only
-out$z$summary
-out$CTmax$summary
+get_z_summary(out)                      # median + 95\% CrI
+get_ctmax_summary(out)
+get_z_draws(out)                        # per-draw posterior (e.g. contrasts)
 
 # Lethal-endpoint data — opt in to T_crit:
 out2 <- extract_tdt(wf, lethal = TRUE)
-out2$T_crit$summary
+get_tcrit_summary(out2)
 # Feed the T_crit posterior median into predict_heat_injury():
-hi <- predict_heat_injury(trace, wf, T_c = out2$T_crit$summary$temp_median)
+hi <- predict_heat_injury(trace, wf, T_c = get_tcrit_summary(out2)$temp_median)
 }
+}
+\seealso{
+\code{\link[=get_z_summary]{get_z_summary()}}, \code{\link[=get_ctmax_summary]{get_ctmax_summary()}}, \code{\link[=get_tcrit_summary]{get_tcrit_summary()}} for
+tidy summary tibbles, and \code{\link[=get_z_draws]{get_z_draws()}}, \code{\link[=get_ctmax_draws]{get_ctmax_draws()}},
+\code{\link[=get_tcrit_draws]{get_tcrit_draws()}} for the per-draw posteriors (e.g. group contrasts).
 }

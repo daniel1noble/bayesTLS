@@ -23,3 +23,6 @@ only meaningful for lethal-endpoint data.
 get_tcrit_draws(extract_tdt(wf, lethal = TRUE))
 }
 }
+\seealso{
+\code{\link[=get_tcrit_summary]{get_tcrit_summary()}} for the median + 95\% credible-interval summary.
+}

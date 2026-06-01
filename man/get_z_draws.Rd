@@ -25,3 +25,6 @@ contrast$diff <- contrast$z_a - contrast$z_b
 quantile(contrast$diff, c(0.025, 0.5, 0.975))
 }
 }
+\seealso{
+\code{\link[=get_z_summary]{get_z_summary()}} for the median + 95\% credible-interval summary.
+}

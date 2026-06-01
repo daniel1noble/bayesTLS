@@ -24,3 +24,6 @@ min). The threshold itself follows the \code{target_surv} argument of
 get_ctmax_draws(extract_tdt(wf))
 }
 }
+\seealso{
+\code{\link[=get_ctmax_summary]{get_ctmax_summary()}} for the median + 95\% credible-interval summary.
+}

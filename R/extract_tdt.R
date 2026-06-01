@@ -502,18 +502,22 @@ derive_z <- function(workflow,
 #'   - `lt50_curve`: output of [derive_tdt_curve()] (descriptive intermediate).
 #'   - `meta`: list of inputs used (`t_ref`, `TC_rate_range`, `lethal`,
 #'     `output_time_unit`).
+#' @seealso [get_z_summary()], [get_ctmax_summary()], [get_tcrit_summary()] for
+#'   tidy summary tibbles, and [get_z_draws()], [get_ctmax_draws()],
+#'   [get_tcrit_draws()] for the per-draw posteriors (e.g. group contrasts).
 #' @examples
 #' \dontrun{
 #' wf  <- fit_4pl(d, ...)
 #' out <- extract_tdt(wf)                  # z + CTmax only
-#' out$z$summary
-#' out$CTmax$summary
+#' get_z_summary(out)                      # median + 95% CrI
+#' get_ctmax_summary(out)
+#' get_z_draws(out)                        # per-draw posterior (e.g. contrasts)
 #'
 #' # Lethal-endpoint data — opt in to T_crit:
 #' out2 <- extract_tdt(wf, lethal = TRUE)
-#' out2$T_crit$summary
+#' get_tcrit_summary(out2)
 #' # Feed the T_crit posterior median into predict_heat_injury():
-#' hi <- predict_heat_injury(trace, wf, T_c = out2$T_crit$summary$temp_median)
+#' hi <- predict_heat_injury(trace, wf, T_c = get_tcrit_summary(out2)$temp_median)
 #' }
 #' @export
 extract_tdt <- function(workflow,
