@@ -34,7 +34,7 @@ dsuzukii
 \description{
 Per-individual thermal-tolerance assays for the spotted-wing fly
 (\emph{Drosophila suzukii}), one row per fly, carrying three thermal-tolerance
-endpoints measured under static heat exposures at 34--38 \eqn{^{\circ}}C:
+endpoints measured under static heat exposures at 34--38 degrees C:
 a lethal endpoint (\code{dead}), a sublethal knockdown time-to-event
 (\code{t_coma}), and a sublethal reproductive endpoint (\code{prod}). The
 model-ready frame for Case Study 4; aggregate \code{dead} to counts for the

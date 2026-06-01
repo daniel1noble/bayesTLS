@@ -5153,6 +5153,32 @@ The snow gum leaf case study takes continuous retained-function proportions thro
 
 We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TDTs for productivity (offspring number; a measure of fertility), time to coma (sublethal) and mortality using *Drosophila suzukii*. 
 
+We'll first load the data and start with the mortality data:
+
+```{r}
+#| label: flydat
+#| echo: true
+#| messages: fales
+#| warning: false
+
+# Load the data from BayesTLS
+data(dsuzukii)
+
+# This is the long format data. We want to take the summary. We'll do that for survival data first
+sum_dros <- dsuzukii |> 
+            dplyr::group_by(temp, time, sex) |> 
+            dplyr::summarise(n_total = dplyr::n(), n_dead = sum(dead), .groups = "drop") |>
+            arrange(temp, time, sex)
+
+# Now we can standardise these data for our modelling     
+std_dros <- standardize_data(sum_dros, temp = "temp",  duration = "time",
+                                 n_total = "n_total", n_dead = "n_dead", 
+                           duration_unit = "minutes")
+
+```
+
+
+
 
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
