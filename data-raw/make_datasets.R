@@ -92,5 +92,27 @@ snowgum_psii <- read_csv(ext("data_function_PSII_TDT_snowgum.csv"),
                 Unique_ID, G_Room, Day) |>
   as.data.frame()
 
+## 5. Drosophila suzukii — multi-trait TDT, per individual -------------------
+# Ørsted et al. (2024) open data (CC BY 4.0; Zenodo 10.5281/zenodo.10602268),
+# long-format "all_data_long_R3.csv": one row per fly, three thermal-tolerance
+# endpoints in a single frame — mortality (`dead`, aggregate to counts), heat
+# coma (`t_coma`, a time-to-event; NA where no coma was recorded), and
+# reproductive productivity (`prod`, offspring/female/day). Light cleaning only:
+# fix column types and order; no rows dropped.
+dsuzukii <- read_csv(ext("data_multitrait_TDT_drosophila_suzukii.csv"),
+                     show_col_types = FALSE) |>
+  dplyr::transmute(
+    id     = as.character(id),
+    temp   = as.numeric(temp),       # assay temperature (degrees C)
+    lvl    = as.numeric(lvl),        # exposure as % of estimated median t_coma
+    time   = as.numeric(time),       # exposure duration (minutes)
+    sex    = factor(sex, levels = c("F", "M")),
+    rep    = as.integer(rep),        # replicate vial within a temp x lvl x sex cell
+    prod   = as.numeric(prod),       # offspring / female / day
+    dead   = as.integer(dead),       # 1 = died, 0 = survived
+    t_coma = as.numeric(t_coma)      # time to heat coma (minutes); NA if none recorded
+  ) |>
+  as.data.frame()
+
 usethis::use_data(shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
-                  snowgum_psii, overwrite = TRUE)
+                  snowgum_psii, dsuzukii, overwrite = TRUE)
