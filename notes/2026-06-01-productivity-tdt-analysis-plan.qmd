@@ -1,0 +1,206 @@
+---
+title: "Plan: estimating TDT models for productivity (offspring/day) — non-lethal, non-probability data"
+author: "Daniel W.A. Noble (planning dialogue with Claude)"
+date: 2026-06-01
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+editor_options:
+  chunk_output_type: console
+---
+
+## Question
+
+How do we estimate a TDT model for **productivity** (offspring/female/day per
+temperature × exposure-time cell, the `prod` column of `dsuzukii`)? These are
+**not** probability/proportion data, so the beta-binomial (count) and Beta
+(continuous-proportion) machinery does not apply. What is the right joint
+Bayesian formulation, and what TDT quantity does it even target?
+
+## Short answer
+
+Productivity decline under heat is **two coupled processes**: (i) an increasing
+probability of *complete reproductive failure* (sterility), and (ii) declining
+*fecundity among those still reproducing*. The data are dominated by (i) — 55%
+exact zeros — so the natural model is a **hurdle** (two-part) model, not a single
+continuous likelihood. The recommended formulation reuses the project's 4PL →
+TDT logic on **each part separately** (the sterility part is itself a
+proportion-style 4PL we already support), giving an interpretable *decomposition*
+of the thermal fertility response that the classical single-`Et50` two-stage
+pipeline cannot produce. Crucially, productivity is a **rate-of-life
+(performance) trait, not a rate-of-death**, so `z` and `Et50`/`sCTmax` are
+descriptive thermal-sensitivity quantities only — the damage-accumulation
+heat-injury integral and the rate-multiplier `T_crit` do **not** transfer without
+a separate, untested assumption that reproductive damage accumulates additively.
+
+## The data (grounded EDA)
+
+```{r eda}
+#| message: false
+#| warning: false
+library(dplyr)
+data("dsuzukii", package = "bayesTLS")
+p <- dsuzukii$prod
+tibble::tibble(
+  n            = length(p),
+  pct_zero     = round(100 * mean(p == 0), 1),
+  integer      = all(abs(p - round(p)) < 1e-8),
+  max          = round(max(p), 2),
+  mean         = round(mean(p), 2),
+  vmr_positive = round(var(p[p > 0]) / mean(p[p > 0]), 2)   # overdispersion among producers
+)
+# Zero fraction rises monotonically with exposure dose (the sterility signal):
+dsuzukii |>
+  filter(temp == 34) |>
+  group_by(lvl) |>
+  summarise(pct_zero = round(100 * mean(prod == 0)),
+            mean_prod = round(mean(prod), 2), .groups = "drop")
+```
+
+Statistical character (see chunk output):
+
+- **Continuous, non-negative, non-integer.** Range 0–11.6. Not counts, so
+  Poisson/negative-binomial are wrong; not in [0,1], so Beta is wrong
+  [@warton_arcsine_2011; @douma_beta_2019].
+- **Point mass at zero (~55%).** A structural zero = a sterile individual. The
+  zero fraction **rises with exposure dose** — sterility is itself a thermal
+  dose-response (a *thermal fertility limit*, sensu @snook_fertility_2026).
+- **Overdispersion among producers** (var/mean ≈ 1.9) → the positive part needs a
+  dispersion parameter (Gamma/lognormal), not a fixed mean–variance link
+  [@harrison_bb_2015].
+- **Mild non-monotonicity (hormesis) at 37–38 °C** — productivity at short
+  exposures can slightly exceed the next cells. A strictly monotone 4PL treats
+  this as noise; flag as a limitation.
+- **No `lvl = 0` controls** in the long file (see [[project_dsuzukii_dataset]]).
+  So a "% of unexposed control" `Et50` has no measured baseline — the baseline
+  must come from the **fitted upper asymptote** (productivity at the shortest
+  exposure), not an observed control group.
+
+## The conceptual problem: what is "TDT for productivity"?
+
+The classical sublethal TDT [@orsted_suzukii_2024] defines `Et50(T)` = the
+exposure time at which the trait falls to **50% of its control value**, then
+regresses `log10(Et50) ~ T` for `z = −1/slope` and an `sCTmax`. Two issues:
+
+1. **It is a performance threshold, not a damage threshold.** Per the
+   rates-of-life vs rates-of-death distinction [@orsted_finding_2022] and
+   [[project_tcrit_definition]], a sublethal `z` is a performance-reduction slope.
+   The rate-multiplier `T_crit` and the heat-injury (HI) integral assume
+   cumulative, additive *damage* to *death*; @orsted_suzukii_2024 **assumed** the
+   same TDT structure for reproduction but did **not** test additivity for it.
+   **Decision implied:** report `z`/`sCTmax`/`Et50` for productivity descriptively;
+   do **not** compute `T_crit` or HI projections for it unless we separately
+   validate reproductive damage additivity (a distinct sub-study).
+2. **The mean is a product of two processes.** Overall mean productivity is
+   `E[Y | T,t] = Pr(fertile | T,t) · E[Y | Y>0, T,t]`. A single `Et50` on the
+   overall mean conflates "became sterile" with "produced fewer offspring." With
+   55% zeros, most of the decline *is* sterility.
+
+## Recommended formulation: hurdle 4PL, estimated as a decomposition
+
+Model per-individual productivity `Y` at temperature `T`, exposure time `t`:
+
+**Part 1 — sterility (the hurdle).** `Pr(Y > 0 | T, t)` as a 4PL in `log10 t`
+with temperature on the midpoint:
+$$\operatorname{logit}\Pr(\text{fertile}) = \ell_s + \frac{u_s-\ell_s}{1+\exp\!\big(k_s(\log_{10}t-\mathrm{mid}_s(T))\big)},\quad \mathrm{mid}_s(T)=\beta_0^{s}+\beta_1^{s}(T-\bar T).$$
+This is **exactly a proportion-data 4PL** — the project already fits this
+(beta-binomial when aggregated to fertile/total counts, or Bernoulli per
+individual). `Et50_sterility(T)` = time to 50% sterile; `z_sterility = −1/β₁ˢ`.
+
+**Part 2 — fecundity given fertile.** `E[Y | Y>0, T, t]` with a **free upper
+asymptote** (= baseline fecundity, *not* bounded at 1 — this is the key
+difference from proportion data) declining via a 4PL, Gamma (or lognormal)
+likelihood for the positive, overdispersed continuous response:
+$$\log \mu_{+}(T,t)=\log\!\Big(\ell_f+\frac{u_f-\ell_f}{1+\exp(k_f(\log_{10}t-\mathrm{mid}_f(T)))}\Big),\quad z_{\text{fecundity}}=-1/\beta_1^{f}.$$
+Under the **relative-threshold** convention already in the package
+(midpoint = halfway between the fitted asymptotes), `mid_f` *is* the time to 50%
+of the fitted baseline fecundity — i.e. `Et50` with the baseline supplied by the
+fit (no measured control needed). This is structurally the **PSII/Beta case but
+with a positive-continuous likelihood instead of Beta**.
+
+**Overall `Et50` (to match @orsted_suzukii_2024).** If a single number is wanted,
+it is the `t` solving `Pr(fertile)·μ₊ = 0.5 · baseline` — derived per posterior
+draw from the two submodels (the joint fit propagates uncertainty into it
+automatically; the two-stage cannot).
+
+### Likelihood options (ranked)
+
+| Option | Zeros | Interpretable parts | brms-native | Verdict |
+|---|---|---|---|---|
+| **Hurdle-Gamma** (`hurdle_gamma`) | structural | sterility + fecundity | yes | **Recommended** |
+| Hurdle-lognormal (`hurdle_lognormal`) | structural | sterility + fecundity | yes | sensitivity (right-skew/multiplicative positive part) |
+| Tweedie (compound Poisson-Gamma) | point mass | single mean (conflated) | no (glmmTMB) | sensitivity comparator; one mean, less interpretable |
+| Zero-inflated Gamma | sampling+structural | mixes zero types | partial | hurdle preferred (sterility is a true structural zero) |
+| Gaussian / Beta / Poisson / NB | — | — | — | wrong support (zeros / unbounded / non-integer) |
+
+`hurdle_gamma` in brms is **distributional**: both the `mu` (fecundity) and `hu`
+(zero/sterility) parameters take their own formula, so each gets its own 4PL with
+temperature on the midpoint [@burkner_brms_2017]. That is the unified model. For a
+first implementation it is equivalent — and maximally reuses existing code — to
+fit the two parts as **two separate 4PL fits**: sterility through the current
+proportion path, fecundity (producers only) through a new Gamma path.
+
+## What this needs from the package
+
+`fit_4pl()` currently resolves family from `response_type` ∈ {count
+(beta-binomial), proportion (Beta)} (see [[project_beta_family_support]]). Two
+incremental routes (decide in §Open questions):
+
+- **(A) Two-fit decomposition (minimal new code).** Sterility reuses the existing
+  proportion/count path on a `fertile` indicator. Fecundity needs a new
+  positive-continuous path: add a `Gamma(log)`/`lognormal` family branch to
+  `standardize_data()`/`make_4pl_formula()`/`fit_4pl()` (free upper asymptote, no
+  [0,1] reparam — the asymptote bound logic must relax for unbounded responses).
+- **(B) Unified hurdle 4PL (principled target).** One `brm(hurdle_gamma)` with a
+  4PL `bf()` on both `mu` and `hu`. More elegant, more plumbing (two non-linear
+  formulas, asymptote reparam only on `hu`), and the downstream `extract_tdt()`
+  must learn to read two midpoints.
+
+Recommendation: build (A) first (it already gives the decomposition and the
+sterility `z` for free), treat (B) as the elegant follow-up.
+
+## Validation plan (before any manuscript claim)
+
+Mirror the survival two-stage-bias study [[2026-05-16-two-stage-bias-sim-writeup]]:
+
+1. **DGP:** simulate per-individual `prod` from a known hurdle-Gamma TDT — true
+   `z_sterility`, `z_fecundity`, baseline fecundity, `sCTmax`, dispersion — on the
+   `dsuzukii` temperature × time grid, including the ~55% zero regime.
+2. **Recovery:** fit the joint model; check it recovers the true `z`/`sCTmax` with
+   calibrated CrIs.
+3. **Equivalence-then-advantage** (per [[feedback_equivalence_framing]]): under
+   benign conditions show the joint overall-`Et50` matches the classical
+   two-stage `Et50 → OLS`; then show the joint model additionally returns
+   (a) the sterility-vs-fecundity decomposition, (b) calibrated uncertainty on
+   `Et50`, (c) group contrasts — none available from the two-stage.
+4. **Stress tests:** heavy zeros, hormesis at the warm end, sparse warm-edge cells.
+
+## Open questions / decisions for Daniel
+
+1. **Estimand:** report the *decomposition* (sterility-`Et50` + fecundity-`Et50`),
+   the *overall-mean* `Et50` (to match @orsted_suzukii_2024), or both? (I lean
+   both — decomposition is the contribution, overall-`Et50` is the bridge.)
+2. **Likelihood:** hurdle-Gamma (recommended) vs hurdle-lognormal for the positive
+   part; Tweedie as a sensitivity check?
+3. **Implementation:** two-fit decomposition (A, minimal) vs unified distributional
+   hurdle 4PL (B, principled)?
+4. **Hormesis** at 37–38 °C: fit monotone 4PL and flag, or accommodate a hump?
+5. **Damage machinery:** confirm we do **not** extend HI / `T_crit` to productivity
+   (descriptive `z`/`sCTmax` only) absent a reproductive-additivity test.
+6. **Control baseline:** accept the fitted upper asymptote as the `Et50` reference
+   (no measured `lvl = 0` control in the long file)?
+7. **Sex:** fit per sex (as for mortality) or sex as a covariate.
+
+## Verification status
+
+- EDA numbers reproduced live by this note's chunk against the installed
+  `dsuzukii` (55% zeros; zero-fraction rises with dose; positive-part overdispersion).
+- Modelling/likelihood reasoning is design-stage; **no model fitted yet** and the
+  recovery simulation is proposed, not run. The package extension (Gamma/hurdle
+  family path) is not yet implemented.
