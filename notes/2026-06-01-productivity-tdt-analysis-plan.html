@@ -2347,9 +2347,18 @@ window.Quarto = {
   <ul class="collapse">
   <li><a href="#likelihood-options-ranked" id="toc-likelihood-options-ranked" class="nav-link" data-scroll-target="#likelihood-options-ranked">Likelihood options (ranked)</a></li>
   </ul></li>
+  <li><a href="#how-z-ctmax1h-and-et50-are-computed-from-these-models" id="toc-how-z-ctmax1h-and-et50-are-computed-from-these-models" class="nav-link" data-scroll-target="#how-z-ctmax1h-and-et50-are-computed-from-these-models">How <code>z</code>, <code>CTmax(1h)</code>, and <code>Et50</code> are computed from these models</a>
+  <ul class="collapse">
+  <li><a href="#recap-in-the-standard-4pl-the-quantities-live-in-the-midpoint" id="toc-recap-in-the-standard-4pl-the-quantities-live-in-the-midpoint" class="nav-link" data-scroll-target="#recap-in-the-standard-4pl-the-quantities-live-in-the-midpoint">Recap — in the standard 4PL the quantities live in the midpoint</a></li>
+  <li><a href="#sterility-part-z_sterility-ctmax_sterility1h-closed-form" id="toc-sterility-part-z_sterility-ctmax_sterility1h-closed-form" class="nav-link" data-scroll-target="#sterility-part-z_sterility-ctmax_sterility1h-closed-form">Sterility part → <code>z_sterility</code>, <code>CTmax_sterility(1h)</code> — closed form</a></li>
+  <li><a href="#fecundity-part-z_fecundity-ctmax_fecundity1h-scale-matters" id="toc-fecundity-part-z_fecundity-ctmax_fecundity1h-scale-matters" class="nav-link" data-scroll-target="#fecundity-part-z_fecundity-ctmax_fecundity1h-scale-matters">Fecundity part → <code>z_fecundity</code>, <code>CTmax_fecundity(1h)</code> — scale matters</a></li>
+  <li><a href="#overall-mean-z_overall-ctmax_overall1h-et50_overall-numeric-matches-ørsted" id="toc-overall-mean-z_overall-ctmax_overall1h-et50_overall-numeric-matches-ørsted" class="nav-link" data-scroll-target="#overall-mean-z_overall-ctmax_overall1h-et50_overall-numeric-matches-ørsted">Overall mean → <code>z_overall</code>, <code>CTmax_overall(1h)</code>, <code>Et50_overall</code> — numeric, matches Ørsted</a></li>
+  <li><a href="#how-the-three-likelihoods-differ-for-these-calculations" id="toc-how-the-three-likelihoods-differ-for-these-calculations" class="nav-link" data-scroll-target="#how-the-three-likelihoods-differ-for-these-calculations">How the three likelihoods differ for these calculations</a></li>
+  <li><a href="#route-a-vs-route-b-where-the-uncertainty-differs" id="toc-route-a-vs-route-b-where-the-uncertainty-differs" class="nav-link" data-scroll-target="#route-a-vs-route-b-where-the-uncertainty-differs">Route A vs Route B — where the uncertainty differs</a></li>
+  </ul></li>
   <li><a href="#what-this-needs-from-the-package" id="toc-what-this-needs-from-the-package" class="nav-link" data-scroll-target="#what-this-needs-from-the-package">What this needs from the package</a></li>
   <li><a href="#validation-plan-before-any-manuscript-claim" id="toc-validation-plan-before-any-manuscript-claim" class="nav-link" data-scroll-target="#validation-plan-before-any-manuscript-claim">Validation plan (before any manuscript claim)</a></li>
-  <li><a href="#open-questions-decisions-for-daniel" id="toc-open-questions-decisions-for-daniel" class="nav-link" data-scroll-target="#open-questions-decisions-for-daniel">Open questions / decisions for Daniel</a></li>
+  <li><a href="#decisions-2026-06-01-and-remaining-questions" id="toc-decisions-2026-06-01-and-remaining-questions" class="nav-link" data-scroll-target="#decisions-2026-06-01-and-remaining-questions">Decisions (2026-06-01) and remaining questions</a></li>
   <li><a href="#verification-status" id="toc-verification-status" class="nav-link" data-scroll-target="#verification-status">Verification status</a></li>
   </ul>
 </nav>
@@ -2524,6 +2533,89 @@ window.Quarto = {
 <p><code>hurdle_gamma</code> in brms is <strong>distributional</strong>: both the <code>mu</code> (fecundity) and <code>hu</code> (zero/sterility) parameters take their own formula, so each gets its own 4PL with temperature on the midpoint <span class="citation" data-cites="burkner_brms_2017">(<a href="#ref-burkner_brms_2017" role="doc-biblioref">Bürkner 2017</a>)</span>. That is the unified model. For a first implementation it is equivalent — and maximally reuses existing code — to fit the two parts as <strong>two separate 4PL fits</strong>: sterility through the current proportion path, fecundity (producers only) through a new Gamma path.</p>
 </section>
 </section>
+<section id="how-z-ctmax1h-and-et50-are-computed-from-these-models" class="level2">
+<h2 class="anchored" data-anchor-id="how-z-ctmax1h-and-et50-are-computed-from-these-models">How <code>z</code>, <code>CTmax(1h)</code>, and <code>Et50</code> are computed from these models</h2>
+<p>The key idea: <strong>every TDT quantity is read off the temperature dependence of the time at which the modelled mean crosses a threshold.</strong> What changes between models is (a) <em>which</em> mean, and (b) whether that crossing has a closed form or needs numerical inversion. Nothing here requires the response to be a probability.</p>
+<section id="recap-in-the-standard-4pl-the-quantities-live-in-the-midpoint" class="level3">
+<h3 class="anchored" data-anchor-id="recap-in-the-standard-4pl-the-quantities-live-in-the-midpoint">Recap — in the standard 4PL the quantities live in the midpoint</h3>
+<p>For a 4PL with midpoint linear in temperature, <span class="math inline">\(\mathrm{mid}(T)=\beta_0+\beta_1(T-\bar T)\)</span>, and a <strong>relative</strong> threshold (the response halfway between its fitted asymptotes), the crossing time satisfies <span class="math inline">\(\log_{10}t=\mathrm{mid}(T)\)</span> exactly. So</p>
+<p><span class="math display">\[\log_{10}\mathrm{Et50}(T)=\beta_0+\beta_1(T-\bar T),\qquad
+z=-\tfrac{1}{\beta_1},\qquad
+\mathrm{CTmax}(t_{\text{ref}})=\bar T+\frac{\log_{10}t_{\text{ref}}-\beta_0}{\beta_1},\]</span></p>
+<p>and <span class="math inline">\(t_{\text{ref}}=60\)</span> min gives <span class="math inline">\(\mathrm{CTmax(1h)}\)</span>. Under an <strong>absolute</strong> threshold (a fixed response value) an asymmetry term is added and, if the asymptotes/steepness vary with <span class="math inline">\(T\)</span>, the line bends — then <span class="math inline">\(z\)</span> is the <strong>local</strong> slope <span class="math inline">\(-1/(\mathrm{d}\log_{10}\mathrm{Et50}/\mathrm{d}T)\)</span> via finite differences, pooled over the assay temperatures. This is exactly <code>extract_tdt()</code>’s numeric path (see [[project_z_ctmax_derivation]]). Everything below applies this to the productivity submodels.</p>
+</section>
+<section id="sterility-part-z_sterility-ctmax_sterility1h-closed-form" class="level3">
+<h3 class="anchored" data-anchor-id="sterility-part-z_sterility-ctmax_sterility1h-closed-form">Sterility part → <code>z_sterility</code>, <code>CTmax_sterility(1h)</code> — closed form</h3>
+<p>The hurdle submodel <span class="math inline">\(\pi(t;T)=\Pr(\text{fertile})\)</span> is an ordinary proportion 4PL. With the relative threshold (50% of the way from unexposed fertility <span class="math inline">\(u_s\)</span> down to the sterile floor <span class="math inline">\(\ell_s\)</span>) the crossing is <span class="math inline">\(\log_{10}t=\mathrm{mid}_s(T)\)</span>, so</p>
+<p><span class="math display">\[z_{\text{ster}}=-\tfrac{1}{\beta_1^{s}},\qquad
+\mathrm{CTmax_{ster}}(1h)=\bar T+\frac{\log_{10}60-\beta_0^{s}}{\beta_1^{s}}.\]</span></p>
+<p>Because this part <strong>is</strong> a proportion 4PL, <code>extract_tdt()</code> already returns these numbers for free if the fertile/sterile indicator is fit through the existing path. Reading: the temperature/time at which heat halves the chance of reproducing at all (a thermal <em>fertility</em> limit, <span class="citation" data-cites="snook_fertility_2026">Snook <em>et al.</em> (<a href="#ref-snook_fertility_2026" role="doc-biblioref">2026</a>)</span>).</p>
+</section>
+<section id="fecundity-part-z_fecundity-ctmax_fecundity1h-scale-matters" class="level3">
+<h3 class="anchored" data-anchor-id="fecundity-part-z_fecundity-ctmax_fecundity1h-scale-matters">Fecundity part → <code>z_fecundity</code>, <code>CTmax_fecundity(1h)</code> — scale matters</h3>
+<p>The positive-part mean <span class="math inline">\(m(t;T)=E[Y\mid Y&gt;0]\)</span> is a <strong>free-upper-asymptote</strong> 4PL (<span class="math inline">\(u_f\)</span> = baseline fecundity, <span class="math inline">\(\ell_f\approx0\)</span>). The scale the 4PL sits on decides what <code>Et50</code> means:</p>
+<ul>
+<li><strong>4PL on the natural mean <span class="math inline">\(m\)</span></strong> (positive, identity-style): the relative midpoint is the <strong>arithmetic</strong> 50%-of-baseline point, so <span class="math inline">\(\log_{10}\mathrm{Et50_{fec}}(T)=\mathrm{mid}_f(T)\)</span> and <span class="math inline">\(z_{\text{fec}}=-1/\beta_1^{f}\)</span> in closed form — directly analogous to PSII.</li>
+<li><strong>4PL on <span class="math inline">\(\log m\)</span></strong> (the default log link for Gamma/lognormal): the sigmoid midpoint is the <strong>geometric</strong> 50% point. For the arithmetic “50% of baseline fecundity” <code>Et50</code>, solve <span class="math inline">\(m(t;T)=0.5\,u_f\)</span> numerically; if a geometric-half definition is acceptable, <span class="math inline">\(\mathrm{mid}_f\)</span> serves directly. We will report the arithmetic definition (solved numerically) to match the “% of control” meaning.</li>
+<li><strong>Lognormal caveat:</strong> the lognormal <em>mean</em> is <span class="math inline">\(\exp(\eta+\sigma^2/2)\)</span>, not <span class="math inline">\(\exp(\eta)\)</span>. If the log-scale SD <span class="math inline">\(\sigma\)</span> is constant across <span class="math inline">\(t\)</span>, the <span class="math inline">\(\sigma^2/2\)</span> term cancels in a <em>relative</em> (ratio-to-baseline) threshold and <code>Et50</code> is unaffected; if <span class="math inline">\(\sigma\)</span> varies with dose it does not cancel and must be carried. Gamma has no such offset (mean <span class="math inline">\(=\exp(\eta)\)</span> under a log link).</li>
+</ul>
+</section>
+<section id="overall-mean-z_overall-ctmax_overall1h-et50_overall-numeric-matches-ørsted" class="level3">
+<h3 class="anchored" data-anchor-id="overall-mean-z_overall-ctmax_overall1h-et50_overall-numeric-matches-ørsted">Overall mean → <code>z_overall</code>, <code>CTmax_overall(1h)</code>, <code>Et50_overall</code> — numeric, matches Ørsted</h3>
+<p>The quantity <span class="citation" data-cites="orsted_suzukii_2024">Ørsted <em>et al.</em> (<a href="#ref-orsted_suzukii_2024" role="doc-biblioref">2024</a>)</span> report is built on the <strong>overall</strong> mean, which for a hurdle model is the product <span class="math inline">\(\mu(t;T)=\pi(t;T)\,m(t;T)\)</span>, with unexposed baseline <span class="math inline">\(\mu_0(T)=u_s\,u_f\)</span>. Then <span class="math inline">\(\mathrm{Et50_{overall}}(T)\)</span> solves</p>
+<p><span class="math display">\[\pi(t;T)\,m(t;T)=0.5\,\mu_0(T),\]</span></p>
+<p>which has <strong>no closed form</strong> — solve per posterior draw on a time grid (the same surface inversion <code>extract_tdt()</code> does in absolute mode). Being the crossing of a <em>product of two sigmoids</em>, <span class="math inline">\(\log_{10}\mathrm{Et50_{overall}}(T)\)</span> is generally <strong>not</strong> linear in <span class="math inline">\(T\)</span>: report <span class="math inline">\(z_{\text{overall}}\)</span> as the local slope (finite difference, pooled over assay temps) and <span class="math inline">\(\mathrm{CTmax_{overall}}(1h)\)</span> by interpolating where <span class="math inline">\(\mathrm{Et50_{overall}}=60\)</span> min. This <span class="math inline">\(z_{\text{overall}}\)</span> is the apples-to-apples comparison with Ørsted’s single productivity (“fecund”) <span class="math inline">\(z\)</span> (≈3.3–3.5) and <span class="math inline">\(\mathrm{sCTmax}\)</span>.</p>
+</section>
+<section id="how-the-three-likelihoods-differ-for-these-calculations" class="level3">
+<h3 class="anchored" data-anchor-id="how-the-three-likelihoods-differ-for-these-calculations">How the three likelihoods differ for these calculations</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>model</th>
+<th>mean structure</th>
+<th>yields</th>
+<th>note</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>hurdle-Gamma</td>
+<td><code>hu</code> (sterility 4PL) + <code>mu</code> (fecundity 4PL, log link)</td>
+<td>sterility, fecundity, <strong>and</strong> overall</td>
+<td>mean <span class="math inline">\(=\exp(\eta)\)</span></td>
+</tr>
+<tr class="even">
+<td>hurdle-lognormal</td>
+<td>same two parts</td>
+<td>sterility, fecundity, overall</td>
+<td>fecundity mean <span class="math inline">\(=\exp(\eta+\sigma^2/2)\)</span></td>
+</tr>
+<tr class="odd">
+<td>Tweedie</td>
+<td><strong>single</strong> mean <span class="math inline">\(\mu\)</span> (log link, <span class="math inline">\(1&lt;p&lt;2\)</span>)</td>
+<td><strong>overall only</strong></td>
+<td>sterility &amp; fecundity conflated</td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>decomposition</strong> (<span class="math inline">\(z_{\text{ster}}\)</span>, <span class="math inline">\(z_{\text{fec}}\)</span>) comes only from the two hurdle models; hurdle-Gamma vs hurdle-lognormal is the sensitivity check on the positive-part distribution. The <strong>overall</strong> <span class="math inline">\(z\)</span>/<span class="math inline">\(\mathrm{CTmax}\)</span>/<span class="math inline">\(\mathrm{Et50}\)</span> is computable from <strong>all three</strong> (Tweedie included) — a cross-likelihood sensitivity check that should agree if all fit adequately. Tweedie cannot say whether the decline is sterility or fewer offspring; the hurdle models can.</p>
+</section>
+<section id="route-a-vs-route-b-where-the-uncertainty-differs" class="level3">
+<h3 class="anchored" data-anchor-id="route-a-vs-route-b-where-the-uncertainty-differs">Route A vs Route B — where the uncertainty differs</h3>
+<p>Point estimates of the part-wise quantities are identical between Route A (two separate fits) and Route B (one unified hurdle fit) — same submodels. The difference is the <strong>overall</strong> <code>Et50</code>:</p>
+<ul>
+<li><strong>Route A</strong> fits sterility and fecundity independently, so combining them for <span class="math inline">\(\mu=\pi m\)</span> treats their posteriors as <strong>independent</strong> — the <span class="math inline">\(\mathrm{Et50_{overall}}\)</span> interval ignores any sterility↔︎fecundity correlation.</li>
+<li><strong>Route B</strong> estimates <code>hu</code> and <code>mu</code> jointly, so their posterior correlation <strong>propagates</strong> into <span class="math inline">\(\mathrm{Et50_{overall}}\)</span>.</li>
+</ul>
+<p>So comparing A and B is a <strong>miniature joint-vs-two-stage demonstration on the same dataset</strong> (thematically aligned with the manuscript): expect point agreement, watch for a difference in the <span class="math inline">\(\mathrm{Et50_{overall}}\)</span> credible interval. That is precisely why doing both is worthwhile.</p>
+</section>
+</section>
 <section id="what-this-needs-from-the-package" class="level2">
 <h2 class="anchored" data-anchor-id="what-this-needs-from-the-package">What this needs from the package</h2>
 <p><code>fit_4pl()</code> currently resolves family from <code>response_type</code> ∈ {count (beta-binomial), proportion (Beta)} (see [[project_beta_family_support]]). Two incremental routes (decide in §Open questions):</p>
@@ -2546,12 +2638,16 @@ window.Quarto = {
 <li><strong>Stress tests:</strong> heavy zeros, hormesis at the warm end, sparse warm-edge cells.</li>
 </ol>
 </section>
-<section id="open-questions-decisions-for-daniel" class="level2">
-<h2 class="anchored" data-anchor-id="open-questions-decisions-for-daniel">Open questions / decisions for Daniel</h2>
+<section id="decisions-2026-06-01-and-remaining-questions" class="level2">
+<h2 class="anchored" data-anchor-id="decisions-2026-06-01-and-remaining-questions">Decisions (2026-06-01) and remaining questions</h2>
+<p><strong>Settled with Daniel (2026-06-01):</strong></p>
 <ol type="1">
-<li><strong>Estimand:</strong> report the <em>decomposition</em> (sterility-<code>Et50</code> + fecundity-<code>Et50</code>), the <em>overall-mean</em> <code>Et50</code> (to match <span class="citation" data-cites="orsted_suzukii_2024">Ørsted <em>et al.</em> (<a href="#ref-orsted_suzukii_2024" role="doc-biblioref">2024</a>)</span>), or both? (I lean both — decomposition is the contribution, overall-<code>Et50</code> is the bridge.)</li>
-<li><strong>Likelihood:</strong> hurdle-Gamma (recommended) vs hurdle-lognormal for the positive part; Tweedie as a sensitivity check?</li>
-<li><strong>Implementation:</strong> two-fit decomposition (A, minimal) vs unified distributional hurdle 4PL (B, principled)?</li>
+<li><strong>Estimand — RESOLVED: report all three.</strong> The sterility-<code>Et50</code> and fecundity-<code>Et50</code> <em>decomposition</em> <strong>and</strong> the overall-mean <code>Et50</code> (the latter to bridge to <span class="citation" data-cites="orsted_suzukii_2024">Ørsted <em>et al.</em> (<a href="#ref-orsted_suzukii_2024" role="doc-biblioref">2024</a>)</span>).</li>
+<li><strong>Implementation — RESOLVED: do both A and B and compare.</strong> Two-fit decomposition (A) and the unified distributional hurdle 4PL (B); the A-vs-B comparison is itself a joint-vs-separate demonstration (see §Route A vs Route B).</li>
+<li><strong>Likelihood — RESOLVED: all three.</strong> hurdle-Gamma, hurdle-lognormal, and Tweedie, as a sensitivity/comparison set — overall quantities cross-checked across all three, the decomposition across the two hurdle models.</li>
+</ol>
+<p><strong>Still open:</strong></p>
+<ol start="4" type="1">
 <li><strong>Hormesis</strong> at 37–38 °C: fit monotone 4PL and flag, or accommodate a hump?</li>
 <li><strong>Damage machinery:</strong> confirm we do <strong>not</strong> extend HI / <code>T_crit</code> to productivity (descriptive <code>z</code>/<code>sCTmax</code> only) absent a reproductive-additivity test.</li>
 <li><strong>Control baseline:</strong> accept the fitted upper asymptote as the <code>Et50</code> reference (no measured <code>lvl = 0</code> control in the long file)?</li>

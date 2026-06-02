@@ -146,6 +146,114 @@ first implementation it is equivalent — and maximally reuses existing code —
 fit the two parts as **two separate 4PL fits**: sterility through the current
 proportion path, fecundity (producers only) through a new Gamma path.
 
+## How `z`, `CTmax(1h)`, and `Et50` are computed from these models
+
+The key idea: **every TDT quantity is read off the temperature dependence of the
+time at which the modelled mean crosses a threshold.** What changes between models
+is (a) *which* mean, and (b) whether that crossing has a closed form or needs
+numerical inversion. Nothing here requires the response to be a probability.
+
+### Recap — in the standard 4PL the quantities live in the midpoint
+
+For a 4PL with midpoint linear in temperature, $\mathrm{mid}(T)=\beta_0+\beta_1(T-\bar T)$,
+and a **relative** threshold (the response halfway between its fitted asymptotes),
+the crossing time satisfies $\log_{10}t=\mathrm{mid}(T)$ exactly. So
+
+$$\log_{10}\mathrm{Et50}(T)=\beta_0+\beta_1(T-\bar T),\qquad
+z=-\tfrac{1}{\beta_1},\qquad
+\mathrm{CTmax}(t_{\text{ref}})=\bar T+\frac{\log_{10}t_{\text{ref}}-\beta_0}{\beta_1},$$
+
+and $t_{\text{ref}}=60$ min gives $\mathrm{CTmax(1h)}$. Under an **absolute**
+threshold (a fixed response value) an asymmetry term is added and, if the
+asymptotes/steepness vary with $T$, the line bends — then $z$ is the **local**
+slope $-1/(\mathrm{d}\log_{10}\mathrm{Et50}/\mathrm{d}T)$ via finite differences,
+pooled over the assay temperatures. This is exactly `extract_tdt()`'s numeric path
+(see [[project_z_ctmax_derivation]]). Everything below applies this to the
+productivity submodels.
+
+### Sterility part → `z_sterility`, `CTmax_sterility(1h)` — closed form
+
+The hurdle submodel $\pi(t;T)=\Pr(\text{fertile})$ is an ordinary proportion 4PL.
+With the relative threshold (50% of the way from unexposed fertility $u_s$ down to
+the sterile floor $\ell_s$) the crossing is $\log_{10}t=\mathrm{mid}_s(T)$, so
+
+$$z_{\text{ster}}=-\tfrac{1}{\beta_1^{s}},\qquad
+\mathrm{CTmax_{ster}}(1h)=\bar T+\frac{\log_{10}60-\beta_0^{s}}{\beta_1^{s}}.$$
+
+Because this part **is** a proportion 4PL, `extract_tdt()` already returns these
+numbers for free if the fertile/sterile indicator is fit through the existing
+path. Reading: the temperature/time at which heat halves the chance of
+reproducing at all (a thermal *fertility* limit, @snook_fertility_2026).
+
+### Fecundity part → `z_fecundity`, `CTmax_fecundity(1h)` — scale matters
+
+The positive-part mean $m(t;T)=E[Y\mid Y>0]$ is a **free-upper-asymptote** 4PL
+($u_f$ = baseline fecundity, $\ell_f\approx0$). The scale the 4PL sits on decides
+what `Et50` means:
+
+- **4PL on the natural mean $m$** (positive, identity-style): the relative midpoint
+  is the **arithmetic** 50%-of-baseline point, so $\log_{10}\mathrm{Et50_{fec}}(T)=\mathrm{mid}_f(T)$
+  and $z_{\text{fec}}=-1/\beta_1^{f}$ in closed form — directly analogous to PSII.
+- **4PL on $\log m$** (the default log link for Gamma/lognormal): the sigmoid
+  midpoint is the **geometric** 50% point. For the arithmetic "50% of baseline
+  fecundity" `Et50`, solve $m(t;T)=0.5\,u_f$ numerically; if a geometric-half
+  definition is acceptable, $\mathrm{mid}_f$ serves directly. We will report the
+  arithmetic definition (solved numerically) to match the "% of control" meaning.
+- **Lognormal caveat:** the lognormal *mean* is $\exp(\eta+\sigma^2/2)$, not
+  $\exp(\eta)$. If the log-scale SD $\sigma$ is constant across $t$, the
+  $\sigma^2/2$ term cancels in a *relative* (ratio-to-baseline) threshold and
+  `Et50` is unaffected; if $\sigma$ varies with dose it does not cancel and must be
+  carried. Gamma has no such offset (mean $=\exp(\eta)$ under a log link).
+
+### Overall mean → `z_overall`, `CTmax_overall(1h)`, `Et50_overall` — numeric, matches Ørsted
+
+The quantity @orsted_suzukii_2024 report is built on the **overall** mean, which
+for a hurdle model is the product $\mu(t;T)=\pi(t;T)\,m(t;T)$, with unexposed
+baseline $\mu_0(T)=u_s\,u_f$. Then $\mathrm{Et50_{overall}}(T)$ solves
+
+$$\pi(t;T)\,m(t;T)=0.5\,\mu_0(T),$$
+
+which has **no closed form** — solve per posterior draw on a time grid (the same
+surface inversion `extract_tdt()` does in absolute mode). Being the crossing of a
+*product of two sigmoids*, $\log_{10}\mathrm{Et50_{overall}}(T)$ is generally
+**not** linear in $T$: report $z_{\text{overall}}$ as the local slope (finite
+difference, pooled over assay temps) and $\mathrm{CTmax_{overall}}(1h)$ by
+interpolating where $\mathrm{Et50_{overall}}=60$ min. This $z_{\text{overall}}$ is
+the apples-to-apples comparison with Ørsted's single productivity ("fecund") $z$
+(≈3.3–3.5) and $\mathrm{sCTmax}$.
+
+### How the three likelihoods differ for these calculations
+
+| model | mean structure | yields | note |
+|---|---|---|---|
+| hurdle-Gamma | `hu` (sterility 4PL) + `mu` (fecundity 4PL, log link) | sterility, fecundity, **and** overall | mean $=\exp(\eta)$ |
+| hurdle-lognormal | same two parts | sterility, fecundity, overall | fecundity mean $=\exp(\eta+\sigma^2/2)$ |
+| Tweedie | **single** mean $\mu$ (log link, $1<p<2$) | **overall only** | sterility & fecundity conflated |
+
+The **decomposition** ($z_{\text{ster}}$, $z_{\text{fec}}$) comes only from the two
+hurdle models; hurdle-Gamma vs hurdle-lognormal is the sensitivity check on the
+positive-part distribution. The **overall** $z$/$\mathrm{CTmax}$/$\mathrm{Et50}$ is
+computable from **all three** (Tweedie included) — a cross-likelihood sensitivity
+check that should agree if all fit adequately. Tweedie cannot say whether the
+decline is sterility or fewer offspring; the hurdle models can.
+
+### Route A vs Route B — where the uncertainty differs
+
+Point estimates of the part-wise quantities are identical between Route A (two
+separate fits) and Route B (one unified hurdle fit) — same submodels. The
+difference is the **overall** `Et50`:
+
+- **Route A** fits sterility and fecundity independently, so combining them for
+  $\mu=\pi m$ treats their posteriors as **independent** — the
+  $\mathrm{Et50_{overall}}$ interval ignores any sterility↔fecundity correlation.
+- **Route B** estimates `hu` and `mu` jointly, so their posterior correlation
+  **propagates** into $\mathrm{Et50_{overall}}$.
+
+So comparing A and B is a **miniature joint-vs-two-stage demonstration on the same
+dataset** (thematically aligned with the manuscript): expect point agreement,
+watch for a difference in the $\mathrm{Et50_{overall}}$ credible interval. That is
+precisely why doing both is worthwhile.
+
 ## What this needs from the package
 
 `fit_4pl()` currently resolves family from `response_type` ∈ {count
@@ -181,15 +289,22 @@ Mirror the survival two-stage-bias study [[2026-05-16-two-stage-bias-sim-writeup
    `Et50`, (c) group contrasts — none available from the two-stage.
 4. **Stress tests:** heavy zeros, hormesis at the warm end, sparse warm-edge cells.
 
-## Open questions / decisions for Daniel
+## Decisions (2026-06-01) and remaining questions
 
-1. **Estimand:** report the *decomposition* (sterility-`Et50` + fecundity-`Et50`),
-   the *overall-mean* `Et50` (to match @orsted_suzukii_2024), or both? (I lean
-   both — decomposition is the contribution, overall-`Et50` is the bridge.)
-2. **Likelihood:** hurdle-Gamma (recommended) vs hurdle-lognormal for the positive
-   part; Tweedie as a sensitivity check?
-3. **Implementation:** two-fit decomposition (A, minimal) vs unified distributional
-   hurdle 4PL (B, principled)?
+**Settled with Daniel (2026-06-01):**
+
+1. **Estimand — RESOLVED: report all three.** The sterility-`Et50` and
+   fecundity-`Et50` *decomposition* **and** the overall-mean `Et50` (the latter to
+   bridge to @orsted_suzukii_2024).
+2. **Implementation — RESOLVED: do both A and B and compare.** Two-fit
+   decomposition (A) and the unified distributional hurdle 4PL (B); the A-vs-B
+   comparison is itself a joint-vs-separate demonstration (see §Route A vs Route B).
+3. **Likelihood — RESOLVED: all three.** hurdle-Gamma, hurdle-lognormal, and
+   Tweedie, as a sensitivity/comparison set — overall quantities cross-checked
+   across all three, the decomposition across the two hurdle models.
+
+**Still open:**
+
 4. **Hormesis** at 37–38 °C: fit monotone 4PL and flag, or accommodate a hump?
 5. **Damage machinery:** confirm we do **not** extend HI / `T_crit` to productivity
    (descriptive `z`/`sCTmax` only) absent a reproductive-additivity test.
