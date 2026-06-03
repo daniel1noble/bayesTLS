@@ -5290,10 +5290,15 @@ We could ask whether males and females are significantly different or not from e
   z_draws_f  <- get_z_draws(tdt_dros_f)
 
 # Now, if we want to compare whether the sexes are different we can create a contrasts  
-  diff_sex_z <- z_draws_m - z_draws_f
+  diff_sex_z <- z_draws_m$z - z_draws_f$z   # difference the z columns, not the tibbles
+
+# Pmcmc: two-sided posterior probability the M - F difference excludes 0
+# (2 x the smaller tail). Small pMCMC => the sexes differ.
+  pmcmc_sex_z <- 2 * min(mean(diff_sex_z > 0), mean(diff_sex_z < 0))
+ 
 ```
 
-
+The median difference in *z* between males and females is `r round(median(diff_sex_z), 2)` °C (95% CI: `r round(quantile(diff_sex_z, 0.025), 2)` to `r round(quantile(diff_sex_z, 0.975), 2)` °C; pMCMC = `r round(pmcmc_sex_z, 2)`). The interval spans zero, so the sexes' thermal sensitivities are not clearly distinguishable.
 
 #### Fitting a model to compare sexes directly
 
