@@ -1,0 +1,330 @@
+---
+title: "Plan: helper functions to apply the 4PL correction factor and derive z / CTmax from arbitrary custom models"
+author: "Daniel W.A. Noble (planning dialogue with Claude)"
+date: 2026-06-04
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    embed-resources: true
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+link-citations: true
+editor_options:
+  chunk_output_type: console
+---
+
+## Goal
+
+Make it **very easy** for users who fit their own 4PL models — arbitrary
+moderators (sex, life stage, clone, …) on *any* sub-parameter, plus random
+effects for quantitative-genetic / variance-decomposition work — to:
+
+1. apply the asymmetry **correction factor** and get the absolute
+   $\log_{10}\mathrm{LT}_p(T)$, $z$ and $CT_{max}$ as posterior draws; and
+2. decompose those derived quantities (e.g. heritability / repeatability of
+   absolute $z$ or $CT_{max}$ across clones).
+
+The by-hand demo in `ms/supplement.qmd` works but is model-specific (it parses
+coefficient names like `b_mid_sexM:temp_c`). That does not generalise. This note
+plans a small, versatile helper set.
+
+## The maths it must wrap
+
+4PL sub-parameters: asymptotes `low`, `up`; steepness `k`; midpoint `mid`. The
+package reparameterises to keep them identifiable:
+`low = lower + inv_logit(lowraw)·w_low`, `up = up_min + inv_logit(upraw)·w_up`,
+`k = exp(logk)`, `mid` on the natural ($\log_{10}$-time) scale.
+
+- **Correction factor (asymmetry term):**
+  $$C = \tfrac{1}{k}\,\ln\!\frac{up - p}{p - low}.$$
+- **Absolute LT$_p$ curve:** $\log_{10}\mathrm{LT}_p(T) = \mathrm{mid}(T) + C(T)$.
+- **Thermal sensitivity:** $z(T) = -1/\big(\mathrm{d}\log_{10}\mathrm{LT}_p/\mathrm{d}T\big)$.
+  Relative threshold ($p$ = midpoint) $\Rightarrow C=0 \Rightarrow z = -1/\beta_{1,\text{mid}}$
+  exactly; absolute $\Rightarrow$ local slope of the full curve (see
+  [[project_z_ctmax_derivation]], [[2026-05-31-delta-method-two-stage]]).
+- **CTmax:** the $T$ solving $\log_{10}\mathrm{LT}_p(T) = \log_{10}t_{ref}$.
+
+## The versatility problem — and the clean solution
+
+Users may put moderators on **any** of `low`, `up`, `k`, `mid`, and add random
+effects (clone, batch). Reading off `b_mid_sexM:temp_c`-style coefficients is
+fragile and model-specific, and it is exactly the thing that makes the supplement
+demo non-reusable.
+
+**Solution:** never parse coefficients. Evaluate each sub-parameter at a
+user-supplied **moderator grid** with brms's own machinery,
+`posterior_linpred(fit, nlpar = , newdata = , re_formula = )`
+[@burkner_brms_2017]. brms evaluates the *full* linear predictor for that
+sub-parameter — every moderator and the chosen random-effect structure —
+automatically. The helper then applies the reparam transform and the closed
+forms above. This handles "sex on `up`/`low`/`k` too" with zero extra code: the
+user just sets those columns in `newdata`.
+
+### Proof of concept (validated)
+
+On the custom joint-sex model (`mid ~ sex * temp_c`, asymptotes/steepness shared)
+this recovers the by-hand absolute $z$ and $CT_{max}$ exactly — generically.
+
+```{r poc}
+#| message: false
+#| warning: false
+library(brms)
+fit <- readRDS(here::here("output", "models", "fit_dsuzukii_mortality_sex_joint.rds"))
+
+# Moderator grid: each sex at temp_c = -0.5, 0, +0.5 (dummy logd/n_total for the
+# main formula). No coefficient names anywhere.
+nd <- expand.grid(temp_c = c(-0.5, 0, 0.5), sex = c("F", "M"), logd = 1, n_total = 1)
+
+lp <- function(np) posterior_linpred(fit, nlpar = np, newdata = nd, re_formula = NA)
+low <- 0.001 + plogis(lp("lowraw")) * 0.498
+up  <- 0.501 + plogis(lp("upraw"))  * 0.498
+k   <- exp(lp("logk"))
+mid <- lp("mid")
+
+logLT <- mid + log((up - 0.5) / (0.5 - low)) / k   # absolute LT50 (p = 0.5)
+zF <- -1 / (logLT[, 3] - logLT[, 1]);  zM <- -1 / (logLT[, 6] - logLT[, 4])
+T_bar <- 36.106
+ctF <- T_bar + (log10(240) - logLT[, 2]) / (logLT[, 3] - logLT[, 1])
+ctM <- T_bar + (log10(240) - logLT[, 5]) / (logLT[, 6] - logLT[, 4])
+round(c(z_F = median(zF), z_M = median(zM),
+        CTmax4h_F = median(ctF), CTmax4h_M = median(ctM)), 2)
+```
+
+(By-hand earlier: $z$ = 3.04 / 3.18; $CT_{max,4h}$ = 35.14 / 35.17.)
+
+## How the `newdata` approach works (step by step)
+
+The one concept to get: **`newdata` is a grid whose rows are the
+(moderator-level $\times$ temperature) combinations at which you want the
+LT$_p$ curve evaluated.** Three steps:
+
+1. **Pick the groups** you want separate $z$ / $CT_{max}$ for — the moderator
+   combinations (e.g. F, M; or each clone). These are columns in `newdata`.
+2. **Each group needs its LT$_p$ curve *across temperature*** — because $z$ is
+   the curve's slope and $CT_{max}$ is where it crosses $\log_{10}t_{ref}$. A
+   single temperature gives no slope, so `newdata` also spans a short
+   **temperature axis**.
+3. So `newdata` = (group levels) $\times$ (temperature points).
+   `posterior_linpred(nlpar=)` returns each sub-parameter at every row; we form
+   $\log_{10}\mathrm{LT}_p$ at every row, then **within each group** take the
+   slope (→ $z$) or the crossing (→ $CT_{max}$) along the temperature axis.
+
+Every `newdata` column therefore plays one of three roles:
+
+| role | example columns | used for |
+|---|---|---|
+| **temperature axis** | `temp_c` | x-axis for the slope ($z$) / crossing ($CT_{max}$) |
+| **moderators (the groups)** | `sex`, `life_stage`, `clone` | one $z$/$CT_{max}$ per unique combination |
+| **inert** | `logd`, `n_total` | satisfy the formula only; dummy values, ignored by the nlpar predictors |
+
+Worked example — per-sex absolute $z$, fully generic (no coefficient names, no
+hard-coded sexes; verified to give F 3.04, M 3.18):
+
+```{r newdata-logic}
+#| eval: false
+# 1. groups (sex) x a short temperature axis
+grid <- expand.grid(sex = c("F","M"), temp_c = seq(-1, 1, by = 0.5),
+                    logd = 1, n_total = 1)
+
+# 2. sub-parameters at every row (draws x rows), then absolute log10 LT50
+lp  <- function(np) posterior_linpred(fit, nlpar = np, newdata = grid, re_formula = NA)
+low <- 0.001 + plogis(lp("lowraw")) * 0.498
+up  <- 0.501 + plogis(lp("upraw"))  * 0.498
+k   <- exp(lp("logk")); mid <- lp("mid")
+logLT <- mid + log((up - 0.5) / (0.5 - low)) / k
+
+# 3. within each group, z = -1 / slope of logLT over temp_c (per-draw LS slope)
+z_by_sex <- sapply(unique(grid$sex), function(s) {
+  cols <- grid$sex == s; w <- grid$temp_c[cols] - mean(grid$temp_c[cols])
+  -1 / as.vector(logLT[, cols] %*% w / sum(w^2))
+})                                            # draws x groups; summarise columns
+```
+
+`tls_z()` / `tls_ctmax()` just wrap steps 2–3: hand them `newdata`, say which
+column is the **temperature axis** (`temp = "temp_c"`) and which are the
+**grouping moderators** (`by = "sex"`), and they return per-group posterior
+draws. Random effects (e.g. clone) enter by adding the clone column to `newdata`
+and `by` and choosing `re_formula` to include the clone REs — same machinery.
+
+## Proposed architecture — three layers
+
+**Layer 1 — atomic math helpers** (operate on numeric posterior draws;
+completely model-agnostic — the "very simple" functions Daniel asked for):
+
+```r
+tls_correction(low, up, k, p = 0.5)        # (1/k) * log((up - p)/(p - low))
+tls_logLT(mid, low, up, k, p = 0.5)        # mid + correction
+# plus draw-level curve -> z and curve -> CTmax given a temperature grid
+```
+
+A user with an exotic model can extract draws of `low/up/k/mid` however they like
+and call these directly. Maximum flexibility, no assumptions.
+
+**Layer 2 — evaluate sub-parameters at a moderator grid** (the versatile
+primitive, built on `posterior_linpred(nlpar=)`):
+
+```r
+tls_pars(fit, newdata, re_formula = NA, lower = 0, upper = 1, nlpars = c(...))
+#   -> tidy draws of (low, up, k, mid) for every row of `newdata`
+tls_logLT(fit, newdata, p = 0.5)                       # Layer 2 -> Layer 1
+tls_z(fit, newdata, temp = "temp_c", by = NULL,        # group-wise z
+      p = 0.5, mode = c("absolute","relative"))        #   default: absolute
+tls_ctmax(fit, newdata, temp = "temp_c", by = NULL,    # group-wise CTmax
+          t_ref = 60, p = 0.5)
+#   temp = temperature-axis column; by = grouping moderator column(s),
+#   default = every non-temp, non-inert column. re_formula passes through.
+```
+
+For a `bayes_tls` workflow, the bounds (`lower/upper`), nlpar names and the
+temperature/centring come from `tdt_meta`. For a **bring-your-own brms fit**, the
+user passes them (defaults = the package reparam), so custom models like the
+joint-sex one work unchanged.
+
+**Layer 3 — variance decomposition / quant-gen — deferred (future development).**
+Not built now (decision 2026-06-04). Recorded for later: Layer 2 already returns
+per-group draws (one row per `clone`, `re_formula` including the clone REs), so a
+future `tls_var_decomp()` could turn those into a posterior of among-group
+variance / repeatability / $H^2$ of absolute $z$ or $CT_{max}$. Two constraints to
+respect when it is built: (i) $z$ and $CT_{max}$ are *non-linear* transforms, so
+decompose the **derived quantity at the draw level**, not by summing raw-nlpar
+variance components; (ii) a `clone` effect gives broad-sense repeatability/$H^2$
+— narrow-sense $h^2$ needs an animal-model relatedness structure
+[@nakagawa_repeatability_2010; @nakagawa_rsquared_2013].
+
+## Top-level `tls()` wrapper
+
+One call that returns the classical TDT table — $z$, $CT_{max}$, and (for lethal
+endpoints) $T_{crit}$ — **per moderator group**, built on the Layer-2 functions.
+
+```r
+tls(fit, newdata,
+    temp   = "temp_c",
+    by     = NULL,             # grouping moderators (default: all non-temp/inert cols)
+    params = "all",            # "all" | "z" | "ctmax" | c("z","ctmax") | ...
+    mode   = "absolute",       # absolute (default) or relative
+    p      = 0.5, t_ref = 60,
+    lethal = FALSE,            # T_crit only meaningful for lethal endpoints
+    TC_rate_range = c(0.1, 1),
+    re_formula = NA, lower = 0, upper = 1, ...)
+```
+
+**`params` semantics**
+
+- `"all"` (default) → $z$ + $CT_{max}$ always, **plus $T_{crit}$ iff
+  `lethal = TRUE`** ("possibly tcrit if relevant"). With `lethal = FALSE`
+  (sublethal — productivity, coma, PSII) `"all"` returns just $z$ + $CT_{max}$ and
+  notes $T_{crit}$ was skipped.
+- a subset (`c("z","ctmax")`) or a single value (`"z"`) → exactly those.
+- requesting `"tcrit"` with `lethal = FALSE` → error: the rate-multiplier
+  $T_{crit}$ is undefined for performance endpoints (see [[project_tcrit_definition]]).
+
+**Under the hood — one consistent posterior.** `tls()` evaluates the four
+sub-parameters once at `newdata` (Layer 2), forms $\log_{10}LT_p$, then derives
+$z$, $CT_{max}$ and $T_{crit}$ from the **same draws** — so $z$ and $CT_{max}$
+share draws and $T_{crit} = CT_{max,1h} + z\cdot\log_{10}(r^\*)$ pairs them per
+draw (genuinely joint, exactly as `extract_tdt()`). $T_{crit}$ is always anchored
+to $CT_{max}$ at 1 h regardless of the `t_ref` shown for $CT_{max}$.
+
+**Returns** a `tls` object: a tidy per-group summary (group × quantity × median +
+95% CrI) plus the per-group draws (so contrasts and, later, variance
+decomposition run on them). Accessors mirror `get_*_draws()` / `get_*_summary()`.
+
+**Relationship to `extract_tdt()`.** `tls()` is the moderator-aware
+generalisation; `extract_tdt()` is the special case (standard formula, `by = NULL`).
+`tls_z()` / `tls_ctmax()` / `tls_tcrit()` stay callable for one quantity at a time;
+`tls()` bundles them.
+
+Validated prototype (joint-sex fit) — one call yields the per-group TDT table:
+
+```{r tls-wrapper-proto}
+#| message: false
+#| warning: false
+set.seed(123)
+tls_proto <- function(fit, by, params = "all", mode = "absolute", p = 0.5,
+                      t_ref = 60, lethal = FALSE, TC_rate_range = c(0.1, 1),
+                      temps = seq(-1, 1, by = 0.5), T_bar = 36.106, re_formula = NA) {
+  if (identical(params, "all")) params <- c("z", "ctmax", if (lethal) "tcrit")
+  nd <- do.call(expand.grid, c(by, list(temp_c = temps, logd = 1, n_total = 1)))
+  lp <- function(np) brms::posterior_linpred(fit, nlpar = np, newdata = nd, re_formula = re_formula)
+  low <- 0.001 + plogis(lp("lowraw")) * 0.498; up <- 0.501 + plogis(lp("upraw")) * 0.498
+  logLT <- lp("mid") + if (mode == "absolute") log((up - p) / (p - low)) / exp(lp("logk")) else 0
+  g <- interaction(nd[names(by)], drop = TRUE)
+  do.call(rbind, lapply(levels(g), function(lev) {
+    cols <- which(g == lev); tc <- nd$temp_c[cols]; w <- tc - mean(tc)
+    b <- as.vector(logLT[, cols] %*% w / sum(w^2))               # per-draw slope
+    a <- rowMeans(logLT[, cols]) - b * mean(tc)                  # intercept at temp_c = 0
+    qs <- function(x) round(quantile(x, c(.5, .025, .975)), 2)
+    out <- NULL
+    if ("z"     %in% params) out <- rbind(out, c(group = lev, quantity = "z",     setNames(qs(-1 / b), c("med","lo","hi"))))
+    if ("ctmax" %in% params) out <- rbind(out, c(group = lev, quantity = "CTmax", setNames(qs(T_bar + (log10(t_ref) - a) / b), c("med","lo","hi"))))
+    if ("tcrit" %in% params) {
+      ct1 <- T_bar + (log10(60) - a) / b
+      u   <- runif(length(b), log10(TC_rate_range[1] / 100), log10(TC_rate_range[2] / 100))
+      out <- rbind(out, c(group = lev, quantity = "Tcrit", setNames(qs(ct1 + (-1 / b) * u), c("med","lo","hi"))))
+    }
+    out
+  }))
+}
+tls_proto(fit, by = list(sex = c("F", "M")), params = "all", lethal = TRUE, t_ref = 60 * 4)
+```
+
+## Use-case walkthroughs
+
+1. **Moderator on `mid` only (sex):** `newdata` = sex × temperature grid,
+   `re_formula = NA` → per-sex $z$, $CT_{max}$. (The supplement case, now generic.)
+2. **Moderators on `up`/`low`/`k` too:** identical call — `posterior_linpred`
+   evaluates the sex-specific `up`, `low`, `k`, so the correction factor is the
+   correctly-moderated one. No extra work; this is the key win.
+3. **Quant-gen / heritability (future):** fit e.g.
+   `mid ~ temp_c + (1 + temp_c | clone)`; `newdata` one row per clone with
+   `re_formula` including the clone REs gives per-clone $z$/$CT_{max}$ draws
+   *today* (Layer 2). Turning those into among-clone variance / $H^2$ is the
+   deferred Layer 3.
+
+## Integration into the general workflow
+
+`standardize_data()` → `fit_4pl()` **or the user's own brms 4PL** → these helpers
+→ contrasts / variance decomposition. `extract_tdt()` becomes a thin wrapper over
+Layer 2 for the standard case, so there is one derivation code path. The current
+`derive_tdt_curve()` / `derive_temperature_for_duration()` / `derive_z()` are the
+standard-formula special case; Layer 2 generalises them to arbitrary moderators
+via `newdata`.
+
+## Decisions (2026-06-04) and open questions
+
+**Settled with Daniel (2026-06-04):**
+
+- **Naming — RESOLVED:** new `tls_*` family for the generic layer; keep
+  `derive_*` as today.
+- **z default — RESOLVED: absolute.** The full-curve (absolute) threshold is the
+  field standard, so `tls_z()` / `tls_ctmax()` default to it; relative is
+  available via `mode = "relative"`.
+- **Heritability — RESOLVED: deferred** to future development (Layer 3 above).
+
+**Still open:**
+
+1. **Bring-your-own-fit contract:** require a `bayes_tls` workflow (bounds/nlpars
+   known) or also accept a raw `brmsfit` + a small spec (nlpar names,
+   `lower/upper`, temperature variable)? Defaults = package reparam. (Lean: accept
+   raw fits — that is the whole point for custom models like the joint-sex one.)
+2. **`extract_tdt()` default — needs a decision.** It currently defaults to the
+   *relative* threshold (`target_surv`), whereas the field standard (and the new
+   `tls_*` default) is *absolute*. Flipping `extract_tdt()` to absolute would
+   change existing case-study numbers (shrimp, zebrafish, leaf all call it without
+   `target_surv`) and require re-caching/re-checking those. Options: (a) flip the
+   default to absolute for consistency and re-verify the case studies, or (b) keep
+   `extract_tdt()` relative and make only the new `tls_*` layer default absolute.
+3. **Temperature handling:** auto from `tdt_meta` for workflows; explicit `temp =`
+   for raw fits (reflected in the signatures above).
+4. **Convenience:** ship a `tls_newgrid()` builder for the moderator ×
+   temperature grid?
+
+## Verification status
+
+- The `posterior_linpred(nlpar=)` mechanism is validated above on a custom model
+  (recovers by-hand $z$ and $CT_{max}$ to the reported precision). **No helper
+  functions implemented yet** — this is the design. Related:
+  [[project_function_architecture]], [[project_z_ctmax_derivation]],
+  [[2026-06-01-productivity-tdt-analysis-plan]].
