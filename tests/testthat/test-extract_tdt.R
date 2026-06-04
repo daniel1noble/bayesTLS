@@ -68,7 +68,8 @@ test_that("extract_tdt z is read from the posterior and z_local is opt-in", {
   # Relative z equals -1 / b_mid_temp_c read straight from the posterior — no
   # regression. (Compare medians over all draws; extract_tdt subsamples.)
   d  <- posterior::as_draws_df(get_brmsfit(wf)) |> as.data.frame()
-  out_all <- extract_tdt(wf, t_ref = 60, ndraws = brms::ndraws(get_brmsfit(wf)))
+  out_all <- extract_tdt(wf, t_ref = 60, target_surv = "relative",
+                         ndraws = brms::ndraws(get_brmsfit(wf)))
   expect_equal(out_all$z$summary$z_median,
                stats::median(-1 / d$b_mid_temp_c), tolerance = 1e-8)
 

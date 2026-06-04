@@ -8,7 +8,7 @@ derive_temperature_for_duration(
   workflow,
   exposure_duration,
   temp_grid,
-  target_surv = "relative",
+  target_surv = "absolute",
   ndraws = 1000,
   probs = c(0.025, 0.5, 0.975)
 )
@@ -20,7 +20,7 @@ derive_temperature_for_duration(
 
 \item{temp_grid}{Numeric vector of temperatures to search over.}
 
-\item{target_surv}{Threshold mode. \code{"relative"} (default), \code{"absolute"},
+\item{target_surv}{Threshold mode. \code{"absolute"} (default), \code{"relative"},
 or a numeric in \verb{(0, 1)}.}
 
 \item{ndraws}{Posterior draws to subsample, or \code{NULL} for all.

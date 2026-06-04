@@ -6,7 +6,7 @@
 \usage{
 derive_z(
   workflow,
-  target_surv = "relative",
+  target_surv = "absolute",
   temp_grid = NULL,
   ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
@@ -16,8 +16,8 @@ derive_z(
 \arguments{
 \item{workflow}{Fitted \code{bayes_tls}.}
 
-\item{target_surv}{Threshold mode: \code{"relative"} (default), \code{"absolute"}
-(= 0.5), or a numeric in \verb{(0, 1)}.}
+\item{target_surv}{Threshold mode: \code{"absolute"} (default; = 0.5),
+\code{"relative"}, or a numeric in \verb{(0, 1)}.}
 
 \item{temp_grid}{Temperatures at which to evaluate local z and over which
 to pool. Default: the observed (unique) assay temperatures
