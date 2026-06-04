@@ -3779,7 +3779,7 @@ patchwork::wrap_plots(build_overlay(FALSE), build_overlay(TRUE), ncol = 2) +
 
 ### TDT quantities from the joint fit
 
-We compute $z$ and $CT_{max_{1hr}}$ per life stage directly from each stage's relative-LT line built from the *joint* fit's posterior, with all life-stage covariation correctly propagated. Under the relative threshold (`(low + up)/2`), $\log_{10}\text{LT}(T) = \text{mid}(T)$ is linear in $T$, so $z = -1/\text{slope}$ and $CT_{max_{1hr}}$ (where the line crosses $\log_{10} t_\text{ref}$) are read straight from the per-draw line — no regression, mirroring `derive_z()` / `derive_temperature_for_duration()` applied to the joint fit. Section @sec-zebrafish-relative-ltx reproduces the same quantities under the *absolute* 0.5 threshold for comparison.
+We compute $z$ and $CT_{max_{1hr}}$ per life stage directly from each stage's relative-LT line built from the *joint* fit's posterior, with all life-stage covariation correctly propagated. Under the relative threshold (`(low + up)/2`), $\log_{10}\text{LT}(T) = \text{mid}(T)$ is linear in $T$, so $z = -1/\text{slope}$ and $CT_{max_{1hr}}$ (where the line crosses $\log_{10} t_\text{ref}$) are read straight from the per-draw line — no regression. `tls()` performs exactly this extraction for the hand-coded joint fit in a single call (verified identical to the by-hand values to 5 d.p.). Section @sec-zebrafish-relative-ltx reproduces the same quantities under the *absolute* 0.5 threshold for comparison.
 
 ```{r zebrafish-joint-extract}
 #| label: zebrafish-joint-extract
@@ -3787,74 +3787,45 @@ We compute $z$ and $CT_{max_{1hr}}$ per life stage directly from each stage's re
 #| cache: false
 
 TC_rate_range_zf <- c(0.1, 1)
-log10_low_zf     <- log10(TC_rate_range_zf[1] / 100)
-log10_high_zf    <- log10(TC_rate_range_zf[2] / 100)
 
+# The joint fit is a hand-coded brms model, but tls() extracts z, CTmax and
+# T_crit per life stage from it directly: it evaluates each sub-parameter at the
+# life_stage x temperature grid with posterior_linpred() and applies the same
+# closed forms as the by-hand derivation above (verified identical to 5 d.p.).
+# Model time is hours, so time_multiplier = 60 maps t_ref (minutes) to CTmax at
+# 1 hour; the relative threshold reproduces the mid-based LT line.
+zf_tls <- tls(fit_zf_joint, by = "life_stage", newdata = zf_joint_pred_grid,
+              mode = "relative", lethal = TRUE, t_ref = 60, time_multiplier = 60,
+              temp_mean = zf_temp_mean, TC_rate_range = TC_rate_range_zf,
+              re_formula = NA, ndraws = ndraws_joint)
+
+# Repackage tls() output into the per-stage structure the downstream tables and
+# figures (and Manuscript Figure 4) consume.
 zf_joint_tdt <- lapply(zf_stages, function(s) {
-  idx <- zf_joint_pred_grid$life_stage == s
-  draws <- as.data.frame(t(t_min[, idx, drop = FALSE]))
-  colnames(draws) <- paste0("V", seq_len(ncol(draws)))
-  draws$temp        <- zf_joint_pred_grid$assay_temp[idx]
-  draws$target_surv <- "(low+up)/2"
-  long <- tidyr::pivot_longer(draws,
-                               cols = -c(temp, target_surv),
-                               names_to = ".draw_id",
-                               values_to = "duration_out") |>
-    dplyr::mutate(.draw = as.integer(sub("V", "", .draw_id)),
-                  duration_model = duration_out / 60) |>
-    dplyr::filter(is.finite(duration_out), duration_out > 0) |>
-    dplyr::select(.draw, temp, target_surv, duration_model, duration_out)
-
-  # z and CTmax per draw read directly from this stage's relative-LT line.
-  # Under the relative threshold log10 LT(T) = mid(T) is linear in T, so the
-  # slope (hence z = -1/slope) and the temperature at which the line crosses
-  # log10(t_ref) (CTmax) are read straight from the per-draw line — no
-  # regression. This mirrors derive_z() / derive_temperature_for_duration()
-  # applied to the joint fit, per life stage.
-  zct_draws <- long |>
-    dplyr::mutate(log10_dur = log10(duration_out)) |>
-    dplyr::group_by(.draw) |>
-    dplyr::summarise(
-      slope     = (log10_dur[which.max(temp)] - log10_dur[which.min(temp)]) /
-                  (max(temp) - min(temp)),
-      base_logd = log10_dur[which.min(temp)],
-      base_temp = min(temp),
-      .groups   = "drop") |>
-    dplyr::transmute(.draw,
-                     z     = -1 / slope,
-                     CTmax = base_temp + (log10(60) - base_logd) / slope) |>
-    dplyr::filter(is.finite(z), is.finite(CTmax))
-  zct <- list(
-    draws   = zct_draws,
-    summary = tibble::tibble(
-      z_median     = stats::median(zct_draws$z),
-      z_lower      = stats::quantile(zct_draws$z, 0.025, names = FALSE),
-      z_upper      = stats::quantile(zct_draws$z, 0.975, names = FALSE),
-      CTmax_median = stats::median(zct_draws$CTmax),
-      CTmax_lower  = stats::quantile(zct_draws$CTmax, 0.025, names = FALSE),
-      CTmax_upper  = stats::quantile(zct_draws$CTmax, 0.975, names = FALSE)))
-
-  per_draw <- zct$draws |>
-    dplyr::select(.draw, z, CTmax) |>
-    dplyr::filter(is.finite(z), is.finite(CTmax)) |>
-    dplyr::mutate(log10_rate = stats::runif(dplyr::n(),
-                                            min = log10_low_zf,
-                                            max = log10_high_zf),
-                  T_crit     = CTmax + z * log10_rate)
-  q_tc <- stats::quantile(per_draw$T_crit,
-                          c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
+  sm   <- zf_tls$summary[zf_tls$summary$life_stage == s, ]
+  dr   <- zf_tls$draws[zf_tls$draws$life_stage == s, ]
+  pick <- function(tab, q, col) tab[[col]][tab$quantity == q]
+  z_summary <- tibble::tibble(
+    z_median     = pick(sm, "z", "median"),
+    z_lower      = pick(sm, "z", "lower"),
+    z_upper      = pick(sm, "z", "upper"),
+    CTmax_median = pick(sm, "CTmax", "median"),
+    CTmax_lower  = pick(sm, "CTmax", "lower"),
+    CTmax_upper  = pick(sm, "CTmax", "upper"))
+  z_block <- list(
+    draws   = tibble::tibble(.draw = pick(dr, "z", ".draw"),
+                             z     = pick(dr, "z", "value"),
+                             CTmax = pick(dr, "CTmax", "value")),
+    summary = z_summary)
   T_crit_block <- list(
-    draws   = tibble::tibble(.draw = per_draw$.draw,
-                             temp  = per_draw$T_crit,
-                             log10_rate = per_draw$log10_rate),
+    draws   = tibble::tibble(.draw = pick(dr, "Tcrit", ".draw"),
+                             temp  = pick(dr, "Tcrit", "value")),
     summary = tibble::tibble(TC_rate_low  = TC_rate_range_zf[1],
                              TC_rate_high = TC_rate_range_zf[2],
-                             temp_lower   = q_tc[1],
-                             temp_median  = q_tc[2],
-                             temp_upper   = q_tc[3])
-  )
-
-  list(z = zct, summary = zct$summary, T_crit = T_crit_block)
+                             temp_lower   = pick(sm, "Tcrit", "lower"),
+                             temp_median  = pick(sm, "Tcrit", "median"),
+                             temp_upper   = pick(sm, "Tcrit", "upper")))
+  list(z = z_block, summary = z_summary, T_crit = T_crit_block)
 })
 names(zf_joint_tdt) <- zf_stages
 ```
@@ -4233,7 +4204,7 @@ tinytable::tt(zf_sep_tdt_table_abs, escape = TRUE)
 
 ### Joint-fit absolute-threshold posterior
 
-The joint fit was hand-coded from `brms::bf()` and lives outside the `bayes_tls` workflow class, so we cannot point `extract_tdt()` at it directly. We reuse the posterior matrices `up_mat`, `low_mat`, `k_mat`, `mid_mat` built in @sec-zebrafish-tdt-overlay and apply the analytical inverse of the 4PL at survival = 0.5 per draw:
+The joint fit was hand-coded from `brms::bf()`. While `tls()` extracts the relative-threshold quantities from it directly (above), here we reuse the posterior matrices `up_mat`, `low_mat`, `k_mat`, `mid_mat` from @sec-zebrafish-tdt-overlay to draw the absolute-0.5 LT line and read its crossing per draw:
 
 $$
 \log_{10} t_{0.5}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{\text{up}(T)-0.5}{0.5-\text{low}(T)}.
@@ -5419,6 +5390,23 @@ ctmax_M_abs <- T_bar + (log10(t_ref) - lt50(0, slope_M, int_M)) / slope_abs(slop
 round(quantile(ctmax_F_abs, c(0.025, 0.5, 0.975)), 2)
 round(quantile(ctmax_M_abs, c(0.025, 0.5, 0.975)), 2)
 ```
+
+Everything above — the asymmetry correction, the per-sex slopes, and $z$,
+$CT_{max_{4hr}}$ and $T_{crit}$ — is bundled into a single `tls()` call that works
+on any custom `brms` 4PL: it evaluates each sub-parameter at the requested
+moderator grid with `posterior_linpred()`, so moderators on *any* 4PL parameter
+(and random effects) are handled automatically, with no coefficient bookkeeping.
+
+```{r}
+#| label: tls_sex
+#| echo: true
+#| code-fold: false
+set.seed(123)
+tls(joint_sex_fit, by = "sex", lethal = TRUE, t_ref = 60 * 4,
+    temp_mean = mean(std_sex$temp - std_sex$temp_c))$summary
+```
+
+These match the by-hand values above ($z$ 3.04 / 3.18, $CT_{max_{4hr}}$ 35.1 / 35.2 °C; $T_{crit}$ ~29 °C).
 
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
