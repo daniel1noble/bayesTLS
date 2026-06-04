@@ -5290,7 +5290,7 @@ We could ask whether males and females are significantly different or not from e
   z_draws_f  <- get_z_draws(tdt_dros_f)
 
 # Now, if we want to compare whether the sexes are different we can create a contrasts  
-  diff_sex_z <- z_draws_m$z - z_draws_f$z   # difference the z columns, not the tibbles
+  diff_sex_z <-  z_draws_f$z - z_draws_m$z   # difference the z columns, not the tibbles
 
 # Pmcmc: two-sided posterior probability the M - F difference excludes 0
 # (2 x the smaller tail). Small pMCMC => the sexes differ.
@@ -5341,6 +5341,55 @@ joint_sex_fit
 ```
 
 We can see here that the interaction `mid_sexM:temp_c` spans zero, supporting a lack of sex differences (that are significant) in thermal sensitivity. 
+
+We can now do some manual manipulation to show how to recover the same z (absolute version) we get from each of the indiviudal models.
+
+```{r}
+
+# Get the posterior draws of the joint model's coefficients.
+post <- as_draws_df(joint_sex_fit)
+
+# The TDT slope is the temperature slope of the midpoint: mid(T) = ... + b * temp_c.
+# Treatment coding makes females the reference, so females use b_mid_temp_c
+# directly; males add the sex-by-temperature interaction.
+slope_F <- post$b_mid_temp_c
+slope_M <- post$b_mid_temp_c + post[["b_mid_sexM:temp_c"]]
+
+# z = -1 / slope (ms derivation: the temperature change for a 10-fold change
+# in the time to the threshold).
+z_F <- -1 / slope_F
+z_M <- -1 / slope_M
+
+# Posterior median and 95% CI per sex (compare with the per-sex models above).
+round(quantile(z_F, c(0.025, 0.5, 0.975)), 2)
+round(quantile(z_M, c(0.025, 0.5, 0.975)), 2)
+
+# --- Step 2: absolute z (LT50 at exactly 50% survival) ----------------------
+# The absolute LT50 adds an asymmetry correction to the midpoint:
+#   log10 LT50(T) = mid(T) + ln((up - 0.5) / (0.5 - low)) / k
+# Here low, up and k also vary with temperature (shared across sexes), so we
+# rebuild the full 4PL LT50 at a temperature and take its slope.
+lt50 <- function(tc, slope, intercept) {
+  low <- 0.001 + plogis(post$b_lowraw_Intercept + post$b_lowraw_temp_c * tc) * 0.498
+  up  <- 0.501 + plogis(post$b_upraw_Intercept  + post$b_upraw_temp_c  * tc) * 0.498
+  k   <- exp(post$b_logk_Intercept + post$b_logk_temp_c * tc)
+  (intercept + slope * tc) + log((up - 0.5) / (0.5 - low)) / k   # natural log
+}
+
+# Slope of log10 LT50 over a 1 degC step about the mean temperature, then
+# z = -1 / slope. low/up/k are shared; only the midpoint intercept differs by sex.
+int_F <- post$b_mid_Intercept
+int_M <- post$b_mid_Intercept + post$b_mid_sexM
+z_F_abs <- -1 / (lt50(0.5, slope_F, int_F) - lt50(-0.5, slope_F, int_F))
+z_M_abs <- -1 / (lt50(0.5, slope_M, int_M) - lt50(-0.5, slope_M, int_M))
+
+round(quantile(z_F_abs, c(0.025, 0.5, 0.975)), 2)
+round(quantile(z_M_abs, c(0.025, 0.5, 0.975)), 2)
+
+```
+
+
+
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
