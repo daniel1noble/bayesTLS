@@ -5388,7 +5388,29 @@ round(quantile(z_M_abs, c(0.025, 0.5, 0.975)), 2)
 
 ```
 
+We can also calculate the $CT_{max_{4hr}}$ in similar light:
 
+```{r}
+# Reference exposure time for CTmax: 4 hours, matching the per-sex models.
+t_ref <- 60 * 4
+T_bar <- mean(std_sex$temp - std_sex$temp_c)   # centring temperature
+
+# Step 1: relative CTmax = temperature where the midpoint line reaches t_ref.
+# mid(T) = log10(t_ref)  =>  T = T_bar + (log10(t_ref) - intercept) / slope
+ctmax_F <- T_bar + (log10(t_ref) - int_F) / slope_F
+ctmax_M <- T_bar + (log10(t_ref) - int_M) / slope_M
+round(quantile(ctmax_F, c(0.025, 0.5, 0.975)), 2)
+round(quantile(ctmax_M, c(0.025, 0.5, 0.975)), 2)
+
+# Step 2: absolute CTmax = temperature where the full 4PL LT50 reaches t_ref.
+# Reuse lt50(); the curve is locally linear, so invert with the absolute slope
+# over a 1 degC step about the mean temperature.
+slope_abs <- function(slope, intercept) lt50(0.5, slope, intercept) - lt50(-0.5, slope, intercept)
+ctmax_F_abs <- T_bar + (log10(t_ref) - lt50(0, slope_F, int_F)) / slope_abs(slope_F, int_F)
+ctmax_M_abs <- T_bar + (log10(t_ref) - lt50(0, slope_M, int_M)) / slope_abs(slope_M, int_M)
+round(quantile(ctmax_F_abs, c(0.025, 0.5, 0.975)), 2)
+round(quantile(ctmax_M_abs, c(0.025, 0.5, 0.975)), 2)
+```
 
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
