@@ -208,7 +208,7 @@ tdt_function_tour <- tibble::tribble(
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z).",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands.",
   "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap.",
-  "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` or a numeric for an absolute probability.",
+  "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"absolute\"` (the 50% LT50); pass `\"relative\"` (`(low + up)/2` per draw) or a numeric for another probability.",
   "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes).",
   "TDT quantities",   "derive_z()",                         "Thermal sensitivity z read directly from the posterior (relative: -1/slope of mid(T); absolute: pooled per-draw local z over assay temps); optional local z(T).",
   "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only). Same `target_surv` argument as the primitives above.",
@@ -738,9 +738,9 @@ $$ {#eq-lt50-tvarying}
 # binomial / beta-binomial *lethal* survival counts, so we opt into T_crit via
 # the rate-multiplier integration (lethal = TRUE; default TC_rate_range =
 # c(0.1, 1) % HI per hour). See the next paragraph for why T_crit is opt-in.
-et_bin <- extract_tdt(wf_bin, t_ref = 60, time_multiplier = 1,
+et_bin <- extract_tdt(wf_bin, target_surv = "relative", t_ref = 60, time_multiplier = 1,
                       ndraws = 1000, lethal = TRUE)
-et_bb  <- extract_tdt(wf_bb,  t_ref = 60, time_multiplier = 1,
+et_bb  <- extract_tdt(wf_bb,  target_surv = "relative", t_ref = 60, time_multiplier = 1,
                       ndraws = 1000, lethal = TRUE)
 ```
 
@@ -1149,7 +1149,7 @@ Now we apply the same `extract_tdt()` call as in @sec-joint-derive — there is 
 #| label: extract-tdt-ext
 #| echo: true
 
-et_ext <- extract_tdt(wf_ext, t_ref = 60, time_multiplier = 1,
+et_ext <- extract_tdt(wf_ext, target_surv = "relative", t_ref = 60, time_multiplier = 1,
                       ndraws = 1000, lethal = TRUE)
 ```
 
@@ -2370,7 +2370,7 @@ plot_tdt_landscape(lsp_shrimp, observed = shrimp_std)
 
 ## TDT line: time to the threshold vs temperature {#sec-shrimp-tdt-line}
 
-The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "hours of exposure half the animals tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. The default threshold is $\text{mid}$ (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for the classical absolute-$t_{50}$ definition. For the shrimp data the two coincide because the asymptotes are anchored near 0 and 1.
+The one-dimensional **TDT line** summarises the dose-response surface as the predicted time to the survival threshold at each temperature. `derive_tdt_curve()` builds it from the joint fit, and `plot_tdt_curve()` shows it on linear and $\log_{10}$ time axes side-by-side: the linear panel reads as "hours of exposure half the animals tolerate" for ecological interpretation; the $\log_{10}$ panel linearises the relationship into the canonical TDT straight line, whose slope is $-1/z$. Here we use the relative threshold ($\text{mid}$, the midpoint between the fitted asymptotes); it coincides with the classical absolute-$t_{50}$ definition (now the package default) for the shrimp data because the asymptotes are anchored near 0 and 1.
 
 ```{r shrimp-tdt-line}
 #| label: shrimp-tdt-line
@@ -2378,6 +2378,7 @@ The one-dimensional **TDT line** summarises the dose-response surface as the pre
 
 ltx_shrimp <- derive_tdt_curve(
   wf_shrimp,
+  target_surv      = "relative",
   temp_grid        = seq(min(shrimp_std$temp) - 1.5,
                          max(shrimp_std$temp) + 1.5, by = 0.05),
   ndraws           = 500,
@@ -2405,6 +2406,7 @@ plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 
 et_shrimp <- extract_tdt(
   wf_shrimp,
+  target_surv   = "relative",
   t_ref         = 60,
   TC_rate_range = c(0.1, 1),
   ndraws        = 500,
@@ -2930,6 +2932,7 @@ We then call `extract_tdt()` to summarise $z$ and $CT_{max_{1hr}}$. We leave `le
 
 et_sub_4pl <- extract_tdt(
   wf_sub_4pl,
+  target_surv     = "relative",
   t_ref           = 60,
   time_multiplier = 1,
   ndraws          = 1000
@@ -2972,6 +2975,7 @@ lin_pred <- tibble::tibble(
 
 ltx_sub <- derive_tdt_curve(
   wf_sub_4pl,
+  target_surv     = "relative",
   temp_grid       = temp_grid_sub,
   ndraws          = 1000,
   time_multiplier = 1
@@ -3352,7 +3356,7 @@ patchwork::wrap_plots(zf_sep_landplots, ncol = 3) +
 
 ### TDT lines from the separate fits {#sec-zebrafish-sep-tdt-lines}
 
-`derive_tdt_curve()` returns the predicted time to the survival threshold at each temperature; computed for each life stage on a common temperature grid, the three lines can be overlaid on the same axes for direct comparison. We use the package-default threshold (`mid`), which coincides with the conventional absolute LT50 when the asymptotes are anchored near 0 and 1 and remains meaningful when intrinsic background mortality pulls the upper asymptote below 1 — as it does for one of the zebrafish life stages (see @sec-zebrafish-relative-ltx for the absolute-0.5 comparison).
+`derive_tdt_curve()` returns the predicted time to the survival threshold at each temperature; computed for each life stage on a common temperature grid, the three lines can be overlaid on the same axes for direct comparison. We use the relative threshold (`mid`), which coincides with the conventional absolute LT50 when the asymptotes are anchored near 0 and 1 and remains meaningful when intrinsic background mortality pulls the upper asymptote below 1 — as it does for one of the zebrafish life stages (see @sec-zebrafish-relative-ltx for the absolute-0.5 comparison).
 
 ```{r zebrafish-sep-ltx}
 #| label: zebrafish-sep-ltx
@@ -3365,6 +3369,7 @@ zf_temp_grid <- seq(min(zf$assay_temp) - 0.25,
 zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   ltx <- derive_tdt_curve(
     zf_fits_sep[[s]],
+    target_surv      = "relative",
     temp_grid       = zf_temp_grid,
     ndraws          = 500,
     time_multiplier = 60,
@@ -3384,7 +3389,7 @@ zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 ```{r zebrafish-sep-tdt-line-plot}
 #| label: fig-zebrafish-sep-tdt-line
 #| cache: false
-#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits, using the package-default threshold. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Lines are posterior medians; shaded bands are 95 % credible intervals."
+#| fig-cap: "TDT lines for the three zebrafish life stages from the separate 4PL fits, using the relative threshold. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Lines are posterior medians; shaded bands are 95 % credible intervals."
 #| fig-width: 10
 #| fig-height: 4.5
 
@@ -3451,6 +3456,7 @@ patchwork::wrap_plots(p_lin_sep, p_log_sep, ncol = 2) +
 
 zf_et_sep <- lapply(zf_stages, function(s) {
   extract_tdt(zf_fits_sep[[s]],
+              target_surv   = "relative",
               t_ref         = 60,
               TC_rate_range = c(0.1, 1),
               ndraws        = 500,
@@ -4150,7 +4156,7 @@ patchwork::wrap_plots(build_zf_twostep_overlay(FALSE),
 
 ## Sensitivity check: an absolute survival threshold {#sec-zebrafish-relative-ltx}
 
-All TDT curves and $CT_{max_{1hr}}$ posteriors above use the package-default threshold (the per-draw `mid` parameter, the midpoint between the fitted asymptotes). This coincides with the classical LT50 whenever the asymptotes are anchored near 0 and 1; it diverges from absolute LT50 when intrinsic background mortality pulls the upper asymptote below 1. For operational questions framed as "no more than half the cohort survives", an absolute 50 % survival threshold is the right anchor. Pass `target_surv = "absolute"` to `extract_tdt()` or `derive_tdt_curve()` (or any numeric in $(0, 1)$ for other percentiles) to swap the threshold without refitting. This section reruns the zebrafish analyses at the absolute threshold and compares the result to the default.
+All TDT curves and $CT_{max_{1hr}}$ posteriors above use the relative threshold (the per-draw `mid` parameter, the midpoint between the fitted asymptotes). This coincides with the classical LT50 whenever the asymptotes are anchored near 0 and 1; it diverges from absolute LT50 when intrinsic background mortality pulls the upper asymptote below 1. For operational questions framed as "no more than half the cohort survives", an absolute 50 % survival threshold is the right anchor. Pass `target_surv = "absolute"` to `extract_tdt()` or `derive_tdt_curve()` (or any numeric in $(0, 1)$ for other percentiles) to swap the threshold without refitting. This section reruns the zebrafish analyses at the absolute threshold and compares the result to the relative threshold.
 
 The joint fit makes the contrast concrete: the three life stages have very different upper asymptotes.
 
@@ -4794,7 +4800,7 @@ plot_tdt_landscape(lsp_leaf, observed = leaf_std)
 
 ## TDT line: time to the threshold vs temperature {#sec-leaf-tdt-line}
 
-The one-dimensional **TDT line** gives the predicted time to the retained-function threshold at each temperature. `derive_tdt_curve()` constructs it from the joint fit, and `plot_tdt_curve()` shows linear and $\log_{10}$ time axes side by side. The default threshold is the midpoint between the fitted asymptotes; pass `target_surv = "absolute"` for an absolute $F_v/F_m = 0.5$ threshold.
+The one-dimensional **TDT line** gives the predicted time to the retained-function threshold at each temperature. `derive_tdt_curve()` constructs it from the joint fit, and `plot_tdt_curve()` shows linear and $\log_{10}$ time axes side by side. Here we use the relative threshold (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for an absolute $F_v/F_m = 0.5$ threshold.
 
 ```{r leaf-tdt-line}
 #| label: leaf-tdt-line
@@ -4802,6 +4808,7 @@ The one-dimensional **TDT line** gives the predicted time to the retained-functi
 
 ltx_leaf <- derive_tdt_curve(
   wf_leaf,
+  target_surv      = "relative",
   temp_grid        = seq(min(leaf_std$temp) - 1.5,
                          max(leaf_std$temp) + 1.5, by = 0.05),
   ndraws           = 500,
@@ -4829,6 +4836,7 @@ plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
 
 et_leaf <- extract_tdt(
   wf_leaf,
+  target_surv     = "relative",
   t_ref           = 60,
   time_multiplier = 1,   # leaf model time is MINUTES; t_ref = 60 => CTmax at 1 h.
                           # extract_tdt() now auto-derives this from duration_unit,
