@@ -5302,7 +5302,45 @@ The median difference in *z* between males and females is `r round(median(diff_s
 
 #### Fitting a model to compare sexes directly
 
-We can see
+We can also fit the sex data in a single model, which is a more powerful approach. To do that, we need to add `sex` as a categorical predictor. 
+
+```{r}
+#| label: joint_sex_mod
+#| echo: true
+#| code-fold: false
+
+# Set up the priors: one dataset with both sexes, then the package's
+# weakly-informative priors (their generic per-parameter priors cover the sex terms).
+std_sex    <- standardize_data(mort_dros, temp = "temp", duration = "time",
+                               n_total = "n_total", n_dead = "n_dead",
+                               duration_unit = "minutes")
+priors_sex <- make_4pl_priors(std_sex)
+
+# Set up the model: default 4PL with sex added to the midpoint only, so z and
+# CTmax can differ by sex (asymptotes and steepness are shared across sexes).
+j_sex <- brms::bf(
+  n_surv | trials(n_total) ~
+    (0.001 + inv_logit(lowraw) * 0.498) +
+    ((0.501 + inv_logit(upraw) * 0.498) - (0.001 + inv_logit(lowraw) * 0.498)) /
+    (1 + exp(exp(logk) * (logd - mid))),
+  lowraw ~ temp_c, 
+   upraw ~ temp_c, 
+    logk ~ temp_c,
+     mid ~ sex * temp_c,                 # sex on midpoint => sex-specific z & CTmax
+  nl = TRUE, family = brms::beta_binomial(link = "identity")
+)
+
+# Fit model
+
+joint_sex_fit <- brm(j_sex, data = std_sex, prior = priors_sex,
+                     iter = 3000, warmup = 1000, thin = 1, seed = 123,
+                     control = list(adapt_delta = 0.95),
+                     file = file.path(models_dir, "fit_dsuzukii_mortality_sex_joint"),
+                     file_refit = "on_change")
+joint_sex_fit
+```
+
+We can see here that the interaction `mid_sexM:temp_c` spans zero, supporting a lack of sex differences (that are significant) in thermal sensitivity. 
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
