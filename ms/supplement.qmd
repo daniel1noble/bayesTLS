@@ -34,10 +34,10 @@ format:
     number-sections: true
     embed-resources: true
     fig-cap-location: bottom
-    code-fold: true
+    code-fold: false
     code-summary: "Show code"
     code-tools: true
-    code-overflow: scroll
+    code-overflow: wrap
     format-links: false
   docx:
     reference-doc: ../bib/templates/template.docx
@@ -5143,9 +5143,7 @@ We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TD
 
 We'll first load the data and start with the mortality data:
 
-
 #### Load the data
-
 ```{r}
 #| label: flydat
 #| echo: true
