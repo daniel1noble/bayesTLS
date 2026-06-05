@@ -1614,7 +1614,10 @@ library(patchwork)
     dplyr::arrange(Cell, Method) |>
     dplyr::select(Cell, Method, `z (°C)` = z, `CTmax (°C)` = CTmax_1hr)
   names(out)[1] <- cell_name
-  tinytable::tt(out)
+  # escape = TRUE so LaTeX special chars in headers/cells (e.g. the
+  # underscore in "n_reps", "u_0", "beta_u") render literally in PDF
+  # rather than being parsed as math subscripts.
+  tinytable::tt(out) |> tinytable::format_tt(escape = TRUE)
 }
 ```
 
@@ -5845,7 +5848,7 @@ data.frame(
                sprintf("%.4f °C", CT_max_1hr_direct),
                sprintf("%.3e", abs(CT_max_1hr_closed - CT_max_1hr_direct)))
 ) |>
-  tinytable::tt()
+  tinytable::tt(escape = TRUE)
 ```
 
 Here the correction is **non-zero** (`{r} sprintf("%+.4f", correction)`), and
