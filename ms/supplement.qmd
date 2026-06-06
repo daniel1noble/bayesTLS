@@ -5190,7 +5190,7 @@ tinytable::tt(leaf_hi_table, escape = TRUE)
 ```
 The snow gum leaf case study takes continuous retained-function proportions through a fitted joint 4PL to posterior TDT summaries and illustrative functional-injury projections. Every derived quantity inherits the posterior of the same fit.
 
-# **Case Study 4: *Drosophila* species**
+# **Case Study 4: Vinegar fly (*Drosophila*) species**
 
 We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TDTs for productivity (offspring number; a measure of fertility), time to coma (sublethal) and mortality using *Drosophila suzukii*. 
 
@@ -5726,7 +5726,7 @@ patchwork::wrap_plots(fig4_panels, ncol = 1) +
   ggplot2::theme(legend.position = "bottom")
 ```
 
-# Derivation of the correction factors for threshold summaries
+# **Derivation of the correction factors for threshold summaries**
 
 The manuscript states two correction factors without showing the algebra: an
 asymmetry correction *added* to $\text{mid}(T)$ to recover
