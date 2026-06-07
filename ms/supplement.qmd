@@ -5474,10 +5474,7 @@ round(quantile(ctmax_M_abs, c(0.025, 0.5, 0.975)), 2)
 ```
 
 Everything above - $z$,
-$CT_{max_{4hr}}$ and $T_{crit}$ — can be calculated using a single `tls()` call 
-on any custom `brms` 4PL: it evaluates each sub-parameter at the requested
-moderator grid with `posterior_linpred()` (just like you would predict with any brms object). Moderators on *any* 4PL parameter
-(and random effects) are handled automatically.
+$CT_{max_{4hr}}$ and $T_{crit}$ — can be calculated using a single `tls()` call on any custom `brms` 4PL: it evaluates each sub-parameter at the requested moderator grid with `posterior_linpred()` (just like you would predict with any brms object). Moderators on *any* 4PL parameter (and random effects) are handled automatically.
 
 ```{r}
 #| label: tls_sex
