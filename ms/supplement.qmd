@@ -181,7 +181,31 @@ Every exported function is documented (`?fit_4pl`, etc.) and tested against know
 
 ## *What each function does* {#sec-function-tour}
 
-@tbl-function-tour lists every exported function in the library, grouped by pipeline stage. Each function is single-purpose; the full documentation (with runnable `@examples`) lives in the corresponding R file.
+#### *Core functions*
+
+@tbl-function-core lists the key functions that are part of the `bayesTLS` package. These functions are used for standardising data, modelling, deriving the TLS quantities of interest, and predicting heat injury and survival. In addition, if `brms` 4PL models are fit manually to data we also provide key functions (e.g., `tls()`) that work more generally across fitted models to derive relevant TLS quantities.
+
+```{r function-core-table}
+#| label: tbl-function-core
+#| echo: false
+#| tbl-cap: "Core `bayesTLS` functions for a standard workflow, following the five pipeline steps. `tls()` is the general entry point for deriving TDT quantities from any fitted 4PL, including hand-coded `brms` models. See @tbl-function-tour for the full list of exported functions."
+
+tdt_function_core <- tibble::tribble(
+  ~Step,          ~Function,                     ~Purpose,
+  "Standardise",  "standardize_data()",          "Reshape raw experimental data to the package schema (temp, duration, counts).",
+  "Fit",          "fit_4pl()",                   "Fit the joint Bayesian 4PL in one call (builds priors and the brms formula internally).",
+  "Extract",      "extract_tdt()",               "Derive z, CTmax and (for lethal endpoints) T_crit from a `fit_4pl()` model, with full posterior uncertainty.",
+  "Extract",      "tls()",                       "Derive the same quantities from ANY fitted 4PL, including hand-coded `brms` models; `mode` picks the relative or absolute threshold.",
+  "Predict",      "predict_survival_curves()",   "Posterior survival across a temperature x duration grid, with credible bands.",
+  "Predict",      "predict_heat_injury()",       "Heat-injury accumulation and predicted survival under a fluctuating temperature trace (optional repair).",
+  "Plot",         "plot_tdt_curve()",            "Visualise the TDT (LT_x) curve on a log-time axis; companion `plot_*` functions cover each workflow step."
+)
+
+tinytable::tt(tdt_function_core, escape = TRUE)
+```
+
+#### *Full package functions*
+@tbl-function-tour lists every exported function in the library, grouped by pipeline stage. 
 
 ```{r function-tour-table}
 #| label: tbl-function-tour
