@@ -199,19 +199,29 @@ tdt_function_tour <- tibble::tribble(
   "Inspection",       "plot.bayes_tls()",                   "Delegates to `plot()` on the underlying `brmsfit`; returns brms's default `mcmc_combo` (density + post-warmup trace, chains coloured) for inspecting MCMC mixing. Extra arguments (e.g. `pars`, `combo`) are passed through.",
   "Inspection",       "has_fit()",                          "Predicate: is a `bayes_tls` workflow fitted (TRUE) or spec-only (FALSE)?",
   "Inspection",       "extract_4pl_pars()",                 "Posterior draws of the four natural-scale 4PL parameters (low, up, k, mid) at the centring temperature T_bar.",
+  "Inspection",       "get_brmsfit()",                      "Return the underlying `brmsfit` object held inside a `bayes_tls` workflow (for bespoke brms post-processing).",
+  "Inspection",       "print.tls()",                        "Compact print method for a `tls` object: shows the per-group TDT summary table.",
   "Accessors",        "get_z_draws()",                      "Per-draw posterior of z from an `extract_tdt()` output.",
   "Accessors",        "get_ctmax_draws()",                  "Per-draw posterior of CTmax_1hr from an `extract_tdt()` output.",
   "Accessors",        "get_tcrit_draws()",                  "Per-draw posterior of T_crit from an `extract_tdt(lethal = TRUE)` output.",
+  "Accessors",        "get_z_summary()",                    "Posterior summary (median + 95% CrI) of z from an `extract_tdt()` output.",
+  "Accessors",        "get_ctmax_summary()",                "Posterior summary (median + 95% CrI) of CTmax from an `extract_tdt()` output.",
+  "Accessors",        "get_tcrit_summary()",                "Posterior summary (median + 95% CrI) of T_crit from an `extract_tdt(lethal = TRUE)` output.",
   "Accessors",        "get_surv_draws()",                   "Per-draw posterior of survival probability from `predict_survival_curves()`.",
   "Accessors",        "get_hi_draws()",                     "Per-draw posterior of heat-injury integrals from `predict_heat_injury()`.",
   "Diagnostics",      "diagnose_tdt_fit()",                 "Rhat / ESS / divergences / treedepth, with pass-fail flags.",
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z).",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands.",
   "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap.",
+  "Predictions",      "summarise_observed_survival()",      "Observed survival mean and SE per (temp, duration) cell; an overlay for the plotted posterior curves.",
   "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"absolute\"` (the 50% LT50); pass `\"relative\"` (`(low + up)/2` per draw) or a numeric for another probability.",
   "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes).",
   "TDT quantities",   "derive_z()",                         "Thermal sensitivity z read directly from the posterior (relative: -1/slope of mid(T); absolute: pooled per-draw local z over assay temps); optional local z(T).",
   "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only). Same `target_surv` argument as the primitives above.",
+  "TDT quantities",   "tls()",                              "One call returning z, CTmax and (when `lethal = TRUE`) T_crit per moderator group from ANY fitted 4PL, including hand-coded `brms` models. Evaluates each sub-parameter at a moderator x temperature grid via `posterior_linpred()`; `mode` selects the relative midpoint or absolute LT50 threshold.",
+  "TDT quantities",   "tls_z()",                            "Convenience wrapper for `tls(params = \"z\")` — z only.",
+  "TDT quantities",   "tls_ctmax()",                        "Convenience wrapper for `tls(params = \"ctmax\")` — CTmax only.",
+  "TDT quantities",   "tls_tcrit()",                        "Convenience wrapper for `tls(params = \"tcrit\", lethal = TRUE)` — T_crit only.",
   "Heat injury",      "make_temperature_scenarios()",       "Three reference traces (flat / single spike / multi-spike).",
   "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
   "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace.",
@@ -222,7 +232,11 @@ tdt_function_tour <- tibble::tribble(
   "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95-percent CrI bar.",
   "Plotting",         "plot_temperature_scenarios()",       "Three traces stacked vertically.",
   "Plotting",         "plot_heat_injury()",                 "HI and predicted survival trajectories with CrI bands.",
-  "Plotting",         "plot_repair_rate()",                 "Sharpe-Schoolfield TPC curve."
+  "Plotting",         "plot_repair_rate()",                 "Sharpe-Schoolfield TPC curve.",
+  "Plotting",         "theme_tdt()",                        "Shared project ggplot theme (minimal classic, bold axis titles) used by all package plots.",
+  "Utilities",        "tdt_quantile()",                     "Quantile wrapper with TDT-friendly defaults (2.5 / 50 / 97.5%).",
+  "Utilities",        "format_interval()",                  "Format a median with its bounds as a `median [lower, upper]` string.",
+  "Utilities",        "clock_to_minutes()",                 "Convert clock/time formats (HH:MM:SS, hms, POSIXt, Excel time fractions, bare numerics) to minutes."
 )
 
 tinytable::tt(tdt_function_tour, escape = TRUE)
@@ -5401,7 +5415,7 @@ joint_sex_fit
 
 We can see here that the interaction `mid_sexM:temp_c` spans zero, supporting a lack of sex differences (that are significant) in thermal sensitivity. 
 
-We can now do some manual manipulation to show how to recover the same z (absolute version) we get from each of the indiviudal models.
+We can now do some manual manipulation to show how to recover the same $z$ that `tls()` and the individual per-sex models return. We do this in two steps: **Step 1** computes the *relative* $z$ (the slope of the midpoint line, $-1/\text{slope}$), and **Step 2** computes the *absolute* $z$ (adding the asymmetry correction so the line follows the full-4PL LT$_{50}$). Each printout below is the posterior median bracketed by its 2.5% and 97.5% quantiles — i.e. `2.88 3.06 3.26` means a median of 3.06 with a 95% CI of [2.88, 3.26].
 
 ```{r}
 #| code-fold: show
@@ -5415,12 +5429,14 @@ post <- as_draws_df(joint_sex_fit)
 slope_F <- post$b_mid_temp_c
 slope_M <- post$b_mid_temp_c + post[["b_mid_sexM:temp_c"]]
 
+# --- Step 1: relative z (midpoint threshold) --------------------------------
 # z = -1 / slope (ms derivation: the temperature change for a 10-fold change
-# in the time to the threshold).
+# in the time to the threshold). This is the RELATIVE z and matches
+# tls(mode = "relative").
 z_F <- -1 / slope_F
 z_M <- -1 / slope_M
 
-# Posterior median and 95% CI per sex (compare with the per-sex models above).
+# Posterior median and 95% CI per sex (printed as 2.5% / 50% / 97.5%).
 round(quantile(z_F, c(0.025, 0.5, 0.975)), 2)
 round(quantile(z_M, c(0.025, 0.5, 0.975)), 2)
 
@@ -5473,8 +5489,7 @@ round(quantile(ctmax_F_abs, c(0.025, 0.5, 0.975)), 2)
 round(quantile(ctmax_M_abs, c(0.025, 0.5, 0.975)), 2)
 ```
 
-Everything above - $z$,
-$CT_{max_{4hr}}$ and $T_{crit}$ — can be calculated using a single `tls()` call on any custom `brms` 4PL: it evaluates each sub-parameter at the requested moderator grid with `posterior_linpred()` (just like you would predict with any brms object). Moderators on *any* 4PL parameter (and random effects) are handled automatically.
+Everything above - $z$, $CT_{max_{4hr}}$ and $T_{crit}$, at either the relative or the absolute threshold — can be calculated using a single `tls()` call on any custom `brms` 4PL: it evaluates each sub-parameter at the requested moderator grid with `posterior_linpred()` (just like you would predict with any brms object). Moderators on *any* 4PL parameter (and random effects) are handled automatically. We show both thresholds below.
 
 ```{r}
 #| label: tls_sex
@@ -5482,15 +5497,17 @@ $CT_{max_{4hr}}$ and $T_{crit}$ — can be calculated using a single `tls()` cal
 #| code-fold: show
 set.seed(123)
 # One call bundles z, CTmax and T_crit for every level of `by` into a tidy,
-# long summary (one row per sex x quantity).
-tls_sex_summary <- tls(joint_sex_fit, by = "sex", lethal = TRUE, t_ref = 60 * 4,
+# long summary (one row per sex x quantity). mode = "relative" uses the
+# midpoint (low+up)/2 threshold, matching the Step-1 by-hand calculation.
+tls_sex_summary <- tls(joint_sex_fit, by = "sex", mode = "relative",
+                       lethal = TRUE, t_ref = 60 * 4,
                        temp_mean = mean(std_sex$temp - std_sex$temp_c))$summary
 
 ```
 
 ```{r}
 #| label: tbl-dros-sex-joint
-#| tbl-cap: "Thermal-death-time parameters for *D. suzukii* mortality from the single joint 4PL model with sex on the midpoint (`joint_sex_fit`), bundled by one `tls()` call (absolute LT~50~ threshold, reference exposure $t_{ref}=4$ h). Cells are the posterior median with the 95% credible interval in brackets. Compare with the separate-fit estimates in the table above."
+#| tbl-cap: "Thermal-death-time parameters for *D. suzukii* mortality from the single joint 4PL model with sex on the midpoint (`joint_sex_fit`), bundled by one `tls()` call at the **relative** midpoint threshold (`mode = \"relative\"`, reference exposure $t_{ref}=4$ h), matching the Step-1 by-hand relative calculation. Cells are the posterior median with the 95% credible interval in brackets. Compare with the separate-fit estimates in the table above."
 #| message: false
 #| warning: false
 
@@ -5508,18 +5525,53 @@ tls_sex_table <- tls_sex_summary |>
 tinytable::tt(tls_sex_table, escape = TRUE)
 ```
 
-The joint-model summary (@tbl-dros-sex-joint) matches the by-hand values above ($z$ 3.04 / 3.18, $CT_{max_{4hr}}$ 35.1 / 35.2 °C; $T_{crit}$ ~29 °C).
+Switching to the **absolute** LT~50~ threshold — matching the Step-2 by-hand calculation — needs only `mode = "absolute"`:
+
+```{r}
+#| label: tls_sex_abs
+#| echo: true
+#| code-fold: show
+set.seed(123)
+# mode = "absolute" reads the curve at the 0.5 absolute-survival crossing
+# (adding the asymmetry correction), matching the Step-2 by-hand calculation.
+tls_sex_summary_abs <- tls(joint_sex_fit, by = "sex", mode = "absolute",
+                           lethal = TRUE, t_ref = 60 * 4,
+                           temp_mean = mean(std_sex$temp - std_sex$temp_c))$summary
+
+```
+
+```{r}
+#| label: tbl-dros-sex-joint-abs
+#| tbl-cap: "As @tbl-dros-sex-joint but at the **absolute** LT~50~ threshold (`mode = \"absolute\"`), matching the Step-2 by-hand absolute calculation. Cells are the posterior median with the 95% credible interval in brackets."
+#| message: false
+#| warning: false
+
+tls_sex_table_abs <- tls_sex_summary_abs |>
+  dplyr::transmute(
+    Sex      = dplyr::recode(as.character(sex), F = "Female", M = "Male"),
+    quantity = factor(quantity,
+                      levels = c("z", "CTmax", "Tcrit"),
+                      labels = c("z (°C)", "CTmax (4 h, °C)", "T_crit (°C)")),
+    cell     = format_interval(median, lower, upper)
+  ) |>
+  dplyr::arrange(Sex) |>
+  tidyr::pivot_wider(names_from = quantity, values_from = cell)
+
+tinytable::tt(tls_sex_table_abs, escape = TRUE)
+```
+
+The two `tls()` calls reproduce the by-hand calculations: the relative-threshold summary (@tbl-dros-sex-joint) matches the Step-1 relative values ($z$ 3.06 / 3.21, $CT_{max_{4hr}}$ 35.2 / 35.2 °C for female / male), and the absolute-threshold summary (@tbl-dros-sex-joint-abs) matches the Step-2 absolute values ($z$ 3.04 / 3.18, $CT_{max_{4hr}}$ 35.1 / 35.2 °C); $T_{crit}$ is ~29 °C under both.
 
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
-This figure compiles the headline TDT quantities ($z$ and $CT_{max_{1hr}}$) from the three case studies into a single multi-panel display, intended for the main manuscript. Each panel overlays the joint Bayesian 4PL posterior (green ridge + green median/95% CrI) with the classical two-stage point estimate (orange median/95% CI) at the matched Stage-1 likelihood — beta-binomial for the count-based case studies (shrimp, zebrafish), beta for the proportional case study (snow gum leaf PSII). The zebrafish row splits into three ridges, one per life stage.
+This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. The zebrafish row splits into three ridges (one per life stage) and the vinegar fly row into two (female, male). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for shrimp, zebrafish and leaf, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale in any case.
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig4-case-study-densities
-#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max_{1hr}}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the three case studies (rows). The 4PL posterior median and 95% credible interval are overlaid as a green pointrange sitting at the density baseline; the two-step classical estimate (median + 95% CI, orange #a63603) is shown directly below as an orange pointrange — beta-binomial Stage 1 for the brown shrimp and zebrafish counts, beta Stage 1 for the snow gum leaf PSII proportions. Two-step $z$ intervals are obtained by inverting the Stage-2 slope's 95% CI; intervals are NA (no orange bar) when the slope CI crosses zero, signalling an unidentified Stage-2 slope. Dashed vertical lines mark the 4PL posterior median for each entity. The zebrafish row splits into three ridges, one per life stage. Each case study has independent x-axes in both columns. $z$ is in °C (it is the temperature change required for a 10-fold change in time to the threshold)."
+#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the four case studies (rows). The posterior median and 95% credible interval are overlaid as a green pointrange at the density baseline, with a dashed vertical line at the median. The $CT_{max}$ column reference exposure differs by case study to match each one's own analysis: 1 h for brown shrimp, zebrafish and snow gum leaf PSII (relative midpoint threshold), and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024); the panel strip labels each accordingly. The zebrafish row splits into three ridges (one per life stage) and the vinegar fly row into two (female, male). Each case study has independent x-axes in both columns. $z$ is in °C (it is the temperature change required for a 10-fold change in time to the threshold)."
 #| fig-width: 9
-#| fig-height: 7
+#| fig-height: 9
 #| cache: false
 
 # 4PL posterior draws (one row per draw, per case study × group × quantity).
@@ -5548,77 +5600,84 @@ fig4_draws <- dplyr::bind_rows(
   tibble::tibble(
     case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
     quantity   = "CTmax_1hr", value = get_ctmax_draws(et_leaf)$CTmax
+  ),
+  # Vinegar fly mortality, separate per-sex joint fits. CTmax is at the 4 h
+  # reference exposure (absolute LT50) used in this case study, hence a distinct
+  # "CTmax_4hr" quantity so the panel strip labels it honestly.
+  tibble::tibble(
+    case_study = "Vinegar fly (mortality)", group = "Female",
+    quantity   = "z",         value = get_z_draws(tdt_dros_f)$z
+  ),
+  tibble::tibble(
+    case_study = "Vinegar fly (mortality)", group = "Female",
+    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_f)$CTmax
+  ),
+  tibble::tibble(
+    case_study = "Vinegar fly (mortality)", group = "Male",
+    quantity   = "z",         value = get_z_draws(tdt_dros_m)$z
+  ),
+  tibble::tibble(
+    case_study = "Vinegar fly (mortality)", group = "Male",
+    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_m)$CTmax
   )
 ) |>
   dplyr::filter(is.finite(value))
 
-# Median + 95% interval rows for both approaches, one row per case × group ×
-# quantity × approach. 4PL = posterior; two-step = analytic / MVN CI.
-mk_row <- function(cs, grp, q, approach, med, lo, hi) {
+# Posterior median + 95% credible interval from the joint 4PL, one row per
+# case × group × quantity (overlaid on the ridge as a pointrange).
+mk_row <- function(cs, grp, q, med, lo, hi) {
   tibble::tibble(case_study = cs, group = grp, quantity = q,
-                 approach = approach, median = med, lower = lo, upper = hi)
+                 median = med, lower = lo, upper = hi)
 }
-
-shrimp_bb_pt <- dplyr::filter(shrimp_twostep_tdt, method == "Two-step beta-binomial")
-shrimp_bb_ci <- shrimp_twostep_unc[["Two-step beta-binomial"]]$summary_ci
-leaf_bb_pt   <- dplyr::filter(leaf_twostep_tdt,   method == "Two-step beta")
-leaf_bb_ci   <- leaf_twostep_unc[["Two-step beta"]]$summary_ci
 
 zf_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   z_sum <- zf_joint_tdt[[s]]$z$summary
-  tw_pt <- dplyr::filter(zf_twostep_tdt, life_stage == s,
-                         method == "Two-step beta-binomial")
-  tw_ci <- zf_twostep_unc[[paste0(s, "||Two-step beta-binomial")]]$summary_ci
   dplyr::bind_rows(
-    mk_row("Zebrafish", s, "z",         "Joint Bayesian 4PL",
-           z_sum$z_median,     z_sum$z_lower,     z_sum$z_upper),
-    mk_row("Zebrafish", s, "CTmax_1hr", "Joint Bayesian 4PL",
-           z_sum$CTmax_median, z_sum$CTmax_lower, z_sum$CTmax_upper),
-    mk_row("Zebrafish", s, "z",         "Two-step",
-           tw_pt$z,            tw_ci$z_lower,     tw_ci$z_upper),
-    mk_row("Zebrafish", s, "CTmax_1hr", "Two-step",
-           tw_pt$CTmax_1hr,    tw_ci$CTmax_lower, tw_ci$CTmax_upper)
+    mk_row("Zebrafish", s, "z",         z_sum$z_median,     z_sum$z_lower,     z_sum$z_upper),
+    mk_row("Zebrafish", s, "CTmax_1hr", z_sum$CTmax_median, z_sum$CTmax_lower, z_sum$CTmax_upper)
   )
 }))
 
 fig4_summary <- dplyr::bind_rows(
-  mk_row("Brown shrimp", "Brown shrimp", "z", "Joint Bayesian 4PL",
+  mk_row("Brown shrimp", "Brown shrimp", "z",
          et_shrimp$z$summary$z_median,
          et_shrimp$z$summary$z_lower,
          et_shrimp$z$summary$z_upper),
-  mk_row("Brown shrimp", "Brown shrimp", "CTmax_1hr", "Joint Bayesian 4PL",
+  mk_row("Brown shrimp", "Brown shrimp", "CTmax_1hr",
          et_shrimp$CTmax$summary$temp_median,
          et_shrimp$CTmax$summary$temp_lower,
          et_shrimp$CTmax$summary$temp_upper),
-  mk_row("Brown shrimp", "Brown shrimp", "z", "Two-step",
-         shrimp_bb_pt$z, shrimp_bb_ci$z_lower, shrimp_bb_ci$z_upper),
-  mk_row("Brown shrimp", "Brown shrimp", "CTmax_1hr", "Two-step",
-         shrimp_bb_pt$CTmax_1hr,
-         shrimp_bb_ci$CTmax_lower, shrimp_bb_ci$CTmax_upper),
   zf_rows,
-  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "z", "Joint Bayesian 4PL",
+  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "z",
          et_leaf$z$summary$z_median,
          et_leaf$z$summary$z_lower,
          et_leaf$z$summary$z_upper),
-  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "CTmax_1hr", "Joint Bayesian 4PL",
+  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "CTmax_1hr",
          et_leaf$CTmax$summary$temp_median,
          et_leaf$CTmax$summary$temp_lower,
          et_leaf$CTmax$summary$temp_upper),
-  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "z", "Two-step",
-         leaf_bb_pt$z, leaf_bb_ci$z_lower, leaf_bb_ci$z_upper),
-  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "CTmax_1hr", "Two-step",
-         leaf_bb_pt$CTmax_1hr,
-         leaf_bb_ci$CTmax_lower, leaf_bb_ci$CTmax_upper)
+  # Vinegar fly mortality, by sex. 4PL summaries (z_f/z_m, ctmax4_f/ctmax4_m)
+  # come from the extract_tdt() chunk above; CTmax is the 4 h value.
+  mk_row("Vinegar fly (mortality)", "Female", "z",
+         z_f$z_median, z_f$z_lower, z_f$z_upper),
+  mk_row("Vinegar fly (mortality)", "Female", "CTmax_4hr",
+         ctmax4_f$temp_median, ctmax4_f$temp_lower, ctmax4_f$temp_upper),
+  mk_row("Vinegar fly (mortality)", "Male", "z",
+         z_m$z_median, z_m$z_lower, z_m$z_upper),
+  mk_row("Vinegar fly (mortality)", "Male", "CTmax_4hr",
+         ctmax4_m$temp_median, ctmax4_m$temp_lower, ctmax4_m$temp_upper)
 )
 
 # Factor ordering: rows are the three case studies; within zebrafish the three
 # life stages are ordered young → old → larvae (top to bottom of the ridge
 # stack, so we reverse for the y-axis levels).
-case_levels  <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII")
+case_levels  <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII",
+                  "Vinegar fly (mortality)")
 group_levels <- c("Brown shrimp",
                   rev(zf_stages),
-                  "Snow gum leaf PSII")
-quant_levels <- c("z", "CTmax_1hr")
+                  "Snow gum leaf PSII",
+                  "Female", "Male")
+quant_levels <- c("z", "CTmax_1hr", "CTmax_4hr")
 
 fig4_draws <- fig4_draws |>
   dplyr::mutate(
@@ -5630,68 +5689,43 @@ fig4_summary <- fig4_summary |>
   dplyr::mutate(
     case_study = factor(case_study, levels = case_levels),
     group      = factor(group,      levels = group_levels),
-    quantity   = factor(quantity,   levels = quant_levels),
-    approach   = factor(approach,
-                        levels = c("Joint Bayesian 4PL", "Two-step"))
+    quantity   = factor(quantity,   levels = quant_levels)
   )
 
 quantity_labeller <- ggplot2::as_labeller(
   c(z         = "italic(z)~\"(°C per 10-fold change in time)\"",
-    CTmax_1hr = "CT[max[1*hr]]~(degree*C)"),
+    CTmax_1hr = "CT[max[1*hr]]~(degree*C)",
+    CTmax_4hr = "CT[max[4*hr]]~(degree*C)"),
   default = ggplot2::label_parsed
 )
-
-approach_cols <- c("Joint Bayesian 4PL" = "#006d2c",
-                   "Two-step"           = "#a63603")
 
 # Per-case-study panel builder. We use patchwork rather than facet_grid so
 # every case study gets its own independent x-axis range in each column —
 # facet_grid forces a shared x within columns, which compresses the
-# narrow-CI rows. The 4PL pointrange is drawn at the density baseline
-# (no nudge), and the two-step pointrange is nudged down so it sits just
-# beneath the 4PL marker rather than overlapping it.
+# narrow-CI rows. The posterior median + 95% CrI is drawn as a pointrange at
+# the density baseline, with a dashed line at the median.
 build_fig4_panel <- function(case) {
   d <- dplyr::filter(fig4_draws,   case_study == case) |>
     dplyr::mutate(group = droplevels(group))
   s <- dplyr::filter(fig4_summary, case_study == case) |>
     dplyr::mutate(group = droplevels(group))
-  s_4pl <- dplyr::filter(s, approach == "Joint Bayesian 4PL")
-  s_2s  <- dplyr::filter(s, approach == "Two-step",
-                         is.finite(median))
 
-  p <- ggplot2::ggplot(d, ggplot2::aes(x = value, y = group)) +
+  ggplot2::ggplot(d, ggplot2::aes(x = value, y = group)) +
     ggridges::geom_density_ridges(
       fill = "#006d2c", colour = NA, alpha = 0.45, scale = 0.85,
       rel_min_height = 0.005
     ) +
     ggplot2::geom_vline(
-      data = s_4pl,
+      data = s,
       ggplot2::aes(xintercept = median),
       colour = "#006d2c", linetype = "dashed",
       linewidth = 0.35, alpha = 0.6
     ) +
     ggplot2::geom_pointrange(
-      data = s_4pl,
-      ggplot2::aes(x = median, xmin = lower, xmax = upper, y = group,
-                   colour = "Joint Bayesian 4PL"),
-      size = 0.35, fatten = 2.2, linewidth = 0.6
-    )
-
-  if (nrow(s_2s) > 0) {
-    p <- p +
-      ggplot2::geom_pointrange(
-        data = s_2s,
-        ggplot2::aes(x = median, xmin = lower, xmax = upper, y = group,
-                     colour = "Two-step"),
-        size = 0.35, fatten = 2.2, linewidth = 0.6,
-        position = ggplot2::position_nudge(y = -0.18)
-      )
-  }
-
-  p +
-    ggplot2::scale_colour_manual(values = approach_cols, name = NULL,
-                                  breaks = c("Joint Bayesian 4PL",
-                                             "Two-step")) +
+      data = s,
+      ggplot2::aes(x = median, xmin = lower, xmax = upper, y = group),
+      colour = "#006d2c", size = 0.35, fatten = 2.2, linewidth = 0.6
+    ) +
     ggplot2::facet_wrap(
       ~ quantity, scales = "free_x", nrow = 1,
       labeller = ggplot2::labeller(quantity = quantity_labeller)
@@ -5699,7 +5733,6 @@ build_fig4_panel <- function(case) {
     ggplot2::labs(x = NULL, y = NULL, title = case) +
     ggplot2::theme_classic(base_size = 11) +
     ggplot2::theme(
-      legend.position  = "bottom",
       axis.text.y      = ggplot2::element_blank(),
       axis.ticks.y     = ggplot2::element_blank(),
       strip.background = ggplot2::element_blank(),
@@ -5711,7 +5744,8 @@ build_fig4_panel <- function(case) {
     )
 }
 
-fig4_cases <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII")
+fig4_cases <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII",
+                "Vinegar fly (mortality)")
 fig4_panels <- lapply(fig4_cases, build_fig4_panel)
 # Row heights proportional to the number of groups in each case study.
 fig4_heights <- vapply(fig4_cases, function(cs) {
@@ -5719,8 +5753,7 @@ fig4_heights <- vapply(fig4_cases, function(cs) {
 }, integer(1))
 
 patchwork::wrap_plots(fig4_panels, ncol = 1) +
-  patchwork::plot_layout(heights = fig4_heights, guides = "collect") &
-  ggplot2::theme(legend.position = "bottom")
+  patchwork::plot_layout(heights = fig4_heights)
 ```
 
 # **Derivation of the correction factors for threshold summaries**
