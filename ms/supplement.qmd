@@ -143,9 +143,9 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 # **Introduction**
 
-This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript using the **`bayesTLS`** R package included with this project. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty, and predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel. It also contains all the data used throughout the manuscript and supplement. 
+This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty. It predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel. It also contains all the data used throughout the manuscript and supplement. 
 
-Install once from GitHub, then load:
+To access the `bayesTLS` R package, install it once from GitHub, then load as follows:
 
 ```{r install-bayesTLS}
 #| eval: false
@@ -153,14 +153,17 @@ Install once from GitHub, then load:
 #| code-fold: show
 # install.packages("remotes")   # if not already installed
 remotes::install_github("daniel1noble/bayesTLS")
+
+# Load library
+library(bayesTLS)
+
 ```
 
 ```{r load-bayesTLS}
 #| label: load-bayesTLS
-#| echo: true
+#| echo: false
 #| cache: false
 #| code-fold: show
-library(bayesTLS)
 
 # Cache directory for brms fits (also set in the setup chunk). Defined here too
 # so the fitting chunks downstream can be run independently after just loading
@@ -169,7 +172,7 @@ models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
 
-The functions chain together as a single pipeline:
+The functions in `bayesTLS` chain together as a single pipeline with the following logic:
 
 1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …).
 2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation.
@@ -177,13 +180,15 @@ The functions chain together as a single pipeline:
 4. **Predict** survival and heat-injury accumulation under fluctuating field temperature traces, with optional repair.
 5. **Plot** each step with shared theming so figures across the workflow read consistently.
 
-Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to brown shrimp, zebrafish, and snow gum leaf PSII datasets.
+Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to brown shrimp, zebrafish, and snow gum leaf PSII and *Drosophila* datasets.
 
 ## *What each function does* {#sec-function-tour}
 
 #### *Core functions*
 
-@tbl-function-core lists the key functions that are part of the `bayesTLS` package. These functions are used for standardising data, modelling, deriving the TLS quantities of interest, and predicting heat injury and survival. In addition, if `brms` 4PL models are fit manually to data we also provide key functions (e.g., `tls()`) that work more generally across fitted models to derive relevant TLS quantities.
+@tbl-function-core lists the key functions that are part of the `bayesTLS` package. Generally, these are the ones users will use most. These functions are used for standardising data, modelling, deriving the TLS quantities of interest, and predicting heat injury and survival. 
+
+In addition, if `brms` 4PL models are fit manually to data we also provide a `tls()` function that works more generally across fitted models to derive relevant TLS quantities.
 
 ```{r function-core-table}
 #| label: tbl-function-core
@@ -205,7 +210,7 @@ tinytable::tt(tdt_function_core, escape = TRUE)
 ```
 
 #### *Full package functions*
-@tbl-function-tour lists every exported function in the library, grouped by pipeline stage. 
+Theer are many helper functions in the package that maybe useful for various users. @tbl-function-tour lists every exported function in the library, grouped by pipeline stage with a description of what they are designed to do. 
 
 ```{r function-tour-table}
 #| label: tbl-function-tour
@@ -268,12 +273,12 @@ tinytable::tt(tdt_function_tour, escape = TRUE)
 
 # **A Tutorial with Simulations**
 
-This tutorial uses simulated data and case studies to show how the Bayesian hierarchical 4PL recovers thermal sensitivity ($z$) and $CT_{max_{1hr}}$ in both binomial and beta-binomial (overdispersed) settings. The joint model propagates uncertainty through downstream quantities and accommodates extensions that are awkward in a two-stage analysis. The subsequent case studies apply the same workflow to data presented in the main manuscript.
+This tutorial uses simulated data to show how the Bayesian hierarchical 4PL recovers thermal sensitivity ($z$) and $CT_{max_{1hr}}$ in both binomial and beta-binomial (overdispersed) settings. The joint model propagates uncertainty through downstream quantities and accommodates extensions that are awkward in a two-stage analysis. The subsequent case studies apply the same workflow to data presented in the main manuscript.
 
 ### *Simulating Data*
 #### Step 1 — Setting up parameters {#sec-sim-step1}
 
-We choose values that might be typical of a thermal mortality assay. The four parameters are the lower and upper asymptotes ($\ell, u$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value has a clear biological meaning (detailed in code below).
+We choose values that might be typical of a thermal mortality assay. The four parameters are the lower and upper asymptotes ($\ell, u$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value has a clear biological meaning (detailed in the code below).
 
 ```{r sim-params}
 #| label: sim-params
