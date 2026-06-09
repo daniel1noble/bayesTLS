@@ -1,5 +1,12 @@
 # bayesTLS
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/daniel1noble/bayesTLS/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/daniel1noble/bayesTLS/actions/workflows/R-CMD-check.yaml)
+[![Codecov test coverage](https://codecov.io/gh/daniel1noble/bayesTLS/graph/badge.svg)](https://app.codecov.io/gh/daniel1noble/bayesTLS)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
+<!-- badges: end -->
+
 A methods project increasing the statistical rigour of the thermal death time
 (TDT) / thermal load sensitivity framework for ectotherm thermal tolerance. The
 repository is simultaneously (a) the installable R package
