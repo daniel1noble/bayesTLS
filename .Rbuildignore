@@ -24,3 +24,8 @@
 ^CLAUDE\.md$
 ^CODEX_MEMORY\.md$
 ^data-raw$
+
+# Package-build hygiene (CI, scratch).
+^\.github$
+^TODO\.qmd$
+^Rplots\.pdf$

@@ -49,8 +49,8 @@ print.bayes_tls <- function(x, ...) {
 #' population-level coefficient table, group-level standard deviations,
 #' family parameters, and HMC diagnostics already laid out by brms.
 #'
-#' The high-level workflow context (data shape, $\bar T$, asymptote
-#' bounds, random-effect grouping, draw count) is available via
+#' The high-level workflow context (data shape, centred-temperature mean,
+#' asymptote bounds, random-effect grouping, draw count) is available via
 #' [print.bayes_tls()]. For natural-scale 4PL parameters (`low`, `up`,
 #' `k`, `z`), use [tdt_parameter_table()]. For the TDT quantities
 #' (`z`, `CTmax_1hr`, optionally `T_crit`), use [extract_tdt()].
