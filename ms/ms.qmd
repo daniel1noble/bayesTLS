@@ -615,7 +615,7 @@ Honest discussion of:
 
 # Acknowledgements
 
-We would like to thank Johannes Overgaard, Joey Bernhard, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, and Arnaud Sentis for helpful discussions through the development of this paper. 
+We would like to thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, and Arnaud Sentis for helpful discussions through the development of this paper. 
 
 # Author contributions {.unnumbered}
 
