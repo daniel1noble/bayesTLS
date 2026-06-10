@@ -1,6 +1,6 @@
 ---
 title: "Supplementary Information"
-subtitle: "A flexible modelling framework for estimating thermal sensitivity across life"
+subtitle: "A flexible modelling framework for estimating thermal tolerance and sensitivity"
 shorttitle: "Bayesian models of thermal tolerance — Supplementary information"
 authors:
   - name: "Daniel W.A. Noble"
