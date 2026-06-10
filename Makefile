@@ -104,6 +104,9 @@ supp: supp-html supp-docx supp-pdf
 supp-html:
 	$(call RENDER,ms/supplement.qmd,html,supp.html,$(SUPP_META_HTMLDOCX))
 	$(call STRIP_SUPP_NBSP_HTML,$(OUTDIR)/supp.html)
+	# Publish the supplement as the GitHub Pages landing page. supp.html is
+	# self-contained (embed-resources), so the root copy needs no asset folder.
+	cp $(OUTDIR)/supp.html index.html
 
 supp-docx:
 	$(call RENDER,ms/supplement.qmd,docx,supp.docx,$(SUPP_META_HTMLDOCX))
