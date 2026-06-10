@@ -529,35 +529,21 @@ library(patchwork)
 
 # Application of Bayesian dose-response models to case studies
 
-We applied the 4-parameter (4PL) Bayesian logistic model to four case studies covering a broad range of ectothermic groups. For all case studies, we show how much a modelling framework can retrieve classical parameters of the TLS framework such as $z$ and $CT_{max1h}$ using both lethal and sublethal data. We also show how to derive an estimate of $T_{crit}$ from lethal data. 
+We applied the Bayesian four-parameter logistic (4PL) model to four case studies spanning lethal and sublethal thermal tolerance data. Across these examples, we show how the model estimates classical TLS quantities, including $z$, $CT_{max_{1hr}}$ and, for lethal endpoints, $T_{crit}$, while estimating and propagating uncertainty to heat-injury and survival predictions. We implemented this workflow in the R package `bayesTLS`; the [online supplement](https://daniel1noble.github.io/bayesTLS/) provides a package introduction and tutorial using simulated data and the empirical case studies.
 
-In brown shrimp (*Crangon crangon*), we first show how the 4PL model can be used to generate survival curves, thermal-death-time relationships, and thermal tolerance landscapes with complete uncertainty propagation. We also show how the 4PL can be used to predict survival under dynamic thermal regimes. We then also show how to apply this model to sublethal data (time to knockdown), based on the proportion of live and knocked down individuals across time and temperature. 
+The four example case studies we use to validate our modelling approach are: 1) brown shrimp (*Crangon crangon*), with lethal mortality and sublethal knockdown-time data collected across temperature-duration treatments; 2) zebrafish (*Danio rerio*) lethal data across early life stages; 3) snow gum (*Eucalyptus pauciflora*) leaf photosystem II performance, measured through chlorophyll-fluorescence-based photosynthetic efficiency; and 4) vinegar fly (*Drosophila suzukii*) mortality and sublethal-response data from @orsted_suzukii_2024. In each case study, we estimate $z$, $CT_{max}$, heat injury, and survival – all with associated uncertainty. In the zebrafish and vinegar fly examples, we also show how the same model estimates and compares group-specific TLS parameters across life stages and sexes. There is also interest in estimating $T_{crit}$ in the literature [@jorgensen_unifying_2021; @jorgensen_nature_2022; @jorgensen_drosophila_2019]. $T_{crit}$ can be approximated from lethal data by using the TDT models to estimate the tranistion point where heat injury begins to accumulate. While there are different methods for estimating $T_{crit}$, our method makes use of existing TDT experimental data. 
 
-In zebrafish (*Danio rerio*), we show how the 4PL can be used to estimate all parameters and tolerance landscapes across three distinct life stages: early embryos, late embryos, and larvae. We show how to define models to derive group-specific parameters and compare posterior distributions to make inference about differences in thermal sensitivity and tolerance across life stages. 
-
-In snow gum (*Eucalyptus pauciflora*), we show how the 4PL model can be used to estimate thermal load sensitivity parameters from sublethal data on leaf photosynthetic efficiency. Specifically, we focus on the functional impariment of the photosystem II based on repeated measurements of chlorophyll fluorescence before and after heat stress. 
-
-
-To break the well-known likelihood ridges among $(\text{low}, \text{up}, k)$ in unconstrained 4PL fits [@bolker_ecologicalmodels_2008; @gelman_priors_2006], we estimate the identifiable parameterisation
+For the empirical analyses, we fit @eq-4pl in `brms` through `bayesTLS`, adding fixed effects and random intercepts to the 4PL parameter predictors where needed. For example, the midpoint can be written as
 
 $$
-\text{low} = 0.49\,\text{logit}^{-1}(\widetilde{\text{low}}), \qquad
-\text{up}   = 0.51 + 0.49\,\text{logit}^{-1}(\widetilde{\text{up}}), \qquad
-k   = \exp(\kappa),
-$$ {#eq-reparam}
-
-with $\widetilde{\text{low}},\widetilde{\text{up}},\kappa \in \mathbb{R}$. This constrains $\text{low} \in [0, 0.49]$ and $\text{up} \in [0.51, 1]$ into disjoint intervals so that $\text{up} > \text{low}$ by construction, the curve direction is unambiguous, and $k$ is positive on the natural scale.
-
-Up to this point we have written @eq-likelihood–@eq-mid-temp without indices for clarity. To accommodate replicated, hierarchically structured data, we now index observations by $i$ within group $j$ (e.g., trial, individual, population). The inflection point $\text{mid}_{ij}$ is then modelled as a linear function of (mean-centred) assay temperature, with additional fixed covariates and nested random effects:
-
-$$
-\text{mid}_{ij} \;=\; \beta_0 \;+\; \beta_1\,(T_{ij} - \bar T) \;+\; \mathbf{x}_{ij}^{\top}\boldsymbol{\gamma} \;+\; b_{j} \;+\; \varepsilon_{ij},
+\text{mid}_{ij} = \beta_0 + \beta_1(T_{ij} - \bar T) + \mathbf{x}_{ij}^{\top}\boldsymbol{\gamma} + b_j,
 $$ {#eq-linpred}
 
-where $\bar T$ is the grand mean of assay temperatures (centring stabilises sampling and decorrelates $\beta_0$ from $\beta_1$), $\mathbf{x}_{ij}$ holds any additional fixed covariates with coefficients $\boldsymbol{\gamma}$, $b_{j}$ collects the nested random effects and $\varepsilon_{ij} \sim \mathcal{N}(0, \sigma_\varepsilon^2)$ is an observation-level random effect that absorbs the binomial overdispersion characteristic of replicated count assays [@harrison_olre_2014]. However, we could also remove the observation-level random effect from the model and instead fit a beta-binomial error distribution which estimates a dispersion parameter ($\phi$) more naturally.
+where $\mathbf{x}_{ij}$ contains fixed covariates and $b_j$ is a group-level random intercept. Count responses were fit with a beta-binomial likelihood with identity link (brown shrimp, zebrafish, and vinegar fly), while the continuous snow gum PSII proportions were fit with a Beta likelihood with identity link. Random intercepts on $\text{mid}$ accounted for date and tank effects in brown shrimp, experimental date in zebrafish, and day and glasshouse-room effects in snow gum. For group comparisons, `life_stage` in zebrafish and `sex` in vinegar fly were included on $\text{mid}$, with temperature interactions used to estimate group-specific $z$ and $CT_{max}$. To keep the 4PL identifiable, `bayesTLS` constrains $\text{low}$ and $\text{up}$ to disjoint intervals and estimates $k$ on a positive scale.
 
-Together, @eq-likelihood–@eq-linpred define the hierarchical Bayesian 4PL fit directly to the raw binomial counts. Every classical TDT quantity — slope, $z$, $CT_{max}$ at any reference time, and the heat-injury integral — is recovered as a one-line posterior summary of this single joint fit, as derived in §[Equivalence with the classical pipeline].
+The main case-study models used four MCMC chains with 8000 iterations per chain, including 4000 warmup iterations, and `seed = 123`. The custom joint vinegar-fly sex model used the same Bayesian 4PL structure but a shorter run of 3000 iterations with 1000 warmup iterations. Full formulas, priors, sampler controls, and diagnostics are reported in the online supplement.
 
+## Thermal sensitivities across species, sexes and life stages
 
 
 
