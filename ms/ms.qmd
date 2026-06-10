@@ -621,7 +621,7 @@ We would like to thank Johannes Overgaard, Joey Bernhard, Wilco Verbeck, Jennife
 
 # Data and code availability {.unnumbered}
 
-All data, analysis scripts, and the rendered manuscript and supplement are available at https://github.com/daniel1noble/bayesTLS.
+All data, analysis scripts, and the rendered manuscript and supplement are available at https://github.com/daniel1noble/bayesTLS. The detailed supplement and tutorial, along with details on downloading the `bayesTLS` R package, can also be found here: https://daniel1noble.github.io/bayesTLS/. 
 
 # Conflict of interest {.unnumbered}
 
