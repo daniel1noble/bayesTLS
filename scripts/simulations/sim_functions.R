@@ -517,13 +517,14 @@ summarise_mcse <- function(per_sim, conv = FALSE, meta = NULL) {
   d <- dplyr::filter(per_sim, success)
   if (conv) {
     if (is.null(meta)) stop("summarise_mcse(conv = TRUE) needs `meta`.", call. = FALSE)
-    ok <- meta |> dplyr::filter(isTRUE(joint_ok), all_pass %in% TRUE) |>
+    # `joint_ok %in% TRUE` (not isTRUE(): that collapses the whole column to a
+    # single value). Restrict to sims whose joint 4PL converged on all checks.
+    ok <- meta |> dplyr::filter(joint_ok %in% TRUE, all_pass %in% TRUE) |>
       dplyr::pull(sim_id)
     d <- dplyr::filter(d, sim_id %in% ok)
   }
-  if (nrow(d) == 0L)
-    return(summarise_mcse(per_sim[0, ] |> dplyr::mutate(success = logical(0))))
-
+  # An empty `d` flows through to a correct 0-row summary (group_by + summarise
+  # on no rows yields no groups), so no special-casing is needed.
   d |>
     dplyr::group_by(scenario, method, quantity) |>
     dplyr::summarise(
