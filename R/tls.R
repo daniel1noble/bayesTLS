@@ -49,6 +49,8 @@
 #' @param newdata Optional explicit moderator x temperature grid; overrides the
 #'   `by`/`temp_grid` construction.
 #' @param probs Summary quantiles (lower, median, upper). Default `c(.025,.5,.975)`.
+#' @param ... Additional arguments passed on to [tls()] (used by the
+#'   `tls_z()`, `tls_ctmax()` and `tls_tcrit()` convenience wrappers).
 #' @return A `tls` object: `$summary` (per-group, per-quantity median + interval),
 #'   `$draws` (per-group, per-quantity posterior draws), and `$meta`.
 #' @examples

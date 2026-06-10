@@ -86,6 +86,9 @@ evaluated for the slope/crossing. Default: 11 points over the observed range.}
 \code{by}/\code{temp_grid} construction.}
 
 \item{probs}{Summary quantiles (lower, median, upper). Default \code{c(.025,.5,.975)}.}
+
+\item{...}{Additional arguments passed on to \code{\link[=tls]{tls()}} (used by the
+\code{tls_z()}, \code{tls_ctmax()} and \code{tls_tcrit()} convenience wrappers).}
 }
 \value{
 A \code{tls} object: \verb{$summary} (per-group, per-quantity median + interval),
