@@ -678,16 +678,19 @@ run_parallel <- function(ids, fun, workers, exports, envir = parent.frame()) {
 #' @return Invisibly, the hash table; stops on infeasible DGP or duplicate hash.
 preflight <- function(scenarios) {
   # A scenario's data is fully determined by its *resolved* generating spec:
-  # the DGP, family, replication, and the design's actual (temps, durations) —
-  # not the design label. Two scenarios with the same resolved spec (e.g.
-  # design "full" and "tmax405", which expand to identical grids) legitimately
-  # share a preflight hash; two with *different* specs must not.
-  spec_key <- function(sc) {
-    sp <- design_spec(sc$design)
-    paste(sc$dgp, sc$family, sc$n_reps,
-          paste(sp$temps, collapse = ","),
-          paste(sp$durations, collapse = ","),
-          sc$u_0, sc$ell_0, sc$u_beta1, sep = "|")
+  # the family, replication, design grid, and the 4PL truth parameters AFTER
+  # presets + overrides are applied — not the raw scenario arguments. Two
+  # scenarios that resolve to the same spec legitimately share a preflight hash
+  # (e.g. "full"/"tmax405" expand to the same grid; the asym_u DGP equals a
+  # baseline DGP with u_beta1 = -0.01). Two with *different* resolved specs must
+  # not — that would mean a flag never reached data generation.
+  spec_key <- function(truth, n_reps) {
+    sp <- design_spec(truth$design)
+    paste(truth$family, n_reps,
+          paste(sp$temps, collapse = ","), paste(sp$durations, collapse = ","),
+          truth$u, truth$ell, truth$k, truth$m_beta0, truth$m_beta1,
+          truth$u_beta1, truth$ell_beta1, truth$k_beta1, truth$T_bar, truth$phi,
+          sep = "|")
   }
 
   hashes <- character(nrow(scenarios))
@@ -702,7 +705,7 @@ preflight <- function(scenarios) {
       stop("preflight: ", sc$label, " produced NA survival — DGP infeasible.",
            call. = FALSE)
     hashes[i] <- substr(rlang::hash(d$y), 1, 12)
-    keys[i]   <- spec_key(sc)
+    keys[i]   <- spec_key(truth, sc$n_reps)
     message(sprintf("  OK %-22s z_true=%.3f  CTmax_true=%.3f  hash=%s",
                     sc$label, truth$z_true, truth$CTmax_1hr_true, hashes[i]))
   }

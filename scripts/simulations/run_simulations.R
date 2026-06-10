@@ -22,7 +22,7 @@ source(here::here("scripts", "simulations", "sim_functions.R"))
 
 # ---- 1. Config (edit these) ------------------------------------------------
 OUT_DIR     <- here::here("output", "sim_twostage")
-N_SIMS      <- 25            # simulated datasets per scenario
+N_SIMS      <- 1000          # simulated datasets per scenario
 WORKERS     <- 5             # PSOCK cluster size (cmdstanr is not fork-safe)
 MASTER_SEED <- 20260513L     # seed_sim = MASTER_SEED + 1000*scenario_index + sim_id
 FORCE       <- FALSE         # TRUE = ignore the raw/ cache and refit every sim
