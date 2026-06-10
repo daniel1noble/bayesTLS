@@ -80,8 +80,11 @@ Each dataset can be loaded easily using `data(shrimp_lethal)` (as an example of 
 
 This repository also contains the code needed to reproduce the companion paper,
 its supplement, and the simulation results. To do this, install the package from
-this checkout, render the Quarto documents through the `Makefile`, and use the
-tests to verify the package functions used by the manuscript and supplement.
+this repository, render the Quarto documents through the `Makefile`, and use the
+tests to verify the package functions used by the manuscript and supplement. All
+code chunks are provided in `ms/ms.qmd` and `ms/supplement.qmd`; use `make supp`
+to render the supplement and `scripts/run_sweep_queue.sh` to rerun the full
+simulation suite. Simulations can be rerun using `bash scripts/run_sweep_queue.sh` from the terminal window.
 
 ### Repository layout
 
