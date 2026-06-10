@@ -83,8 +83,12 @@ its supplement, and the simulation results. To do this, install the package from
 this repository, render the Quarto documents through the `Makefile`, and use the
 tests to verify the package functions used by the manuscript and supplement. All
 code chunks are provided in `ms/ms.qmd` and `ms/supplement.qmd`; use `make supp`
-to render the supplement and `scripts/run_sweep_queue.sh` to rerun the full
-simulation suite. Simulations can be rerun using `bash scripts/run_sweep_queue.sh` from the terminal window.
+to render the supplement and `scripts/simulations/run_simulations.R` to rerun the
+full two-stage-bias simulation suite. Run all scenarios with
+`Rscript scripts/simulations/run_simulations.R`, or a subset by passing scenario
+labels, e.g. `Rscript scripts/simulations/run_simulations.R scen9_tmax_060`. Each
+scenario and the per-simulation pipeline are visible in that one script; the
+reusable building blocks live in `scripts/simulations/sim_functions.R`.
 
 ### Repository layout
 
@@ -103,8 +107,9 @@ Use this map to find the files and outputs involved in reproduction:
   source CSV files.
 - `output/models/` — cached `brms` fits (`.rds`) created and reused during
   renders.
-- `scripts/` — support scripts, including simulation helpers and document cleanup
-  utilities used by the render workflow.
+- `scripts/simulations/` — the two-stage-bias simulation: `run_simulations.R`
+  (scenarios + runner) and `sim_functions.R` (reusable building blocks).
+- `scripts/` — other support scripts (presentation figures, document cleanup).
 - `tests/testthat/` — fast unit tests plus optional `brms` integration tests.
 - `bib/` — bibliography and the Ecology Letters CSL file.
 - `notes/` — dated development notes for derivations, literature checks, and

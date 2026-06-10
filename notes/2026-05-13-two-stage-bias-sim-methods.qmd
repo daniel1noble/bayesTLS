@@ -192,7 +192,7 @@ target both estimators converge to, by construction of the OLS at
 Stage 2.
 
 The implementation lives in `compute_ols_truth()` in
-[`scripts/sim_twostage_helpers.R`](../scripts/sim_twostage_helpers.R)
+[`scripts/simulations/sim_functions.R`](../scripts/simulations/sim_functions.R)
 and is checked for feasibility before any data is simulated: the
 function rejects DGPs whose $u_T$, $\ell_T$, or $k_T$ leave
 $0 < \ell < 0.5 < u < 1$ or $k > 0$ at any design temperature.
@@ -291,13 +291,12 @@ safe per-sim RDS files under
 `summary_<label>.rds`, `meta_<label>.rds`, `draws_<label>.rds`, and
 `diffs_<label>.rds` at the end of each cell.
 
-The driver is
-[`scripts/sim_twostage_bias.R`](../scripts/sim_twostage_bias.R); the
-data-generating helpers and the three estimator wrappers live in
-[`scripts/sim_twostage_helpers.R`](../scripts/sim_twostage_helpers.R).
-The queue dispatcher is
-[`scripts/run_sweep_queue.sh`](../scripts/run_sweep_queue.sh); it runs
-a pre-flight pass over every planned cell before any compute starts
+The runner is
+[`scripts/simulations/run_simulations.R`](../scripts/simulations/run_simulations.R);
+the data-generating helpers and the three estimator wrappers live in
+[`scripts/simulations/sim_functions.R`](../scripts/simulations/sim_functions.R).
+The scenarios are a plain R table inside the runner (no shell dispatcher); the
+runner runs a pre-flight pass over every selected cell before any compute starts
 (see `feedback_sim_preflight.md` for what the pre-flight checks).
 
 Parallelism uses a PSOCK cluster (`parallel::makeCluster` +

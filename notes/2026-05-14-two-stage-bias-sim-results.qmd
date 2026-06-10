@@ -29,14 +29,14 @@ library(tidyr)
 library(ggplot2)
 library(patchwork)
 library(here)
-source(here::here("scripts", "sim_twostage_helpers.R"))
+source(here::here("scripts", "simulations", "sim_functions.R"))
 
 dgps    <- c("baseline", "sym_ul", "asym_u", "varying_k")
 designs <- c("n3", "n5")
 
 # OLS truths per DGP
 truths_df <- do.call(rbind, lapply(dgps, function(d) {
-  tt <- sim_twostage_truth(d)
+  tt <- sim_truth(d)
   data.frame(dgp       = d,
              u_beta1   = tt$u_beta1,
              ell_beta1 = tt$ell_beta1,

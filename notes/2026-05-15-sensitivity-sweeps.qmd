@@ -31,7 +31,7 @@ library(tidyr)
 library(ggplot2)
 library(patchwork)
 library(here)
-source(here::here("scripts", "sim_twostage_helpers.R"))
+source(here::here("scripts", "simulations", "sim_functions.R"))
 
 # Helper: try to load a labelled run; return NULL on miss so the report can
 # render against partial data.
@@ -145,7 +145,7 @@ iterations (half discarded as warm-up), `cmdstanr` backend, `adapt_delta = 0.9`,
 posterior via `extract_tdt()` and report the posterior median and 2.5 % /
 97.5 % quantiles (1000 posterior draws kept per simulation).
 
-**Classical two-stage.** `fit_two_stage_classical()` does the textbook recipe:
+**Classical two-stage.** `fit_two_stage(stage1 = "binomial")` does the textbook recipe:
 for each temperature, fit `glm(cbind(n_surv, n_dead) ~ log10(t), family = binomial("logit"))`,
 read off $\hat{\log_{10}\mathrm{LT_{50}}} = -\hat\beta_0/\hat\beta_1$ with delta-method
 SE; then `lm(log10_LT50 ~ T)` and read off $z = -1/\hat\beta_1^{(2)}$ and

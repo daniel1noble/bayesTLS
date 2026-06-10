@@ -90,7 +90,7 @@ TRUTH_REL    <- c(
 BB_Z_THRESH     <- 20
 BB_CTMAX_THRESH <- 10
 
-# Aggregator matching scripts/sim_twostage_bias.R::mcse_aggregator().
+# Aggregator matching summarise_mcse() in scripts/simulations/sim_functions.R.
 mcse_aggregate <- function(per_sim) {
   per_sim |>
     dplyr::filter(success) |>

@@ -179,8 +179,8 @@ Bullard's empirical finding (their Fig 2D, Discussion): in *Drosophila*, the
 log-logistic shape $k$ generally **decreases** with $T$ (variance of $\log t_f$
 **increases**; survival curves get flatter at hotter $T$). Our supplement
 §sec-joint-extend simulates $k$ **increasing** with $T$ (`log_k_T = 0.30`, the
-curves get *sharper* at hotter $T$). Likewise `scripts/run_sweep_queue.sh`
-scen5 is labelled "sharpen" (k rises with T). Both are valid violations of
+curves get *sharper* at hotter $T$). Likewise the `scen5_sharpen` scenario in
+`scripts/simulations/run_simulations.R` (k rises with T). Both are valid violations of
 constant-shape, and our framework is sign-agnostic — but we are exploring the
 **opposite sign** from Bullard's empirical observation. Options:
 

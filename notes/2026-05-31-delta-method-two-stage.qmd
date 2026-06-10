@@ -42,9 +42,9 @@ the generated-regressor anticonservativeness [@pagan1984; @murphytopel1985] the
 manuscript critiques — the simulation reproduces the *field-standard* pipeline,
 not a corrected one.
 
-Code: [`fit_two_stage_classical()`](../scripts/sim_twostage_helpers.R) (binomial
-Stage 1) and [`fit_two_stage_betabin()`](../scripts/sim_twostage_helpers.R)
-(beta-binomial Stage 1) — the z/CTmax Delta-method blocks are byte-identical
+Code: [`fit_two_stage(stage1 = "binomial")`](../scripts/simulations/sim_functions.R)
+and [`fit_two_stage(stage1 = "betabinomial")`](../scripts/simulations/sim_functions.R)
+(the two Stage-1 likelihoods are now one function) — the z/CTmax Delta-method blocks are byte-identical
 between them; only the Stage-1 likelihood differs.
 
 ## The Delta method in one line
@@ -90,7 +90,7 @@ $$
 \mathrm{SE}\big(\log_{10}LT_{50}\big)=\sqrt{\mathbf{g}^\top V\,\mathbf{g}}.
 $$
 
-In code (`fit_two_stage_classical`):
+In code (`fit_two_stage(stage1 = "binomial")`):
 
 ```r
 b0 <- co[["(Intercept)"]]; b1 <- co[["log10_t"]]
@@ -200,8 +200,8 @@ there are two reasons it is unused here, and the "obvious" fix is only partial.
    against the most-common spec, don't steelman it).
 2. **Internal consistency with the estimand.** The simulation's *truth* is itself
    defined as the **unweighted** OLS slope/intercept through the true
-   $\log_{10}LT_{50}(T)$ surface — [`compute_ols_truth()`](../scripts/sim_twostage_helpers.R)
-   uses `lm(log10_lt50 ~ Ts)` with no weights (line ~154). So unweighted OLS is
+   $\log_{10}LT_{50}(T)$ surface — [`compute_ols_truth()`](../scripts/simulations/sim_functions.R)
+   uses `lm(log10_lt50 ~ Ts)` with no weights. So unweighted OLS is
    the estimator *matched* to that estimand; weighting would target a slightly
    different line and would require redefining the truth.
 
@@ -251,7 +251,7 @@ default, the unweighted `lm` is exactly right to keep.
 **Design decision this raises (open).** We could add a **WLS / fixed-variance
 meta-regression variant** as an intermediate comparator to isolate the
 *weighting/propagation* component of the two-stage deficit — analogous to how
-[`fit_two_stage_betabin()`](../scripts/sim_twostage_helpers.R) isolates the
+[`fit_two_stage(stage1 = "betabinomial")`](../scripts/simulations/sim_functions.R) isolates the
 *likelihood* component. Caveat: a weighted estimator targets a different line than
 the unweighted-OLS truth, so it needs either a WLS-defined truth or an explicit
 statement that it is scored against the OLS line. Decide before the simulation
@@ -273,7 +273,7 @@ co <- coef(s2); V2 <- vcov(s2)
 b0 <- co[["(Intercept)"]]; b1 <- co[["T"]]
 log10_tref <- log10(60)
 
-## --- analytic (as in sim_twostage_helpers.R) ---
+## --- analytic (as in scripts/simulations/sim_functions.R) ---
 z_se_analytic <- abs(1 / b1^2) * sqrt(V2["T", "T"])
 g_ctmax       <- c(-1 / b1, -(log10_tref - b0) / b1^2)
 ctmax_se_analytic <- sqrt(as.numeric(t(g_ctmax) %*% V2 %*% g_ctmax))
@@ -325,9 +325,10 @@ helpers are correct.
 
 ## Verification status
 
-- Code paths quoted verbatim from `scripts/sim_twostage_helpers.R`
-  (`fit_two_stage_classical` lines ~283–381; `fit_two_stage_betabin` ~402–end),
-  read 2026-05-31. The z/CTmax Delta blocks are identical across the two.
+- Code paths quoted verbatim from the original `scripts/sim_twostage_helpers.R`
+  (`fit_two_stage_classical` / `fit_two_stage_betabin`), read 2026-05-31. Those
+  two functions were later merged into the single `fit_two_stage(stage1 = ...)`
+  in `scripts/simulations/sim_functions.R`; the z/CTmax Delta blocks are shared.
 - The Stage-2 `lm()` is unweighted in both — verified there is no `weights =`
   argument and `se_log10_LT50` is not referenced after Stage 1.
 - The gradient algebra is validated numerically by the chunk above on render.
