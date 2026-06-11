@@ -37,12 +37,14 @@ BUILD_MS  := $(BUILDROOT)/ms
 
 all: ms supp
 
-# Sync sources to BUILDROOT. `bib/`, `output/`, and `data/` are symlinked from
-# the project so that:
+# Sync sources to BUILDROOT. `bib/`, `output/`, `data/`, and `pics/` are
+# symlinked from the project so that:
 #   - qmd files using `../bib/...` YAML paths resolve to BUILDROOT/bib
 #   - `here::here("output", "models")` from chunks evaluated in BUILD_MS
 #     resolves to the project's `output/models/` (brms-cached fits)
 #   - `here::here("data", ...)` resolves to the project's `data/` (shrimp xlsx)
+#   - `here::here("pics", ...)` resolves to the project's `pics/` (Figure 4
+#     species illustrations: danio life stages, shrimp, euca, dros, etc.)
 #
 # R/ symlinks are intentionally NOT created here: the analytical functions
 # now live in the bayesTLS R package, which the supplement loads via
@@ -62,9 +64,11 @@ sync-sources:
 	@ln -sfn $(abspath bib)    $(BUILDROOT)/bib
 	@ln -sfn $(abspath output) $(BUILDROOT)/output
 	@ln -sfn $(abspath data)   $(BUILDROOT)/data
+	@ln -sfn $(abspath pics)   $(BUILDROOT)/pics
 	@ln -sfn $(abspath bib)    $(BUILD_MS)/bib
 	@ln -sfn $(abspath output) $(BUILD_MS)/output
 	@ln -sfn $(abspath data)   $(BUILD_MS)/data
+	@ln -sfn $(abspath pics)   $(BUILD_MS)/pics
 
 # Render <source.qmd> to <format> with output filename <basename.ext>.
 # All work happens in $(BUILD_MS); only the final artefact is copied to
