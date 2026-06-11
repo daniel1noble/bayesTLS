@@ -39,6 +39,54 @@ format:
     code-tools: true
     code-overflow: wrap
     format-links: false
+    include-in-header:
+      text: |
+        <style>
+        /* Split TOC (HTML only): left sidebar = top levels (H1/H2);
+           a fixed right-hand panel lists the lower levels (H3/H4). */
+        nav#TOC ul ul ul { display: none !important; }
+        #toc-low {
+          position: fixed; top: 4.5rem; right: .6rem; width: 14rem;
+          max-height: calc(100vh - 6rem); overflow-y: auto;
+          padding: .3rem .55rem .6rem; font-size: .78rem; line-height: 1.3;
+          border-left: 1px solid var(--bs-border-color, #dee2e6);
+          background: var(--bs-body-bg, #fff); z-index: 1020;
+        }
+        #toc-low .toc-low-title { font-weight: 700; margin-bottom: .4em; font-size: .8rem; }
+        #toc-low .toc-low-sec { font-weight: 600; color: var(--bs-secondary, #6c757d); margin: .5em 0 .1em; }
+        #toc-low a { display: block; text-decoration: none; padding: 1px 0 1px .4em;
+                     border-left: 2px solid transparent; color: var(--bs-body-color, #333); }
+        #toc-low a.lvl4 { padding-left: 1.2em; opacity: .85; }
+        #toc-low a:hover { border-left-color: var(--bs-link-color, #2780e3); color: var(--bs-link-color, #2780e3); }
+        /* Hide on narrow viewports where there is no room beside the text. */
+        @media (max-width: 1300px) { #toc-low { display: none; } }
+        </style>
+        <script>
+        window.addEventListener('DOMContentLoaded', function () {
+          var heads = Array.prototype.slice
+            .call(document.querySelectorAll('h1, h2, h3, h4'))
+            .filter(function (h) { return h.id && !h.closest('#TOC'); });
+          if (!heads.length) return;
+          var nav = document.createElement('nav');
+          nav.id = 'toc-low'; nav.setAttribute('role', 'doc-toc');
+          nav.innerHTML = '<div class="toc-low-title">Detailed contents</div>';
+          var hasLow = false;
+          heads.forEach(function (h) {
+            var lvl = parseInt(h.tagName.charAt(1), 10);
+            var txt = h.textContent.trim();
+            if (lvl <= 2) {
+              var d = document.createElement('div');
+              d.className = 'toc-low-sec'; d.textContent = txt; nav.appendChild(d);
+            } else {
+              hasLow = true;
+              var a = document.createElement('a');
+              a.href = '#' + h.id; a.textContent = txt; a.className = 'lvl' + lvl;
+              nav.appendChild(a);
+            }
+          });
+          if (hasLow) document.body.appendChild(nav);
+        });
+        </script>
   docx:
     reference-doc: ../bib/templates/template.docx
     toc: false
@@ -112,15 +160,18 @@ execute:
 ```{r setup}
 #| label: setup-supp
 #| cache: false
+#| include: false
+#| warning: false
+#| echo: false
 
 # Setup chunk must NOT be cached — caching skips the package-loading side
 # effects on subsequent renders, so library() calls in pacman::p_load() never
 # run and downstream chunks fail with "could not find function ...".
 
-remotes::install_github("daniel1noble/bayesTLS", force = TRUE)
+# Only need for fresh install
+# remotes::install_github("daniel1noble/bayesTLS", force = TRUE)
 
 # Load library
-library()
 pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl, bayesTLS)
 
 # Force tinytable to register its LaTeX preamble dependencies (tabularray,
@@ -176,6 +227,7 @@ library(bayesTLS)
 models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
+
 
 The functions in `bayesTLS` chain together as a single pipeline with the following logic:
 
@@ -5446,8 +5498,8 @@ This figure compiles the joint Bayesian 4PL posterior distributions of the TDT q
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig4-case-study-densities
 #| fig-cap: "Manuscript Figure 4. Posterior distributions of thermal sensitivity $z$ (left) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: brown shrimp (*Crangon crangon*), snow gum leaf PSII (*Eucalyptus pauciflora*), zebrafish (*Danio rerio*; three life stages, panel C) and the vinegar fly (*Drosophila suzukii*; by sex, panel D). Filled ridges are the posterior densities, coloured by species and level; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study’s own analysis: 1 h for shrimp, zebrafish and leaf (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). For the zebrafish life stages and fly sexes, pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
-#| fig-width: 9
-#| fig-height: 9
+#| fig-align: center
+#| out-width: "100%"
 #| cache: false
 
 # 4PL posterior draws (one row per draw, per case study × group × quantity).
@@ -5649,7 +5701,10 @@ dir.create(here("output", "figs"), recursive = TRUE, showWarnings = FALSE)
 ggsave(here("output", "figs", "fig4_case_study_densities.png"), fig4_final,
        width = 11.5, height = 9.6, dpi = 600, bg = "white")
 
-fig4_final
+# Display the saved PNG rather than the live plot object, so the figure's tuned
+# canvas (11.5 x 9.6 in) and inset/bracket positions are not re-flowed by the
+# chunk's fig dimensions (mirrors the ms.qmd include_graphics approach).
+knitr::include_graphics(here("output", "figs", "fig4_case_study_densities.png"))
 ```
 
 # **Derivation of the correction factors for threshold summaries**
