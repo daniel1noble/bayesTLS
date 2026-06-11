@@ -545,7 +545,16 @@ The main case-study models used four MCMC chains with 8000 iterations per chain,
 
 ## Thermal sensitivities across species, sexes and life stages
 
+(@fig-tls-comparison). 
 
+```{r}
+#| label: fig-tls-comparison
+#| echo: false
+#| fig-cap: "Thermal sensitivity ($z$, left of each panel) and the critical thermal limit ($CT_{max}$, right) estimated by the joint Bayesian four-parameter logistic (4PL) model for four case studies: (A) brown shrimp (*Crangon crangon*), (B) snow gum leaf photosystem II function (*Eucalyptus pauciflora*), (C) zebrafish (*Danio rerio*) across three early life stages, and (D) vinegar fly (*Drosophila suzukii*) by sex. Filled ridges are posterior densities, coloured by species and group. The black-outlined point and bar give the posterior median and 95% credible interval, which are also printed beside each distribution. The $CT_{max}$ reference exposure follows each study's own design — 1 hour for brown shrimp, zebrafish, and leaf PSII, and 4 hours for the vinegar fly. Because the grouped case studies (C, D) were fit within a single model, life-stage and sex differences are evaluated as pairwise posterior contrasts, annotated as brackets labelled with $p_{\\mathrm{MCMC}}$ (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence that the groups differ)."
+#| fig-align: center
+#| out-width: "100%"
+knitr::include_graphics(here::here("output", "figs", "fig4_case_study_densities.png"))
+```
 
 # Discussion
 
