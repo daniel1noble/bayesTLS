@@ -116,7 +116,12 @@ execute:
 # Setup chunk must NOT be cached — caching skips the package-loading side
 # effects on subsequent renders, so library() calls in pacman::p_load() never
 # run and downstream chunks fail with "could not find function ...".
-pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl)
+
+remotes::install_github("daniel1noble/bayesTLS", force = TRUE)
+
+# Load library
+library()
+pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl, bayesTLS)
 
 # Force tinytable to register its LaTeX preamble dependencies (tabularray,
 # siunitx, etc.) on every render. Tinytable injects these via
