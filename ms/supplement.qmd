@@ -1892,8 +1892,9 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| echo: false
 #| warning: false
 #| message: false
-#| fig-width: 9
-#| fig-height: 9
+#| fig-width: 11.5
+#| fig-height: 9.6
+#| fig-dpi: 300
 #| fig-cap: "Bias and coverage across six design × replication cells (Scen 8). Two-stage at sparse × 1 produces large, unstable estimates with implausibly wide t-corrected CIs; joint 4PL returns coherent intervals of appropriate width across all six cells."
 
 .d <- .load_screened("scen8") |>
@@ -5439,7 +5440,7 @@ This figure compiles the joint Bayesian 4PL posterior distributions of the TDT q
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig4-case-study-densities
-#| fig-cap: "Manuscript Figure 4. Posterior densities of $z$ (left column) and $CT_{max}$ (right column) from the joint Bayesian 4PL fits (green ridges, #006d2c) for the four case studies (rows). The posterior median and 95% credible interval are overlaid as a green pointrange at the density baseline, with a dashed vertical line at the median. The $CT_{max}$ column reference exposure differs by case study to match each one's own analysis: 1 h for brown shrimp, zebrafish and snow gum leaf PSII (relative midpoint threshold), and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024); the panel strip labels each accordingly. The zebrafish row splits into three ridges (one per life stage) and the vinegar fly row into two (female, male). Each case study has independent x-axes in both columns. $z$ is in °C (it is the temperature change required for a 10-fold change in time to the threshold)."
+#| fig-cap: "Manuscript Figure 4. Posterior distributions of thermal sensitivity $z$ (left) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: brown shrimp (*Crangon crangon*), snow gum leaf PSII (*Eucalyptus pauciflora*), zebrafish (*Danio rerio*; three life stages, panel C) and the vinegar fly (*Drosophila suzukii*; by sex, panel D). Filled ridges are the posterior densities, coloured by species and level; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study’s own analysis: 1 h for shrimp, zebrafish and leaf (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). For the zebrafish life stages and fly sexes, pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
 #| fig-width: 9
 #| fig-height: 9
 #| cache: false
@@ -5448,47 +5449,52 @@ This figure compiles the joint Bayesian 4PL posterior distributions of the TDT q
 fig4_draws <- dplyr::bind_rows(
   tibble::tibble(
     case_study = "Brown shrimp", group = "Brown shrimp",
-    quantity   = "z",         value = get_z_draws(et_shrimp)$z
+    quantity   = "z",         value = get_z_draws(et_shrimp)$z,
+    .draw      = get_z_draws(et_shrimp)$.draw
   ),
   tibble::tibble(
     case_study = "Brown shrimp", group = "Brown shrimp",
-    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_shrimp)$CTmax
+    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_shrimp)$CTmax,
+    .draw      = get_ctmax_draws(et_shrimp)$.draw
   ),
   dplyr::bind_rows(lapply(zf_stages, function(s) {
-    dr <- zf_joint_tdt[[s]]$z$draws
+    dr <- get_z_draws(zf_joint_tdt[[s]])  # bayesTLS accessor: .draw, z, CTmax
     dplyr::bind_rows(
       tibble::tibble(case_study = "Zebrafish", group = s,
-                     quantity = "z",         value = dr$z),
+                     quantity = "z",         value = dr$z,     .draw = dr$.draw),
       tibble::tibble(case_study = "Zebrafish", group = s,
-                     quantity = "CTmax_1hr", value = dr$CTmax)
+                     quantity = "CTmax_1hr", value = dr$CTmax, .draw = dr$.draw)
     )
   })),
   tibble::tibble(
     case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
-    quantity   = "z",         value = get_z_draws(et_leaf)$z
+    quantity   = "z",         value = get_z_draws(et_leaf)$z,
+    .draw      = get_z_draws(et_leaf)$.draw
   ),
   tibble::tibble(
     case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
-    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_leaf)$CTmax
-  ),
-  # Vinegar fly mortality, separate per-sex joint fits. CTmax is at the 4 h
-  # reference exposure (absolute LT50) used in this case study, hence a distinct
-  # "CTmax_4hr" quantity so the panel strip labels it honestly.
-  tibble::tibble(
-    case_study = "Vinegar fly (mortality)", group = "Female",
-    quantity   = "z",         value = get_z_draws(tdt_dros_f)$z
+    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_leaf)$CTmax,
+    .draw      = get_ctmax_draws(et_leaf)$.draw
   ),
   tibble::tibble(
     case_study = "Vinegar fly (mortality)", group = "Female",
-    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_f)$CTmax
+    quantity   = "z",         value = get_z_draws(tdt_dros_f)$z,
+    .draw      = get_z_draws(tdt_dros_f)$.draw
+  ),
+  tibble::tibble(
+    case_study = "Vinegar fly (mortality)", group = "Female",
+    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_f)$CTmax,
+    .draw      = get_ctmax_draws(tdt_dros_f)$.draw
   ),
   tibble::tibble(
     case_study = "Vinegar fly (mortality)", group = "Male",
-    quantity   = "z",         value = get_z_draws(tdt_dros_m)$z
+    quantity   = "z",         value = get_z_draws(tdt_dros_m)$z,
+    .draw      = get_z_draws(tdt_dros_m)$.draw
   ),
   tibble::tibble(
     case_study = "Vinegar fly (mortality)", group = "Male",
-    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_m)$CTmax
+    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_m)$CTmax,
+    .draw      = get_ctmax_draws(tdt_dros_m)$.draw
   )
 ) |>
   dplyr::filter(is.finite(value))
@@ -5538,92 +5544,107 @@ fig4_summary <- dplyr::bind_rows(
          ctmax4_m$temp_median, ctmax4_m$temp_lower, ctmax4_m$temp_upper)
 )
 
-# Factor ordering: rows are the three case studies; within zebrafish the three
-# life stages are ordered young → old → larvae (top to bottom of the ridge
-# stack, so we reverse for the y-axis levels).
-case_levels  <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII",
-                  "Vinegar fly (mortality)")
-group_levels <- c("Brown shrimp",
-                  rev(zf_stages),
-                  "Snow gum leaf PSII",
-                  "Female", "Male")
-quant_levels <- c("z", "CTmax_1hr", "CTmax_4hr")
+# ---- Manuscript Figure 4 design: illustrations, colours, pMCMC brackets ----
+suppressPackageStartupMessages({
+  library(ggplot2); library(dplyr); library(tibble); library(ggridges)
+  library(patchwork); library(ggtext); library(cowplot); library(magick); library(here)
+})
 
-fig4_draws <- fig4_draws |>
-  dplyr::mutate(
-    case_study = factor(case_study, levels = case_levels),
-    group      = factor(group,      levels = group_levels),
-    quantity   = factor(quantity,   levels = quant_levels)
-  )
-fig4_summary <- fig4_summary |>
-  dplyr::mutate(
-    case_study = factor(case_study, levels = case_levels),
-    group      = factor(group,      levels = group_levels),
-    quantity   = factor(quantity,   levels = quant_levels)
-  )
+# Facet order: z (left), CTmax (right); fly uses the 4 h CTmax reference.
+fig4_draws   <- mutate(fig4_draws,   quantity = factor(quantity, levels = c("z", "CTmax_1hr", "CTmax_4hr")))
+fig4_summary <- mutate(fig4_summary, quantity = factor(quantity, levels = c("z", "CTmax_1hr", "CTmax_4hr")))
 
-quantity_labeller <- ggplot2::as_labeller(
-  c(z         = "italic(z)~\"(°C per 10-fold change in time)\"",
-    CTmax_1hr = "CT[max[1*hr]]~(degree*C)",
-    CTmax_4hr = "CT[max[4*hr]]~(degree*C)"),
-  default = ggplot2::label_parsed
-)
+# Colour by species / level; the CI bar + point use a darker tone of the fill.
+vz <- viridisLite::viridis(3, begin = 0.15, end = 0.85)              # zebrafish stages
+fig4_pal <- c("Brown shrimp" = "#C8732B", "Snow gum leaf PSII" = "#4F7942",
+              setNames(vz, zf_stages), "Female" = "#D6336C", "Male" = "#1C7ED6")
+darken <- function(col, f = 0.34) { v <- grDevices::col2rgb(col) / 255 * (1 - f); grDevices::rgb(v[1], v[2], v[3]) }
+fig4_pal_dark <- sapply(fig4_pal, darken)
+qlab <- as_labeller(c(z = "italic(z)~(degree*C)", CTmax_1hr = "CT[max[1*hr]]~(degree*C)",
+                      CTmax_4hr = "CT[max[4*hr]]~(degree*C)"), default = label_parsed)
+P <- function(x) here("pics", x)
 
-# Per-case-study panel builder. We use patchwork rather than facet_grid so
-# every case study gets its own independent x-axis range in each column —
-# facet_grid forces a shared x within columns, which compresses the
-# narrow-CI rows. The posterior median + 95% CrI is drawn as a pointrange at
-# the density baseline, with a dashed line at the median.
-build_fig4_panel <- function(case) {
-  d <- dplyr::filter(fig4_draws,   case_study == case) |>
-    dplyr::mutate(group = droplevels(group))
-  s <- dplyr::filter(fig4_summary, case_study == case) |>
-    dplyr::mutate(group = droplevels(group))
+# Trim white margins so the danio stage illustrations are size-comparable.
+danio_src  <- c(young_embryos = "danio_early.png", old_embryos = "danio_late_embryo.png", larvae = "danio_larvae.png")
+danio_trim <- vapply(danio_src, function(f) {
+  o <- tempfile(fileext = ".png"); image_write(image_trim(image_read(P(f)), fuzz = 8), o); o
+}, character(1))
+imgH <- function(p, h) sprintf("<img src='%s' height='%d'/>", p, h)
+imgW <- function(p, w) sprintf("<img src='%s' width='%d'/>", p, w)
+sym  <- function(ch, pt) sprintf("<span style='font-size:%dpt'>%s</span>", pt, ch)
 
-  ggplot2::ggplot(d, ggplot2::aes(x = value, y = group)) +
-    ggridges::geom_density_ridges(
-      fill = "#006d2c", colour = NA, alpha = 0.45, scale = 0.85,
-      rel_min_height = 0.005
-    ) +
-    ggplot2::geom_vline(
-      data = s,
-      ggplot2::aes(xintercept = median),
-      colour = "#006d2c", linetype = "dashed",
-      linewidth = 0.35, alpha = 0.6
-    ) +
-    ggplot2::geom_pointrange(
-      data = s,
-      ggplot2::aes(x = median, xmin = lower, xmax = upper, y = group),
-      colour = "#006d2c", size = 0.35, fatten = 2.2, linewidth = 0.6
-    ) +
-    ggplot2::facet_wrap(
-      ~ quantity, scales = "free_x", nrow = 1,
-      labeller = ggplot2::labeller(quantity = quantity_labeller)
-    ) +
-    ggplot2::labs(x = NULL, y = NULL, title = case) +
-    ggplot2::theme_classic(base_size = 11) +
-    ggplot2::theme(
-      axis.text.y      = ggplot2::element_blank(),
-      axis.ticks.y     = ggplot2::element_blank(),
-      strip.background = ggplot2::element_blank(),
-      strip.text       = ggplot2::element_text(face = "bold"),
-      panel.border     = ggplot2::element_rect(colour = "black",
-                                                fill = NA, linewidth = 0.5),
-      plot.title       = ggplot2::element_text(face = "bold", size = 11,
-                                                hjust = 0)
-    )
+# pMCMC = twice the smaller posterior tail probability of the paired difference.
+pmcmc <- function(d) { n <- length(d); max(2 * min(sum(d > 0) / n, sum(d < 0) / n), 1 / n) }
+fmtp  <- function(p) ifelse(p < 0.001, "p<0.001", paste0("p=", sub("^0", "", sprintf("%.3f", p))))
+make_brackets <- function(case, glevels) {
+  ylev <- rev(glevels); ypos <- setNames(seq_along(ylev), ylev); prs <- combn(glevels, 2, simplify = FALSE)
+  dc <- filter(fig4_draws, case_study == case); rows <- list()
+  for (q in as.character(unique(dc$quantity))) {
+    dq <- filter(dc, quantity == q); rng <- range(dq$value); w <- diff(rng); tick <- 0.04 * w
+    sp <- sapply(prs, function(pr) abs(ypos[[pr[1]]] - ypos[[pr[2]]])); maxsp <- max(sp)
+    for (i in seq_along(prs)) {
+      pr <- prs[[i]]; ya <- ypos[[pr[1]]]; yb <- ypos[[pr[2]]]; span <- sp[i]
+      xbar <- rng[2] + w * (0.06 + 0.16 * (span - 1))
+      # paired by .draw (joint zebrafish fit; matched draws for the per-sex fly fits)
+      m <- inner_join(filter(dq, group == pr[1])[, c(".draw", "value")],
+                      filter(dq, group == pr[2])[, c(".draw", "value")],
+                      by = ".draw", suffix = c("_a", "_b"))
+      p <- pmcmc(m$value_a - m$value_b); side <- if (span == maxsp) "R" else "L"
+      rows[[length(rows) + 1]] <- tibble(quantity = factor(q, levels = levels(fig4_draws$quantity)),
+        x = xbar, xt = xbar - tick, side = side,
+        xtext = if (side == "R") xbar + 0.03 * w else xbar - tick - 0.02 * w,
+        y = min(ya, yb), yend = max(ya, yb), label = fmtp(p))
+    }
+  }
+  bind_rows(rows)
 }
+add_brackets <- function(p, case, glevels) {
+  br <- make_brackets(case, glevels)
+  p + geom_segment(data = br, aes(x = x, xend = x, y = y, yend = yend), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
+      geom_segment(data = br, aes(x = xt, xend = x, y = y, yend = y), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
+      geom_segment(data = br, aes(x = xt, xend = x, y = yend, yend = yend), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
+      geom_text(data = filter(br, side == "L"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 1, size = 3.1, colour = "grey10", fontface = "bold") +
+      geom_text(data = filter(br, side == "R"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 0, size = 3.1, colour = "grey10", fontface = "bold")
+}
+fig4_panel <- function(cs, glevels, ylabels, title, sci, tag, texp = 1.15, xexp_r = 0.05) {
+  d <- filter(fig4_draws,   case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)))
+  s <- filter(fig4_summary, case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)), ci_col = fig4_pal_dark[as.character(group)])
+  ggplot(d, aes(value, group, fill = group)) +
+    geom_density_ridges(colour = "white", linewidth = .2, alpha = .9, scale = .65, rel_min_height = .005) +
+    geom_linerange(data = s, aes(y = group, xmin = lower, xmax = upper, colour = ci_col), inherit.aes = FALSE, linewidth = 1.3) +
+    geom_point(data = s, aes(median, group, fill = group), inherit.aes = FALSE, shape = 21, colour = "black", size = 3.6, stroke = 0.7) +
+    geom_label(data = s, aes(median, group, label = sprintf("%.1f [%.1f, %.1f]", median, lower, upper)), inherit.aes = FALSE, vjust = -0.7, size = 3.2, fontface = "bold", colour = "grey10", fill = alpha("white", 0.7), label.size = 0, label.padding = unit(0.08, "lines")) +
+    facet_wrap(~ quantity, scales = "free_x", nrow = 1, strip.position = "bottom", labeller = labeller(quantity = qlab)) +
+    scale_fill_manual(values = fig4_pal, guide = "none") + scale_colour_identity() +
+    scale_x_continuous(expand = expansion(mult = c(.05, xexp_r))) +
+    scale_y_discrete(labels = ylabels, expand = expansion(mult = c(.06, texp))) +
+    labs(x = NULL, y = NULL, title = title, subtitle = sci, tag = tag) +
+    theme_classic(base_size = 13) +
+    theme(strip.background = element_blank(), strip.placement = "outside", strip.text = element_text(face = "bold", size = 12),
+          axis.text.y = element_markdown(), plot.tag = element_text(face = "bold", size = 16),
+          plot.title = element_text(face = "bold", size = 15), plot.subtitle = element_text(face = "italic", size = 11.5, colour = "grey30"),
+          panel.border = element_rect(colour = "grey75", fill = NA, linewidth = .4), plot.margin = margin(4, 4, 4, 4))
+}
+ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
-fig4_cases <- c("Brown shrimp", "Zebrafish", "Snow gum leaf PSII",
-                "Vinegar fly (mortality)")
-fig4_panels <- lapply(fig4_cases, build_fig4_panel)
-# Row heights proportional to the number of groups in each case study.
-fig4_heights <- vapply(fig4_cases, function(cs) {
-  length(unique(dplyr::filter(fig4_draws, case_study == cs)$group))
-}, integer(1))
+fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "A"), P("shrimp.png"), .11, .42, .69, .95)
+fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "B"), P("euca.png"), .06, .60, .46, .88)
+fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
+            setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
+            "Zebrafish", "Danio rerio", "C", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
+fig4_C <- ins(fig4_C, P("zebrafish.png"), .13, .585, .50, .925)
+fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "D", texp = 1.35, xexp_r = 0.27), "Vinegar fly (mortality)", c("Female", "Male"))
+fig4_D <- ins(fig4_D, P("dros_male.png"), .16, .63, .52, .85)
 
-patchwork::wrap_plots(fig4_panels, ncol = 1) +
-  patchwork::plot_layout(heights = fig4_heights)
+fig4_final <- (fig4_A | fig4_B) / (fig4_C | fig4_D)
+
+# Also write a standalone high-res PNG so the assembled figure can be imported
+# directly (e.g. into the manuscript or slides) without re-running the chunk.
+dir.create(here("output", "figs"), recursive = TRUE, showWarnings = FALSE)
+ggsave(here("output", "figs", "fig4_case_study_densities.png"), fig4_final,
+       width = 11.5, height = 9.6, dpi = 600, bg = "white")
+
+fig4_final
 ```
 
 # **Derivation of the correction factors for threshold summaries**
