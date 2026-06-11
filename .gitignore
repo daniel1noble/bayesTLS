@@ -6,7 +6,7 @@
 .RData
 .RDataTmp
 *.rds
-
+pics/old/
 # User-specific files
 .Ruserdata
 orstead2024/
