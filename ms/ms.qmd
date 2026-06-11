@@ -545,7 +545,9 @@ The main case-study models used four MCMC chains with 8000 iterations per chain,
 
 ## Thermal sensitivities across species, sexes and life stages
 
-(@fig-tls-comparison). 
+Across case studies, 4PL estimates of thermal sensitivity ($z$) fell within the range typically reported for thermal tolerance landscapes (approximately 2-7 °C; @rezende_landscapes_2014), with the strongest sensitivity observed for snow gum leaf photosystem II function ([@fig-tls-comparison]B). Estimated $CT_{max_{1hr}}$ ranged from 32.7 to 41.4 °C for the 1-hour reference cases ([@fig-tls-comparison]A-C).
+
+Zebrafish (*Danio rerio*) larvae were more thermally sensitive than early- and late-stage embryos, showing clear life-stage differences in $z$ ([@fig-tls-comparison]C). By contrast, our re-analysis of *Drosophila suzukii* mortality data from @orsted_suzukii_2024 recovered similar $z$ and $CT_{max_{4hr}}$ estimates for males and females, consistent with their reported values (Table 1: $z$ = 3.28 for males and 3.03 for females; $CT_{max_{4hr}}$ = 35.2 °C for both sexes). We found no clear sex difference in either quantity ([@fig-tls-comparison]D).
 
 ```{r}
 #| label: fig-tls-comparison
@@ -565,7 +567,7 @@ knitr::include_graphics(here::here("output", "figs", "fig4_case_study_densities.
 
 # Acknowledgements
 
-We would like to thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, and Arnaud Sentis for helpful discussions through the development of this paper. 
+We would like to thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, Arnaud Sentis and Jeff Arnoldi for helpful discussions on earlier versions of this paper. 
 
 # Author contributions {.unnumbered}
 
