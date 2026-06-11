@@ -251,6 +251,10 @@ tdt_function_tour <- tibble::tribble(
   "TDT quantities",   "tls_z()",                            "Convenience wrapper for `tls(params = \"z\")` — z only.",
   "TDT quantities",   "tls_ctmax()",                        "Convenience wrapper for `tls(params = \"ctmax\")` — CTmax only.",
   "TDT quantities",   "tls_tcrit()",                        "Convenience wrapper for `tls(params = \"tcrit\", lethal = TRUE)` — T_crit only.",
+  "Two-stage",        "ts_stage1()",                        "Classical Stage 1: per-temperature dose-response (binomial `stats::glm` or beta-binomial `glmmTMB`), reading off log10(LT50) with validity flags.",
+  "Two-stage",        "ts_stage2()",                        "Classical Stage 2: OLS of log10(LT50) on temperature, deriving z, CTmax and T_crit. The canonical two-stage implementation shared by the tutorial, case studies and the bias simulation.",
+  "Two-stage",        "ts_ci()",                            "Two-stage uncertainty: delta-method Normal/t intervals (method = delta) or slope-CI + MVN propagation with a line band (method = mvn).",
+  "Two-stage",        "ts_curve()",                         "Median LT-vs-temperature line from a two-stage fit.",
   "Heat injury",      "make_temperature_scenarios()",       "Three reference traces (flat / single spike / multi-spike).",
   "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
   "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace.",
@@ -429,19 +433,13 @@ We fit a binomial GLM with a logit link separately at each assay temperature. Th
 #| echo: true
 #| code-fold: show
 
-fit_stage1 <- function(sim_data) {
-  sim_data |>
-    dplyr::group_by(T) |>
-    dplyr::group_modify(function(d, key) {
-      f  <- glm(cbind(y, n - y) ~ log10_t, data = d, family = binomial())
-      co <- coef(f)
-      tibble::tibble(log10_lt50 = as.numeric(-co[1] / co[2]))
-    }) |>
-    dplyr::ungroup()
-}
-
-stage1_bin <- fit_stage1(sim_bin)
-stage1_bb  <- fit_stage1(sim_bb)
+# Stage 1 uses the package function ts_stage1(): a per-temperature binomial GLM
+# (the field-default Stage 1), applied here to both the binomial and the
+# overdispersed beta-binomial datasets.
+stage1_bin <- ts_stage1(sim_bin, temp = "T", duration = "t",
+                        n_surv = "y", n_total = "n", family = "binomial")
+stage1_bb  <- ts_stage1(sim_bb,  temp = "T", duration = "t",
+                        n_surv = "y", n_total = "n", family = "binomial")
 ```
 
 ```{r stage1-lt50-table}
@@ -449,17 +447,17 @@ stage1_bb  <- fit_stage1(sim_bb)
 #| tbl-cap: "Per-temperature Stage-1 estimates of $\\log_{10}\\text{LT50}$ from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with $\\log_{10}\\text{LT50}$ here because the simulation asymptotes are near 0 and 1)."
 
 stage1_table <- dplyr::full_join(
-  stage1_bin |> dplyr::rename(bin_log10_lt50 = log10_lt50),
-  stage1_bb  |> dplyr::rename(bb_log10_lt50  = log10_lt50),
-  by = "T"
+  stage1_bin |> dplyr::select(temp, bin_log10_lt50 = log10_lt50),
+  stage1_bb  |> dplyr::select(temp, bb_log10_lt50  = log10_lt50),
+  by = "temp"
 ) |>
   dplyr::mutate(
     truth_log10_lt50 = true_params$m_beta0 +
-      true_params$m_beta1 * (T - true_params$T_bar)
+      true_params$m_beta1 * (temp - true_params$T_bar)
   ) |>
-  dplyr::select(T, truth_log10_lt50, bin_log10_lt50, bb_log10_lt50) |>
+  dplyr::select(temp, truth_log10_lt50, bin_log10_lt50, bb_log10_lt50) |>
   dplyr::rename(
-    `T (°C)`             = T,
+    `T (°C)`             = temp,
     `Truth log10(LT50)`  = truth_log10_lt50,
     `Binomial log10(LT50)` = bin_log10_lt50,
     `Beta-binomial log10(LT50)` = bb_log10_lt50
@@ -479,19 +477,11 @@ Stage 2 regresses Stage-1 $\log_{10}\text{LT50}$ on assay temperature with ordin
 #| echo: true
 #| code-fold: show
  
-fit_stage2 <- function(stage1) {
-  fit2 <- lm(log10_lt50 ~ T, data = stage1)
-  co   <- coef(fit2)
-
-  tibble::tibble(
-    quantity = c("z (°C)", "CTmax at 1 hr (°C)"),
-    est      = c(as.numeric(-1 / co["T"]),
-                 as.numeric((log10(60) - co["(Intercept)"]) / co["T"]))
-  )
-}
-
-ts_bin <- fit_stage2(stage1_bin)
-ts_bb  <- fit_stage2(stage1_bb)
+# Stage 2 uses the package function ts_stage2(): OLS of log10(LT50) on
+# temperature, returning z, CTmax and T_crit. Durations are in minutes here, so
+# time_multiplier = 1 and the CTmax reference is t_ref = 60 min.
+stage2_bin <- ts_stage2(stage1_bin, t_ref = 60, time_multiplier = 1)
+stage2_bb  <- ts_stage2(stage1_bb,  t_ref = 60, time_multiplier = 1)
 ```
 
 @fig-stage2-regression visualises the Stage-2 fit. Each point is one Stage-1 $\log_{10}\text{LT50}$ estimate from @tbl-stage1-lt50; the solid line is the OLS regression through them. The slope is $\beta_1$, from which $z = -1/\beta_1$ — i.e., the temperature increase that causes LT50 to change by a factor of 10. The line's height at $\log_{10} 60 \approx 1.78$ (1 hour) is at the temperature equal to $CT_{max_{1hr}}$ — the vertical dotted line drops from this intersection straight to the temperature axis to mark it. The dashed grey line is the simulation truth.
@@ -517,7 +507,7 @@ truth_line <- tibble::tibble(
   )
 
 ggplot2::ggplot(stage1_combined,
-                ggplot2::aes(x = T, y = log10_lt50, colour = dataset)) +
+                ggplot2::aes(x = temp, y = log10_lt50, colour = dataset)) +
   ggplot2::geom_hline(yintercept = log10(60),
                       linetype = "dotted", colour = "grey60") +
   ggplot2::geom_segment(
@@ -553,7 +543,9 @@ Stage-2 OLS regression of $\log_{10}\text{LT50}$ on assay temperature, fit separ
 Point estimates of $z$ and $CT_{max_{1hr}}$ are than used as is often without uncertainty associated with these estimates. We compare these to the joint Bayesian results to show the 4PL gives the same values under these ideal conditions.
 
 ::: {.callout-important}
-Classical two-stage analyses often treat Stage-1 LT50 estimates as known when fitting Stage 2. Delta-method or bootstrap procedures can propagate uncertainty, but they require an additional step and must account for uncertainty from both stages. Hence, often uncertainty is ignored. Without propagating uncertainty properly across stages these will systematically bias true variance downwards compromising inferences and leading to optimistic predictions. 
+Classical two-stage analyses often treat Stage-1 $LT_{50}$ estimates as known when fitting Stage-2 models. In otherwords, uncertainty in $LT_{50}$ values are never accounted for in the Stage-2 regression. This can have consequences when estmating slopes and intercepts in Stage-2.
+
+Despite being a potential issue, it is also challenging to correctly propagate error to $z$ and $CT_{max_{1hr}}$ may have bigger impacts. Without propagating uncertainty properly these will systematically bias sampling uncertainty in $z$ and $CT_{max_{1hr}}$ compromising inferences and leading to optimistic predictions. The Delta-method or bootstrap procedures can be used to propagate uncertainty, though, these are rarely used in practice.
 :::
 
 ### *A joint Bayesian 4PL* {#sec-joint}
@@ -742,7 +734,7 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 The classical TLS quantities are transformations of the fitted joint posterior. `extract_tdt()` always returns the first two quantities below and returns the third when `lethal = TRUE`:
 
-- **$z$** — thermal sensitivity, read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 7 of the manuscript). Under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is linear, so $z = -1/\beta_1$ exactly; no regression is involved.
+- **$z$** — thermal sensitivity is read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 7 of the manuscript). Under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ and is simply the linear slope, so $z = -1/\beta_1$ exactly.
 - **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 h of exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
 - **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
 
@@ -750,29 +742,34 @@ $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
 $$ {#eq-tcrit}
 
-The threshold is set by `target_surv`. The default `"relative"` evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are anchored at 0 and 1 but accommodates sub-unit upper asymptotes (for example, background mortality unrelated to heat stress; see @sec-zebrafish-relative-ltx). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
+The threshold one wishes to use is set by the `target_surv` argument in `extract_tdt()`. Using `"relative"` evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are anchored at 0 and 1 but accommodates sub-unit upper asymptotes (for example, background mortality unrelated to heat stress; see @sec-zebrafish-relative-ltx). Passing `target_surv = "absolute"` (the default) or any numeric value in $(0, 1)$ uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
 
 Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value. Empirical breakpoint analyses across taxa including *Drosophila suzukii* and *Lemna gibba* place $r^*$ in the range $[0.1, 1]$ % HI per hour, corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$ [@jorgensen_unifying_2021; @arnold_thermal_2025; @faber2026]. We therefore integrate over a uniform prior on $\log_{10} r^*$ in that range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
 ::: {.callout-warning}
 ## $T_{crit}$ is meaningful only for lethal-endpoint data
 
-The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate only for lethal-endpoint dose-response data (or irreversible knock-out endpoints). For **sublethal** endpoints such as knockdown time or photosystem-II decline, fitted $z$ instead describes performance loss. Substituting that value into Equation @eq-tcrit can shift $T_{crit}$ substantially and even reverse biological ordering outside the observed assay window. In the shrimp example below, the smaller sublethal $z$ produces a $T_{crit}$ about 3.5 °C higher than the lethal estimate, despite similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
+The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data and can be used to make a prediction about $T_{crit}$ because $T_{crit}$ should be the tempearture where damage begins to accumlate (0.1-1% is what we assume). `extract_tdt()` is therefore able to predict $T_{crit}$ with lethal data. When  `lethal = FALSE` `extract_tdt()` returns only $z$ and $CT_{max_{1hr}}$. Users with lethal-endpoint data set can set `lethal = TRUE` to additionally derive $T_{crit}$. Note that this is only a prediction and does not negate the need to follow up with studies to validate [see @faber2026].
 
-`extract_tdt()` reflects this by making $T_{crit}$ **opt-in**: the default `lethal = FALSE` returns only $z$ and $CT_{max_{1hr}}$, and users with lethal-endpoint data set `lethal = TRUE` to additionally derive $T_{crit}$. When `lethal = TRUE`, a one-line console message reiterates the lethal-only validity of the quantity.
+For **sublethal** endpoints fitted $z$ instead describes performance loss and can be very different from $z$ derived from lethal data. Substituting that value into Equation @eq-tcrit can shift $T_{crit}$ substantially and a produce non-sensical $T_{crit}$ estimates. For examples, in the shrimp example below, the smaller sublethal $z$ produces a $T_{crit}$ about 3.5 °C higher than the lethal estimate, despite similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
 :::
 
-The two always-returned quantities inherit the same posterior, so every credible interval reflects joint uncertainty in $(\ell, u, k, \beta_0, \beta_1)$. The opt-in $T_{crit}$ pools that same posterior with the additional uniform prior on $\log_{10} r^*$.
+Returned quantities (e.g., $CT_{max,1hr}$ and $z$) inherit the same posterior, so every credible interval reflects joint uncertainty in $(\ell, u, k, \beta_0, \beta_1)$. The opt-in $T_{crit}$ pools that same posterior with the additional uniform prior on $\log_{10} r^*$.
 
 ::: {.callout-note}
 
-The default `fit_4pl()` puts a `temp_c` slope on every 4PL sub-parameter, so $\ell$, $u$ and $k$ can each carry a linear effect of temperature in addition to the linear-mid term — when those slopes shrink to zero under the prior the model reduces cleanly to the constant-shape case. When the data carry real temperature signal on any of the shape parameters, the asymmetry correction $\tfrac{1}{k(T)}\log\tfrac{u(T)-0.5}{0.5-\ell(T)}$ varies with $T$ and the resulting $\log_{10}\text{LT50}(T)$ curve is bent rather than straight:
+The default `fit_4pl()` puts a `temp_c` slope on every 4PL sub-parameter, so $\ell$, $u$ and $k$ can each carry a linear effect of temperature in addition to the linear-mid term — when those slopes shrink to zero the model reduces to the constant-shape case. However, when the data carry a real temperature signal on any of the shape parameters, the asymmetry correction $\tfrac{1}{k(T)}\log\tfrac{u(T)-0.5}{0.5-\ell(T)}$ varies with $T$ and the resulting $\log_{10}\text{LT50}(T)$ curve is bent rather than straight:
 
 $$
 \log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{u(T) - 0.5}{0.5 - \ell(T)}.
 $$ {#eq-lt50-tvarying}
 
-`extract_tdt()` requires no special handling in either regime, because both quantities are read **directly from the joint posterior** rather than by fitting a line. It extracts the population-level 4PL coefficient draws once, subsamples once, and computes $z$ and $CT_{max_{1hr}}$ from that single set of draws — so the two quantities share draws and their correlation (and the joint pairing used for $T_{crit}$) is preserved. $CT_{max_{1hr}}$ is the temperature at which $\log_{10}\text{LT}(T)$ crosses $t_\text{ref}$, per draw (closed-form inversion of $\text{mid}(T)$ under the relative threshold; interpolated crossing of the closed-form LT curve under an absolute threshold). For $z$, under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is exactly linear, so $z = -1/\beta_1$ per draw. Under an *absolute* threshold the asymmetry-correction term $\tfrac{1}{k(T)}\log\tfrac{u(T)-0.5}{0.5-\ell(T)}$ bends the curve when $u$, $\ell$ or $k$ carry $T$ effects; then a per-draw **local** $z(T) = -1/(\mathrm{d}\log_{10}\text{LT}_{0.5}/\mathrm{d}T)$ is computed at each assay temperature (slope by central finite difference of the closed-form LT curve, validated against the analytic derivative), and the reported $z$ is the per-draw mean of those local values over the assay range — with the full per-temperature $z(T)$ available via `z_local = TRUE`. The worked example in @sec-joint-extend demonstrates this with a simulation where $u$ and $k$ carry strong $T$ effects.
+The correction factor is needed when calculating an 'absolute' threshold (e.g., 50% mortality - `target_surv = "absolute"`). Under an *absolute* threshold the asymmetry-correction term $\tfrac{1}{k(T)}\log\tfrac{u(T)-0.5}{0.5-\ell(T)}$ bends the curve when $u$, $\ell$ or $k$ carry $T$ effects; then a per-draw **local** $z(T) = -1/(\mathrm{d}\log_{10}\text{LT}_{0.5}/\mathrm{d}T)$ is computed at each assay temperature. The reported $z$ is the per-draw mean of those local values over the assay range — with the full per-temperature $z(T)$ available via `z_local = TRUE`.
+
+If using a 'relative threshold' (`target_surv = "relative"`) then the calculations do not require the correction factor. $CT_{max_{1hr}}$ is the temperature at which $\log_{10}\text{LT}(T)$ crosses $t_\text{ref}$, per draw. For $z$, under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is exactly linear, so $z = -1/\beta_1$ per draw.  The worked example in @sec-joint-extend demonstrates this with a simulation where $u$ and $k$ carry strong $T$ effects. 
+
+The `extract_tdt()` function automatically applies the right correction factor by using the full posterior distribution for all parameters when using the `target_surv = "absolute"`. When subsampling to calculate $z$ and $CT_{max_{1hr}}$ the posterior draws are taken once across all parameters to compute $z$ and $CT_{max_{1hr}}$ from that single set of draws. As such, the two quantities share draws and their correlation (and the joint pairing used for $T_{crit}$) is preserved. 
+
 :::
 
 ```{r derive-tls}
@@ -785,7 +782,7 @@ $$ {#eq-lt50-tvarying}
 # and t_ref = 60 to read CTmax at the 1-hour reference. The simulated data are
 # binomial / beta-binomial *lethal* survival counts, so we opt into T_crit via
 # the rate-multiplier integration (lethal = TRUE; default TC_rate_range =
-# c(0.1, 1) % HI per hour). See the next paragraph for why T_crit is opt-in.
+# c(0.1, 1) % HI per hour). 
 et_bin <- extract_tdt(wf_bin, target_surv = "relative", t_ref = 60, time_multiplier = 1,
                       ndraws = 1000, lethal = TRUE)
 et_bb  <- extract_tdt(wf_bb,  target_surv = "relative", t_ref = 60, time_multiplier = 1,
@@ -929,14 +926,14 @@ uncert_summary |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-Both $z$ and $CT_{max_{1hr}}$ are estimated precisely, and their credible intervals come directly from the joint posterior. A frequentist joint fit could similarly quantify transformation uncertainty using the delta method or a bootstrap.
+Both $z$ and $CT_{max_{1hr}}$ are estimated precisely, and their credible intervals come directly from the joint posterior. A frequentist joint fit could similarly quantify transformation uncertainty using the Delta method or using bootstrap approaches.
 
 Under the binomial likelihood, the posterior SD for $z$ is `r sd_z_bin` °C and its 95% credible interval is `r ci_z_bin` °C wide; $CT_{max_{1hr}}$ has SD `r sd_ct_bin` °C and interval width `r ci_ct_bin` °C.
 
 The beta-binomial fit is slightly wider for both quantities (SD for $z$: `r sd_z_bb` °C; for $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ captures extra-binomial variation and propagates it into the derived quantities. A two-stage pipeline requires an additional bootstrap or delta-method calculation to achieve comparable propagation.
 
 ::: {.callout-important}
-For real data, compare binomial and beta-binomial fits rather than assuming either likelihood is adequate. When extra dispersion is present, estimating it can materially affect uncertainty and inference.
+For real data, it is important to compare binomial and beta-binomial fits rather than assuming either likelihood is adequate. When extra dispersion is present, the choice can affect uncertainty and inference.
 :::
 
 ### *Comparing the two pipelines* {#sec-compare}
@@ -952,10 +949,10 @@ For real data, compare binomial and beta-binomial fits rather than assuming eith
 compare_table <- tibble::tibble(
   quantity   = c("z (°C)", "CTmax at 1 hr (°C)"),
   truth      = c(true_z, true_CTmax),
-  ts_bin     = ts_bin$est,
+  ts_bin     = c(stage2_bin$summary$z, stage2_bin$summary$CTmax_1hr),
   joint_bin  = c(median(draws_bin_d$z),
                  median(draws_bin_d$CTmax_1hr)),
-  ts_bb      = ts_bb$est,
+  ts_bb      = c(stage2_bb$summary$z, stage2_bb$summary$CTmax_1hr),
   joint_bb   = c(median(draws_bb_d$z),
                  median(draws_bb_d$CTmax_1hr))
 )
@@ -976,7 +973,7 @@ All four estimators give similar point estimates for $z$ and $CT_{max_{1hr}}$, c
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
-The default `fit_4pl()` places a `temp_c` slope on $\ell$, $u$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. To test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with $u$ declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `extract_tdt()` calls used above, without a specialised formula or priors.
+The default `fit_4pl()` places a `temp_c` slope on $\ell$, $u$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. To test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with $u$ declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `extract_tdt()` calls used above.
 
 ```{r sim-data-ext}
 #| label: sim-data-ext
@@ -1444,7 +1441,7 @@ By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_media
 
 The posterior bands are wide relative to the precision in @tbl-tls-recovery because the rate multiplier, $10^{(T - CT_{max,1hr})/z}$, is exponential. A 1 °C shift in $CT_{max_{1hr}}$ multiplies per-hour HI by $10^{1/z}$, which is approximately `r round(10^(1 / true_z), 2)`-fold for the simulated $z \approx `r round(true_z, 1)`$ °C. Across a 5-day integral, such differences accumulate. A two-stage projection based only on point estimates hides this uncertainty; the joint posterior makes it visible.
 
-### Validation: recovering known planted doses {#sec-hi-validation}
+### Validation: recovering known doses {#sec-hi-validation}
 
 Before trusting `predict_heat_injury()` on real field data, we validate it against analytical truth on three reference traces with known dosing structure. `make_temperature_scenarios()` builds the traces; `planted_dose_from_trace()` implements the classical HI integral (Equation 7) directly given known `z` and `CTmax_1hr`. Posterior medians from `predict_heat_injury()` should sit near the analytical truth, and the 95% credible intervals should cover it.
 
@@ -1501,8 +1498,7 @@ val_table$`Truth in CrI?` <- with(val_table,
 tinytable::tt(val_table, digits = 2, escape = TRUE)
 ```
 
-The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. This sanity-check pattern — three traces with known doses, plus the recovery check — is what each new dataset's heat-injury prediction should pass before being trusted.
-
+The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval. 
 
 # **Extended Simulation Results** {#sec-extendsims}
 
@@ -1610,6 +1606,36 @@ library(patchwork)
     )
 }
 
+# Per-scenario count of simulations where a method failed to produce a usable
+# estimate: the fit errored, OR a derived quantity is extreme (|z bias| > 20 °C
+# or |CTmax bias| > 10 °C — far outside any plausible value). Returns a
+# ready-to-embed phrase for one method across the prefix's cells: "0",
+# "29 (2.9%)", or "2–7 (0.2–0.7%)". Memoised per prefix so each scenario's
+# per_sim files are read once.
+.sim_fail_cache <- new.env(parent = emptyenv())
+.sim_fail <- function(prefix, m) {
+  if (is.null(.sim_fail_cache[[prefix]])) {
+    files <- list.files(
+      here::here("output", "sim_twostage"),
+      pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"), full.names = TRUE)
+    .sim_fail_cache[[prefix]] <- dplyr::bind_rows(lapply(files, readRDS)) |>
+      dplyr::group_by(scenario, method, sim_id) |>
+      dplyr::summarise(bad = any(!success) |
+                             any(quantity == "z"         & abs(bias) > 20) |
+                             any(quantity == "CTmax_1hr" & abs(bias) > 10),
+                       .groups = "drop") |>
+      dplyr::group_by(scenario, method) |>
+      dplyr::summarise(n = dplyr::n(), n_bad = sum(bad),
+                       pct = 100 * mean(bad), .groups = "drop")
+  }
+  x <- dplyr::filter(.sim_fail_cache[[prefix]], method == m)
+  if (nrow(x) == 0 || max(x$n_bad) == 0) return("0")
+  lo <- min(x$n_bad); hi <- max(x$n_bad)
+  plo <- min(x$pct);  phi <- max(x$pct)
+  if (lo == hi) sprintf("%d (%.1f%%)", hi, phi)
+  else sprintf("%d–%d (%.1f–%.1f%%)", lo, hi, plo, phi)
+}
+
 # Forest plot for cell-based scenarios (Scen 1, 2, 4, 8).
 # `panel_var` is the column name to facet rows on (e.g. "panel_n" or "cell").
 .plot_forest <- function(d, panel_var = "panel_n") {
@@ -1631,7 +1657,7 @@ library(patchwork)
                labeller = labeller(quantity = .quantity_labeller)) +
     scale_colour_manual(values = .method_cols) +
     scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
-    labs(x = "Empirical 95% CI coverage", y = NULL,
+    labs(x = "95% CI coverage", y = NULL,
          title = "(b) Coverage") +
     .theme_proj + theme(legend.position = "none")
   p_bias / p_cov + plot_layout(heights = c(1, 1))
@@ -1649,7 +1675,7 @@ library(patchwork)
     scale_colour_manual(values = .method_cols) +
     scale_x_continuous(breaks = x_breaks) +
     scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
-    labs(x = x_label, y = "Empirical 95% CI coverage") +
+    labs(x = x_label, y = "95% CI coverage") +
     .theme_proj
 }
 
@@ -1679,9 +1705,12 @@ library(patchwork)
 
 ## *Strict equivalence baseline*
 
-This scenario is the strict-equivalence baseline. The data-generating curve spans the full survival range ($u = 0.999$, $\text{low} = 0.001$), has a shared slope ($k = 8$), and has a midpoint that declines linearly with temperature (slope $-0.15$) under a binomial likelihood with no overdispersion. We crossed this scenario with two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
+This scenario is the strict-equivalence baseline. The data-generating curve spans the full survival range ($u = 0.999$, $\text{low} = 0.001$), has a shared slope ($k = 8$), and has a midpoint that declines linearly with temperature (slope $-0.15$) under a binomial likelihood with no overdispersion. We crossed this scenario with two replicate designs, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
 
-We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles undercovered, whereas the *t*-quantile delta-method intervals were close to nominal 95% coverage.
+We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles did nothave nominal coverage, whereas the *t*-quantile delta-method intervals were close to the nominal 95% coverage. Again, it is important to recognise that we have ensured error from the two-stage is correctly propagated for comparison but often this is ignored.
+
+Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias — here and throughout, $|z|$ bias above 20 °C or $|CT_{max,1h}|$ bias above 10 °C, far outside any plausible value — for `r .sim_fail("scen1", "two_stage_bin")` binomial and `r .sim_fail("scen1", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen1", "joint_4pl")` for the joint 4PL, across the simulations. The overdispersion-corrected two-stage thus fails to converge on a sensible estimate even in this most benign scenario, whereas the joint 4PL does not.
+
 
 ```{r}
 #| label: fig-sim-supp-scen1
@@ -1715,6 +1744,8 @@ This scenario keeps the same mean dose-response shape as the strict-equivalence 
 
 We included this scenario to isolate the cost of likelihood misspecification: the mean structure is correct for all estimators, but the binomial two-stage variant ignores overdispersion at Stage 1. Point estimates remained largely unbiased, showing that overdispersion alone did not shift the target estimands. The main effect was on uncertainty, with likelihood-aware beta-binomial and joint 4PL fits giving better-calibrated intervals than binomial two-stage fits.
 
+Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen2", "two_stage_bin")` binomial and `r .sim_fail("scen2", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen2", "joint_4pl")` for the joint 4PL, across the simulations.
+
 ```{r}
 #| label: fig-sim-supp-scen2
 #| echo: false
@@ -1747,6 +1778,8 @@ In this scenario, both asymptotes move toward each other as temperature increase
 
 Bias was smaller than in the asymmetric upper-asymptote scenario, but the two-stage fits still showed poorer calibration than the joint 4PL because the classical model cannot represent changing asymptotes directly.
 
+Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen4", "two_stage_bin")` binomial and `r .sim_fail("scen4", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen4", "joint_4pl")` for the joint 4PL, across the simulations.
+
 ```{r}
 #| label: fig-sim-supp-scen4
 #| echo: false
@@ -1777,6 +1810,8 @@ Bias was smaller than in the asymmetric upper-asymptote scenario, but the two-st
 
 This complements the main-text $\beta_u$ bias sweep with the matching
 coverage panels.
+
+Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen6", "two_stage_bin")` binomial and `r .sim_fail("scen6", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen6", "joint_4pl")` for the joint 4PL, across the simulations.
 
 ```{r}
 #| label: fig-sim-supp-scen6cov
@@ -1813,6 +1848,8 @@ two-stage Stage-1 GLMs miscalibrate per temperature, the Stage-2 OLS
 inherits that bias, and CI coverage on $CT_{max,1h}$ collapses well
 below nominal even after the t-quantile small-sample correction.
 
+Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen7", "two_stage_bin")` binomial and `r .sim_fail("scen7", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen7", "joint_4pl")` for the joint 4PL, across the simulations.
+
 ```{r}
 #| label: fig-sim-supp-scen7cov
 #| echo: false
@@ -1841,11 +1878,14 @@ below nominal even after the t-quantile small-sample correction.
   .rmse_table(cell_name = "u_0")
 ```
 
-## *Design variation impacts*
+## *Experimental Design Impacts*
 
+#### *Different temperature time duration levels*
 This scenario varies experimental design while holding the data-generating process fixed. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration cell; each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The DGP used the baseline beta-binomial shape ($u = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$); the sparsest design had only 12 'cups' total.
 
 We included this scenario to test how much information each estimator needs before the two-stage reduction becomes unstable. Performance improved with denser designs and more replication, but the sparse one-replicate design was especially problematic for the two-stage pipeline. The joint 4PL was more stable across the design gradient because it shares information across temperatures and durations rather than estimating each temperature-specific curve separately.
+
+Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen8", "two_stage_bin")` binomial and `r .sim_fail("scen8", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen8", "joint_4pl")` for the joint 4PL, across the simulations.
 
 ```{r}
 #| label: fig-sim-supp-scen8
@@ -1910,6 +1950,8 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
   .rmse_table(cell_name = "Design x reps")
 ```
 
+#### *Performance when estimating under short timeframes*
+
 # **Case Study 1: Shrimp data** {#sec-shrimp}
 
 We now apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` → `predict_heat_injury()` — to lethal-TDT data from brown shrimp (*Crangon crangon*). The data are 148 replicate trials spanning 30–33 °C and 5 min to 6 hours of exposure, with each replicate exposing a tank of individuals to a fixed temperature × duration combination on a specific date. The two grouping factors `Date` and `Tank` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and tank-level cohort variation to be partitioned out of the dose-response surface.
@@ -1961,254 +2003,53 @@ Before fitting the joint 4PL, we also run the classical two-stage pipeline on th
 #| echo: true
 #| code-fold: show
 
-fit_stage1_binomial_case <- function(dat) {
-  validate_stage1_case <- function(log10_lt50, slope, d) {
-    is.finite(log10_lt50) &&
-      is.finite(slope) &&
-      slope < 0 &&
-      abs(slope) > 1e-4 &&
-      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
-      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
-  }
+# Classical two-stage helpers for the case studies. These are thin adapters
+# over the bayesTLS package functions ts_stage1() / ts_stage2() / ts_ci() /
+# ts_curve() -- the single canonical two-stage implementation, also used by the
+# bias simulation. The per-temperature beta-binomial Stage 1 uses glmmTMB (it
+# matches the previous hand-written MLE to 4 dp). See
+# notes/2026-06-11-unify-two-stage.qmd.
 
-  dat |>
-    dplyr::group_by(temp) |>
-    dplyr::group_modify(function(d, key) {
-      if (dplyr::n_distinct(d$logd) < 3) {
-        return(tibble::tibble(
-          method       = "Two-step binomial",
-          log10_lt50   = NA_real_,
-          stage1_slope = NA_real_,
-          phi          = NA_real_,
-          stage1_ok    = FALSE
-        ))
-      }
-      fit <- stats::glm(cbind(n_surv, n_total - n_surv) ~ logd,
-                        data = d, family = stats::binomial())
-      co <- stats::coef(fit)
-      lt <- as.numeric(-co[1] / co[2])
-      sl <- as.numeric(co[2])
-      tibble::tibble(
-        method       = "Two-step binomial",
-        log10_lt50   = lt,
-        stage1_slope = sl,
-        phi          = NA_real_,
-        stage1_ok    = validate_stage1_case(lt, sl, d)
-      )
-    }) |>
-    dplyr::ungroup()
+fit_stage1_binomial_case <- function(dat) {
+  ts_stage1(dat, temp = "temp", duration = "duration",
+            n_surv = "n_surv", n_total = "n_total", family = "binomial") |>
+    dplyr::transmute(temp, method = "Two-step binomial",
+                     log10_lt50, stage1_slope = slope, phi, stage1_ok)
 }
 
 fit_stage1_betabinom_case <- function(dat) {
-  validate_stage1_case <- function(log10_lt50, slope, d) {
-    is.finite(log10_lt50) &&
-      is.finite(slope) &&
-      slope < 0 &&
-      abs(slope) > 1e-4 &&
-      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
-      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
-  }
-
-  bb_nll <- function(par, y, n, x) {
-    mu  <- stats::plogis(par[1] + par[2] * x)
-    mu  <- pmin(pmax(mu, 1e-8), 1 - 1e-8)
-    phi <- exp(par[3])
-    -sum(
-      lchoose(n, y) +
-        lbeta(y + mu * phi, n - y + (1 - mu) * phi) -
-        lbeta(mu * phi, (1 - mu) * phi)
-    )
-  }
-
-  dat |>
-    dplyr::group_by(temp) |>
-    dplyr::group_modify(function(d, key) {
-      if (dplyr::n_distinct(d$logd) < 3) {
-        return(tibble::tibble(
-          method       = "Two-step beta-binomial",
-          log10_lt50   = NA_real_,
-          stage1_slope = NA_real_,
-          phi          = NA_real_,
-          stage1_ok    = FALSE
-        ))
-      }
-      fit_glm <- suppressWarnings(
-        stats::glm(cbind(n_surv, n_total - n_surv) ~ logd,
-                   data = d, family = stats::binomial())
-      )
-      start <- c(stats::coef(fit_glm), log(50))
-      if (any(!is.finite(start))) {
-        p0 <- pmin(pmax(mean(d$n_surv / d$n_total), 1e-4), 1 - 1e-4)
-        start <- c(stats::qlogis(p0), -1, log(50))
-      }
-
-      fit <- stats::optim(
-        par     = start,
-        fn      = bb_nll,
-        y       = d$n_surv,
-        n       = d$n_total,
-        x       = d$logd,
-        method  = "BFGS",
-        control = list(maxit = 1000)
-      )
-      co <- fit$par
-      lt <- as.numeric(-co[1] / co[2])
-      sl <- as.numeric(co[2])
-      tibble::tibble(
-        method       = "Two-step beta-binomial",
-        log10_lt50   = lt,
-        stage1_slope = sl,
-        phi          = exp(co[3]),
-        stage1_ok    = validate_stage1_case(lt, sl, d)
-      )
-    }) |>
-    dplyr::ungroup()
+  ts_stage1(dat, temp = "temp", duration = "duration",
+            n_surv = "n_surv", n_total = "n_total", family = "betabinomial") |>
+    dplyr::transmute(temp, method = "Two-step beta-binomial",
+                     log10_lt50, stage1_slope = slope, phi, stage1_ok)
 }
 
 fit_stage2_case <- function(stage1, time_multiplier = 60, t_ref = 60,
                             TC_rate_range = c(0.1, 1)) {
-  stage1_all <- stage1
-  stage1 <- stage1 |>
-    dplyr::filter(stage1_ok, is.finite(log10_lt50))
-  if (nrow(stage1) < 3) {
-    return(list(
-      fit = NULL,
-      summary = tibble::tibble(
-        method       = unique(stage1_all$method),
-        intercept    = NA_real_,
-        slope_T      = NA_real_,
-        z            = NA_real_,
-        CTmax_1hr    = NA_real_,
-        T_crit       = NA_real_,
-        r_squared    = NA_real_,
-        n_stage1     = nrow(stage1),
-        n_excluded   = nrow(stage1_all) - nrow(stage1)
-      )
-    ))
-  }
-  fit <- stats::lm(log10_lt50 ~ temp, data = stage1)
-  co  <- stats::coef(fit)
-  intercept_out <- as.numeric(co[1] + log10(time_multiplier))
-  slope         <- as.numeric(co[2])
-  z             <- -1 / slope
-  ctmax         <- (log10(t_ref) - intercept_out) / slope
-  log_rate_mid  <- mean(log10(TC_rate_range / 100))
-
-  list(
-    fit = fit,
-    summary = tibble::tibble(
-      method       = unique(stage1$method),
-      intercept    = intercept_out,
-      slope_T      = slope,
-      z            = z,
-      CTmax_1hr    = ctmax,
-      T_crit       = ctmax + z * log_rate_mid,
-      r_squared    = summary(fit)$r.squared,
-      n_stage1     = nrow(stage1),
-      n_excluded   = nrow(stage1_all) - nrow(stage1)
-    )
-  )
+  out <- ts_stage2(stage1, t_ref = t_ref, time_multiplier = time_multiplier,
+                   TC_rate_range = TC_rate_range, rows = "stage1_ok")
+  out$summary <- dplyr::mutate(out$summary, method = unique(stage1$method),
+                               .before = 1)
+  out
 }
 
-make_twostep_curve_case <- function(stage2, temp_grid,
-                                    time_multiplier = 60,
+make_twostep_curve_case <- function(stage2, temp_grid, time_multiplier = 60,
                                     output_time_unit = "min") {
-  if (is.null(stage2$fit)) {
-    return(tibble::tibble(
-      temp = temp_grid,
-      duration_median = NA_real_,
-      method = stage2$summary$method,
-      output_time_unit = output_time_unit
-    ))
-  }
-  co <- stats::coef(stage2$fit)
-  tibble::tibble(
-    temp              = temp_grid,
-    duration_median   = 10 ^ (as.numeric(co[1]) +
-                              as.numeric(co[2]) * temp_grid) * time_multiplier,
-    method            = stage2$summary$method,
-    output_time_unit  = output_time_unit
-  )
+  ts_curve(stage2, temp_grid = temp_grid, time_multiplier = time_multiplier) |>
+    dplyr::mutate(method = stage2$summary$method,
+                  output_time_unit = output_time_unit)
 }
 
-# Standard two-step uncertainty: treat each Stage-1 LT50 as a known point
-# and propagate only the Stage-2 lm uncertainty.
-#  - z (= -1/slope), CTmax_1hr and T_crit: quantiles over 1000 MVN(coef, vcov)
-#    draws of the Stage-2 coefficients. (Using one consistent draw-based method
-#    avoids the reversed/invalid bounds the closed-form -1/confint(slope) gives
-#    when the Stage-2 slope is imprecise.)
-#  - Line band: `predict.lm(..., interval = "confidence")`, exponentiated.
-propagate_twostep_case <- function(stage2_fit, temp_grid,
-                                   n_sim = 1000,
-                                   time_multiplier = 60,
-                                   t_ref = 60,
-                                   TC_rate_range = c(0.1, 1),
-                                   seed = 123) {
-  if (is.null(stage2_fit)) {
-    return(list(
-      summary_ci = tibble::tibble(
-        z_lower = NA_real_, z_upper = NA_real_,
-        CTmax_lower = NA_real_, CTmax_upper = NA_real_,
-        Tcrit_lower = NA_real_, Tcrit_upper = NA_real_
-      ),
-      curve_ci = tibble::tibble(
-        temp = temp_grid,
-        duration_lower = NA_real_,
-        duration_upper = NA_real_
-      )
-    ))
-  }
-  set.seed(seed)
-  log_rate_mid <- mean(log10(TC_rate_range / 100))
-
-  # z CI: invert the Stage-2 slope's 95% CI. z = -1/slope is monotonically
-  # increasing in slope on (-Inf, 0), so when the slope CI is entirely
-  # negative the inversion yields a clean, point-containing asymmetric CI for
-  # z. If the slope CI crosses zero (slope poorly identified, as happens when
-  # Stage 1 yields few valid LT50s), z is unidentified — report NA rather
-  # than fabricate finite bounds via MVN simulation, which would give heavy
-  # right-tailed draws that don't contain the point estimate.
-  beta_ci  <- stats::confint(stage2_fit, "temp", level = 0.95)
-  slope_lo <- as.numeric(beta_ci[1, 1])
-  slope_hi <- as.numeric(beta_ci[1, 2])
-  if (is.finite(slope_lo) && is.finite(slope_hi) && slope_hi < 0) {
-    z_lower <- -1 / slope_lo
-    z_upper <- -1 / slope_hi
-  } else {
-    z_lower <- NA_real_
-    z_upper <- NA_real_
-  }
-
-  # CTmax and T_crit CIs come from MVN simulation: both are ratios of
-  # correlated normals (intercept and slope), so joint propagation is needed.
-  draws <- MASS::mvrnorm(n_sim,
-                         mu    = stats::coef(stage2_fit),
-                         Sigma = stats::vcov(stage2_fit))
-  alpha <- draws[, "(Intercept)"]
-  beta  <- draws[, "temp"]
-  ctmax_draws <- (log10(t_ref) -
-                  (alpha + log10(time_multiplier))) / beta
-  tcrit_draws <- ctmax_draws + (-1 / beta) * log_rate_mid
-
-  qfun <- function(x, p) stats::quantile(x, p, na.rm = TRUE, names = FALSE)
-  summary_ci <- tibble::tibble(
-    z_lower     = z_lower,
-    z_upper     = z_upper,
-    CTmax_lower = qfun(ctmax_draws, 0.025),
-    CTmax_upper = qfun(ctmax_draws, 0.975),
-    Tcrit_lower = qfun(tcrit_draws, 0.025),
-    Tcrit_upper = qfun(tcrit_draws, 0.975)
-  )
-
-  pred <- stats::predict(stage2_fit,
-                         newdata  = data.frame(temp = temp_grid),
-                         interval = "confidence", level = 0.95)
-  curve_ci <- tibble::tibble(
-    temp           = temp_grid,
-    duration_lower = 10 ^ as.numeric(pred[, "lwr"]) * time_multiplier,
-    duration_upper = 10 ^ as.numeric(pred[, "upr"]) * time_multiplier
-  )
-  list(summary_ci = summary_ci, curve_ci = curve_ci)
+# Standard two-step uncertainty (delegates to ts_ci(method = "mvn")): slope-CI
+# inversion for z, MVN draws for CTmax / T_crit, and a predict.lm band for the
+# LT-vs-temperature line.
+propagate_twostep_case <- function(stage2_fit, temp_grid, n_sim = 1000,
+                                   time_multiplier = 60, t_ref = 60,
+                                   TC_rate_range = c(0.1, 1), seed = 123) {
+  ts_ci(list(fit = stage2_fit), method = "mvn", level = 0.95,
+        t_ref = t_ref, time_multiplier = time_multiplier,
+        TC_rate_range = TC_rate_range, temp_grid = temp_grid,
+        n_sim = n_sim, seed = seed)
 }
 ```
 
@@ -5233,7 +5074,7 @@ tinytable::tt(leaf_hi_table, escape = TRUE)
 ```
 The snow gum leaf case study takes continuous retained-function proportions through a fitted joint 4PL to posterior TDT summaries and illustrative functional-injury projections. Every derived quantity inherits the posterior of the same fit.
 
-# **Case Study 4: Vinegar fly (*Drosophila*) species**
+# **Case Study 4: Vinegar fly (*Drosophila suzukii*) across sexes**
 
 We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TDTs for productivity (offspring number; a measure of fertility), time to coma (sublethal) and mortality using *Drosophila suzukii*. 
 
@@ -5442,7 +5283,7 @@ joint_sex_fit <- brm(j_sex, data = std_sex, prior = priors_sex,
 joint_sex_fit
 ```
 
-We can see here that the interaction `mid_sexM:temp_c` spans zero, supporting a lack of sex differences (that are significant) in thermal sensitivity. 
+We can see here that the interaction `mid_sexM:temp_c` spans zero, supporting a lack of sex differences (i.e., not significant) in thermal sensitivity. 
 
 We can now do some manual manipulation to show how to recover the same $z$ that `tls()` and the individual per-sex models return. We do this in two steps: **Step 1** computes the *relative* $z$ (the slope of the midpoint line, $-1/\text{slope}$), and **Step 2** computes the *absolute* $z$ (adding the asymmetry correction so the line follows the full-4PL LT$_{50}$). Each printout below is the posterior median bracketed by its 2.5% and 97.5% quantiles — i.e. `2.88 3.06 3.26` means a median of 3.06 with a 95% CI of [2.88, 3.26].
 

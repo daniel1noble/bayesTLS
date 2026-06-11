@@ -547,67 +547,8 @@ The main case-study models used four MCMC chains with 8000 iterations per chain,
 
 
 
-
-
-
-## What the 4PL delivers that the two-step cannot
-
-# Worked example: brown shrimp thermal tolerance
-
-<!--
-Multi-endpoint demonstration on Crangon crangon.
-Source pipeline: R/bayesian_TDT_shrimp.qmd.
--->
-
-## Data and experimental design
-
-<!-- Placeholder: a flextable summarising n trials, n individuals, temperature
-     range, and exposure range for each of the three endpoints will be added
-     here once the case-study analyses are complete. The chunk is omitted
-     while empty so it doesn't produce a dangling cross-reference. -->
-
-
-## Lethal TDT — hierarchical 4PL on counts
-
-```{r}
-#| label: fig-survival-curves
-#| fig-cap: "Posterior survival curves at each lethal-TDT assay temperature, with 95% credible bands and observed survival proportions."
-#| eval: false
-```
-
-## Sublethal time-to-death
-
-## Dynamic $CT_{max}$ across ramping rates
-
-## Reconciling the three endpoints via the Jørgensen ramping equation
-
-```{r}
-#| label: fig-tdt-ctmax-reconciliation
-#| fig-cap: "Forward (TDT → dynamic $CT_{max}$) and inverse ($CT_{max}$ → TDT) reconciliation under full posterior propagation."
-#| eval: false
-```
-
-## Field-temperature heat-injury projections under warming scenarios
-
-```{r}
-#| label: fig-hi-warming
-#| fig-cap: "Posterior cumulative heat-injury and survival under measured Baltic surface-temperature traces and +1, +2, +3 °C warming scenarios, with and without a Sharpe–Schoolfield repair kernel."
-#| eval: false
-```
-
 # Discussion
 
-## What changes for the field if the hierarchical 4PL becomes the default
-
-## Limits of the present analysis
-
-<!--
-Honest discussion of:
-- Repair kernel parameters fixed, not fit
-- d$CT_{max}$ reconciliation uses nls() per draw rather than a joint Stan likelihood
-- Arrhenius (1/T-Kelvin) sensitivity check belongs in the supplement
-- Endpoint heterogeneity is not eliminated, only made visible
--->
 
 ## Recommendations for primary studies and meta-analyses
 
@@ -619,9 +560,11 @@ We would like to thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennif
 
 # Author contributions {.unnumbered}
 
+D.W.A.N.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.P.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.A.A.: Conceptualization, Methodology, Investigation, Resources, Writing – Review & Editing. All authors contributed to interpretation of results, reviewed and edited the manuscript, approved the final version, and agree to be accountable for the work.
+
 # Data and code availability {.unnumbered}
 
-All data, analysis scripts, and the rendered manuscript and supplement are available at https://github.com/daniel1noble/bayesTLS. The detailed supplement and tutorial, along with details on downloading the `bayesTLS` R package, can also be found here: https://daniel1noble.github.io/bayesTLS/. 
+All data, analysis scripts, and rendered outputs are available at https://github.com/daniel1noble/bayesTLS. The online supplement, tutorial, and `bayesTLS` installation instructions are available at https://daniel1noble.github.io/bayesTLS/.
 
 # Conflict of interest {.unnumbered}
 
