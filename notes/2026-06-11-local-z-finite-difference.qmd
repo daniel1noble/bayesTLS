@@ -1,0 +1,106 @@
+---
+title: "What `true_local_z()` computes: local z as a finite-difference slope"
+author: "Daniel Noble"
+date: 2026-06-11
+format:
+  html:
+    toc: true
+    number-sections: true
+    theme: cosmo
+    code-fold: show
+    embed-resources: true
+editor_options:
+  chunk_output_type: console
+---
+
+## The question
+
+In the extended simulation (supplement, "joint extend" section) the truth helper
+reads:
+
+```r
+true_local_z <- function(T_at, half_step = 0.5) {
+  -1 / ((true_log10_LT50(T_at + half_step) -
+         true_log10_LT50(T_at - half_step)) / (2 * half_step))
+}
+```
+
+Is this "compute a value at point 1, a value at point 2, take the difference to
+get the local slope between them"? Almost — but with two corrections and one
+conceptual point.
+
+## What it actually does
+
+The extended DGP lets the 4PL **shape** parameters vary with temperature ($u$
+falls, $k$ rises with $T$), so the true $\log_{10}\text{LT50}(T)$ relationship is
+**bent**, not a straight line. A bent curve has a different slope at every
+temperature, so thermal sensitivity $z$ is itself a function of $T$.
+`true_local_z(T_at)` measures that slope **at one temperature** via a **central
+finite difference**:
+
+1. Evaluate $\log_{10}\text{LT50}$ a little **above** the point, $T_\text{at}+h$.
+2. Evaluate it a little **below** the point, $T_\text{at}-h$ (here $h = 0.5$).
+3. `(above − below)` is the **rise**; `2h = 1.0` °C is the **run**. Their ratio
+   is the **slope** of $\log_{10}\text{LT50}$ vs $T$ at $T_\text{at}$:
+   $$
+   \left.\frac{d\,\log_{10}\text{LT50}}{dT}\right|_{T_\text{at}}
+   \;\approx\;
+   \frac{\log_{10}\text{LT50}(T_\text{at}+h) - \log_{10}\text{LT50}(T_\text{at}-h)}{2h}.
+   $$
+4. `-1 / slope` converts that slope into the **local z-value**,
+   $z(T) = -1/\,\text{slope}(T)$.
+
+## The corrections to the "point 1 / point 2" reading
+
+- **The two points straddle $T_\text{at}$ symmetrically** ($T_\text{at}\pm h$),
+  they are not two unrelated locations. That symmetry is what makes it a
+  *central* difference: it estimates the **tangent slope at $T_\text{at}$**, and
+  the leading curvature error from one side cancels the other (second-order
+  accurate). As $h\to 0$ it converges to the exact derivative; $h=0.5$ is just a
+  small, numerically stable step.
+- **The difference of the two values is the *rise*, not the slope.** The slope is
+  rise ÷ run, which is why the code divides by `2 * half_step`. Dropping that
+  division would leave units of "log10-minutes", not "log10-minutes per °C".
+- **The function returns $z$, not the slope.** The final `-1/...` maps the local
+  slope of $\log_{10}\text{LT50}(T)$ to thermal sensitivity. $z$ is positive
+  because LT50 decreases as $T$ rises (slope negative), and $z$ is the
+  temperature step that changes LT50 by one decade, $z = -1/\text{slope}$.
+
+## Why "local" matters
+
+Under the classic TDT assumption (constant shape) $\log_{10}\text{LT50}(T)$ is a
+straight line: the slope, hence $z$, is constant, and "local $z$" equals the
+single "global $z$". When shape varies with $T$ the curve bends and local $z$
+genuinely varies across the assay range. `true_local_z()` supplies the
+ground-truth local $z$ at each temperature, against which the fitted models are
+scored in the bent-curve scenario.
+
+## Small self-contained illustration
+
+A toy bent $\log_{10}\text{LT50}(T)$ (quadratic in $T$) makes the point: a
+straight line gives a constant local $z$; a bent line does not.
+
+```{r demo}
+#| echo: true
+
+# Straight truth: log10(LT50) = 3 - 0.15 * T  -> constant slope -0.15
+ll_straight <- function(T) 3 - 0.15 * T
+
+# Bent truth: add curvature so the slope changes with T
+ll_bent <- function(T) 3 - 0.15 * T - 0.01 * (T - 34)^2
+
+local_z <- function(f, T_at, h = 0.5) {
+  -1 / ((f(T_at + h) - f(T_at - h)) / (2 * h))
+}
+
+Ts <- c(30, 34, 38)
+data.frame(
+  T            = Ts,
+  z_straight   = vapply(Ts, \(t) local_z(ll_straight, t), numeric(1)),
+  z_bent       = vapply(Ts, \(t) local_z(ll_bent,     t), numeric(1))
+)
+```
+
+The `z_straight` column is identical at every temperature (the line's single
+slope), while `z_bent` changes with $T$ — exactly the behaviour `true_local_z()`
+is built to capture for the temperature-varying-shape DGP.
