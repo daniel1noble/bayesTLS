@@ -145,6 +145,8 @@ Must cover:
 
 `WebFetch` and `WebSearch` are pre-approved for this project — use them freely to verify citations, find peer-reviewed papers, and pull primary text before paraphrasing. Do not preface fetches with permission asks; just run them. Citations in the manuscript or supplement must trace to a verifiable source — when in doubt, fetch and confirm.
 
+**Always consult project memory first.** This project keeps a persistent memory directory (indexed by `MEMORY.md`, loaded into context each session) that holds **verified full-text summaries of the literature** (the `reference_lit_*` notes — key numbers, ranges, and findings already extracted from the cited PDFs), plus user preferences, project decisions, and feedback notes. Before reaching for `WebFetch`/`WebSearch` to check a citation or look up a paper's numbers, **read the relevant `reference_lit_*` memory note** — many of the bib's papers have already been read and summarised there (e.g. TDT *z*/CTmax ranges, two-stage-bias literature, dose-response stats). When you extract a new fact from a PDF (a value, range, or finding not yet captured), **backfill the matching memory note** so it persists for next time. Memory is the first stop; keep it current.
+
 ## 14. Verifying changes before declaring done
 
 When edits affect rendering, execution, or downstream behaviour (`.qmd`, `_quarto.yml`, Lua filters, the `Makefile`, package loading, the crossref engine, brms caching, etc.), verify end-to-end before reporting back:
