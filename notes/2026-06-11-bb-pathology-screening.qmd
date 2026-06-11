@@ -1,0 +1,93 @@
+---
+title: "The beta-binomial pathology screen in `.load_screened()`"
+author: "Daniel Noble"
+date: 2026-06-11
+format:
+  html:
+    toc: true
+    number-sections: true
+    theme: cosmo
+    code-fold: show
+    embed-resources: true
+editor_options:
+  chunk_output_type: console
+---
+
+## The question
+
+In `.load_screened()` (defined inline in `ms/ms.qmd` and `ms/supplement.qmd`)
+the simulation-results figures screen the two-stage beta-binomial estimator:
+
+```r
+bad <- ps |>
+  dplyr::filter(method == "two_stage_bb",
+                (quantity == "z"         & abs(bias) > 20) |
+                (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+  dplyr::distinct(scenario, sim_id) |>
+  dplyr::mutate(bb_path = TRUE)
+```
+
+Two questions: (1) is this flagging runs with extreme bias on the assumption
+they had convergence problems? (2) why does the `two_stage_bb` slice look like
+~4000 rows when there are only 1000 simulations?
+
+## What the screen does
+
+`ps` is the bound stack of `per_sim_<prefix>_*.rds` files. Each per-sim file is
+**1000 sims × 12 rows** = 6 methods (`joint_4pl`, `joint_4pl_abs`,
+`two_stage_bin`, `two_stage_bin_t`, `two_stage_bb`, `two_stage_bb_t`) × 2
+quantities (`z`, `CTmax_1hr`).
+
+**Yes — it is a convergence proxy.** The true values are z ≈ 6.7 °C and
+CTmax ≈ 32 °C, so `|z bias| > 20` or `|CTmax bias| > 10` is far outside any
+plausible estimate. A bias that large is not a noisy estimate, it is a
+**degenerate / non-converged `glmmTMB` beta-binomial Stage-1 fit** — one
+temperature's LT50 has blown up and tilted the Stage-2 line. The thresholds are
+deliberately loose so the screen catches only catastrophic failures, not
+ordinary variability.
+
+**It is charitable to the two-stage.** Removing the worst beta-binomial blow-ups
+*before* computing bias/coverage makes `two_stage_bb` look **better and more
+comparable** than if every run were kept — a conservative choice so the classical
+pipeline is not strawmanned. The screen drops only the BB rows
+(`two_stage_bb`, `two_stage_bb_t`) for a flagged sim via the later
+`left_join(bad) |> filter(is.na(bb_path) | !(method %in% c("two_stage_bb",
+"two_stage_bb_t")))`; the `joint_4pl` and `two_stage_bin` rows for the same sim
+are retained.
+
+## The "4000" vs the size of `bad`
+
+These are two different objects:
+
+- **The 4000 is the input the filter scans** — the number of `two_stage_bb` rows
+  in `ps`: for a `scenN` prefix that matches the n3 and n5 files,
+  `2 files × 2 quantities (z, CTmax) × 1000 sims = 4000`. That decomposition
+  (scenario × quantity × sims) is exactly right *for this count*.
+- **`bad` is the output, and it is tiny.** After
+  `filter(abs(bias) > threshold) |> distinct(scenario, sim_id)`, `bad` holds
+  **one row per genuinely pathological simulation**. On the completed cells that
+  is 5 (scen1), 2 (scen2), 0 (scen3) — beta-binomial blow-ups are rare.
+- **`distinct(scenario, sim_id)` drops the quantity dimension.** `bad` is keyed
+  only by `(scenario, sim_id)`, so a sim flagged on z *or* CTmax appears once;
+  the "× z and CTmax" doubling does **not** survive into `bad`. The scenario
+  (n3/n5) dimension *does* survive, because it is part of the key.
+
+Measured on the completed cells:
+
+| prefix | files | `two_stage_bb` rows | pathological (pre-`distinct`) | `bad` (post-`distinct`) |
+|--------|-------|--------------------:|------------------------------:|------------------------:|
+| scen1  | 2     | 4000                | 9                             | 5                       |
+| scen2  | 2     | 4000                | 3                             | 2                       |
+| scen3  | 2     | 4000                | 0                             | 0                       |
+
+So the 4000 is the full `two_stage_bb` slice (every sim × both quantities × both
+replication levels); `bad` is the small subset that trips the extreme-bias cutoff,
+de-duplicated to one entry per simulation.
+
+## Caveat to remember
+
+This screen is an **analyst degree of freedom** that favours the two-stage. It
+should be reported transparently (it is, in the figure captions / methods), and
+the pathology counts above show it removes only a handful of runs — so it does
+not materially flatter the two-stage, but the direction of the choice (charitable
+to the classical pipeline) is the conservative one.
