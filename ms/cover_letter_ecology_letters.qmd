@@ -1,0 +1,30 @@
+---
+format:
+  docx:
+    toc: false
+    number-sections: false
+---
+
+11 June 2026
+
+Dear Editors of *Ecology Letters*,
+
+Please consider our manuscript, "A flexible modelling framework for estimating thermal tolerance and sensitivity", for publication in *Ecology Letters* as a Methods paper.
+
+Extreme heat is now one of the clearest biological consequences of climate change, but ecologists still lack reliable tools for turning thermal tolerance experiments into predictions under realistic heat exposure. Thermal death time and thermal load sensitivity models are widely used for this purpose, yet the standard analysis is usually a two-step procedure: estimate a time-to-endpoint separately at each temperature, then regress those estimates against temperature. This workflow is simple, but it treats first-stage estimates as known, loses uncertainty, struggles with overdispersed count data and hierarchical designs, and makes it difficult to compare groups or predict heat injury under fluctuating temperatures.
+
+Our Methods paper offers a direct solution. We replace the two-step workflow with a single Bayesian four-parameter logistic model fitted to the raw response data. The familiar quantities that thermal ecologists already use - including thermal sensitivity, critical thermal maxima (CTmax), thermal critical limit (Tcrit), heat injury, and survival - can be derived from this one model. The modelling framework we propose keeps the field's existing biological language while fixing the statistical machinery beneath it to improve inferences, more easily propagate uncertainty, and provide a much more flexible modelling framework that can be used to address completely new questions that the field has currently ignored.
+
+![Conceptual overview of the proposed modelling framework.](../output/figs/fig1.png){width=100%}
+
+A key contribution we make is ensuring that these models are accessible and immediately usable without the need for advanced computational or mathematical understanding. To achieve this, we provide the `bayesTLS` R package, all data and scripts, and a detailed online supplement and tutorial. Readers can reproduce the analyses, apply the workflow to their own thermal tolerance data, and extend the model to new biological questions. We therefore believe the manuscript fits the broad, conceptually important, and methodologically useful work that *Ecology Letters* publishes.
+
+We think this method will be useful well beyond the case studies in the manuscript. It works for lethal and sublethal endpoints, for counts and continuous proportions, and for designs with groups, random effects, or overdispersion. Through simulations, we show when the classical two-step approach is recovered and when it becomes biased or overconfident. Through empirical examples in brown shrimp, zebrafish, snow gum, and vinegar fly, we show how the same workflow can be used across animals and plants, life stages, sexes, and response types.
+
+The manuscript is original, is not under consideration elsewhere, and has been approved by all authors. All authors agree to be accountable for the work. We have declared conflicts of interest and data/code availability in the manuscript.
+
+Thank you for considering our submission.
+
+Sincerely,
+
+Daniel W.A. Noble, Pieter A. Arnold, and Patrice Pottier
