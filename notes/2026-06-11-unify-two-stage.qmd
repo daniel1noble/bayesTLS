@@ -1,0 +1,84 @@
+---
+title: "Unifying the two-stage TDT pipeline into one package implementation"
+author: "Daniel Noble"
+date: 2026-06-11
+format:
+  html:
+    toc: true
+    number-sections: true
+    theme: cosmo
+    code-fold: show
+    embed-resources: true
+---
+
+## Decision
+
+The classical two-stage TDT pipeline is currently implemented **three times**,
+with different code and (for the beta-binomial Stage 1) different estimators:
+
+| Context | binomial Stage 1 | beta-binomial Stage 1 | uncertainty | location |
+|---|---|---|---|---|
+| Tutorial (`fit_stage1`/`fit_stage2`) | `stats::glm` | — (binomial only) | none | supplement `sec-twostage` |
+| Case studies (`*_case`) | `stats::glm` | **custom MLE (`bb_nll`+`optim`)** | slope-CI inversion (z) + MVN (CTmax, T_crit) + `predict.lm` band | defined in shrimp 4.2, reused by zebrafish + leaves |
+| Simulation (`fit_two_stage`) | `stats::glm` | **`glmmTMB::betabinomial`** | delta method, **Normal *and* t** quantiles | `scripts/simulations/sim_functions.R` |
+
+**Resolution (agreed 2026-06-11):** consolidate into a single canonical
+implementation in **`R/two_stage.R`**, used by the tutorial, all case studies,
+and the simulation. The beta-binomial Stage 1 is **`glmmTMB::betabinomial`
+everywhere** (the maintained, standard tool; matches the simulation). The custom
+`bb_nll` MLE and the per-context copies are removed.
+
+**Consequence:** the case studies' beta-binomial two-stage numbers will shift
+slightly (custom MLE → glmmTMB) and the case-study renders must be regenerated.
+This is a deliberate, logged change, not a silent one.
+
+## Constraint that must be preserved
+
+The simulation's **delta-method Normal-vs-*t* CI comparison is a load-bearing
+result** (it is how the paper shows the two-stage needs *t* quantiles for
+near-nominal coverage). The unified function must therefore still produce
+delta-method intervals with both Normal and *t* quantiles — not only the MVN
+propagation the case studies use. So the canonical API exposes the propagation
+*method* as an option.
+
+## Canonical API (`R/two_stage.R`)
+
+- `ts_stage1(data, temp, duration, n_surv, n_total, family = c("binomial","betabinomial"))`
+  → one row per temperature: `temp`, `log10_lt50`, `se_log10_lt50`, `slope`,
+  `phi`, `stage1_ok` (the validation flag from the case-study version). Binomial
+  via `stats::glm`; beta-binomial via `glmmTMB::betabinomial`.
+- `ts_stage2(stage1, t_ref = 60, time_multiplier = 1, TC_rate_range = c(0.1, 1))`
+  → `list(fit, summary)` with `intercept`, `slope_T`, `z`, `CTmax_1hr`,
+  `T_crit`, `r_squared`, `n_stage1`, `n_excluded`.
+- `ts_ci(stage2, method = c("delta", "mvn"), level = 0.95, temp_grid = NULL, ...)`
+  → intervals for `z`, `CTmax_1hr`, `T_crit`:
+  - `"delta"` (simulation): Normal- and *t*-quantile delta-method CIs.
+  - `"mvn"` (case studies): slope-CI inversion for `z`, MVN draws for
+    `CTmax`/`T_crit`, and a `predict.lm` line band over `temp_grid`.
+- `ts_curve(stage2, temp_grid, time_multiplier = 1)` → median LT-vs-temperature
+  line (replaces `make_twostep_curve_case`).
+
+All are roxygen-documented with runnable examples and covered by
+`tests/testthat/`.
+
+## Migration stages
+
+- **A. Package** — write `R/two_stage.R` + tests + `man/`. (No effect on
+  existing renders/results yet.)
+- **B. Simulation** — `fit_two_stage()` in `sim_functions.R` becomes a thin
+  adapter over `ts_stage1`/`ts_stage2`/`ts_ci(method="delta")`. Verify a fixed
+  seed reproduces the current per-sim row **exactly** (the in-progress run's
+  results must stay consistent). Behaviour-preserving.
+- **C. Case studies** — replace the `*_case` functions (shrimp 4.2) and their
+  reuse in zebrafish + leaves with `ts_*` calls (`method="mvn"`). This switches
+  the beta-binomial Stage 1 to glmmTMB → **numbers change** → re-render the case
+  studies. Best done when the simulation isn't saturating the CPU.
+- **D. Tutorial** — replace the simplified `fit_stage1`/`fit_stage2` with `ts_*`
+  calls (kept pedagogically thin via the same package functions).
+
+## Verification
+
+- B: same-seed per-sim row identical to current `fit_two_stage` (numeric check).
+- C/D: `make supp` renders; spot-check that case-study z/CTmax/T_crit move only
+  by the small amount expected from bb_nll → glmmTMB, and that the
+  Normal-vs-*t* simulation result is unchanged.

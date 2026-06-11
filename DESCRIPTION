@@ -26,6 +26,7 @@ Imports:
     brms,
     dplyr,
     ggplot2,
+    MASS,
     patchwork,
     posterior,
     stats,
@@ -33,6 +34,7 @@ Imports:
     utils
 Suggests:
     cmdstanr,
+    glmmTMB,
     here,
     pkgload,
     readxl,
