@@ -5458,7 +5458,7 @@ fig4_draws <- dplyr::bind_rows(
     .draw      = get_ctmax_draws(et_shrimp)$.draw
   ),
   dplyr::bind_rows(lapply(zf_stages, function(s) {
-    dr <- get_z_draws(zf_joint_tdt[[s]])  # bayesTLS accessor: .draw, z, CTmax
+    dr <- zf_joint_tdt[[s]]$z$draws  # hand-packaged list (built via tls()): .draw, z, CTmax
     dplyr::bind_rows(
       tibble::tibble(case_study = "Zebrafish", group = s,
                      quantity = "z",         value = dr$z,     .draw = dr$.draw),
