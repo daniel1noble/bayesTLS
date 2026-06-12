@@ -5668,9 +5668,19 @@ vinegar fly (*Drosophila suzukii*) and the brown shrimp (*Crangon crangon*).
 For the fly we use a real Chilean hourly **air**-temperature series — the
 hottest-summer station in the Rezende et al. (2020) Dryad record (Curicó, Los
 Niches; January–March 2018) — and predict HI for each sex with and without
-damage repair. For the shrimp we currently use a **placeholder synthetic
-coastal-summer water-temperature series** (90 days hourly) pending the real
-field trace; it is flagged as illustrative and will be replaced. Repair is
+damage repair. 
+
+For the shrimp we downloaded the full hourly
+**sea-surface**-temperature record (2008–2024) from the Kristineberg Marine
+Research Station on the Gullmar fjord, Sweden — a coastal site within the brown
+shrimp's range — from the station's public weather archive
+(`www.weather.mi.gu.se/kristineberg`), and took June–August 2018, the warmest
+summer on record, as the trace. Because even that warmest fjord summer never
+reaches this shrimp population's $T_{crit}$ (27.7 °C; the 17-year hourly maximum
+is 26.1 °C), a literal trace accumulates no injury, so we added a **+6 °C
+marine-heatwave projection** — keeping the real diurnal and seasonal structure
+but shifting it warm enough to cross $T_{crit}$ — and label it as a scenario,
+not observed lethal exposure. Repair is
 modelled with an **illustrative Sharpe–Schoolfield kernel that is not
 empirically fitted** — it shows the *qualitative* effect of repair, not a
 calibrated rate. Bands are ±1 SE across posterior draws (not 95% credible
@@ -5731,17 +5741,23 @@ for (sx in c("Female", "Male")) {
 }
 fig5_fly <- dplyr::bind_rows(fly_rows) |> dplyr::left_join(fly_trace, by = "time")
 
-## Shrimp: PLACEHOLDER synthetic coastal-summer water temperature (90 d hourly):
-## seasonal rise + a marine heatwave + diurnal cycle. Replace with field data.
+## Shrimp: REAL Kristineberg (Gullmar fjord) hourly sea-surface temperature for
+## the warmest summer on record (2018; Jun-Aug), warmed by a +6 °C marine-
+## heatwave projection. The fjord itself never reaches the shrimp's T_crit
+## (27.7 °C; 17-yr max 26.1 °C), so the offset is required to show any heat
+## injury and is labelled as a projection in the caption. See
+## data-raw/build_kristineberg_temps.R and inst/extdata/kristineberg/README.md.
+SHRIMP_HEATWAVE_OFFSET <- 6
 Tc_S <- et_shrimp$T_crit$summary$temp_median
-set.seed(7)
-sh_t    <- 0:(90 * 24 - 1); sh_day <- sh_t / 24
-sh_temp <- 19 + 2 * sin(pi * sh_day / 90) +
-           7 * exp(-((sh_day - 45)^2) / (2 * 9^2)) +
-           2.0 * sin(2 * pi * ((sh_t %% 24) / 24) - pi / 2) +
-           rnorm(length(sh_t), 0, 0.4)
-shr_trace <- data.frame(time = sh_t, temp = sh_temp,
-                        datetime = as.POSIXct("2018-06-01", tz = "UTC") + sh_t * 3600)
+kb <- utils::read.csv(here::here("inst", "extdata", "kristineberg",
+                                 "kristineberg_sea_temp_hourly.csv.gz"))
+shr_trace <- kb |>
+  dplyr::filter(year == 2018, substr(datetime_utc, 6, 7) %in% c("06", "07", "08"),
+                is.finite(sea_temp_c)) |>
+  dplyr::arrange(datetime_utc) |>
+  dplyr::transmute(time = dplyr::row_number() - 1,
+                   temp = sea_temp_c + SHRIMP_HEATWAVE_OFFSET,
+                   datetime = as.POSIXct(datetime_utc, tz = "UTC"))
 shr_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
                    TL = 8 + 273.15, TH = 22 + 273.15,
                    TREF = 15 + 273.15, r_ref = 0.3)
@@ -5764,7 +5780,7 @@ saveRDS(list(fly = fig5_fly, fly_trace = fly_trace, fly_Tc = mean(c(Tc_F, Tc_M))
 
 ```{r}
 #| label: fig-ms-fig5-heat-injury
-#| fig-cap: "Manuscript Figure 5. Heat-injury accumulation and predicted survival under natural temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels A–C) and the brown shrimp (*Crangon crangon*, panels D–F). (A, D) the temperature trace — real Chilean summer air temperature for the fly (Curicó, Jan–Mar 2018; Rezende et al. 2020) and a placeholder synthetic coastal water-temperature series for the shrimp — with the relative-threshold $T_{crit}$ (dotted). (B, E) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (C, F) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Repair uses an illustrative Sharpe–Schoolfield kernel (not empirically fitted); the shrimp temperature series is a placeholder pending field data."
+#| fig-cap: "Manuscript Figure 5. Heat-injury accumulation and predicted survival under natural temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels A–C) and the brown shrimp (*Crangon crangon*, panels D–F). (A, D) the temperature trace — real Chilean summer air temperature for the fly (Curicó, Jan–Mar 2018; Rezende et al. 2020) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2018, the warmest summer on record) warmed by a **+6 °C marine-heatwave projection** — with the relative-threshold $T_{crit}$ (dotted). The fjord itself never reaches the shrimp's $T_{crit}$ (27.7 °C; 17-year maximum 26.1 °C), so the projection makes the heat-injury dynamics visible; it is a scenario, not observed lethal exposure. (B, E) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (C, F) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Repair uses an illustrative Sharpe–Schoolfield kernel (not empirically fitted)."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
