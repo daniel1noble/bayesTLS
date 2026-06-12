@@ -1,0 +1,157 @@
+---
+title: "Why two-stage and joint 4PL agree on z and CTmax even though u, low and k vary"
+author: "Daniel Noble"
+date: 2026-06-12
+format:
+  html:
+    toc: true
+    number-sections: true
+    theme: cosmo
+    code-fold: show
+    embed-resources: true
+---
+
+## The question
+
+In the shrimp and zebrafish case studies the joint 4PL fits estimate upper and
+lower asymptotes ($u$, $\ell$) and a slope ($k$) that differ across temperatures
+and groups, yet $z$ and $CT_{max}$ come out *roughly the same* as the classical
+two-stage pipeline. If the curves genuinely differ in $u$, $\ell$ and $k$,
+shouldn't the derived quantities differ more than they do?
+
+## Short answer
+
+**$z$ and $CT_{max}$ are *location* quantities; $u$, $\ell$ and $k$ are *shape /
+scale* quantities, and in the 4PL the two are (by construction) separable.** The
+midpoint sub-model
+
+$$
+\text{mid}(T) = \beta_0 + \beta_1 (T - \bar T)
+$$
+
+is the $\log_{10}$-time at which each curve crosses the point halfway between its
+own asymptotes. Under the **relative** threshold the package reads $z$ and
+$CT_{max}$ *only* from this sub-model:
+
+$$
+z = -\frac{1}{\beta_1}, \qquad
+CT_{max,\,t_\text{ref}} : \text{mid}(T) = \log_{10} t_\text{ref},
+$$
+
+so $u$, $\ell$ and $k$ **do not enter the calculation at all** — they can change
+(even with temperature) without moving $z$ or $CT_{max}$. The classical
+two-stage reads an *absolute* 50 % LT50 per temperature, and that coincides with
+the relative midpoint whenever the asymptotes sit near 0 and 1, which is the case
+for these datasets. So the two pipelines land on the same midpoint trajectory and
+agree.
+
+## Mechanism
+
+Why the asymptotes and slope don't leak into $z$/$CT_{max}$:
+
+- **Asymptotes ($u$, $\ell$) set the vertical range** of the dose-response curve.
+  The *relative* midpoint is defined as halfway between $\ell$ and $u$, so it
+  rides up and down with them — its **time location is unchanged** when the
+  asymptotes stretch.
+- **$k$ sets the steepness** of the transition. A steeper or shallower sigmoid
+  still crosses its own midpoint at the same $\log_{10}$-time. $k$ governs the
+  *precision* of an LT50 estimate (steeper $\Rightarrow$ tighter), not its
+  location.
+- Hence the midpoint $\text{mid}(T)$ — and therefore $z$ (its slope) and
+  $CT_{max}$ (where it crosses $\log_{10} t_\text{ref}$) — is decoupled from
+  $u$, $\ell$, $k$. This is exact under the relative threshold: the supplement
+  notes $\log_{10}\text{LT}(T) = \text{mid}(T)$ is *exactly* linear, "demonstrated
+  with a simulation where $u$ and $k$ carry strong $T$ effects".
+
+The two-stage instead reads the **absolute 50 %** time per temperature,
+$\log_{10}\text{LT}_{abs} = \text{mid} + \dfrac{\log(2u-1)}{k}$ (for $\ell=0$).
+The extra term is the gap between "halfway between asymptotes" and "absolute
+50 %". When $u \approx 1$ it is $\approx 0$ and the two thresholds coincide.
+
+## Small demonstration
+
+$z$ from the relative midpoint is invariant to $u$ and $k$; the absolute-50 %
+$z$ only departs when the asymptotes **vary with temperature**.
+
+```{r}
+#| message: false
+Tbar <- 34; b0 <- 1.5; b1 <- -0.15     # truth: z = -1/b1 = 6.667
+temps <- seq(30, 38, by = 2)
+mid   <- b0 + b1 * (temps - Tbar)      # log10 relative-midpoint LT(T)
+
+z_of <- function(logLT) unname(-1 / coef(lm(logLT ~ I(temps - Tbar)))[2])
+
+# absolute-50% LT (low = 0):  log10 LT_abs = mid + log(2u - 1)/k
+abs_lt <- function(u, k) mid + log(2 * u - 1) / k
+
+z_relative           <- z_of(mid)                                  # joint, relative
+z_abs_u_constant_1   <- z_of(abs_lt(u = rep(0.999, 5), k = 8))     # u~1, constant
+z_abs_u_constant_low <- z_of(abs_lt(u = rep(0.80,  5), k = 8))     # u=0.80, constant
+z_abs_u_drifts       <- z_of(abs_lt(u = seq(0.95, 0.70, length = 5), k = 8))  # u falls with T
+
+round(c(truth                = -1 / b1,
+        relative_midpoint    = z_relative,
+        absolute_u_near_1    = z_abs_u_constant_1,
+        absolute_u_const_0.80= z_abs_u_constant_low,
+        absolute_u_drifts    = z_abs_u_drifts), 3)
+```
+
+Reading the output:
+
+- `relative_midpoint` $= 6.667$ **exactly**, regardless of $u$ and $k$ — this is
+  the joint 4PL's $z$ under the relative threshold.
+- `absolute_u_near_1` $= 6.667$: with asymptotes at 0/1 the absolute LT50 *is* the
+  midpoint, so the two-stage matches.
+- `absolute_u_const_0.80` $= 6.667$ too: a **constant** sub-unit asymptote shifts
+  every LT50 by the *same* amount, so the slope (hence $z$) is unchanged — only
+  the intercept (hence $CT_{max}$) shifts a little.
+- `absolute_u_drifts` $\neq 6.667$: once $u$ **changes with temperature**, the
+  shift changes with $T$, tilting the absolute-LT50 line and biasing $z$.
+
+So the agreement needs only two benign conditions, both met by shrimp and most
+zebrafish stages: **(i)** asymptotes near 0/1 (so absolute $\approx$ relative for
+$CT_{max}$), and **(ii)** asymptotes/slope roughly **stable across the assay
+temperatures** (so $z$ is untilted). Neither requires $u$, $\ell$, $k$ to be
+identical across temperatures or groups — only that their *temperature drift* is
+mild.
+
+## Where they do diverge (and the data show it)
+
+- **Young zebrafish embryos** have an upper asymptote well below 1
+  (~0.76; background mortality unrelated to heat). There the absolute and
+  relative thresholds part company, and the threshold-comparison figure in the
+  supplement shows the two $CT_{max}$ definitions separating for that stage while
+  the other stages stay on top of each other.
+- **The simulations** deliberately drive $u$ (and $k$) to drift with temperature
+  (scenarios 3, 6, 7). That is exactly the `absolute_u_drifts` case above: the
+  two-stage $z$ and $CT_{max}$ pick up systematic bias, while the joint 4PL on the
+  relative threshold stays unbiased "because the classical model cannot represent
+  changing asymptotes directly".
+
+## What actually differs in the benign case
+
+Equal point estimates do **not** mean the methods are interchangeable. In the
+benign regime the joint 4PL and two-stage agree on the *value* of $z$ and
+$CT_{max}$, but differ in:
+
+- **Uncertainty.** The two-stage treats each Stage-1 LT50 as a fixed, independent
+  point in the Stage-2 regression, so its intervals are mis-calibrated; the joint
+  posterior propagates the full covariance (this is what the bias-coverage
+  simulations quantify — joint coverage stays ~0.95, two-stage drops well below).
+- **Robustness.** When conditions are *not* benign (sparse data that don't bracket
+  the midpoint, asymptotes drifting with $T$), the two-stage point estimates also
+  break, while the joint fit absorbs the asymptote/slope variation and keeps the
+  midpoint clean.
+
+This is the paper's "equivalence as enhancement" point: the agreement on shrimp
+and zebrafish is the *expected* result and a feature, not a coincidence — the
+joint 4PL reproduces the classical answer where the classical answer is
+trustworthy, and adds correctly-propagated uncertainty plus protection for the
+cases where it is not.
+
+## Related
+
+`[[project_z_ctmax_derivation]]`, `[[project_tcrit_definition]]`,
+`[[feedback_equivalence_framing]]`,
+`[[reference_lit_tdt_dynamic_core]]` (Rezende landscape; $z$ from the midpoint
+slope).
