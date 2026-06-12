@@ -149,6 +149,43 @@ joint 4PL reproduces the classical answer where the classical answer is
 trustworthy, and adds correctly-propagated uncertainty plus protection for the
 cases where it is not.
 
+## Corollary: is a cross-stage (or cross-sex) comparison "apples vs oranges"?
+
+The relative threshold anchors each group at the midpoint between *its own*
+asymptotes. If two life stages have different upper asymptotes, are we comparing
+like with like? Split by quantity:
+
+- **$z$ — fair.** $z$ is a *slope* (the temperature scaling of the death-time)
+  and is near-invariant to the anchor *level*: a constant offset does not tilt
+  the LT-vs-$T$ line (the `abs_u=0.80(const)` row above is still $6.667$). So
+  comparing $z$ across stages compares thermal sensitivities, regardless of
+  asymptote differences.
+- **$CT_{max}$ — anchored per group, and that is usually the *fairer* choice.**
+  Under the relative threshold a low-asymptote stage's $CT_{max}$ is read at *its
+  own* midpoint survival (e.g. $\approx40.5\%$ for young zebrafish embryos at
+  $u\approx0.76$) rather than a common $50\%$. Whether that is a problem depends
+  on what the sub-unit asymptote *is*:
+  - **Background / non-heat mortality** (a fraction that dies early regardless of
+    exposure — the natural reading for young embryos). The **relative** threshold
+    conditions on the heat-responsive range $(u-\ell)$, i.e. it isolates the
+    heat-driven decline and **removes** the background difference. The
+    **absolute 50%** threshold instead re-introduces it: with $24\%$ already
+    dead, only $26$ more points are needed to reach $50\%$, so the absolute
+    $CT_{max}$ shifts earlier for reasons unrelated to heat tolerance. Here
+    relative is the apples-to-apples comparison.
+  - **A genuine ceiling** on heat-killability. Then $u$ is itself signal, and it
+    should be reported/compared as its own quantity rather than folded into
+    $CT_{max}$.
+
+**Practical guidance.** Compare $z$ across groups freely. For $CT_{max}$, decide
+whether the asymptote gap is nuisance (use relative — it conditions it out) or
+signal (report $u$ separately). Best practice for the grouped case studies:
+report the contrasts under **both** thresholds (`target_surv = "relative"` and
+`target_surv = 0.5`, reachable here since all $u>0.5$) and show they coincide
+except for the low-asymptote stage — making the robustness, and the single
+exception, explicit. The supplement's zebrafish threshold-comparison figure
+already does this.
+
 ## Related
 
 `[[project_z_ctmax_derivation]]`, `[[project_tcrit_definition]]`,

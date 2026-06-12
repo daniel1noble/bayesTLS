@@ -2325,7 +2325,8 @@ window.Quarto = {
   <li><a href="#small-demonstration" id="toc-small-demonstration" class="nav-link" data-scroll-target="#small-demonstration"><span class="header-section-number">4</span> Small demonstration</a></li>
   <li><a href="#where-they-do-diverge-and-the-data-show-it" id="toc-where-they-do-diverge-and-the-data-show-it" class="nav-link" data-scroll-target="#where-they-do-diverge-and-the-data-show-it"><span class="header-section-number">5</span> Where they do diverge (and the data show it)</a></li>
   <li><a href="#what-actually-differs-in-the-benign-case" id="toc-what-actually-differs-in-the-benign-case" class="nav-link" data-scroll-target="#what-actually-differs-in-the-benign-case"><span class="header-section-number">6</span> What actually differs in the benign case</a></li>
-  <li><a href="#related" id="toc-related" class="nav-link" data-scroll-target="#related"><span class="header-section-number">7</span> Related</a></li>
+  <li><a href="#corollary-is-a-cross-stage-or-cross-sex-comparison-apples-vs-oranges" id="toc-corollary-is-a-cross-stage-or-cross-sex-comparison-apples-vs-oranges" class="nav-link" data-scroll-target="#corollary-is-a-cross-stage-or-cross-sex-comparison-apples-vs-oranges"><span class="header-section-number">7</span> Corollary: is a cross-stage (or cross-sex) comparison “apples vs oranges”?</a></li>
+  <li><a href="#related" id="toc-related" class="nav-link" data-scroll-target="#related"><span class="header-section-number">8</span> Related</a></li>
   </ul>
 </nav>
 </div>
@@ -2447,8 +2448,21 @@ absolute_u_const_0.80     absolute_u_drifts
 </ul>
 <p>This is the paper’s “equivalence as enhancement” point: the agreement on shrimp and zebrafish is the <em>expected</em> result and a feature, not a coincidence — the joint 4PL reproduces the classical answer where the classical answer is trustworthy, and adds correctly-propagated uncertainty plus protection for the cases where it is not.</p>
 </section>
-<section id="related" class="level2" data-number="7">
-<h2 data-number="7" class="anchored" data-anchor-id="related"><span class="header-section-number">7</span> Related</h2>
+<section id="corollary-is-a-cross-stage-or-cross-sex-comparison-apples-vs-oranges" class="level2" data-number="7">
+<h2 data-number="7" class="anchored" data-anchor-id="corollary-is-a-cross-stage-or-cross-sex-comparison-apples-vs-oranges"><span class="header-section-number">7</span> Corollary: is a cross-stage (or cross-sex) comparison “apples vs oranges”?</h2>
+<p>The relative threshold anchors each group at the midpoint between <em>its own</em> asymptotes. If two life stages have different upper asymptotes, are we comparing like with like? Split by quantity:</p>
+<ul>
+<li><strong><span class="math inline">\(z\)</span> — fair.</strong> <span class="math inline">\(z\)</span> is a <em>slope</em> (the temperature scaling of the death-time) and is near-invariant to the anchor <em>level</em>: a constant offset does not tilt the LT-vs-<span class="math inline">\(T\)</span> line (the <code>abs_u=0.80(const)</code> row above is still <span class="math inline">\(6.667\)</span>). So comparing <span class="math inline">\(z\)</span> across stages compares thermal sensitivities, regardless of asymptote differences.</li>
+<li><strong><span class="math inline">\(CT_{max}\)</span> — anchored per group, and that is usually the <em>fairer</em> choice.</strong> Under the relative threshold a low-asymptote stage’s <span class="math inline">\(CT_{max}\)</span> is read at <em>its own</em> midpoint survival (e.g. <span class="math inline">\(\approx40.5\%\)</span> for young zebrafish embryos at <span class="math inline">\(u\approx0.76\)</span>) rather than a common <span class="math inline">\(50\%\)</span>. Whether that is a problem depends on what the sub-unit asymptote <em>is</em>:
+<ul>
+<li><strong>Background / non-heat mortality</strong> (a fraction that dies early regardless of exposure — the natural reading for young embryos). The <strong>relative</strong> threshold conditions on the heat-responsive range <span class="math inline">\((u-\ell)\)</span>, i.e. it isolates the heat-driven decline and <strong>removes</strong> the background difference. The <strong>absolute 50%</strong> threshold instead re-introduces it: with <span class="math inline">\(24\%\)</span> already dead, only <span class="math inline">\(26\)</span> more points are needed to reach <span class="math inline">\(50\%\)</span>, so the absolute <span class="math inline">\(CT_{max}\)</span> shifts earlier for reasons unrelated to heat tolerance. Here relative is the apples-to-apples comparison.</li>
+<li><strong>A genuine ceiling</strong> on heat-killability. Then <span class="math inline">\(u\)</span> is itself signal, and it should be reported/compared as its own quantity rather than folded into <span class="math inline">\(CT_{max}\)</span>.</li>
+</ul></li>
+</ul>
+<p><strong>Practical guidance.</strong> Compare <span class="math inline">\(z\)</span> across groups freely. For <span class="math inline">\(CT_{max}\)</span>, decide whether the asymptote gap is nuisance (use relative — it conditions it out) or signal (report <span class="math inline">\(u\)</span> separately). Best practice for the grouped case studies: report the contrasts under <strong>both</strong> thresholds (<code>target_surv = &quot;relative&quot;</code> and <code>target_surv = 0.5</code>, reachable here since all <span class="math inline">\(u&gt;0.5\)</span>) and show they coincide except for the low-asymptote stage — making the robustness, and the single exception, explicit. The supplement’s zebrafish threshold-comparison figure already does this.</p>
+</section>
+<section id="related" class="level2" data-number="8">
+<h2 data-number="8" class="anchored" data-anchor-id="related"><span class="header-section-number">8</span> Related</h2>
 <p><code>[[project_z_ctmax_derivation]]</code>, <code>[[project_tcrit_definition]]</code>, <code>[[feedback_equivalence_framing]]</code>, <code>[[reference_lit_tdt_dynamic_core]]</code> (Rezende landscape; <span class="math inline">\(z\)</span> from the midpoint slope).</p>
 </section>
 
