@@ -121,7 +121,7 @@ We present a flexible Bayesian four-parameter logistic (4PL) model that estimate
 
 We show that the classical and Bayesian frameworks are equivalent, but that the Bayesian approach delivers properly propagated uncertainty, can account for complex hierarchical data (i.e., random effects), can accommodate broader data inputs and overdispersion, and unlocks outputs the two-step pipeline cannot provide, including survival landscape surfaces, between-group contrasts, and inference about the variation in the shape of thermal dose-response curves among groups. We provide a new *R* package ($bayesTLS$) and recommend the Bayesian four-parameter logistic model as the default approach for analysing TDT and TLS data, particularly when the goal is to make accurate predictions of survival under natural thermal regimes.
 
-**Keywords:** thermal-death-time; thermal tolerance landscape; multilevel model; 4-parameter logistic; heat injury; heat tolerance; critical thermal maximum; ectotherm
+**Keywords:** thermal-death-time; thermal tolerance landscape; multilevel model; 4-parameter logistic; heat injury; heat tolerance; critical thermal maximum; ectotherm; dose-response
 :::
 
 ```{r}
