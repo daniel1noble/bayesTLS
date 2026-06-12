@@ -149,6 +149,36 @@ joint 4PL reproduces the classical answer where the classical answer is
 trustworthy, and adds correctly-propagated uncertainty plus protection for the
 cases where it is not.
 
+## Caveat: "z is robust to asymptotes" is true only for the *relative* z
+
+The manuscript states "the slope $\beta_1$ — and hence $z$ — is robust to changes
+in asymptotes." This is exact for the **relative** (midpoint) $z = -1/\beta_1$,
+and the reason is definitional: `mid(T)` is *specified* linear, so the
+relative-threshold $\log_{10}\text{LT}(T)$ **is** that straight line — slope
+$\beta_1$ — irrespective of $u$, $\ell$, $k$, even when those vary with
+temperature. The relative line never bends.
+
+The **absolute** $z$ (time to a *fixed* survival level, e.g. 50 %) is a different
+story. From the manuscript's own correction,
+$$
+\log_{10} t_{50}(T) = \text{mid}(T) + \tfrac{1}{k}\log\tfrac{u - 0.5}{0.5 - \ell},
+$$
+the correction term is a **constant vertical offset only when $u$, $\ell$, $k$ are
+constant in $T$** — then the absolute line is the relative line shifted, same
+slope, so absolute $z$ = relative $z$. **But if $u$, $\ell$ or $k$ vary with
+temperature, the correction becomes a function of $T$, $\log_{10}t_{50}(T)$ is no
+longer linear (it bends), and its slope is temperature-specific.** The absolute
+sensitivity is then a **local $z(T)$**, evaluated along the curve and summarised
+(e.g. averaged / OLS over the grid) — which is exactly why the absolute path
+carries the local-$z$ machinery while the relative path's OLS is redundant
+($z=-1/\beta_1$ exactly).
+
+So **relative $z$ and absolute $z$ are identical only when the asymptotes and $k$
+are constant in temperature.** When they bend, the two diverge (the demo above:
+`abs_u_drifts = 6.151` vs `relative = 6.667`). The manuscript sentence is correct
+for the relative $z$ but should say so explicitly, and note that the absolute $z$
+bends — see the proposed reword logged with this note's session.
+
 ## Corollary: is a cross-stage (or cross-sex) comparison "apples vs oranges"?
 
 The relative threshold anchors each group at the midpoint between *its own*
