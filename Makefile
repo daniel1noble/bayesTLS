@@ -45,6 +45,8 @@ all: ms supp
 #   - `here::here("data", ...)` resolves to the project's `data/` (shrimp xlsx)
 #   - `here::here("pics", ...)` resolves to the project's `pics/` (Figure 4
 #     species illustrations: danio life stages, shrimp, euca, dros, etc.)
+#   - `here::here("inst", "extdata", ...)` resolves to the project's `inst/`
+#     (Figure 5 reads the Rezende 2020 Chilean hourly temperature CSV)
 #
 # R/ symlinks are intentionally NOT created here: the analytical functions
 # now live in the bayesTLS R package, which the supplement loads via
@@ -65,10 +67,12 @@ sync-sources:
 	@ln -sfn $(abspath output) $(BUILDROOT)/output
 	@ln -sfn $(abspath data)   $(BUILDROOT)/data
 	@ln -sfn $(abspath pics)   $(BUILDROOT)/pics
+	@ln -sfn $(abspath inst)   $(BUILDROOT)/inst
 	@ln -sfn $(abspath bib)    $(BUILD_MS)/bib
 	@ln -sfn $(abspath output) $(BUILD_MS)/output
 	@ln -sfn $(abspath data)   $(BUILD_MS)/data
 	@ln -sfn $(abspath pics)   $(BUILD_MS)/pics
+	@ln -sfn $(abspath inst)   $(BUILD_MS)/inst
 
 # Render <source.qmd> to <format> with output filename <basename.ext>.
 # All work happens in $(BUILD_MS); only the final artefact is copied to

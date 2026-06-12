@@ -579,7 +579,7 @@ All data, analysis scripts, and rendered outputs are available at https://github
 The authors declare no competing interests.
 
 # AI Declaration
-During the preparation of this manuscript, the authors used generative AI tools, including OpenAI ChatGPT/Codex (vers. 5.5) and Claude Code (vers. optus 4.8), to assist with language editing, structural refinement, mathematical derivations, code checking, R package construction and formatting. All scientific ideas, analyses, interpretations, and conclusions were developed and verified by the authors. Any AI-assisted output was critically reviewed and edited by the authors, who accept full responsibility for the final content of the manuscript, supplement, code, and associated R package.
+During the preparation of this manuscript, the authors used generative AI tools, including OpenAI ChatGPT/Codex (vers. 5.5) and Claude Code (vers. opus 4.8), to assist with language editing, structural refinement, mathematical derivations, code building and checking, R package construction and formatting. All scientific ideas, analyses, interpretations, and conclusions were developed and verified by the authors. Any AI-assisted output was critically reviewed and edited by the authors, who accept full responsibility for the final content of the manuscript, supplement, code, and associated R package.
 
 # References {.unnumbered}
 

@@ -3,7 +3,7 @@
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/daniel1noble/bayesTLS/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/daniel1noble/bayesTLS/actions/workflows/R-CMD-check.yaml)
 [![test-coverage](https://github.com/daniel1noble/bayesTLS/actions/workflows/test-coverage.yaml/badge.svg)](https://github.com/daniel1noble/bayesTLS/actions/workflows/test-coverage.yaml)
-[![Codecov test coverage](https://codecov.io/gh/daniel1noble/bayesTLS/graph/badge.svg)](https://app.codecov.io/gh/daniel1noble/bayesTLS)
+[![Codecov test coverage](https://codecov.io/gh/daniel1noble/bayesTLS/graph/badge.svg?token=m2j2yA8jbt)](https://app.codecov.io/gh/daniel1noble/bayesTLS)
 [![Lifecycle: stable](https://img.shields.io/badge/lifecycle-stable-brightgreen.svg)](https://lifecycle.r-lib.org/articles/stages.html#stable)
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 [![Ask Me Anything](https://img.shields.io/badge/Ask%20me-anything-1abc9c.svg)](https://github.com/daniel1noble/bayesTLS/issues)
