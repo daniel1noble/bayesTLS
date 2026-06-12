@@ -176,8 +176,8 @@ tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
 #'                         Only used in `"absolute"` mode. Default: 350
 #'                         log-spaced values spanning 0.2× to 5× the training
 #'                         data's duration range.
-#' @param target_surv      Threshold mode. `"absolute"` (default; = 0.5),
-#'                         `"relative"` (= `(low + up)/2`), or a numeric in `(0, 1)`.
+#' @param target_surv      Threshold mode. `"relative"` (default; = `(low + up)/2`),
+#'                         `"absolute"` (= 0.5), or a numeric in `(0, 1)`.
 #' @param ndraws           Posterior draws to use. Default 1000.
 #' @param probs            Quantile probabilities for the summary. Default
 #'                         `c(0.025, 0.5, 0.975)`.
@@ -196,7 +196,7 @@ tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
 derive_tdt_curve <- function(workflow,
                              temp_grid,
                              duration_grid    = NULL,
-                             target_surv      = "absolute",
+                             target_surv      = "relative",
                              ndraws           = 1000,
                              probs            = c(0.025, 0.5, 0.975),
                              time_multiplier  = NULL,
@@ -299,7 +299,7 @@ derive_tdt_curve <- function(workflow,
 #' @param workflow         Fitted `bayes_tls`.
 #' @param exposure_duration Numeric scalar — the fixed duration (model units).
 #' @param temp_grid        Numeric vector of temperatures to search over.
-#' @param target_surv      Threshold mode. `"absolute"` (default), `"relative"`,
+#' @param target_surv      Threshold mode. `"relative"` (default), `"absolute"`,
 #'                         or a numeric in `(0, 1)`.
 #' @param ndraws           Posterior draws to subsample, or `NULL` for all.
 #'                         Default 1000.
@@ -368,8 +368,8 @@ derive_temperature_for_duration <- function(workflow,
 #' `time_multiplier` is needed here.
 #'
 #' @param workflow    Fitted `bayes_tls`.
-#' @param target_surv Threshold mode: `"absolute"` (default; = 0.5),
-#'                    `"relative"`, or a numeric in `(0, 1)`.
+#' @param target_surv Threshold mode: `"relative"` (default; = `(low + up)/2`),
+#'                    `"absolute"` (= 0.5), or a numeric in `(0, 1)`.
 #' @param temp_grid   Temperatures at which to evaluate local z and over which
 #'                    to pool. Default: the observed (unique) assay temperatures
 #'                    — pooling only where the data inform the curve.
@@ -393,7 +393,7 @@ derive_temperature_for_duration <- function(workflow,
 #' }
 #' @export
 derive_z <- function(workflow,
-                     target_surv = "absolute",
+                     target_surv = "relative",
                      temp_grid   = NULL,
                      ndraws      = NULL,
                      probs       = c(0.025, 0.5, 0.975),
@@ -424,14 +424,13 @@ derive_z <- function(workflow,
 #'   after `t_ref` exposure; the temperature where the LT_x curve crosses
 #'   `t_ref`, by per-draw inversion of the fitted surface.
 #'
-#' By default (`target_surv = "absolute"`), the threshold is the absolute 50 %
-#' survival level (LT50) — the field-standard definition. The `"relative"`
-#' threshold is the per-draw midpoint between the fitted lower and upper
-#' asymptotes (`(low + up)/2`); it is more biologically meaningful when the
-#' upper asymptote is below 1 (e.g., intrinsic background mortality unrelated to
-#' heat stress), and coincides with the absolute 50 % LT50 when `low ≈ 0` and
-#' `up ≈ 1`. Pass `target_surv = "relative"` (or any numeric in `(0, 1)`) to
-#' change the threshold.
+#' By default (`target_surv = "relative"`), the threshold is the per-draw
+#' midpoint between the fitted lower and upper asymptotes (`(low + up)/2`); it
+#' is more biologically meaningful when the upper asymptote is below 1 (e.g.,
+#' intrinsic background mortality unrelated to heat stress), and coincides with
+#' the absolute 50 % LT50 when `low ≈ 0` and `up ≈ 1`. Pass
+#' `target_surv = "absolute"` for the field-standard absolute 50 % survival
+#' level (LT50), or any numeric in `(0, 1)` for a custom threshold.
 #'
 #' When `lethal = TRUE` it *also* returns **T_crit**, the rate-multiplier
 #' critical temperature: for each posterior draw,
@@ -454,9 +453,9 @@ derive_z <- function(workflow,
 #' `lethal = TRUE` and are reminded by a startup message.
 #'
 #' @param workflow    Fitted `bayes_tls`.
-#' @param target_surv Threshold mode. `"absolute"` (default; the 50 % LT50),
-#'                    `"relative"` (threshold = `(low + up)/2` per draw, from
-#'                    `mid`), or a numeric in `(0, 1)`.
+#' @param target_surv Threshold mode. `"relative"` (default; threshold =
+#'                    `(low + up)/2` per draw, from `mid`), `"absolute"`
+#'                    (the 50 % LT50), or a numeric in `(0, 1)`.
 #' @param t_ref       Reference exposure duration for CTmax, in the
 #'                    `output_time_unit` (default `"min"`). Default 60.
 #' @param TC_rate_range Numeric length-2: HI-rate floor range, in % LT-dose
@@ -522,7 +521,7 @@ derive_z <- function(workflow,
 #' }
 #' @export
 extract_tdt <- function(workflow,
-                        target_surv      = "absolute",
+                        target_surv      = "relative",
                         t_ref            = 60,
                         TC_rate_range    = c(0.1, 1),
                         temp_grid        = NULL,

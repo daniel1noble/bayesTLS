@@ -6,7 +6,7 @@
 \usage{
 extract_tdt(
   workflow,
-  target_surv = "absolute",
+  target_surv = "relative",
   t_ref = 60,
   TC_rate_range = c(0.1, 1),
   temp_grid = NULL,
@@ -21,9 +21,9 @@ extract_tdt(
 \arguments{
 \item{workflow}{Fitted \code{bayes_tls}.}
 
-\item{target_surv}{Threshold mode. \code{"absolute"} (default; the 50 \% LT50),
-\code{"relative"} (threshold = \code{(low + up)/2} per draw, from
-\code{mid}), or a numeric in \verb{(0, 1)}.}
+\item{target_surv}{Threshold mode. \code{"relative"} (default; threshold =
+\code{(low + up)/2} per draw, from \code{mid}), \code{"absolute"}
+(the 50 \% LT50), or a numeric in \verb{(0, 1)}.}
 
 \item{t_ref}{Reference exposure duration for CTmax, in the
 \code{output_time_unit} (default \code{"min"}). Default 60.}
@@ -99,14 +99,13 @@ after \code{t_ref} exposure; the temperature where the LT_x curve crosses
 \code{t_ref}, by per-draw inversion of the fitted surface.
 }
 
-By default (\code{target_surv = "absolute"}), the threshold is the absolute 50 \%
-survival level (LT50) — the field-standard definition. The \code{"relative"}
-threshold is the per-draw midpoint between the fitted lower and upper
-asymptotes (\code{(low + up)/2}); it is more biologically meaningful when the
-upper asymptote is below 1 (e.g., intrinsic background mortality unrelated to
-heat stress), and coincides with the absolute 50 \% LT50 when \verb{low ≈ 0} and
-\verb{up ≈ 1}. Pass \code{target_surv = "relative"} (or any numeric in \verb{(0, 1)}) to
-change the threshold.
+By default (\code{target_surv = "relative"}), the threshold is the per-draw
+midpoint between the fitted lower and upper asymptotes (\code{(low + up)/2}); it
+is more biologically meaningful when the upper asymptote is below 1 (e.g.,
+intrinsic background mortality unrelated to heat stress), and coincides with
+the absolute 50 \% LT50 when \verb{low ≈ 0} and \verb{up ≈ 1}. Pass
+\code{target_surv = "absolute"} for the field-standard absolute 50 \% survival
+level (LT50), or any numeric in \verb{(0, 1)} for a custom threshold.
 
 When \code{lethal = TRUE} it \emph{also} returns \strong{T_crit}, the rate-multiplier
 critical temperature: for each posterior draw,

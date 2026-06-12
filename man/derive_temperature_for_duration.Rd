@@ -20,7 +20,7 @@ derive_temperature_for_duration(
 
 \item{temp_grid}{Numeric vector of temperatures to search over.}
 
-\item{target_surv}{Threshold mode. \code{"absolute"} (default), \code{"relative"},
+\item{target_surv}{Threshold mode. \code{"relative"} (default), \code{"absolute"},
 or a numeric in \verb{(0, 1)}.}
 
 \item{ndraws}{Posterior draws to subsample, or \code{NULL} for all.

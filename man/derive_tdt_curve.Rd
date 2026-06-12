@@ -8,7 +8,7 @@ derive_tdt_curve(
   workflow,
   temp_grid,
   duration_grid = NULL,
-  target_surv = "absolute",
+  target_surv = "relative",
   ndraws = 1000,
   probs = c(0.025, 0.5, 0.975),
   time_multiplier = NULL,
@@ -25,8 +25,8 @@ Only used in \code{"absolute"} mode. Default: 350
 log-spaced values spanning 0.2× to 5× the training
 data's duration range.}
 
-\item{target_surv}{Threshold mode. \code{"absolute"} (default; = 0.5),
-\code{"relative"} (= \code{(low + up)/2}), or a numeric in \verb{(0, 1)}.}
+\item{target_surv}{Threshold mode. \code{"relative"} (default; = \code{(low + up)/2}),
+\code{"absolute"} (= 0.5), or a numeric in \verb{(0, 1)}.}
 
 \item{ndraws}{Posterior draws to use. Default 1000.}
 
