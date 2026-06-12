@@ -39,54 +39,6 @@ format:
     code-tools: true
     code-overflow: wrap
     format-links: false
-    include-in-header:
-      text: |
-        <style>
-        /* Split TOC (HTML only): left sidebar = top levels (H1/H2);
-           a fixed right-hand panel lists the lower levels (H3/H4). */
-        nav#TOC ul ul ul { display: none !important; }
-        #toc-low {
-          position: fixed; top: 4.5rem; right: .6rem; width: 14rem;
-          max-height: calc(100vh - 6rem); overflow-y: auto;
-          padding: .3rem .55rem .6rem; font-size: .78rem; line-height: 1.3;
-          border-left: 1px solid var(--bs-border-color, #dee2e6);
-          background: var(--bs-body-bg, #fff); z-index: 1020;
-        }
-        #toc-low .toc-low-title { font-weight: 700; margin-bottom: .4em; font-size: .8rem; }
-        #toc-low .toc-low-sec { font-weight: 600; color: var(--bs-secondary, #6c757d); margin: .5em 0 .1em; }
-        #toc-low a { display: block; text-decoration: none; padding: 1px 0 1px .4em;
-                     border-left: 2px solid transparent; color: var(--bs-body-color, #333); }
-        #toc-low a.lvl4 { padding-left: 1.2em; opacity: .85; }
-        #toc-low a:hover { border-left-color: var(--bs-link-color, #2780e3); color: var(--bs-link-color, #2780e3); }
-        /* Hide on narrow viewports where there is no room beside the text. */
-        @media (max-width: 1300px) { #toc-low { display: none; } }
-        </style>
-        <script>
-        window.addEventListener('DOMContentLoaded', function () {
-          var heads = Array.prototype.slice
-            .call(document.querySelectorAll('h1, h2, h3, h4'))
-            .filter(function (h) { return h.id && !h.closest('#TOC'); });
-          if (!heads.length) return;
-          var nav = document.createElement('nav');
-          nav.id = 'toc-low'; nav.setAttribute('role', 'doc-toc');
-          nav.innerHTML = '<div class="toc-low-title">Detailed contents</div>';
-          var hasLow = false;
-          heads.forEach(function (h) {
-            var lvl = parseInt(h.tagName.charAt(1), 10);
-            var txt = h.textContent.trim();
-            if (lvl <= 2) {
-              var d = document.createElement('div');
-              d.className = 'toc-low-sec'; d.textContent = txt; nav.appendChild(d);
-            } else {
-              hasLow = true;
-              var a = document.createElement('a');
-              a.href = '#' + h.id; a.textContent = txt; a.className = 'lvl' + lvl;
-              nav.appendChild(a);
-            }
-          });
-          if (hasLow) document.body.appendChild(nav);
-        });
-        </script>
   docx:
     reference-doc: ../bib/templates/template.docx
     toc: false
