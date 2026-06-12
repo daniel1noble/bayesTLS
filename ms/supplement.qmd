@@ -669,17 +669,14 @@ We assess recovery by comparing posterior medians and 95% credible intervals wit
 #| label: tbl-recovery
 #| tbl-cap: "Posterior medians and 95% credible intervals for the four 4PL parameters and the temperature slope, compared to the known truth used to generate the simulated data. Recovery is judged successful when the credible interval covers the truth."
 
-post_summary <- function(fit) {
-  d <- posterior::as_draws_df(fit)
-  # Transform the raw posterior columns back to the natural 4PL scale.
-  # See compute_4pl_bounds(0, 1): low ∈ (0.001, 0.499), up ∈ (0.501, 0.999).
-  draws <- tibble::tibble(
-    ell               = 0.001 + plogis(d$b_lowraw_Intercept) * 0.498,
-    u                 = 0.501 + plogis(d$b_upraw_Intercept)  * 0.498,
-    k                 = exp(d$b_logk_Intercept),
-    `mid (intercept)` = d$b_mid_Intercept,
-    `mid (slope)`     = d$b_mid_temp_c
-  )
+post_summary <- function(workflow) {
+  # extract_4pl_pars() pulls the raw posterior and maps it back to the natural
+  # 4PL scale using the model's own stored bounds (no hand-coded constants),
+  # returning per-draw (low, up, k, mid_int, mid_temp). We rename to the
+  # tutorial's labels and summarise each parameter.
+  draws <- extract_4pl_pars(workflow) |>
+    dplyr::transmute(ell = low, u = up, k = k,
+                     `mid (intercept)` = mid_int, `mid (slope)` = mid_temp)
   purrr::map_dfr(names(draws), \(p) tibble::tibble(
     param  = p,
     median = stats::median(draws[[p]]),
@@ -695,10 +692,10 @@ truth <- tibble::tibble(
 )
 
 recovery <- truth |>
-  dplyr::left_join(post_summary(fit_bin) |>
+  dplyr::left_join(post_summary(wf_bin) |>
                      dplyr::rename_with(~ paste0("bin_", .x), -param),
                    by = "param") |>
-  dplyr::left_join(post_summary(fit_bb) |>
+  dplyr::left_join(post_summary(wf_bb) |>
                      dplyr::rename_with(~ paste0("bb_", .x), -param),
                    by = "param") |>
   dplyr::rename(
@@ -1399,14 +1396,15 @@ ggplot2::ggplot(hi_trace, ggplot2::aes(time, temp)) +
 #| echo: true
 #| code-fold: show
 
-# Convert hourly trace to minutes to match the model's time units.
-hi_trace_min <- dplyr::mutate(hi_trace, time = time * 60)
-
+# The trace's `time` is in hours; `predict_heat_injury()` reconciles it against
+# the model's own time unit (minutes here) internally, so we pass `trace_unit`
+# rather than rescaling the trace by hand.
 hi <- predict_heat_injury(
-  trace        = hi_trace_min,
+  trace        = hi_trace,
   workflow     = wf_bb,
   target_surv  = 0.5,
   T_c          = hi_T_c,
+  trace_unit   = "hours",
   ndraws       = 500
 )
 ```
@@ -1418,30 +1416,13 @@ hi <- predict_heat_injury(
 #| fig-width: 7
 #| fig-height: 5.5
 
-# Convert back to hours for plotting.
-hi_plot <- dplyr::mutate(hi$summary, time = time / 60)
-
-p_hi <- ggplot2::ggplot(hi_plot, ggplot2::aes(time, hi_median)) +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = hi_lower, ymax = hi_upper),
-                       alpha = 0.2, fill = "darkred") +
-  ggplot2::geom_line(colour = "darkred", linewidth = 0.8) +
-  ggplot2::geom_hline(yintercept = 100, linetype = "dashed", colour = "grey40") +
-  ggplot2::labs(x = NULL, y = "Cumulative HI (%)") +
-  ggplot2::theme_classic()
-
-p_surv <- ggplot2::ggplot(hi_plot, ggplot2::aes(time, surv_median)) +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = surv_lower, ymax = surv_upper),
-                       alpha = 0.2, fill = "steelblue") +
-  ggplot2::geom_line(colour = "steelblue", linewidth = 0.8) +
-  ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
-  ggplot2::scale_y_continuous(limits = c(0, 1)) +
-  ggplot2::labs(x = "Hour", y = "Predicted survival") +
-  ggplot2::theme_classic()
-
-patchwork::wrap_plots(p_hi, p_surv, ncol = 1)
+# `plot_heat_injury()` returns the package's canonical two-panel figure:
+# cumulative HI on top (with the 100% = one-LT50 reference line) over the
+# predicted survival fraction, both with 95% credible bands.
+plot_heat_injury(hi)
 ```
 
-Posterior heat-injury accumulation (top, red) and predicted survival fraction (bottom, blue) under the 5-day field trace. Solid lines are posterior medians across 500 draws from `wf_bb`; shaded bands are 95% credible intervals. The dashed lines mark the LT50 threshold (HI = 100%) and 50% survival respectively. The two trajectories tell the same story: $S_{\text{pred}}(t)$ falls through 0.5 at the same time HI($t$) crosses 100%.
+Posterior heat-injury accumulation (top) and predicted survival fraction (bottom) under the 5-day field trace, drawn by `plot_heat_injury()`. Solid lines are posterior medians across 500 draws from `wf_bb`; shaded bands are 95% credible intervals. The dashed line marks the LT50 threshold (HI = 100%). The two trajectories tell the same story: $S_{\text{pred}}(t)$ falls as HI($t$) crosses 100%.
 :::
 
 By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_median, 1), 0)`% (95% CI: `r round(tail(hi$summary$hi_lower, 1), 0)`% to `r round(tail(hi$summary$hi_upper, 1), 0)`%), and median predicted survival is `r round(tail(hi$summary$surv_median, 1), 2)` (95% CI: `r round(tail(hi$summary$surv_lower, 1), 2)` to `r round(tail(hi$summary$surv_upper, 1), 2)`).
@@ -1473,14 +1454,17 @@ val_T_c <- 24
 planted <- purrr::map(val_scens, planted_dose_from_trace,
                       z = true_z, CTmax_1hr = true_CTmax, T_c = val_T_c)
 
-# Posterior predictions from the fitted beta-binomial workflow. The model
-# expects minutes; convert each trace's time axis.
+# Posterior predictions from the fitted beta-binomial workflow. The scenario
+# traces are in hours; `predict_heat_injury()` reconciles that against the
+# model's minutes unit internally (via `trace_unit`), matching the per-hour
+# analytical `planted_dose_from_trace()` above.
 predicted <- purrr::map(val_scens, function(sc) {
   predict_heat_injury(
-    trace       = dplyr::mutate(sc, time = time * 60),
+    trace       = sc,
     workflow    = wf_bb,
     target_surv = 0.5,
     T_c         = val_T_c,
+    trace_unit  = "hours",
     ndraws      = 300
   )
 })
@@ -2525,8 +2509,8 @@ shrimp_scens <- make_temperature_scenarios(
 )
 
 shrimp_hi <- purrr::map(shrimp_scens, function(sc) {
-  predict_heat_injury(trace = sc, workflow = wf_shrimp,
-                      T_c = shrimp_T_c, ndraws = 500)
+  predict_heat_injury(trace = sc, workflow = wf_shrimp, target_surv = "relative",
+                      T_c = shrimp_T_c, trace_unit = "hours", ndraws = 500)
 })
 ```
 
@@ -2544,12 +2528,14 @@ shrimp_repair_pars <- list(
 )
 
 shrimp_hi_multi_rep <- predict_heat_injury(
-  shrimp_scens$multi_spike, wf_shrimp, T_c = shrimp_T_c, ndraws = 500,
-  repair = TRUE, repair_pars = shrimp_repair_pars
+  shrimp_scens$multi_spike, wf_shrimp, target_surv = "relative",
+  T_c = shrimp_T_c, trace_unit = "hours",
+  ndraws = 500, repair = TRUE, repair_pars = shrimp_repair_pars
 )
 shrimp_hi_diurnal_rep <- predict_heat_injury(
-  shrimp_scens$diurnal, wf_shrimp, T_c = shrimp_T_c, ndraws = 500,
-  repair = TRUE, repair_pars = shrimp_repair_pars
+  shrimp_scens$diurnal, wf_shrimp, target_surv = "relative",
+  T_c = shrimp_T_c, trace_unit = "hours",
+  ndraws = 500, repair = TRUE, repair_pars = shrimp_repair_pars
 )
 ```
 
@@ -4964,8 +4950,8 @@ leaf_scens <- make_temperature_scenarios(
 )
 
 leaf_hi <- purrr::map(leaf_scens, function(sc) {
-  predict_heat_injury(trace = sc, workflow = wf_leaf,
-                      T_c = leaf_T_c, ndraws = 500)
+  predict_heat_injury(trace = sc, workflow = wf_leaf, target_surv = "relative",
+                      T_c = leaf_T_c, trace_unit = "hours", ndraws = 500)
 })
 ```
 
@@ -4983,12 +4969,14 @@ leaf_repair_pars <- list(
 )
 
 leaf_hi_multi_rep <- predict_heat_injury(
-  leaf_scens$multi_spike, wf_leaf, T_c = leaf_T_c, ndraws = 500,
-  repair = TRUE, repair_pars = leaf_repair_pars
+  leaf_scens$multi_spike, wf_leaf, target_surv = "relative",
+  T_c = leaf_T_c, trace_unit = "hours",
+  ndraws = 500, repair = TRUE, repair_pars = leaf_repair_pars
 )
 leaf_hi_diurnal_rep <- predict_heat_injury(
-  leaf_scens$diurnal, wf_leaf, T_c = leaf_T_c, ndraws = 500,
-  repair = TRUE, repair_pars = leaf_repair_pars
+  leaf_scens$diurnal, wf_leaf, target_surv = "relative",
+  T_c = leaf_T_c, trace_unit = "hours",
+  ndraws = 500, repair = TRUE, repair_pars = leaf_repair_pars
 )
 ```
 
