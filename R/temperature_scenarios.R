@@ -9,7 +9,7 @@
 
 #' Build reference temperature traces for heat-injury validation
 #'
-#' Returns a list of four tibbles, each with columns `time_h` and `temp`,
+#' Returns a list of four tibbles, each with columns `time` and `temp`,
 #' representing the canonical validation scenarios:
 #'
 #' - `flat` — constant `baseline` temperature for `n_hours` hours.
@@ -58,7 +58,7 @@
 #' @param diurnal_seed Integer. Seed for the hourly-noise RNG so the diurnal
 #'                    trace is reproducible. Default 1L.
 #' @return A named list of four tibbles (`flat`, `single_spike`, `multi_spike`,
-#'         `diurnal`), each with columns `time_h` (numeric, hours from start)
+#'         `diurnal`), each with columns `time` (numeric, hours from start)
 #'         and `temp` (°C).
 #' @examples
 #' scens <- make_temperature_scenarios()
@@ -84,15 +84,15 @@ make_temperature_scenarios <- function(baseline    = 20,
                                        diurnal_noise_sd   = 0.3,
                                        diurnal_seed       = 1L) {
 
-  time_h  <- seq(0, n_hours - dt_hours, by = dt_hours)
-  base    <- tibble::tibble(time_h = time_h, temp = baseline)
+  time  <- seq(0, n_hours - dt_hours, by = dt_hours)
+  base    <- tibble::tibble(time = time, temp = baseline)
 
   flat <- base
 
   apply_spikes <- function(spike_hours) {
     out <- base
     for (h in spike_hours) {
-      i <- which(out$time_h == h)
+      i <- which(out$time == h)
       if (length(i) == 1L) out$temp[i] <- spike_temp
     }
     out
@@ -142,7 +142,7 @@ make_temperature_scenarios <- function(baseline    = 20,
   }
   diurnal_temp <- diurnal_temp + smoothed
 
-  diurnal <- tibble::tibble(time_h = diurnal_t_h, temp = diurnal_temp)
+  diurnal <- tibble::tibble(time = diurnal_t_h, temp = diurnal_temp)
 
   list(
     flat         = flat,
@@ -165,7 +165,7 @@ make_temperature_scenarios <- function(baseline    = 20,
 #'
 #' when `T_i > T_c`, and zero otherwise. Cumulative HI is the running sum.
 #'
-#' @param trace      Tibble with columns `time_h` and `temp`, output of
+#' @param trace      Tibble with columns `time` and `temp`, output of
 #'                   [make_temperature_scenarios()].
 #' @param z          Thermal sensitivity, °C per 10-fold change in time.
 #' @param CTmax_1hr  Static temperature at which LT50 = 1 hour, °C.
@@ -179,7 +179,7 @@ make_temperature_scenarios <- function(baseline    = 20,
 #' @export
 planted_dose_from_trace <- function(trace, z, CTmax_1hr, T_c) {
   dt <- if (nrow(trace) >= 2L) {
-    diff(trace$time_h)[1]
+    diff(trace$time)[1]
   } else 1
   inc <- ifelse(trace$temp > T_c,
                 100 * 10 ^ ((trace$temp - CTmax_1hr) / z) * dt,

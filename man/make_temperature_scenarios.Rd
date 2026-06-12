@@ -64,11 +64,11 @@ trace is reproducible. Default 1L.}
 }
 \value{
 A named list of four tibbles (\code{flat}, \code{single_spike}, \code{multi_spike},
-\code{diurnal}), each with columns \code{time_h} (numeric, hours from start)
+\code{diurnal}), each with columns \code{time} (numeric, hours from start)
 and \code{temp} (°C).
 }
 \description{
-Returns a list of four tibbles, each with columns \code{time_h} and \code{temp},
+Returns a list of four tibbles, each with columns \code{time} and \code{temp},
 representing the canonical validation scenarios:
 }
 \details{

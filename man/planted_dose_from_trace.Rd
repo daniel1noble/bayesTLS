@@ -7,7 +7,7 @@
 planted_dose_from_trace(trace, z, CTmax_1hr, T_c)
 }
 \arguments{
-\item{trace}{Tibble with columns \code{time_h} and \code{temp}, output of
+\item{trace}{Tibble with columns \code{time} and \code{temp}, output of
 \code{\link[=make_temperature_scenarios]{make_temperature_scenarios()}}.}
 
 \item{z}{Thermal sensitivity, °C per 10-fold change in time.}

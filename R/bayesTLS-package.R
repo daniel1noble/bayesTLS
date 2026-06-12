@@ -32,7 +32,7 @@ utils::globalVariables(c(
   "T_at",
   "target_surv", "temp", "temp_c",
   "temp_lower", "temp_median", "temp_upper",
-  "time_h", "value", "model", "quantity",
+  "time", "value", "model", "quantity",
   "iteration", "chain", "parameter",
   "z", "z_lower", "z_median", "z_upper",
   # raw posterior columns referenced in helpers / extractors:

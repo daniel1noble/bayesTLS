@@ -21,7 +21,7 @@ test_that("get_tcrit_draws / get_tcrit_summary error when T_crit is absent (leth
 
 test_that("get_hi_draws errors helpfully when save_draws was FALSE", {
   fake <- list(
-    summary = tibble::tibble(time_h = c(0, 1), temp = c(20, 20),
+    summary = tibble::tibble(time = c(0, 1), temp = c(20, 20),
                              hi_median = c(0, 0)),
     meta    = list(),
     draws   = NULL
@@ -87,12 +87,12 @@ test_that("get_hi_draws and get_surv_draws round-trip with predict_heat_injury",
                             T_c = 24, ndraws = 100, save_draws = TRUE)
 
   hd <- get_hi_draws(hi)
-  expect_true(all(c(".draw", "time_h", "temp", "hi", "survival") %in%
+  expect_true(all(c(".draw", "time", "temp", "hi", "survival") %in%
                   names(hd)))
   expect_gt(nrow(hd), 0)
 
   sd <- get_surv_draws(hi)
-  expect_named(sd, c(".draw", "time_h", "temp", "survival"))
+  expect_named(sd, c(".draw", "time", "temp", "survival"))
   expect_equal(nrow(sd), nrow(hd))
 })
 

@@ -143,7 +143,7 @@ get_tcrit_summary <- function(et) {
 #' [predict_heat_injury()] was called with `save_draws = TRUE`.
 #'
 #' @param hi The list returned by `predict_heat_injury(..., save_draws = TRUE)`.
-#' @return A tibble with columns `.draw`, `time_h`, `temp`, `dose`, `hi`,
+#' @return A tibble with columns `.draw`, `time`, `temp`, `dose`, `hi`,
 #'         `survival`, `mortality`.
 #' @examples
 #' \dontrun{
@@ -153,7 +153,7 @@ get_tcrit_summary <- function(et) {
 #' @export
 get_hi_draws <- function(hi) {
   if (!is.list(hi) || is.null(hi$summary) ||
-      !"time_h" %in% names(hi$summary))
+      !"time" %in% names(hi$summary))
     stop("Expected a predict_heat_injury() result.", call. = FALSE)
   if (is.null(hi$draws))
     stop("hi$draws is NULL. ",
@@ -173,7 +173,7 @@ get_hi_draws <- function(hi) {
 #'          [predict_heat_injury()].
 #' @return A long-format tibble. For [predict_survival_curves()]: `.draw`,
 #'         `temp`, `duration`, `survival`. For [predict_heat_injury()]:
-#'         `.draw`, `time_h`, `temp`, `survival`.
+#'         `.draw`, `time`, `temp`, `survival`.
 #' @examples
 #' \dontrun{
 #' psc <- predict_survival_curves(wf, temps = c(32, 34),
@@ -189,13 +189,13 @@ get_surv_draws <- function(x) {
     return(surv_grid_to_long(x))
   }
   if (is.list(x) && !is.null(x$summary) &&
-      "time_h" %in% names(x$summary)) {
+      "time" %in% names(x$summary)) {
     if (is.null(x$draws))
       stop("x$draws is NULL. ",
            "Re-run predict_heat_injury() with `save_draws = TRUE`.",
            call. = FALSE)
     return(tibble::as_tibble(
-      x$draws[, c(".draw", "time_h", "temp", "survival")]
+      x$draws[, c(".draw", "time", "temp", "survival")]
     ))
   }
   stop("Could not recognize input as a predict_survival_curves() or ",

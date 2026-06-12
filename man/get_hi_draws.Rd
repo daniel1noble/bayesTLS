@@ -10,7 +10,7 @@ get_hi_draws(hi)
 \item{hi}{The list returned by \code{predict_heat_injury(..., save_draws = TRUE)}.}
 }
 \value{
-A tibble with columns \code{.draw}, \code{time_h}, \code{temp}, \code{dose}, \code{hi},
+A tibble with columns \code{.draw}, \code{time}, \code{temp}, \code{dose}, \code{hi},
 \code{survival}, \code{mortality}.
 }
 \description{

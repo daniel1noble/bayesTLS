@@ -9,6 +9,7 @@ predict_heat_injury(
   workflow,
   target_surv = "relative",
   T_c = NULL,
+  trace_unit = "hours",
   ndraws = 500,
   repair = FALSE,
   repair_pars = NULL,
@@ -18,8 +19,9 @@ predict_heat_injury(
 )
 }
 \arguments{
-\item{trace}{Tibble with columns \code{time_h} (numeric, hours from start)
-and \code{temp} (°C), in time order. Requires ≥ 2 rows.}
+\item{trace}{Tibble with columns \code{time} (numeric time from start,
+in \code{trace_unit}) and \code{temp} (°C), in time order.
+Requires ≥ 2 rows.}
 
 \item{workflow}{Fitted \code{bayes_tls}.}
 
@@ -34,6 +36,12 @@ meaningful anchor for dose accounting.}
 supplied, the damage rate is forced to zero at
 \code{temp <= T_c} (matches Equation 7 of the manuscript).
 Default \code{NULL} lets the rate fall naturally with T.}
+
+\item{trace_unit}{Time unit of the trace's \code{time} column: one of
+\code{"hours"} (default), \code{"minutes"}, \code{"seconds"}, \code{"days"}.
+Reconciled internally with the model's fitted
+\code{duration_unit}, so the result is correct for any
+combination of model and trace time units.}
 
 \item{ndraws}{Posterior draws to use. Default 500.}
 
@@ -60,7 +68,7 @@ trajectories. Default \code{FALSE}.}
 \value{
 A list with elements:
 \itemize{
-\item \code{summary}: tibble with \code{time_h}, \code{temp}, and posterior median + 95\%
+\item \code{summary}: tibble with \code{time}, \code{temp}, and posterior median + 95\%
 CrI for \code{hi}, \code{survival}, and \code{mortality} at each time step.
 \item \code{draws}: optional per-draw trajectories (when \code{save_draws = TRUE}).
 \item \code{meta}: list of inputs used.

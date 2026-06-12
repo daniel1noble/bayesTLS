@@ -122,8 +122,9 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #' Optionally adds a temperature-dependent repair rate via
 #' [repair_rate_schoolfield()].
 #'
-#' @param trace        Tibble with columns `time_h` (numeric, hours from start)
-#'                     and `temp` (°C), in time order. Requires ≥ 2 rows.
+#' @param trace        Tibble with columns `time` (numeric time from start,
+#'                     in `trace_unit`) and `temp` (°C), in time order.
+#'                     Requires ≥ 2 rows.
 #' @param workflow     Fitted `bayes_tls`.
 #' @param target_surv  Threshold defining "1 dose". `"relative"` (default;
 #'                     `(low + up)/2`), `"absolute"` (= 0.5), or a numeric in
@@ -135,6 +136,11 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'                     supplied, the damage rate is forced to zero at
 #'                     `temp <= T_c` (matches Equation 7 of the manuscript).
 #'                     Default `NULL` lets the rate fall naturally with T.
+#' @param trace_unit   Time unit of the trace's `time` column: one of
+#'                     `"hours"` (default), `"minutes"`, `"seconds"`, `"days"`.
+#'                     Reconciled internally with the model's fitted
+#'                     `duration_unit`, so the result is correct for any
+#'                     combination of model and trace time units.
 #' @param ndraws       Posterior draws to use. Default 500.
 #' @param repair       Logical. If `TRUE`, add Sharpe-Schoolfield repair.
 #'                     Default `FALSE`.
@@ -152,7 +158,7 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #' @param save_draws   Logical. If `TRUE`, return the full per-draw
 #'                     trajectories. Default `FALSE`.
 #' @return A list with elements:
-#'   - `summary`: tibble with `time_h`, `temp`, and posterior median + 95%
+#'   - `summary`: tibble with `time`, `temp`, and posterior median + 95%
 #'     CrI for `hi`, `survival`, and `mortality` at each time step.
 #'   - `draws`: optional per-draw trajectories (when `save_draws = TRUE`).
 #'   - `meta`: list of inputs used.
@@ -166,6 +172,7 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 predict_heat_injury <- function(trace, workflow,
                                 target_surv = "relative",
                                 T_c         = NULL,
+                                trace_unit  = "hours",
                                 ndraws      = 500,
                                 repair      = FALSE,
                                 repair_pars = NULL,
@@ -185,10 +192,24 @@ predict_heat_injury <- function(trace, workflow,
   ts <- resolve_target_surv(target_surv)
   ts_arg <- if (ts$mode == "relative") "relative" else ts$prob
 
-  trace     <- trace[order(trace$time_h), , drop = FALSE]
+  trace     <- trace[order(trace$time), , drop = FALSE]
   n         <- nrow(trace)
-  dt        <- if (n >= 2L) diff(trace$time_h)[1] else 1
   temp_mean <- workflow$meta$temp_mean
+
+  # Reconcile BOTH time units to a common base (hours), so the integral is
+  # correct no matter how the model was fit OR how the trace is labelled:
+  #   - `tau` is returned in the model's `duration_unit`;
+  #   - the trace step is in `trace_unit` (the `time` column).
+  # We convert the damage rate to "doses per hour" and the step `dt` to hours.
+  # Without this, e.g. a minutes-fitted model driven by an hours trace would
+  # under-count the accumulated dose 60-fold (and the reverse over-counts).
+  to_hours <- function(u) switch(as.character(u),
+                   seconds = 1 / 3600, minutes = 1 / 60, hours = 1, days = 24,
+                   stop(sprintf(
+                     "predict_heat_injury(): unsupported time unit '%s'; expected one of seconds/minutes/hours/days.",
+                     u), call. = FALSE))
+  unit_h <- to_hours(workflow$meta$duration_unit %||% "hours")               # model -> hours
+  dt     <- (if (n >= 2L) diff(trace$time)[1] else 1) * to_hours(trace_unit)  # trace -> hours
 
   pars <- extract_4pl_pars(workflow)
   pars <- dplyr::slice_sample(pars, n = min(ndraws, nrow(pars)))
@@ -203,7 +224,7 @@ predict_heat_injury <- function(trace, workflow,
       mid_int = pars$mid_int[i], mid_temp = pars$mid_temp[i],
       temp_mean = temp_mean
     )
-    dmg <- 1 / tau
+    dmg <- 1 / (tau * unit_h)               # doses per hour (unit-reconciled)
     dmg[!is.finite(dmg)] <- 0
     if (!is.null(T_c)) dmg[trace$temp <= T_c] <- 0
 
@@ -246,7 +267,7 @@ predict_heat_injury <- function(trace, workflow,
 
     pred_list[[i]] <- data.frame(
       .draw     = pars$.draw[i],
-      time_h    = trace$time_h,
+      time    = trace$time,
       temp      = trace$temp,
       dose      = dose,
       hi        = dose * 100,        # % of LT_{target_surv} dose
@@ -260,7 +281,7 @@ predict_heat_injury <- function(trace, workflow,
   q_lower <- function(x) stats::quantile(x, 0.025, na.rm = TRUE)
   q_upper <- function(x) stats::quantile(x, 0.975, na.rm = TRUE)
   summary <- draws |>
-    dplyr::group_by(time_h, temp) |>
+    dplyr::group_by(time, temp) |>
     dplyr::summarise(
       hi_median   = stats::median(hi,        na.rm = TRUE),
       hi_lower    = q_lower(hi),

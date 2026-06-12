@@ -315,7 +315,7 @@ plot_temperature_scenarios <- function(scens, T_c = NULL) {
   if (length(scen_levels) == 0L) scen_levels <- unique(df$scenario)
   df$scenario <- factor(df$scenario, levels = scen_levels)
 
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = time_h, y = temp)) +
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = time, y = temp)) +
     ggplot2::geom_line(linewidth = 0.7, colour = "#146C7C") +
     ggplot2::facet_wrap(~ scenario, ncol = 1, scales = "free_x") +
     ggplot2::labs(x = "Time (hours)", y = "Temperature (\u00b0C)") +
@@ -347,7 +347,7 @@ plot_temperature_scenarios <- function(scens, T_c = NULL) {
 plot_heat_injury <- function(hi, lt50_threshold = 100) {
   df <- hi$summary
 
-  p_hi <- ggplot2::ggplot(df, ggplot2::aes(x = time_h, y = hi_median)) +
+  p_hi <- ggplot2::ggplot(df, ggplot2::aes(x = time, y = hi_median)) +
     ggplot2::geom_ribbon(ggplot2::aes(ymin = hi_lower, ymax = hi_upper),
                          fill = "#C76D37", alpha = 0.2) +
     ggplot2::geom_line(colour = "#C76D37", linewidth = 0.9) +
@@ -356,7 +356,7 @@ plot_heat_injury <- function(hi, lt50_threshold = 100) {
     ggplot2::labs(x = NULL, y = "Cumulative HI (%)") +
     theme_tdt()
 
-  p_surv <- ggplot2::ggplot(df, ggplot2::aes(x = time_h, y = surv_median)) +
+  p_surv <- ggplot2::ggplot(df, ggplot2::aes(x = time, y = surv_median)) +
     ggplot2::geom_ribbon(ggplot2::aes(ymin = surv_lower, ymax = surv_upper),
                          fill = "#146C7C", alpha = 0.2) +
     ggplot2::geom_line(colour = "#146C7C", linewidth = 0.9) +
