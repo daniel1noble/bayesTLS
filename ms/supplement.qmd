@@ -5595,7 +5595,7 @@ Both Bayesian routes agree with each other and recover the two-stage estimates o
 
 ##### Productivity: reproductive output {#sec-dros-productivity}
 
-For productivity, while we could fit a mixture model to these data — a 4PL for 'reproduces or not' and a second model for the amount of reproduction — we instead model offspring production directly with a distribution appropriate to reproductive data. brms does not implement the Tweedie family, so we use a **hurdle** model: a zero component for whether a fly reproduced at all, and a continuous positive component for how much it produced if it did. The hurdle naturally separates the two biological questions, and — as it turns out — they answer differently. Productivity declines with the same dose of thermal stress used for the other endpoints (longer exposure at a given temperature), so as with @orsted_suzukii_2024 we read the thermal-death-time quantities from the *duration* response: the exposure time that halves productivity at each temperature ($ED_{50}$) defines a TDT line, from which $z = -1/\text{slope}$ and $CT_{max_{1hr}}$ follow.
+For productivity, while we could fit a mixture model to these data — a 4PL for 'reproduces or not' and a second model for the amount of reproduction — we instead model offspring production directly with a distribution appropriate to reproductive data. brms does not implement the Tweedie family, so we use a **hurdle** model: a zero component for whether a fly reproduced at all, and a continuous positive component for how much it produced if it did. The hurdle naturally separates the two biological questions, and — as it turns out — they answer differently. Productivity declines with the same dose of thermal stress used for the other endpoints (longer exposure at a given temperature). Rather than fit a separate dose-response per temperature and regress the thresholds (the two-stage route of @orsted_suzukii_2024), we read the thermal-death-time quantities **directly from the single joint model**, as for the 4PL — analytically, from each component's duration and temperature coefficients.
 
 We compare a Gamma and a log-normal positive part by leave-one-out predictive fit and keep the better one:
 
@@ -5648,48 +5648,28 @@ prod_loo_dz <- abs(prod_loo[2, "elpd_diff"]) / prod_loo[2, "se_diff"]
 
 The Gamma positive part is preferred over the log-normal by `r round(abs(prod_loo[2,"elpd_diff"]))` expected log predictive-density units (`r round(prod_loo_dz, 1)` SE), so we use `fit_prod_ga` below.
 
-We read each hurdle component's TDT from its posterior with a small helper: it predicts the component over a per-temperature grid of exposure times, locates the $ED_{50}$ (the exposure that halves the component between its short- and long-exposure values) for every posterior draw, and regresses $\log_{10} ED_{50}$ on temperature to give $z$ and $CT_{max_{1hr}}$ per draw. (This generalises `tls()`/`extract_tdt()`, which target the disjoint-bounds 4PL, to an arbitrary brms response curve.)
+We read each hurdle component's thermal sensitivity **directly from the joint posterior**, the way the 4PL gives $z = -1/\beta_1$ — not by estimating a separate $ED_{50}$ at each temperature and regressing those (that re-introduces the two-stage structure this paper sets out to avoid). Each component's linear predictor is linear in log-duration and temperature, so the duration to a threshold and its temperature slope are analytic functions of the fitted coefficients, evaluated per draw.
 
 ```{r}
 #| label: dros-prod-tdt-helper
 #| echo: true
 #| code-fold: show
 
-# Duration-based TDT (z, CTmax at t_ref minutes) from a fitted brms model.
-# `predict_fn(newdata)` returns a draws x rows matrix of the declining response
-# component (overall mean, incidence = 1 - hu, or conditional mu). Returns, per
-# sex, the per-draw z and CTmax plus the fraction of draws with a defined ED50
-# at every temperature (an honesty flag: a component that does not halve within
-# the observed exposure window has no ED50, and its TDT is not identified).
-tdt_from_epred <- function(fit, data, predict_fn, t_ref = 60, n_grid = 80) {
-  temps <- sort(unique(data$temp)); tbar <- mean(data$temp)
-  grid  <- do.call(rbind, lapply(temps, function(tt) {
-    rng <- range(data$time[data$temp == tt])
-    data.frame(temp = tt, temp_c = tt - tbar,
-               time = 10 ^ seq(log10(rng[1]), log10(rng[2]), length.out = n_grid))
-  }))
-  grid$logd <- log10(grid$time)
-  lapply(stats::setNames(levels(data$sex), levels(data$sex)), function(sx) {
-    nd <- grid; nd$sex <- factor(sx, levels = levels(data$sex))
-    M  <- predict_fn(nd)                                    # draws x rows
-    led <- matrix(NA_real_, nrow(M), length(temps))
-    for (j in seq_along(temps)) {
-      cl  <- which(nd$temp == temps[j]); lt <- log10(nd$time[cl])
-      sub <- M[, cl, drop = FALSE]
-      thr <- (sub[, 1] + sub[, ncol(sub)]) / 2             # midpoint = relative ED50
-      for (d in seq_len(nrow(sub))) {
-        v <- sub[d, ]; k <- which(v <= thr[d])[1]          # first crossing (declining)
-        if (!is.na(k) && k > 1)
-          led[d, j] <- stats::approx(c(v[k - 1], v[k]), c(lt[k - 1], lt[k]), thr[d])$y
-      }
-    }
-    w     <- temps - mean(temps)
-    slope <- as.vector((led %*% w) / sum(w ^ 2))           # per-draw OLS slope
-    inter <- rowMeans(led)                                 # log10(ED50) at mean(temps)
-    list(z  = -1 / slope,                                  # CTmax line is centred on
-         ct = mean(temps) + (log10(t_ref) - inter) / slope,#   mean(temps), matching `w`
-         frac_defined = mean(rowSums(is.na(led)) == 0))
-  })
+prod_post  <- posterior::as_draws_df(fit_prod_ga)
+prod_tbar  <- mean(dsuzukii$temp)
+prod_temps <- sort(unique(dsuzukii$temp))
+prod_tc    <- prod_temps - prod_tbar
+
+# Effective (intercept, temperature, log-duration, log-duration x temperature)
+# coefficients for a linear predictor ("b_" = mu / conditional clutch,
+# "b_hu_" = hurdle / non-reproduction) and sex (F reference; M adds :sexM terms).
+prod_eff <- function(pre, male) {
+  pick <- function(s) { nm <- paste0(pre, s)
+    if (nm %in% names(prod_post)) prod_post[[nm]] else 0 }
+  list(I  = pick("Intercept")   + (if (male) pick("sexM") else 0),
+       T  = pick("temp_c")      + (if (male) pick("temp_c:sexM") else 0),
+       D  = pick("logd")        + (if (male) pick("logd:sexM") else 0),
+       DT = pick("logd:temp_c") + (if (male) pick("logd:temp_c:sexM") else 0))
 }
 ```
 
@@ -5698,62 +5678,82 @@ tdt_from_epred <- function(fit, data, predict_fn, t_ref = 60, n_grid = 80) {
 #| echo: true
 #| code-fold: show
 
-# Incidence = probability a fly reproduces = 1 - hu.
-prod_incidence <- tdt_from_epred(
-  fit_prod_ga, prod_dat,
-  function(nd) 1 - brms::posterior_epred(fit_prod_ga, newdata = nd,
-                                         dpar = "hu", re_formula = NA))
-# Magnitude = expected offspring among flies that did reproduce = mu.
-prod_magnitude <- tdt_from_epred(
-  fit_prod_ga, prod_dat,
-  function(nd) brms::posterior_epred(fit_prod_ga, newdata = nd,
-                                     dpar = "mu", re_formula = NA))
+# INCIDENCE has an intrinsic 50% threshold (a fly reproduces or not; hu = 0.5,
+# i.e. logit hu = 0), so the log10-duration to 50% incidence at temperature T is
+# logd50(T) = -(I + T*tc) / (D + DT*tc), read straight from the hu posterior.
+# z(T) = -1/(d logd50/dT) is local (the logd:temp interaction curves the TDT
+# line); CTmax_1hr is the temperature where logd50 = log10(60). Both are analytic
+# functions of the joint posterior -- no per-temperature ED50 regression.
+inc_tdt <- function(male) {
+  cc <- prod_eff("b_hu_", male)
+  logd50 <- function(t) -(cc$I + cc$T * t) / (cc$D + cc$DT * t)
+  eps <- 1e-3
+  zT  <- vapply(prod_tc, function(t)
+           -1 / ((logd50(t + eps) - logd50(t - eps)) / (2 * eps)),
+           numeric(nrow(prod_post)))
+  tcg <- seq(min(prod_tc) - 2, max(prod_tc) + 2, length.out = 400)
+  ldm <- vapply(tcg, logd50, numeric(nrow(prod_post)))
+  ctm <- apply(ldm, 1, function(r) {
+    k <- which(diff(sign(r - log10(60))) != 0)[1]
+    if (is.na(k)) NA_real_
+    else prod_tbar + stats::approx(r[k:(k + 1)], tcg[k:(k + 1)], log10(60))$y
+  })
+  list(z = rowMeans(zT), ct = ctm)        # z = mean local z over the assay range
+}
+prod_inc_F <- inc_tdt(FALSE)
+prod_inc_M <- inc_tdt(TRUE)
+
+# MAGNITUDE (conditional clutch, Gamma log link) is an unbounded log-linear
+# decline with no upper asymptote and no intrinsic 50% level, so there is no
+# single LT50 to anchor a z. The identifiable single-model quantity is its
+# duration-sensitivity b(T) = d log10(clutch) / d log10(exposure)
+# = (D + DT*tc) / log(10), read from the mu posterior at each temperature.
+mag_b <- function(male) {
+  cc <- prod_eff("b_", male)
+  vapply(prod_tc, function(t) (cc$D + cc$DT * t) / log(10), numeric(nrow(prod_post)))
+}
+mag_b_F <- mag_b(FALSE)
+mag_b_M <- mag_b(TRUE)
 ```
 
 ```{r}
 #| label: tbl-dros-prod-incidence
-#| tbl-cap: "Reproductive **incidence** thermal-death-time parameters for *D. suzukii* (whether a fly reproduces at all; the hurdle component of the hurdle-Gamma model), by sex, with the two-stage drc fecundity estimates of @orsted_suzukii_2024 ($sCT_{max,1h}$) for comparison. Cells are the posterior median with the 95% credible interval; Ørsted values are point estimates. `ED50 defined` is the fraction of posterior draws with an identified $ED_{50}$ at every temperature."
+#| tbl-cap: "Reproductive **incidence** thermal-death-time parameters for *D. suzukii* (whether a fly reproduces at all; the hurdle component of the hurdle-Gamma model), read analytically from the joint posterior, by sex, with the two-stage drc fecundity estimates of @orsted_suzukii_2024 ($sCT_{max,1h}$) for comparison. $z$ is the mean local $z$ over the assay range. Cells are the posterior median with the 95% credible interval; Ørsted values are point estimates."
 #| message: false
 #| warning: false
 
+fmt_q <- function(x) format_interval(stats::median(x, na.rm = TRUE),
+                                     stats::quantile(x, .025, names = FALSE, na.rm = TRUE),
+                                     stats::quantile(x, .975, names = FALSE, na.rm = TRUE))
 prod_inc_tbl <- tibble::tribble(
-  ~Source,                       ~`z (F)`,                         ~`z (M)`,                         ~`CTmax 1h (F)`,                    ~`CTmax 1h (M)`,
-  "Incidence (this study)",
-    format_interval(stats::median(prod_incidence$F$z),  stats::quantile(prod_incidence$F$z,.025,names=FALSE),  stats::quantile(prod_incidence$F$z,.975,names=FALSE)),
-    format_interval(stats::median(prod_incidence$M$z),  stats::quantile(prod_incidence$M$z,.025,names=FALSE),  stats::quantile(prod_incidence$M$z,.975,names=FALSE)),
-    format_interval(stats::median(prod_incidence$F$ct), stats::quantile(prod_incidence$F$ct,.025,names=FALSE), stats::quantile(prod_incidence$F$ct,.975,names=FALSE)),
-    format_interval(stats::median(prod_incidence$M$ct), stats::quantile(prod_incidence$M$ct,.025,names=FALSE), stats::quantile(prod_incidence$M$ct,.975,names=FALSE)),
-  "Ørsted et al. (2024), drc",   "3.27",                          "3.46",                          "36.27",                            "36.66"
+  ~Source,                       ~`z (F)`,            ~`z (M)`,            ~`CTmax 1h (F)`,        ~`CTmax 1h (M)`,
+  "Incidence (this study)",      fmt_q(prod_inc_F$z), fmt_q(prod_inc_M$z), fmt_q(prod_inc_F$ct),  fmt_q(prod_inc_M$ct),
+  "Ørsted et al. (2024), drc",   "3.27",              "3.46",              "36.27",               "36.66"
 )
 tinytable::tt(prod_inc_tbl, escape = TRUE)
 ```
 
-The incidence component recovers a clean reproduction TDT — $z \approx `r round(stats::median(prod_incidence$F$z),1)`$–`r round(stats::median(prod_incidence$M$z),1)` °C and $CT_{max_{1hr}} \approx `r round(stats::median(prod_incidence$F$ct),1)`$ °C — close to the @orsted_suzukii_2024 fecundity values (@tbl-dros-prod-incidence), with $ED_{50}$ defined in `r round(100*prod_incidence$F$frac_defined)`% of draws. (Our per-individual `prod` is faithful to the raw counts but is not the authors' undocumented normalised cell average — see `?dsuzukii` — so an exact match to their point estimate is not expected.)
+The incidence component recovers a clean reproduction TDT — $z \approx `r round(stats::median(prod_inc_F$z),1)`$ (female) / `r round(stats::median(prod_inc_M$z),1)` (male) and $CT_{max_{1hr}} \approx `r round(stats::median(prod_inc_F$ct),1)`$–`r round(stats::median(prod_inc_M$ct),1)` °C — close to the @orsted_suzukii_2024 fecundity values (@tbl-dros-prod-incidence). Because reproducing-or-not is a bounded outcome with an intrinsic 50% threshold, its $z$ is well defined; the local $z$ rises gently across the assay range (the duration × temperature interaction curves the TDT line), so we report the mean. (Our per-individual `prod` is faithful to the raw counts but is not the authors' undocumented normalised cell average — see `?dsuzukii` — so an exact match to their point estimate is not expected.)
 
-The **magnitude** component tells a different story. Among flies that did reproduce, the conditional clutch halves only at the most stressful temperatures and not at the milder ones (@tbl-dros-prod-magnitude):
+The **magnitude** component behaves differently, and the difference is the biology. The conditional clutch is an unbounded, log-linear decline with no upper asymptote and no intrinsic 50% level, so — unlike survival or incidence — there is no single threshold to anchor a $z$. What the joint model does identify is the clutch's duration-sensitivity $b(T) = \mathrm{d}\log_{10}(\text{clutch})/\mathrm{d}\log_{10}(\text{exposure})$, and it is strongly temperature-gated (@tbl-dros-prod-magnitude):
 
 ```{r}
 #| label: tbl-dros-prod-magnitude
-#| tbl-cap: "Expected offspring **among flies that reproduced** (the conditional Gamma mean, posterior median) at the shortest and longest exposure of each assay temperature, for females. Unlike incidence, the conditional clutch does not consistently halve with exposure — it even rises slightly at 34 °C — so a magnitude $ED_{50}$, and hence a magnitude TDT, is identified in only a minority of posterior draws."
+#| tbl-cap: "Duration-sensitivity of the conditional clutch (offspring among flies that reproduced), $b(T) = \\mathrm{d}\\log_{10}(\\text{clutch})/\\mathrm{d}\\log_{10}(\\text{exposure})$, read from the hurdle-Gamma $\\mu$ posterior at each assay temperature, by sex (posterior median). $P(\\text{decline})$ is the posterior probability that $b(T) < 0$. The clutch is insensitive to exposure at 34 °C ($b \\approx 0$) and increasingly reduced by it toward 38 °C."
 #| message: false
 #| warning: false
 
-prod_mag_tbl <- purrr::map_dfr(sort(unique(prod_dat$temp)), function(tt) {
-  rng <- range(prod_dat$time[prod_dat$temp == tt])
-  g   <- data.frame(temp = tt, temp_c = tt - prod_tbar,
-                    sex = factor("F", levels = levels(prod_dat$sex)),
-                    time = rng, logd = log10(rng))
-  mm  <- apply(brms::posterior_epred(fit_prod_ga, newdata = g, dpar = "mu",
-                                     re_formula = NA), 2, stats::median)
-  tibble::tibble(`Temp (°C)` = tt,
-                 `Shortest exposure` = round(mm[1], 2),
-                 `Longest exposure`  = round(mm[2], 2),
-                 `Halves?` = ifelse(mm[2] < mm[1] / 2, "yes", "no"))
-})
+prod_mag_tbl <- tibble::tibble(
+  `Temp (°C)`      = prod_temps,
+  `b (F)`          = round(apply(mag_b_F, 2, stats::median), 2),
+  `P(decline) (F)` = round(apply(mag_b_F, 2, function(b) mean(b < 0)), 2),
+  `b (M)`          = round(apply(mag_b_M, 2, stats::median), 2),
+  `P(decline) (M)` = round(apply(mag_b_M, 2, function(b) mean(b < 0)), 2)
+)
 tinytable::tt(prod_mag_tbl, escape = TRUE)
 ```
 
-A magnitude $ED_{50}$ is identified in only `r round(100*prod_magnitude$F$frac_defined)`% (female) and `r round(100*prod_magnitude$M$frac_defined)`% (male) of posterior draws, so its TDT slope is not reliably estimable — the conditional clutch is roughly flat across exposure at benign temperatures and collapses only near the lethal limit. Biologically, this separates two effects that a single fecundity curve conflates: heat stress sharply reduces *whether* a fly reproduces (a well-defined TDT with $z \approx 3$ °C, the more heat-sensitive endpoint), while leaving *how much* a surviving reproducer produces largely unchanged until temperatures approach the lethal range. Reporting the two components separately, rather than pooling them, is what makes this visible — pooling averages a strong effect (incidence) with a weak, ill-defined one (magnitude) and obscures both.
+The clutch of flies that do reproduce is essentially **unaffected by exposure at 34 °C** ($b \approx 0$; $P(\text{decline}) = `r round(mean(mag_b_F[,1] < 0), 2)`$ for females) and is reduced ever more steeply as temperature rises, reaching $b \approx `r round(stats::median(mag_b_F[,5]), 2)`$ at 38 °C. Because $b(T)$ passes through zero in this range, the implied magnitude $z$ swings from near-zero to large and is dominated by wherever $b(T)$ crosses zero — it is not a stable single quantity, which is exactly why we report $b(T)$ rather than force a $z$. Biologically, the two components separate two effects that a single fecundity curve conflates: heat suppresses reproduction at **every** tested temperature by stopping flies reproducing at all (incidence; a clean $z \approx 3$ °C, the more heat-sensitive endpoint), but it only **shrinks the clutch** of those that still reproduce once temperatures are high ($\gtrsim 36$ °C). At benign temperatures a fly that reproduces produces a full clutch however long it was heat-stressed. Reporting the components separately makes this split visible; pooling them averages a bounded, threshold-defined effect with an unbounded, threshold-less one and obscures both.
 
 
 

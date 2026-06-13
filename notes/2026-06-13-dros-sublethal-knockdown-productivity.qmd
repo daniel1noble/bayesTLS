@@ -101,58 +101,58 @@ loo_compare(ga, ln)
 hurdle_**gamma** wins decisively (≈48 elpd, ~7 SE), so the original "log-normal"
 preference does not hold for these data — we use gamma.
 
-**Two components, two stories.** We read each hurdle component's TDT from its
-posterior by extracting the exposure that halves the component ($ED_{50}$) at
-each temperature, then regressing $\log_{10} ED_{50}$ on temperature (per draw).
-The helper (`tdt_from_epred()`, defined in the supplement) generalises
-`tls()`/`extract_tdt()` to an arbitrary brms response curve.
+**Two components, read from the single model.** Critically (D.N., 2026-06-13),
+we do **not** extract an $ED_{50}$ at each temperature and regress them — that is
+the two-stage structure this paper avoids, and it breaks when a component has no
+50% crossing. Instead we read each component's sensitivity **analytically from
+the joint posterior**, the way the 4PL gives $z = -1/\beta_1$. Each linear
+predictor is linear in log-duration and temperature, so the duration to a
+threshold and its temperature slope are functions of the fitted coefficients.
 
 ```{r prod-tdt}
 prod_dat <- dsuzukii |> mutate(logd = log10(time), temp_c = temp - mean(temp), sex = factor(sex))
-tdt_from_epred <- function(fit, data, predict_fn, t_ref = 60, n_grid = 80) {
-  temps <- sort(unique(data$temp)); tbar <- mean(data$temp)
-  grid <- do.call(rbind, lapply(temps, function(tt){ rng <- range(data$time[data$temp==tt])
-    data.frame(temp=tt, temp_c=tt-tbar, time=10^seq(log10(rng[1]),log10(rng[2]),length.out=n_grid))}))
-  grid$logd <- log10(grid$time)
-  lapply(setNames(levels(data$sex), levels(data$sex)), function(sx){
-    nd <- grid; nd$sex <- factor(sx, levels=levels(data$sex)); M <- predict_fn(nd)
-    led <- matrix(NA_real_, nrow(M), length(temps))
-    for (j in seq_along(temps)){ cl <- which(nd$temp==temps[j]); lt <- log10(nd$time[cl]); sub <- M[,cl,drop=FALSE]
-      thr <- (sub[,1]+sub[,ncol(sub)])/2
-      for (d in seq_len(nrow(sub))){ v <- sub[d,]; k <- which(v<=thr[d])[1]
-        if(!is.na(k)&&k>1) led[d,j] <- approx(c(v[k-1],v[k]), c(lt[k-1],lt[k]), thr[d])$y }}
-    w <- temps-mean(temps); slope <- as.vector((led%*%w)/sum(w^2)); inter <- rowMeans(led)
-    list(z=-1/slope, ct=mean(temps)+(log10(t_ref)-inter)/slope, frac_defined=mean(rowSums(is.na(led))==0))})
-}
-inc <- tdt_from_epred(ga, prod_dat, function(nd) 1 - posterior_epred(ga, newdata=nd, dpar="hu", re_formula=NA))
-mag <- tdt_from_epred(ga, prod_dat, function(nd)     posterior_epred(ga, newdata=nd, dpar="mu", re_formula=NA))
-
-data.frame(component = c("incidence (F)","incidence (M)","magnitude (F)","magnitude (M)"),
-           z   = c(median(inc$F$z),  median(inc$M$z),  median(mag$F$z),  median(mag$M$z)),
-           ct1 = c(median(inc$F$ct), median(inc$M$ct), median(mag$F$ct), median(mag$M$ct)),
-           ED50_defined = c(inc$F$frac_defined, inc$M$frac_defined,
-                            mag$F$frac_defined, mag$M$frac_defined)) |>
-  knitr::kable(digits = 2)
+p <- as_draws_df(ga); tbar <- mean(dsuzukii$temp)
+temps <- sort(unique(dsuzukii$temp)); tc <- temps - tbar
+# effective (Intercept, temp, logd, logd:temp) coefs for a dpar prefix and sex
+eff <- function(pre, male) { pk <- function(s){ nm<-paste0(pre,s); if(nm%in%names(p)) p[[nm]] else 0 }
+  list(I=pk("Intercept")+(if(male)pk("sexM")else 0), T=pk("temp_c")+(if(male)pk("temp_c:sexM")else 0),
+       D=pk("logd")+(if(male)pk("logd:sexM")else 0), DT=pk("logd:temp_c")+(if(male)pk("logd:temp_c:sexM")else 0)) }
+# INCIDENCE: intrinsic 50% threshold (hu=0.5); logd50(T) = -(I+T*tc)/(D+DT*tc)
+inc_tdt <- function(male){ cc<-eff("b_hu_",male); ld<-function(t)-(cc$I+cc$T*t)/(cc$D+cc$DT*t); e<-1e-3
+  z<-rowMeans(vapply(tc,function(t)-1/((ld(t+e)-ld(t-e))/(2*e)),numeric(nrow(p))))
+  g<-seq(min(tc)-2,max(tc)+2,length.out=400); ldm<-vapply(g,ld,numeric(nrow(p)))
+  ct<-apply(ldm,1,function(r){k<-which(diff(sign(r-log10(60)))!=0)[1]; if(is.na(k))NA else tbar+approx(r[k:(k+1)],g[k:(k+1)],log10(60))$y})
+  list(z=z,ct=ct) }
+# MAGNITUDE: unbounded log-linear clutch -> no intrinsic threshold; report the
+# duration-sensitivity b(T)=dlog10(clutch)/dlog10(exposure)=(D+DT*tc)/log(10)
+mag_b <- function(male){ cc<-eff("b_",male); vapply(tc,function(t)(cc$D+cc$DT*t)/log(10),numeric(nrow(p))) }
+iF<-inc_tdt(FALSE); iM<-inc_tdt(TRUE); bF<-mag_b(FALSE); bM<-mag_b(TRUE)
+data.frame(quantity=c("incidence z (F)","incidence z (M)","incidence CTmax1h (F)","incidence CTmax1h (M)"),
+           value=c(median(iF$z),median(iM$z),median(iF$ct),median(iM$ct))) |> knitr::kable(digits=2)
+data.frame(temp=temps, b_F=apply(bF,2,median), Pdecl_F=apply(bF,2,function(b)mean(b<0)),
+           b_M=apply(bM,2,median), Pdecl_M=apply(bM,2,function(b)mean(b<0))) |> knitr::kable(digits=2)
 ```
 
 **Result / biological finding.**
 
-- **Incidence** (whether a fly reproduces at all): a clean TDT, $z \approx 3.0$ /
-  2.8, $CT_{max_{1hr}} \approx 36.2$ / 36.4, $ED_{50}$ defined in 100% of draws.
-  Close to Ørsted's fecundity values (3.27 / 3.46). This is the *more*
-  heat-sensitive endpoint (lower $z$ than mortality's ~3.0–3.3).
-- **Magnitude** (offspring among reproducers): $ED_{50}$ identified in only ~45%
-  (F) / 67% (M) of draws — the conditional clutch halves only at the most
-  stressful temperatures (36–38 °C) and not at 34–35 °C (it even rises at 34).
-  So a magnitude TDT slope is **not identified**.
+- **Incidence** (whether a fly reproduces): a clean single-model TDT,
+  $z \approx 3.2$ (F) / 2.9 (M), $CT_{max_{1hr}} \approx 36.1$ / 36.5 °C, close to
+  Ørsted's fecundity values (3.27 / 3.46; 36.27 / 36.66). Reproducing-or-not is
+  bounded with an intrinsic 50% threshold, so its $z$ is well defined (the local
+  $z$ rises gently across the range; we report the mean).
+- **Magnitude** (offspring among reproducers): the conditional clutch is an
+  **unbounded log-linear decline with no intrinsic threshold**, so a single $z$
+  is not well defined — its implied value swings through a singularity where the
+  duration-sensitivity crosses zero. The identifiable quantity is $b(T)$, which
+  is **temperature-gated**: $\approx 0$ at 34 °C ($P(\text{decline})\approx 0.45$)
+  and steepening to $\approx -0.6$ at 38 °C ($P(\text{decline})=1$).
 
-Reproductive failure under heat is therefore about **whether** a fly reproduces,
-not **how much** a surviving reproducer produces. Reporting the components
-separately makes this visible; **pooling** them (e.g. ED50 of overall expected
-productivity) is artifactual — the per-temperature baseline differs because each
-temperature's shortest exposure differs, and there are no `lvl = 0` controls in
-the long file to anchor a common baseline (`?dsuzukii`). Decision (with D.N.,
-2026-06-13): report incidence + magnitude separately, no pooled number.
+So heat suppresses reproduction at **every** temperature by stopping flies
+reproducing at all (incidence), but only **shrinks the clutch** of those that
+still reproduce once it is hot ($\gtrsim 36$ °C). Decision (with D.N.,
+2026-06-13): report incidence ($z$) + magnitude ($b(T)$) separately, no pooled
+number (pooling mixes a bounded threshold-defined effect with an unbounded
+threshold-less one).
 
 **Caveat.** Per-individual `prod` is faithful to the raw counts but is *not*
 Ørsted's undocumented normalised cell average (`?dsuzukii`), so exact matches to
@@ -160,7 +160,8 @@ their fecundity point estimates are not expected.
 
 ## Open questions
 
-- `tdt_from_epred()` is currently a supplement-local helper. It is a candidate
-  for promotion to `R/` (a general "TLS for arbitrary brms response models",
+- The analytic single-model TDT reading for non-4PL brms response models (the
+  `eff()`/`inc_tdt()` logic above) is currently inline in the supplement. It is a
+  candidate for promotion to `R/` (a general "TLS from a joint brms model",
   complementing `tls()`/`extract_tdt()` which target the disjoint-bounds 4PL),
   with roxygen + tests — pending a decision on the package API.

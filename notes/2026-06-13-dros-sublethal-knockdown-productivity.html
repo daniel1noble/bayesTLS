@@ -301,67 +301,103 @@ window.Quarto = {
 </div>
 </div>
 <p>hurdle_<strong>gamma</strong> wins decisively (≈48 elpd, ~7 SE), so the original “log-normal” preference does not hold for these data — we use gamma.</p>
-<p><strong>Two components, two stories.</strong> We read each hurdle component’s TDT from its posterior by extracting the exposure that halves the component (<span class="math inline">\(ED_{50}\)</span>) at each temperature, then regressing <span class="math inline">\(\log_{10} ED_{50}\)</span> on temperature (per draw). The helper (<code>tdt_from_epred()</code>, defined in the supplement) generalises <code>tls()</code>/<code>extract_tdt()</code> to an arbitrary brms response curve.</p>
+<p><strong>Two components, read from the single model.</strong> Critically (D.N., 2026-06-13), we do <strong>not</strong> extract an <span class="math inline">\(ED_{50}\)</span> at each temperature and regress them — that is the two-stage structure this paper avoids, and it breaks when a component has no 50% crossing. Instead we read each component’s sensitivity <strong>analytically from the joint posterior</strong>, the way the 4PL gives <span class="math inline">\(z = -1/\beta_1\)</span>. Each linear predictor is linear in log-duration and temperature, so the duration to a threshold and its temperature slope are functions of the fitted coefficients.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>prod_dat <span class="ot">&lt;-</span> dsuzukii <span class="sc">|&gt;</span> <span class="fu">mutate</span>(<span class="at">logd =</span> <span class="fu">log10</span>(time), <span class="at">temp_c =</span> temp <span class="sc">-</span> <span class="fu">mean</span>(temp), <span class="at">sex =</span> <span class="fu">factor</span>(sex))</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>tdt_from_epred <span class="ot">&lt;-</span> <span class="cf">function</span>(fit, data, predict_fn, <span class="at">t_ref =</span> <span class="dv">60</span>, <span class="at">n_grid =</span> <span class="dv">80</span>) {</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  temps <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">unique</span>(data<span class="sc">$</span>temp)); tbar <span class="ot">&lt;-</span> <span class="fu">mean</span>(data<span class="sc">$</span>temp)</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  grid <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(temps, <span class="cf">function</span>(tt){ rng <span class="ot">&lt;-</span> <span class="fu">range</span>(data<span class="sc">$</span>time[data<span class="sc">$</span>temp<span class="sc">==</span>tt])</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">data.frame</span>(<span class="at">temp=</span>tt, <span class="at">temp_c=</span>tt<span class="sc">-</span>tbar, <span class="at">time=</span><span class="dv">10</span><span class="sc">^</span><span class="fu">seq</span>(<span class="fu">log10</span>(rng[<span class="dv">1</span>]),<span class="fu">log10</span>(rng[<span class="dv">2</span>]),<span class="at">length.out=</span>n_grid))}))</span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  grid<span class="sc">$</span>logd <span class="ot">&lt;-</span> <span class="fu">log10</span>(grid<span class="sc">$</span>time)</span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">lapply</span>(<span class="fu">setNames</span>(<span class="fu">levels</span>(data<span class="sc">$</span>sex), <span class="fu">levels</span>(data<span class="sc">$</span>sex)), <span class="cf">function</span>(sx){</span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    nd <span class="ot">&lt;-</span> grid; nd<span class="sc">$</span>sex <span class="ot">&lt;-</span> <span class="fu">factor</span>(sx, <span class="at">levels=</span><span class="fu">levels</span>(data<span class="sc">$</span>sex)); M <span class="ot">&lt;-</span> <span class="fu">predict_fn</span>(nd)</span>
-<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    led <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA_real_</span>, <span class="fu">nrow</span>(M), <span class="fu">length</span>(temps))</span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> (j <span class="cf">in</span> <span class="fu">seq_along</span>(temps)){ cl <span class="ot">&lt;-</span> <span class="fu">which</span>(nd<span class="sc">$</span>temp<span class="sc">==</span>temps[j]); lt <span class="ot">&lt;-</span> <span class="fu">log10</span>(nd<span class="sc">$</span>time[cl]); sub <span class="ot">&lt;-</span> M[,cl,drop<span class="ot">=</span><span class="cn">FALSE</span>]</span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>      thr <span class="ot">&lt;-</span> (sub[,<span class="dv">1</span>]<span class="sc">+</span>sub[,<span class="fu">ncol</span>(sub)])<span class="sc">/</span><span class="dv">2</span></span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>      <span class="cf">for</span> (d <span class="cf">in</span> <span class="fu">seq_len</span>(<span class="fu">nrow</span>(sub))){ v <span class="ot">&lt;-</span> sub[d,]; k <span class="ot">&lt;-</span> <span class="fu">which</span>(v<span class="sc">&lt;=</span>thr[d])[<span class="dv">1</span>]</span>
-<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span>(<span class="sc">!</span><span class="fu">is.na</span>(k)<span class="sc">&amp;&amp;</span>k<span class="sc">&gt;</span><span class="dv">1</span>) led[d,j] <span class="ot">&lt;-</span> <span class="fu">approx</span>(<span class="fu">c</span>(v[k<span class="dv">-1</span>],v[k]), <span class="fu">c</span>(lt[k<span class="dv">-1</span>],lt[k]), thr[d])<span class="sc">$</span>y }}</span>
-<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    w <span class="ot">&lt;-</span> temps<span class="sc">-</span><span class="fu">mean</span>(temps); slope <span class="ot">&lt;-</span> <span class="fu">as.vector</span>((led<span class="sc">%*%</span>w)<span class="sc">/</span><span class="fu">sum</span>(w<span class="sc">^</span><span class="dv">2</span>)); inter <span class="ot">&lt;-</span> <span class="fu">rowMeans</span>(led)</span>
-<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(<span class="at">z=</span><span class="sc">-</span><span class="dv">1</span><span class="sc">/</span>slope, <span class="at">ct=</span><span class="fu">mean</span>(temps)<span class="sc">+</span>(<span class="fu">log10</span>(t_ref)<span class="sc">-</span>inter)<span class="sc">/</span>slope, <span class="at">frac_defined=</span><span class="fu">mean</span>(<span class="fu">rowSums</span>(<span class="fu">is.na</span>(led))<span class="sc">==</span><span class="dv">0</span>))})</span>
-<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>inc <span class="ot">&lt;-</span> <span class="fu">tdt_from_epred</span>(ga, prod_dat, <span class="cf">function</span>(nd) <span class="dv">1</span> <span class="sc">-</span> <span class="fu">posterior_epred</span>(ga, <span class="at">newdata=</span>nd, <span class="at">dpar=</span><span class="st">"hu"</span>, <span class="at">re_formula=</span><span class="cn">NA</span>))</span>
-<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>mag <span class="ot">&lt;-</span> <span class="fu">tdt_from_epred</span>(ga, prod_dat, <span class="cf">function</span>(nd)     <span class="fu">posterior_epred</span>(ga, <span class="at">newdata=</span>nd, <span class="at">dpar=</span><span class="st">"mu"</span>, <span class="at">re_formula=</span><span class="cn">NA</span>))</span>
-<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">component =</span> <span class="fu">c</span>(<span class="st">"incidence (F)"</span>,<span class="st">"incidence (M)"</span>,<span class="st">"magnitude (F)"</span>,<span class="st">"magnitude (M)"</span>),</span>
-<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>           <span class="at">z   =</span> <span class="fu">c</span>(<span class="fu">median</span>(inc<span class="sc">$</span>F<span class="sc">$</span>z),  <span class="fu">median</span>(inc<span class="sc">$</span>M<span class="sc">$</span>z),  <span class="fu">median</span>(mag<span class="sc">$</span>F<span class="sc">$</span>z),  <span class="fu">median</span>(mag<span class="sc">$</span>M<span class="sc">$</span>z)),</span>
-<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>           <span class="at">ct1 =</span> <span class="fu">c</span>(<span class="fu">median</span>(inc<span class="sc">$</span>F<span class="sc">$</span>ct), <span class="fu">median</span>(inc<span class="sc">$</span>M<span class="sc">$</span>ct), <span class="fu">median</span>(mag<span class="sc">$</span>F<span class="sc">$</span>ct), <span class="fu">median</span>(mag<span class="sc">$</span>M<span class="sc">$</span>ct)),</span>
-<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>           <span class="at">ED50_defined =</span> <span class="fu">c</span>(inc<span class="sc">$</span>F<span class="sc">$</span>frac_defined, inc<span class="sc">$</span>M<span class="sc">$</span>frac_defined,</span>
-<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>                            mag<span class="sc">$</span>F<span class="sc">$</span>frac_defined, mag<span class="sc">$</span>M<span class="sc">$</span>frac_defined)) <span class="sc">|&gt;</span></span>
-<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">digits =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">as_draws_df</span>(ga); tbar <span class="ot">&lt;-</span> <span class="fu">mean</span>(dsuzukii<span class="sc">$</span>temp)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>temps <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">unique</span>(dsuzukii<span class="sc">$</span>temp)); tc <span class="ot">&lt;-</span> temps <span class="sc">-</span> tbar</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># effective (Intercept, temp, logd, logd:temp) coefs for a dpar prefix and sex</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>eff <span class="ot">&lt;-</span> <span class="cf">function</span>(pre, male) { pk <span class="ot">&lt;-</span> <span class="cf">function</span>(s){ nm<span class="ot">&lt;-</span><span class="fu">paste0</span>(pre,s); <span class="cf">if</span>(nm<span class="sc">%in%</span><span class="fu">names</span>(p)) p[[nm]] <span class="cf">else</span> <span class="dv">0</span> }</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">I=</span><span class="fu">pk</span>(<span class="st">"Intercept"</span>)<span class="sc">+</span>(<span class="cf">if</span>(male)<span class="fu">pk</span>(<span class="st">"sexM"</span>)<span class="cf">else</span> <span class="dv">0</span>), <span class="at">T=</span><span class="fu">pk</span>(<span class="st">"temp_c"</span>)<span class="sc">+</span>(<span class="cf">if</span>(male)<span class="fu">pk</span>(<span class="st">"temp_c:sexM"</span>)<span class="cf">else</span> <span class="dv">0</span>),</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">D=</span><span class="fu">pk</span>(<span class="st">"logd"</span>)<span class="sc">+</span>(<span class="cf">if</span>(male)<span class="fu">pk</span>(<span class="st">"logd:sexM"</span>)<span class="cf">else</span> <span class="dv">0</span>), <span class="at">DT=</span><span class="fu">pk</span>(<span class="st">"logd:temp_c"</span>)<span class="sc">+</span>(<span class="cf">if</span>(male)<span class="fu">pk</span>(<span class="st">"logd:temp_c:sexM"</span>)<span class="cf">else</span> <span class="dv">0</span>)) }</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co"># INCIDENCE: intrinsic 50% threshold (hu=0.5); logd50(T) = -(I+T*tc)/(D+DT*tc)</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>inc_tdt <span class="ot">&lt;-</span> <span class="cf">function</span>(male){ cc<span class="ot">&lt;-</span><span class="fu">eff</span>(<span class="st">"b_hu_"</span>,male); ld<span class="ot">&lt;-</span><span class="cf">function</span>(t)<span class="sc">-</span>(cc<span class="sc">$</span>I<span class="sc">+</span>cc<span class="sc">$</span>T<span class="sc">*</span>t)<span class="sc">/</span>(cc<span class="sc">$</span>D<span class="sc">+</span>cc<span class="sc">$</span>DT<span class="sc">*</span>t); e<span class="ot">&lt;-</span><span class="fl">1e-3</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>  z<span class="ot">&lt;-</span><span class="fu">rowMeans</span>(<span class="fu">vapply</span>(tc,<span class="cf">function</span>(t)<span class="sc">-</span><span class="dv">1</span><span class="sc">/</span>((<span class="fu">ld</span>(t<span class="sc">+</span>e)<span class="sc">-</span><span class="fu">ld</span>(t<span class="sc">-</span>e))<span class="sc">/</span>(<span class="dv">2</span><span class="sc">*</span>e)),<span class="fu">numeric</span>(<span class="fu">nrow</span>(p))))</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>  g<span class="ot">&lt;-</span><span class="fu">seq</span>(<span class="fu">min</span>(tc)<span class="sc">-</span><span class="dv">2</span>,<span class="fu">max</span>(tc)<span class="sc">+</span><span class="dv">2</span>,<span class="at">length.out=</span><span class="dv">400</span>); ldm<span class="ot">&lt;-</span><span class="fu">vapply</span>(g,ld,<span class="fu">numeric</span>(<span class="fu">nrow</span>(p)))</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>  ct<span class="ot">&lt;-</span><span class="fu">apply</span>(ldm,<span class="dv">1</span>,<span class="cf">function</span>(r){k<span class="ot">&lt;-</span><span class="fu">which</span>(<span class="fu">diff</span>(<span class="fu">sign</span>(r<span class="sc">-</span><span class="fu">log10</span>(<span class="dv">60</span>)))<span class="sc">!=</span><span class="dv">0</span>)[<span class="dv">1</span>]; <span class="cf">if</span>(<span class="fu">is.na</span>(k))<span class="cn">NA</span> <span class="cf">else</span> tbar<span class="sc">+</span><span class="fu">approx</span>(r[k<span class="sc">:</span>(k<span class="sc">+</span><span class="dv">1</span>)],g[k<span class="sc">:</span>(k<span class="sc">+</span><span class="dv">1</span>)],<span class="fu">log10</span>(<span class="dv">60</span>))<span class="sc">$</span>y})</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">z=</span>z,<span class="at">ct=</span>ct) }</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="co"># MAGNITUDE: unbounded log-linear clutch -&gt; no intrinsic threshold; report the</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="co"># duration-sensitivity b(T)=dlog10(clutch)/dlog10(exposure)=(D+DT*tc)/log(10)</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>mag_b <span class="ot">&lt;-</span> <span class="cf">function</span>(male){ cc<span class="ot">&lt;-</span><span class="fu">eff</span>(<span class="st">"b_"</span>,male); <span class="fu">vapply</span>(tc,<span class="cf">function</span>(t)(cc<span class="sc">$</span>D<span class="sc">+</span>cc<span class="sc">$</span>DT<span class="sc">*</span>t)<span class="sc">/</span><span class="fu">log</span>(<span class="dv">10</span>),<span class="fu">numeric</span>(<span class="fu">nrow</span>(p))) }</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>iF<span class="ot">&lt;-</span><span class="fu">inc_tdt</span>(<span class="cn">FALSE</span>); iM<span class="ot">&lt;-</span><span class="fu">inc_tdt</span>(<span class="cn">TRUE</span>); bF<span class="ot">&lt;-</span><span class="fu">mag_b</span>(<span class="cn">FALSE</span>); bM<span class="ot">&lt;-</span><span class="fu">mag_b</span>(<span class="cn">TRUE</span>)</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">quantity=</span><span class="fu">c</span>(<span class="st">"incidence z (F)"</span>,<span class="st">"incidence z (M)"</span>,<span class="st">"incidence CTmax1h (F)"</span>,<span class="st">"incidence CTmax1h (M)"</span>),</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>           <span class="at">value=</span><span class="fu">c</span>(<span class="fu">median</span>(iF<span class="sc">$</span>z),<span class="fu">median</span>(iM<span class="sc">$</span>z),<span class="fu">median</span>(iF<span class="sc">$</span>ct),<span class="fu">median</span>(iM<span class="sc">$</span>ct))) <span class="sc">|&gt;</span> knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">digits=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
-<th style="text-align: left;">component</th>
-<th style="text-align: right;">z</th>
-<th style="text-align: right;">ct1</th>
-<th style="text-align: right;">ED50_defined</th>
+<th style="text-align: left;">quantity</th>
+<th style="text-align: right;">value</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td style="text-align: left;">incidence (F)</td>
-<td style="text-align: right;">3.03</td>
-<td style="text-align: right;">36.22</td>
+<td style="text-align: left;">incidence z (F)</td>
+<td style="text-align: right;">3.18</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">incidence z (M)</td>
+<td style="text-align: right;">2.88</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">incidence CTmax1h (F)</td>
+<td style="text-align: right;">36.10</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">incidence CTmax1h (M)</td>
+<td style="text-align: right;">36.48</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">temp=</span>temps, <span class="at">b_F=</span><span class="fu">apply</span>(bF,<span class="dv">2</span>,median), <span class="at">Pdecl_F=</span><span class="fu">apply</span>(bF,<span class="dv">2</span>,<span class="cf">function</span>(b)<span class="fu">mean</span>(b<span class="sc">&lt;</span><span class="dv">0</span>)),</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>           <span class="at">b_M=</span><span class="fu">apply</span>(bM,<span class="dv">2</span>,median), <span class="at">Pdecl_M=</span><span class="fu">apply</span>(bM,<span class="dv">2</span>,<span class="cf">function</span>(b)<span class="fu">mean</span>(b<span class="sc">&lt;</span><span class="dv">0</span>))) <span class="sc">|&gt;</span> knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">digits=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: right;">temp</th>
+<th style="text-align: right;">b_F</th>
+<th style="text-align: right;">Pdecl_F</th>
+<th style="text-align: right;">b_M</th>
+<th style="text-align: right;">Pdecl_M</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">34</td>
+<td style="text-align: right;">0.02</td>
+<td style="text-align: right;">0.45</td>
+<td style="text-align: right;">-0.04</td>
+<td style="text-align: right;">0.67</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">35</td>
+<td style="text-align: right;">-0.14</td>
+<td style="text-align: right;">0.90</td>
+<td style="text-align: right;">-0.13</td>
+<td style="text-align: right;">0.98</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">36</td>
+<td style="text-align: right;">-0.30</td>
+<td style="text-align: right;">1.00</td>
+<td style="text-align: right;">-0.23</td>
 <td style="text-align: right;">1.00</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">incidence (M)</td>
-<td style="text-align: right;">2.82</td>
-<td style="text-align: right;">36.36</td>
+<td style="text-align: right;">37</td>
+<td style="text-align: right;">-0.46</td>
+<td style="text-align: right;">1.00</td>
+<td style="text-align: right;">-0.32</td>
 <td style="text-align: right;">1.00</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">magnitude (F)</td>
-<td style="text-align: right;">NA</td>
-<td style="text-align: right;">NA</td>
-<td style="text-align: right;">0.45</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">magnitude (M)</td>
-<td style="text-align: right;">NA</td>
-<td style="text-align: right;">NA</td>
-<td style="text-align: right;">0.67</td>
+<td style="text-align: right;">38</td>
+<td style="text-align: right;">-0.62</td>
+<td style="text-align: right;">1.00</td>
+<td style="text-align: right;">-0.42</td>
+<td style="text-align: right;">1.00</td>
 </tr>
 </tbody>
 </table>
@@ -369,19 +405,16 @@ window.Quarto = {
 </div>
 <p><strong>Result / biological finding.</strong></p>
 <ul>
-<li><strong>Incidence</strong> (whether a fly reproduces at all): a clean TDT, <span class="math inline">\(z \approx 3.0\)</span> / 2.8, <span class="math inline">\(CT_{max_{1hr}} \approx 36.2\)</span> / 36.4, <span class="math inline">\(ED_{50}\)</span> defined in 100% of draws. Close to Ørsted’s fecundity values (3.27 / 3.46). This is the <em>more</em> heat-sensitive endpoint (lower <span class="math inline">\(z\)</span> than mortality’s ~3.0–3.3).</li>
-<li><strong>Magnitude</strong> (offspring among reproducers): <span class="math inline">\(ED_{50}\)</span> identified in only ~45%
-<ol start="6" type="A">
-<li>/ 67% (M) of draws — the conditional clutch halves only at the most stressful temperatures (36–38 °C) and not at 34–35 °C (it even rises at 34). So a magnitude TDT slope is <strong>not identified</strong>.</li>
-</ol></li>
+<li><strong>Incidence</strong> (whether a fly reproduces): a clean single-model TDT, <span class="math inline">\(z \approx 3.2\)</span> (F) / 2.9 (M), <span class="math inline">\(CT_{max_{1hr}} \approx 36.1\)</span> / 36.5 °C, close to Ørsted’s fecundity values (3.27 / 3.46; 36.27 / 36.66). Reproducing-or-not is bounded with an intrinsic 50% threshold, so its <span class="math inline">\(z\)</span> is well defined (the local <span class="math inline">\(z\)</span> rises gently across the range; we report the mean).</li>
+<li><strong>Magnitude</strong> (offspring among reproducers): the conditional clutch is an <strong>unbounded log-linear decline with no intrinsic threshold</strong>, so a single <span class="math inline">\(z\)</span> is not well defined — its implied value swings through a singularity where the duration-sensitivity crosses zero. The identifiable quantity is <span class="math inline">\(b(T)\)</span>, which is <strong>temperature-gated</strong>: <span class="math inline">\(\approx 0\)</span> at 34 °C (<span class="math inline">\(P(\text{decline})\approx 0.45\)</span>) and steepening to <span class="math inline">\(\approx -0.6\)</span> at 38 °C (<span class="math inline">\(P(\text{decline})=1\)</span>).</li>
 </ul>
-<p>Reproductive failure under heat is therefore about <strong>whether</strong> a fly reproduces, not <strong>how much</strong> a surviving reproducer produces. Reporting the components separately makes this visible; <strong>pooling</strong> them (e.g.&nbsp;ED50 of overall expected productivity) is artifactual — the per-temperature baseline differs because each temperature’s shortest exposure differs, and there are no <code>lvl = 0</code> controls in the long file to anchor a common baseline (<code>?dsuzukii</code>). Decision (with D.N., 2026-06-13): report incidence + magnitude separately, no pooled number.</p>
+<p>So heat suppresses reproduction at <strong>every</strong> temperature by stopping flies reproducing at all (incidence), but only <strong>shrinks the clutch</strong> of those that still reproduce once it is hot (<span class="math inline">\(\gtrsim 36\)</span> °C). Decision (with D.N., 2026-06-13): report incidence (<span class="math inline">\(z\)</span>) + magnitude (<span class="math inline">\(b(T)\)</span>) separately, no pooled number (pooling mixes a bounded threshold-defined effect with an unbounded threshold-less one).</p>
 <p><strong>Caveat.</strong> Per-individual <code>prod</code> is faithful to the raw counts but is <em>not</em> Ørsted’s undocumented normalised cell average (<code>?dsuzukii</code>), so exact matches to their fecundity point estimates are not expected.</p>
 </section>
 <section id="open-questions" class="level2">
 <h2 class="anchored" data-anchor-id="open-questions">Open questions</h2>
 <ul>
-<li><code>tdt_from_epred()</code> is currently a supplement-local helper. It is a candidate for promotion to <code>R/</code> (a general “TLS for arbitrary brms response models”, complementing <code>tls()</code>/<code>extract_tdt()</code> which target the disjoint-bounds 4PL), with roxygen + tests — pending a decision on the package API.</li>
+<li>The analytic single-model TDT reading for non-4PL brms response models (the <code>eff()</code>/<code>inc_tdt()</code> logic above) is currently inline in the supplement. It is a candidate for promotion to <code>R/</code> (a general “TLS from a joint brms model”, complementing <code>tls()</code>/<code>extract_tdt()</code> which target the disjoint-bounds 4PL), with roxygen + tests — pending a decision on the package API.</li>
 </ul>
 </section>
 
