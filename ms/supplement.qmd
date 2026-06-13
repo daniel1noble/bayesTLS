@@ -5430,6 +5430,332 @@ tinytable::tt(tls_sex_table_abs, escape = TRUE)
 
 The two `tls()` calls reproduce the by-hand calculations: the relative-threshold summary (@tbl-dros-sex-joint) matches the Step-1 relative values ($z$ 3.06 / 3.21, $CT_{max_{4hr}}$ 35.2 / 35.2 °C for female / male), and the absolute-threshold summary (@tbl-dros-sex-joint-abs) matches the Step-2 absolute values ($z$ 3.04 / 3.18, $CT_{max_{4hr}}$ 35.1 / 35.2 °C); $T_{crit}$ is ~29 °C under both.
 
+#### Analysing sublethal measures
+For the *Drosophila* example we also have measures of productivity and knockdown time.
+
+As in the other case studies, knockdown time can be analysed in two ways that give nearly identical results (see the brown-shrimp sublethal analysis, @sec-shrimp-sublethal). The classical route fits a Bayesian hierarchical regression of $\log_{10}(\text{time to knockdown})$ on temperature, with an error distribution appropriate to the data, and reads the TDT quantities off the fitted coefficients as $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$. The joint route re-casts the same observations as proportion-awake counts and fits the 4PL, recovering the same quantities directly from the posterior. Below we carry out both on the fly's coma data, with `sex` entered as a moderator so a single model serves both sexes.
+
+##### Knockdown: time to coma {#sec-dros-coma}
+
+Each fly was scored as awake or in heat coma at the end of its assigned exposure (a fixed percentage of the temperature-specific median coma time), and the time to coma was recorded for flies that lost the righting response *during* the exposure. Flies still awake at the end of their exposure therefore have no coma time: `t_coma` is **right-censored** at the exposure duration. Overall, `r round(100*mean(is.na(dsuzukii$t_coma)))`% of flies are censored. 
+
+The censoring in the data can matter because dropping them would select for early-coma individuals and bias the slope. We accommodate it in two complementary ways. The **linear** model keeps every fly by fitting a right-censored log-time regression (censored flies enter at their exposure time as a lower bound on the unobserved coma time). Our **4PL** approach keeps every fly by analysing the binary awake/coma outcome as a proportion — exactly the `awake ~ time` dose-response of @orsted_suzukii_2024. 
+
+```{r}
+#| label: dros-coma-data
+#| echo: true
+#| code-fold: show
+
+# t_coma is right-censored: flies still awake at the end of their exposure have
+# NA. We keep them by entering the exposure `time` as a right-censoring bound.
+coma_tbar <- mean(dsuzukii$temp)
+coma_dat <- dsuzukii |>
+  dplyr::mutate(
+    in_coma    = !is.na(t_coma),
+    coma_min   = ifelse(in_coma, t_coma, time),  # observed coma time, else exposure time
+    log10_coma = log10(coma_min),
+    cens       = ifelse(in_coma, "none", "right"),
+    temp_c     = temp - coma_tbar,
+    cell       = interaction(temp, lvl, sex, drop = TRUE)
+  )
+```
+
+The classical sublethal TDT model is the same hierarchical log-time regression used for the shrimp (@sec-shrimp-sub-linear), now with a censoring term and a `sex` interaction so each sex has its own slope ($z$) and intercept ($CT_{max}$):
+
+```{r}
+#| label: dros-coma-linear-fit
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+priors_coma_lin <- c(
+  brms::prior(normal(2, 1.5), class = "Intercept"),
+  brms::prior(normal(-1, 1),  class = "b"),
+  brms::prior(exponential(2), class = "sd"),
+  brms::prior(exponential(2), class = "sigma")
+)
+
+fit_coma_lin <- brms::brm(
+  brms::bf(log10_coma | cens(cens) ~ temp_c * sex + (1 | cell)),
+  data       = coma_dat,
+  prior      = priors_coma_lin,
+  chains     = 4, iter = 6000, warmup = 3000, cores = 4, seed = 123,
+  control    = list(adapt_delta = 0.95),
+  backend    = "cmdstanr", silent = 2, refresh = 0,
+  file       = file.path(models_dir, "fit_dsuzukii_coma_linear"),
+  file_refit = "on_change"
+)
+```
+
+```{r}
+#| label: dros-coma-linear-derive
+#| echo: true
+#| code-fold: show
+
+# Treatment coding: females are the reference, males add the interaction.
+post_coma_lin <- posterior::as_draws_df(fit_coma_lin)
+slope_F_c <- post_coma_lin$b_temp_c
+slope_M_c <- post_coma_lin$b_temp_c + post_coma_lin[["b_temp_c:sexM"]]
+int_F_c   <- post_coma_lin$b_Intercept
+int_M_c   <- post_coma_lin$b_Intercept + post_coma_lin$b_sexM
+
+z_coma_lin_F  <- -1 / slope_F_c
+z_coma_lin_M  <- -1 / slope_M_c
+ct_coma_lin_F <- coma_tbar + (log10(60) - int_F_c) / slope_F_c
+ct_coma_lin_M <- coma_tbar + (log10(60) - int_M_c) / slope_M_c
+```
+
+The 4PL route re-casts the data as proportion-awake counts per (temperature × exposure-level × sex) cell and fits one joint model with `sex` on the midpoint, mirroring the mortality `joint_sex_fit` above:
+
+```{r}
+#| label: dros-coma-4pl-panel
+#| echo: true
+#| code-fold: show
+
+coma_panel <- dsuzukii |>
+  dplyr::group_by(temp, lvl, sex) |>
+  dplyr::summarise(n_total  = dplyr::n(),
+                   n_awake  = sum(is.na(t_coma)),   # awake = not (yet) in coma
+                   duration = dplyr::first(time),
+                   .groups  = "drop") |>
+  dplyr::filter(duration > 0)
+
+std_coma        <- standardize_data(coma_panel, temp = "temp", duration = "duration",
+                                    n_total = "n_total", n_surv = "n_awake",
+                                    duration_unit = "minutes")
+priors_coma_4pl <- make_4pl_priors(std_coma)
+```
+
+```{r}
+#| label: dros-coma-4pl-fit
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+coma_4pl_bf <- brms::bf(
+  n_surv | trials(n_total) ~
+    (0.001 + inv_logit(lowraw) * 0.498) +
+    ((0.501 + inv_logit(upraw) * 0.498) - (0.001 + inv_logit(lowraw) * 0.498)) /
+    (1 + exp(exp(logk) * (logd - mid))),
+  lowraw ~ temp_c, 
+   upraw ~ temp_c, 
+    logk ~ temp_c,
+     mid ~ sex * temp_c,                       # sex on midpoint => sex-specific z & CTmax
+  nl = TRUE, family = brms::beta_binomial(link = "identity")
+)
+
+fit_coma_4pl <- brms::brm(
+  coma_4pl_bf, data = std_coma, prior = priors_coma_4pl,
+  chains  = 4, iter = 4000, warmup = 2000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.95),
+  backend = "cmdstanr", silent = 2, refresh = 0,
+  file    = file.path(models_dir, "fit_dsuzukii_coma_4pl"),
+  file_refit = "on_change"
+)
+```
+
+```{r}
+#| label: dros-coma-4pl-tls
+#| echo: true
+#| code-fold: show
+
+set.seed(123)
+# One tls() call bundles z and CTmax per sex from the joint 4PL. The model time
+# unit is minutes and CTmax is reported at a 1-hour reference (t_ref = 60).
+coma_4pl_tls <- tls(fit_coma_4pl, by = "sex", mode = "relative",
+                    t_ref = 60, time_multiplier = 1,
+                    temp_mean = mean(std_coma$temp - std_coma$temp_c))$summary
+```
+
+```{r}
+#| label: tbl-dros-coma-compare
+#| tbl-cap: "Thermal sensitivity $z$ and the 1-hour critical temperature $CT_{max_{1hr}}$ for *D. suzukii* heat coma, by sex, from the censored linear log-time regression and the joint 4PL on proportion-awake counts, compared with the two-stage drc estimates of @orsted_suzukii_2024 (their $sCT_{max,1h}$). Cells are the posterior median with the 95% credible interval in brackets; the Ørsted values are point estimates."
+#| message: false
+#| warning: false
+
+ctls <- function(q, sx) {
+  r <- coma_4pl_tls[coma_4pl_tls$quantity == q & coma_4pl_tls$sex == sx, ]
+  format_interval(r$median, r$lower, r$upper)
+}
+fmt <- function(x) format_interval(stats::median(x),
+                                   stats::quantile(x, .025, names = FALSE),
+                                   stats::quantile(x, .975, names = FALSE))
+
+coma_compare <- tibble::tribble(
+  ~Method,                         ~`z (F)`,            ~`z (M)`,            ~`CTmax 1h (F)`,       ~`CTmax 1h (M)`,
+  "Linear (censored log-time)",    fmt(z_coma_lin_F),   fmt(z_coma_lin_M),   fmt(ct_coma_lin_F),    fmt(ct_coma_lin_M),
+  "Joint 4PL (proportion awake)",  ctls("z","F"),       ctls("z","M"),       ctls("CTmax","F"),     ctls("CTmax","M"),
+  "Ørsted et al. (2024), drc",     "2.23",              "2.33",              "36.36",               "36.31"
+)
+
+tinytable::tt(coma_compare, escape = TRUE)
+```
+
+Both Bayesian routes agree with each other and recover the two-stage estimates of @orsted_suzukii_2024 to within their credible intervals (@tbl-dros-coma-compare): $z \approx 2.3$–$2.4$ °C and $CT_{max_{1hr}} \approx 36.3$–36.5 °C for both sexes, with the sexes statistically indistinguishable. 
+
+##### Productivity: reproductive output {#sec-dros-productivity}
+
+For productivity, while we could fit a mixture model to these data — a 4PL for 'reproduces or not' and a second model for the amount of reproduction — we instead model offspring production directly with a distribution appropriate to reproductive data. brms does not implement the Tweedie family, so we use a **hurdle** model: a zero component for whether a fly reproduced at all, and a continuous positive component for how much it produced if it did. The hurdle naturally separates the two biological questions, and — as it turns out — they answer differently. Productivity declines with the same dose of thermal stress used for the other endpoints (longer exposure at a given temperature), so as with @orsted_suzukii_2024 we read the thermal-death-time quantities from the *duration* response: the exposure time that halves productivity at each temperature ($ED_{50}$) defines a TDT line, from which $z = -1/\text{slope}$ and $CT_{max_{1hr}}$ follow.
+
+We compare a Gamma and a log-normal positive part by leave-one-out predictive fit and keep the better one:
+
+```{r}
+#| label: dros-prod-data
+#| echo: true
+#| code-fold: show
+
+prod_dat <- dsuzukii |>
+  dplyr::mutate(logd = log10(time), temp_c = temp - mean(temp), sex = factor(sex))
+prod_tbar <- mean(dsuzukii$temp)
+```
+
+```{r}
+#| label: dros-prod-fit
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+# Both hurdle components depend on log-exposure, temperature and sex (and their
+# interactions), so each sex gets its own dose-response at every temperature.
+prod_form <- brms::bf(prod ~ logd * temp_c * sex,
+                      hu   ~ logd * temp_c * sex)
+prod_args <- list(formula = prod_form, data = prod_dat,
+                  chains = 4, iter = 3000, warmup = 1000, cores = 4, seed = 123,
+                  control = list(adapt_delta = 0.95), backend = "cmdstanr",
+                  silent = 2, refresh = 0, file_refit = "on_change")
+
+fit_prod_ga <- do.call(brms::brm, c(prod_args,
+  list(family = brms::hurdle_gamma(),
+       file = file.path(models_dir, "fit_dsuzukii_prod_hurdle_gamma"))))
+fit_prod_ln <- do.call(brms::brm, c(prod_args,
+  list(family = brms::hurdle_lognormal(),
+       file = file.path(models_dir, "fit_dsuzukii_prod_hurdle_lognormal"))))
+
+fit_prod_ga <- brms::add_criterion(fit_prod_ga, "loo")
+fit_prod_ln <- brms::add_criterion(fit_prod_ln, "loo")
+prod_loo <- brms::loo_compare(fit_prod_ga, fit_prod_ln)
+```
+
+```{r}
+#| label: dros-prod-loo
+#| echo: true
+#| code-fold: show
+
+prod_loo            # Gamma positive part is preferred (elpd difference / SE below)
+# loo_compare sorts best-first, so row 2 is the worse (log-normal) model.
+prod_loo_dz <- abs(prod_loo[2, "elpd_diff"]) / prod_loo[2, "se_diff"]
+```
+
+The Gamma positive part is preferred over the log-normal by `r round(abs(prod_loo[2,"elpd_diff"]))` expected log predictive-density units (`r round(prod_loo_dz, 1)` SE), so we use `fit_prod_ga` below.
+
+We read each hurdle component's TDT from its posterior with a small helper: it predicts the component over a per-temperature grid of exposure times, locates the $ED_{50}$ (the exposure that halves the component between its short- and long-exposure values) for every posterior draw, and regresses $\log_{10} ED_{50}$ on temperature to give $z$ and $CT_{max_{1hr}}$ per draw. (This generalises `tls()`/`extract_tdt()`, which target the disjoint-bounds 4PL, to an arbitrary brms response curve.)
+
+```{r}
+#| label: dros-prod-tdt-helper
+#| echo: true
+#| code-fold: show
+
+# Duration-based TDT (z, CTmax at t_ref minutes) from a fitted brms model.
+# `predict_fn(newdata)` returns a draws x rows matrix of the declining response
+# component (overall mean, incidence = 1 - hu, or conditional mu). Returns, per
+# sex, the per-draw z and CTmax plus the fraction of draws with a defined ED50
+# at every temperature (an honesty flag: a component that does not halve within
+# the observed exposure window has no ED50, and its TDT is not identified).
+tdt_from_epred <- function(fit, data, predict_fn, t_ref = 60, n_grid = 80) {
+  temps <- sort(unique(data$temp)); tbar <- mean(data$temp)
+  grid  <- do.call(rbind, lapply(temps, function(tt) {
+    rng <- range(data$time[data$temp == tt])
+    data.frame(temp = tt, temp_c = tt - tbar,
+               time = 10 ^ seq(log10(rng[1]), log10(rng[2]), length.out = n_grid))
+  }))
+  grid$logd <- log10(grid$time)
+  lapply(stats::setNames(levels(data$sex), levels(data$sex)), function(sx) {
+    nd <- grid; nd$sex <- factor(sx, levels = levels(data$sex))
+    M  <- predict_fn(nd)                                    # draws x rows
+    led <- matrix(NA_real_, nrow(M), length(temps))
+    for (j in seq_along(temps)) {
+      cl  <- which(nd$temp == temps[j]); lt <- log10(nd$time[cl])
+      sub <- M[, cl, drop = FALSE]
+      thr <- (sub[, 1] + sub[, ncol(sub)]) / 2             # midpoint = relative ED50
+      for (d in seq_len(nrow(sub))) {
+        v <- sub[d, ]; k <- which(v <= thr[d])[1]          # first crossing (declining)
+        if (!is.na(k) && k > 1)
+          led[d, j] <- stats::approx(c(v[k - 1], v[k]), c(lt[k - 1], lt[k]), thr[d])$y
+      }
+    }
+    w     <- temps - mean(temps)
+    slope <- as.vector((led %*% w) / sum(w ^ 2))           # per-draw OLS slope
+    inter <- rowMeans(led)                                 # log10(ED50) at mean(temps)
+    list(z  = -1 / slope,                                  # CTmax line is centred on
+         ct = mean(temps) + (log10(t_ref) - inter) / slope,#   mean(temps), matching `w`
+         frac_defined = mean(rowSums(is.na(led)) == 0))
+  })
+}
+```
+
+```{r}
+#| label: dros-prod-tdt
+#| echo: true
+#| code-fold: show
+
+# Incidence = probability a fly reproduces = 1 - hu.
+prod_incidence <- tdt_from_epred(
+  fit_prod_ga, prod_dat,
+  function(nd) 1 - brms::posterior_epred(fit_prod_ga, newdata = nd,
+                                         dpar = "hu", re_formula = NA))
+# Magnitude = expected offspring among flies that did reproduce = mu.
+prod_magnitude <- tdt_from_epred(
+  fit_prod_ga, prod_dat,
+  function(nd) brms::posterior_epred(fit_prod_ga, newdata = nd,
+                                     dpar = "mu", re_formula = NA))
+```
+
+```{r}
+#| label: tbl-dros-prod-incidence
+#| tbl-cap: "Reproductive **incidence** thermal-death-time parameters for *D. suzukii* (whether a fly reproduces at all; the hurdle component of the hurdle-Gamma model), by sex, with the two-stage drc fecundity estimates of @orsted_suzukii_2024 ($sCT_{max,1h}$) for comparison. Cells are the posterior median with the 95% credible interval; Ørsted values are point estimates. `ED50 defined` is the fraction of posterior draws with an identified $ED_{50}$ at every temperature."
+#| message: false
+#| warning: false
+
+prod_inc_tbl <- tibble::tribble(
+  ~Source,                       ~`z (F)`,                         ~`z (M)`,                         ~`CTmax 1h (F)`,                    ~`CTmax 1h (M)`,
+  "Incidence (this study)",
+    format_interval(stats::median(prod_incidence$F$z),  stats::quantile(prod_incidence$F$z,.025,names=FALSE),  stats::quantile(prod_incidence$F$z,.975,names=FALSE)),
+    format_interval(stats::median(prod_incidence$M$z),  stats::quantile(prod_incidence$M$z,.025,names=FALSE),  stats::quantile(prod_incidence$M$z,.975,names=FALSE)),
+    format_interval(stats::median(prod_incidence$F$ct), stats::quantile(prod_incidence$F$ct,.025,names=FALSE), stats::quantile(prod_incidence$F$ct,.975,names=FALSE)),
+    format_interval(stats::median(prod_incidence$M$ct), stats::quantile(prod_incidence$M$ct,.025,names=FALSE), stats::quantile(prod_incidence$M$ct,.975,names=FALSE)),
+  "Ørsted et al. (2024), drc",   "3.27",                          "3.46",                          "36.27",                            "36.66"
+)
+tinytable::tt(prod_inc_tbl, escape = TRUE)
+```
+
+The incidence component recovers a clean reproduction TDT — $z \approx `r round(stats::median(prod_incidence$F$z),1)`$–`r round(stats::median(prod_incidence$M$z),1)` °C and $CT_{max_{1hr}} \approx `r round(stats::median(prod_incidence$F$ct),1)`$ °C — close to the @orsted_suzukii_2024 fecundity values (@tbl-dros-prod-incidence), with $ED_{50}$ defined in `r round(100*prod_incidence$F$frac_defined)`% of draws. (Our per-individual `prod` is faithful to the raw counts but is not the authors' undocumented normalised cell average — see `?dsuzukii` — so an exact match to their point estimate is not expected.)
+
+The **magnitude** component tells a different story. Among flies that did reproduce, the conditional clutch halves only at the most stressful temperatures and not at the milder ones:
+
+```{r}
+#| label: tbl-dros-prod-magnitude
+#| tbl-cap: "Expected offspring **among flies that reproduced** (the conditional Gamma mean, posterior median) at the shortest and longest exposure of each assay temperature, for females. Unlike incidence, the conditional clutch does not consistently halve with exposure — it even rises slightly at 34 °C — so a magnitude $ED_{50}$, and hence a magnitude TDT, is identified in only a minority of posterior draws."
+#| message: false
+#| warning: false
+
+prod_mag_tbl <- purrr::map_dfr(sort(unique(prod_dat$temp)), function(tt) {
+  rng <- range(prod_dat$time[prod_dat$temp == tt])
+  g   <- data.frame(temp = tt, temp_c = tt - prod_tbar,
+                    sex = factor("F", levels = levels(prod_dat$sex)),
+                    time = rng, logd = log10(rng))
+  mm  <- apply(brms::posterior_epred(fit_prod_ga, newdata = g, dpar = "mu",
+                                     re_formula = NA), 2, stats::median)
+  tibble::tibble(`Temp (°C)` = tt,
+                 `Shortest exposure` = round(mm[1], 2),
+                 `Longest exposure`  = round(mm[2], 2),
+                 `Halves?` = ifelse(mm[2] < mm[1] / 2, "yes", "no"))
+})
+tinytable::tt(prod_mag_tbl, escape = TRUE)
+```
+
+A magnitude $ED_{50}$ is identified in only `r round(100*prod_magnitude$F$frac_defined)`% (female) and `r round(100*prod_magnitude$M$frac_defined)`% (male) of posterior draws, so its TDT slope is not reliably estimable — the conditional clutch is roughly flat across exposure at benign temperatures and collapses only near the lethal limit. Biologically, this separates two effects that a single fecundity curve conflates: heat stress sharply reduces *whether* a fly reproduces (a well-defined TDT with $z \approx 3$ °C, the more heat-sensitive endpoint), while leaving *how much* a surviving reproducer produces largely unchanged until temperatures approach the lethal range. Reporting the two components separately, rather than pooling them, is what makes this visible — pooling averages a strong effect (incidence) with a weak, ill-defined one (magnitude) and obscures both.
+
+
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
