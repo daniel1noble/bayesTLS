@@ -106,8 +106,11 @@ execute:
 **Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Patrice Pottier**^2,3^
 
 ^1^Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia.
+
 ^2^Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden.
+
 ^3^Evolution & Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales, Sydney, New South Wales, Australia.
+
 ^\*^Corresponding author: daniel.noble@anu.edu.au
 
 **Abstract**
@@ -552,9 +555,9 @@ The zebrafish case study shows how the model can estimate and compare life-stage
 
 ## Vinegar fly (*Drosophila suzukii*)
 
-The vinegar fly case study shows how the same framework can be used for sex-specific mortality and downstream heat-injury prediction. Our re-analysis of the mortality data from @orsted_suzukii_2024 recovered similar $z$ and $CT_{max_{4hr}}$ estimates for males and females, consistent with their reported values (Table 1: $z$ = 3.28 for males and 3.03 for females; $CT_{max_{4hr}}$ = 35.2 °C for both sexes). We found no sex difference in either quantity, and relative and absolute $z$ and $CT_{max_{4hr}}$ gave similar estimates in this example ([@fig-tls-comparison]D).
+The vinegar fly case study shows how the same framework can be used for sex-specific mortality and downstream heat-injury prediction. Our re-analysis of the mortality data from @orsted_suzukii_2024 recovered similar $z$ and $CT_{max_{4hr}}$ estimates for males and females, consistent with their reported values (Table 1: $z$ = 3.28 for males and 3.03 for females; $CT_{max_{4hr}}$ = 35.2 °C for both sexes). We found no sex difference in either quantity, and relative and absolute $z$ and $CT_{max_{4hr}}$ gave similar estimates in this example ([@fig-tls-comparison]D). We also apply our approaches to estimating sublethal sensitivity which we present in the supplement — the [time-to-coma](https://daniel1noble.github.io/bayesTLS/#sec-dros-coma) and [reproductive output](https://daniel1noble.github.io/bayesTLS/#sec-dros-productivity) analyses — with our values closely matching those of @orsted_suzukii_2024. 
 
-Without repair, cumulative heat injury exceeded one $LT_{50}$ dose and predicted survival declined sharply during the warmest part of the season in Curicó, Chile. Incorperating a repair model, reduced heat injury and offset and predicted mortality, showing how the same fitted 4PL can be combined with alternative assumptions about damage repair ([@fig-heat-injury]A-C).
+Fro lethal measures, without repair, cumulative heat injury exceeded one $LT_{50}$ dose and predicted survival declined sharply during the warmest part of the season in Curicó, Chile. Incorperating a repair model, reduced heat injury and offset and predicted mortality, showing how the same fitted 4PL can be combined with alternative assumptions about damage repair ([@fig-heat-injury]A-C).
 
 ```{r}
 #| label: fig-tls-comparison
@@ -581,7 +584,7 @@ We have shown that the Bayesian 4PL dose-response model provides a flexible and 
 
 The Bayesian model fits the raw response data in a single hierarchical analysis, accommodating diverse experimental designs while partitioning variation among biological and experimental levels. This opens up extensions that are difficult to implement with a two-stage approach. For example, clones, individuals, tissues, populations, or treatments can be included in the same model to estimate genetic, individual, tissue-specific, or environmental sources of variation in $z$ and $CT_{max}$. Full propagation of sampling uncertainty should also make sensitivity and tolerance estimates more useful for robust meta-analyses and comparative studies. Finally, the same framework can be extended to estimate the effects of acclimation, interacting environmental stressors, or other dose-response processes in which biological response depends jointly on stress intensity and exposure duration, including chemical stressors such as herbicides [@arnold_thermal_2025]. More generally, our modelling framework can be extended to any dose-response framework, including toxicology studies where toxicant concentration replaces temperature, opening up new ways to consistently analyse and report sensitivity and tolerance across fields. 
 
-Bayesian methods may be more complicated to implement, however, our `bayesTLS` R package should improve accessibility to experimentalists. Nonetheless, such models can also be fit within a likelihood framework and error propagated using parameteric bootstrapping or the Delta method. An important future development will be to robustless incorperate real rates of repair [@arnold_thermal_2025; @orsted2026; @buckley_damage_2025] to improve model predictions or survival in nature. By improving how we estimate thermal sensitivity, thermal tolerance, and their biological drivers across populations and species, this framework strengthens our ability to predict the biological impacts of extreme heat in a warming world.
+Bayesian methods may be more complicated to implement, however, our `bayesTLS` R package should improve accessibility to experimentalists. Nonetheless, such models can also be fit within a likelihood framework and error propagated using parameteric bootstrapping or the Delta method. An important future development will be to incorperate real rates of repair from experiments [@arnold_thermal_2025; @orsted2026; @buckley_damage_2025] to improve model predictions in nature. By improving how we estimate thermal sensitivity, thermal tolerance, and their biological drivers across populations and species, this framework strengthens our ability to predict the biological impacts of extreme heat in a warming world.
 
 # Acknowledgements
 
