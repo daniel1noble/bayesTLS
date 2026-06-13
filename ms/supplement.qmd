@@ -5431,15 +5431,15 @@ tinytable::tt(tls_sex_table_abs, escape = TRUE)
 The two `tls()` calls reproduce the by-hand calculations: the relative-threshold summary (@tbl-dros-sex-joint) matches the Step-1 relative values ($z$ 3.06 / 3.21, $CT_{max_{4hr}}$ 35.2 / 35.2 °C for female / male), and the absolute-threshold summary (@tbl-dros-sex-joint-abs) matches the Step-2 absolute values ($z$ 3.04 / 3.18, $CT_{max_{4hr}}$ 35.1 / 35.2 °C); $T_{crit}$ is ~29 °C under both.
 
 #### Analysing sublethal measures
-For the *Drosophila* example we also have measures of productivity and knockdown time.
+The *Drosophila* dataset also includes two sublethal endpoints: heat-coma time and reproductive output.
 
-As in the other case studies, knockdown time can be analysed in two ways that give nearly identical results (see the brown-shrimp sublethal analysis, @sec-shrimp-sublethal). The classical route fits a Bayesian hierarchical regression of $\log_{10}(\text{time to knockdown})$ on temperature, with an error distribution appropriate to the data, and reads the TDT quantities off the fitted coefficients as $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$. The joint route re-casts the same observations as proportion-awake counts and fits the 4PL, recovering the same quantities directly from the posterior. Below we carry out both on the fly's coma data, with `sex` entered as a moderator so a single model serves both sexes.
+Heat-coma time can be analysed in two equivalent ways (see the brown-shrimp sublethal analysis, @sec-shrimp-sublethal). The classical route fits a Bayesian hierarchical regression of $\log_{10}(\text{time to coma})$ on temperature and derives $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$ from the fitted coefficients. The joint route reformulates the same observations as proportion-awake counts and fits the 4PL, recovering the same quantities from the posterior. Below, we fit both models with `sex` as a moderator so one model estimates female- and male-specific parameters.
 
 ##### Knockdown: time to coma {#sec-dros-coma}
 
-Each fly was scored as awake or in heat coma at the end of its assigned exposure (a fixed percentage of the temperature-specific median coma time), and the time to coma was recorded for flies that lost the righting response *during* the exposure. Flies still awake at the end of their exposure therefore have no coma time: `t_coma` is **right-censored** at the exposure duration. Overall, `r round(100*mean(is.na(dsuzukii$t_coma)))`% of flies are censored. 
+Each fly was exposed for a fixed duration, scored as awake or in heat coma, and assigned a coma time if it lost the righting response during the exposure. Flies still awake at the end of the exposure had not yet reached the endpoint, so their coma times are **right-censored** at the exposure duration. Overall, `r round(100*mean(is.na(dsuzukii$t_coma)))`% of flies are censored.
 
-The censoring in the data can matter because dropping them would select for early-coma individuals and bias the slope. We accommodate it in two complementary ways. The **linear** model keeps every fly by fitting a right-censored log-time regression (censored flies enter at their exposure time as a lower bound on the unobserved coma time). Our **4PL** approach keeps every fly by analysing the binary awake/coma outcome as a proportion — exactly the `awake ~ time` dose-response of @orsted_suzukii_2024. 
+Censoring matters because dropping censored flies would select for individuals that entered coma early and potentially bias the thermal sensitivity estimate. We retain all flies in two complementary analyses. The **linear** model fits a right-censored log-time regression, treating the exposure duration of censored flies as a lower bound on their unobserved coma time. The **4PL** model instead analyses the binary awake/coma outcome as proportion-awake counts across exposure durations, matching the `awake ~ time` dose-response used by @orsted_suzukii_2024.
 
 ```{r}
 #| label: dros-coma-data
@@ -5456,11 +5456,13 @@ coma_dat <- dsuzukii |>
     log10_coma = log10(coma_min),
     cens       = ifelse(in_coma, "none", "right"),
     temp_c     = temp - coma_tbar,
-    cell       = interaction(temp, lvl, sex, drop = TRUE)
+    # the assay block shared by flies measured together (one temperature x
+    # exposure-level x sex group); used as a random intercept below
+    block      = interaction(temp, lvl, sex, drop = TRUE)
   )
 ```
 
-The classical sublethal TDT model is the same hierarchical log-time regression used for the shrimp (@sec-shrimp-sub-linear), now with a censoring term and a `sex` interaction so each sex has its own slope ($z$) and intercept ($CT_{max}$):
+The classical sublethal TDT model follows the hierarchical log-time regression used for brown shrimp (@sec-shrimp-sub-linear), with a censoring term and a `sex` interaction so females and males have separate slopes ($z$) and intercepts ($CT_{max}$). The `(1 | block)` random intercept absorbs variation shared by the flies assayed together in one temperature × exposure-level × sex block, to control for non-independence within a block:
 
 ```{r}
 #| label: dros-coma-linear-fit
@@ -5476,7 +5478,7 @@ priors_coma_lin <- c(
 )
 
 fit_coma_lin <- brms::brm(
-  brms::bf(log10_coma | cens(cens) ~ temp_c * sex + (1 | cell)),
+  brms::bf(log10_coma | cens(cens) ~ temp_c * sex + (1 | block)),
   data       = coma_dat,
   prior      = priors_coma_lin,
   chains     = 4, iter = 6000, warmup = 3000, cores = 4, seed = 123,
@@ -5505,7 +5507,7 @@ ct_coma_lin_F <- coma_tbar + (log10(60) - int_F_c) / slope_F_c
 ct_coma_lin_M <- coma_tbar + (log10(60) - int_M_c) / slope_M_c
 ```
 
-The 4PL route re-casts the data as proportion-awake counts per (temperature × exposure-level × sex) cell and fits one joint model with `sex` on the midpoint, mirroring the mortality `joint_sex_fit` above:
+The 4PL route reformulates the same data as proportion-awake counts for each temperature-by-exposure-by-sex block. We then fit one joint model with `sex` on the midpoint, mirroring the mortality `joint_sex_fit` above:
 
 ```{r}
 #| label: dros-coma-4pl-panel
@@ -5591,11 +5593,13 @@ coma_compare <- tibble::tribble(
 tinytable::tt(coma_compare, escape = TRUE)
 ```
 
-Both Bayesian routes agree with each other and recover the two-stage estimates of @orsted_suzukii_2024 to within their credible intervals (@tbl-dros-coma-compare): $z \approx 2.3$–$2.4$ °C and $CT_{max_{1hr}} \approx 36.3$–36.5 °C for both sexes, with the sexes statistically indistinguishable. 
+Both Bayesian routes agree and recover similar estimates to @orsted_suzukii_2024 within their credible intervals (@tbl-dros-coma-compare). Heat-coma sensitivity is $z \approx 2.3$-2.4 °C and $CT_{max_{1hr}} \approx 36.3$-36.5 °C for both sexes, with little evidence for sex differences.
 
 ##### Productivity: reproductive output {#sec-dros-productivity}
 
-For productivity, while we could fit a mixture model to these data — a 4PL for 'reproduces or not' and a second model for the amount of reproduction — we instead model offspring production directly with a distribution appropriate to reproductive data. brms does not implement the Tweedie family, so we use a **hurdle** model: a zero component for whether a fly reproduced at all, and a continuous positive component for how much it produced if it did. The hurdle naturally separates the two biological questions, and — as it turns out — they answer differently. Productivity declines with the same dose of thermal stress used for the other endpoints (longer exposure at a given temperature). Rather than fit a separate dose-response per temperature and regress the thresholds (the two-stage route of @orsted_suzukii_2024), we read the thermal-death-time quantities **directly from the single joint model**, as for the 4PL — analytically, from each component's duration and temperature coefficients.
+For reproductive output, the response has two parts: whether a fly reproduced at all, and how many offspring it produced if it did reproduce. We therefore model productivity with a **hurdle** model rather than a 4PL. The hurdle component estimates the probability of zero offspring, while the positive component models offspring number among reproducing flies. This separates the two biological responses and allows them to vary differently with thermal stress.
+
+As with the 4PL endpoints, productivity changes with exposure duration and temperature. Instead of fitting separate dose-response curves at each temperature and then regressing thresholds, we derive the thermal-death-time quantities directly from the single joint model using the duration and temperature coefficients for each hurdle component.
 
 We compare a Gamma and a log-normal positive part by leave-one-out predictive fit and keep the better one:
 
@@ -5646,9 +5650,9 @@ prod_loo            # Gamma positive part is preferred (elpd difference / SE bel
 prod_loo_dz <- abs(prod_loo[2, "elpd_diff"]) / prod_loo[2, "se_diff"]
 ```
 
-The Gamma positive part is preferred over the log-normal by `r round(abs(prod_loo[2,"elpd_diff"]))` expected log predictive-density units (`r round(prod_loo_dz, 1)` SE), so we use `fit_prod_ga` below.
+The Gamma positive component predicts the data better than the log-normal by `r round(abs(prod_loo[2,"elpd_diff"]))` expected log predictive-density units (`r round(prod_loo_dz, 1)` SE), so we use `fit_prod_ga` below.
 
-We read each hurdle component's thermal sensitivity **directly from the joint posterior**, the way the 4PL gives $z = -1/\beta_1$ — not by estimating a separate $ED_{50}$ at each temperature and regressing those (that re-introduces the two-stage structure this paper sets out to avoid). Each component's linear predictor is linear in log-duration and temperature, so the duration to a threshold and its temperature slope are analytic functions of the fitted coefficients, evaluated per draw.
+We derive the reproductive summaries directly from the joint posterior.  For reproduction incidence (did you reproduce or not?), this gives threshold durations and their temperature slopes; for conditional clutch size, it gives the duration-sensitivity of positive offspring production. Both are calculated analytically from the fitted coefficients for each posterior draw.
 
 ```{r}
 #| label: dros-prod-tdt-helper
@@ -5733,9 +5737,9 @@ prod_inc_tbl <- tibble::tribble(
 tinytable::tt(prod_inc_tbl, escape = TRUE)
 ```
 
-The incidence component recovers a clean reproduction TDT — $z \approx `r round(stats::median(prod_inc_F$z),1)`$ (female) / `r round(stats::median(prod_inc_M$z),1)` (male) and $CT_{max_{1hr}} \approx `r round(stats::median(prod_inc_F$ct),1)`$–`r round(stats::median(prod_inc_M$ct),1)` °C — close to the @orsted_suzukii_2024 fecundity values (@tbl-dros-prod-incidence). Because reproducing-or-not is a bounded outcome with an intrinsic 50% threshold, its $z$ is well defined; the local $z$ rises gently across the assay range (the duration × temperature interaction curves the TDT line), so we report the mean. (Our per-individual `prod` is faithful to the raw counts but is not the authors' undocumented normalised cell average — see `?dsuzukii` — so an exact match to their point estimate is not expected.)
+The incidence component gives a conventional reproduction TDT. The estimated $z$ is approximately `r round(stats::median(prod_inc_F$z),1)` °C for females and `r round(stats::median(prod_inc_M$z),1)` °C for males, with $CT_{max_{1hr}}$ from `r round(stats::median(prod_inc_F$ct),1)` to `r round(stats::median(prod_inc_M$ct),1)` °C, close to the fecundity estimates reported by @orsted_suzukii_2024 (@tbl-dros-prod-incidence). This works because reproduction incidence is bounded and has a natural 50% threshold: whether half of flies reproduce. The duration-by-temperature interaction makes the TDT line slightly curved, so we report the mean local $z$ across the assay range.
 
-The **magnitude** component behaves differently, and the difference is the biology. The conditional clutch is an unbounded, log-linear decline with no upper asymptote and no intrinsic 50% level, so — unlike survival or incidence — there is no single threshold to anchor a $z$. What the joint model does identify is the clutch's duration-sensitivity $b(T) = \mathrm{d}\log_{10}(\text{clutch})/\mathrm{d}\log_{10}(\text{exposure})$, and it is strongly temperature-gated (@tbl-dros-prod-magnitude):
+The magnitude component answers a different biological question. Conditional clutch size is modelled as an unbounded positive response, with no upper asymptote and no natural 50% threshold. Unlike survival or reproduction incidence, there is therefore no single threshold from which to define a conventional $z$. What the joint model does identify is the duration-sensitivity of clutch size, $b(T) = \mathrm{d}\log_{10}(\text{clutch})/\mathrm{d}\log_{10}(\text{exposure})$, which changes strongly with temperature (@tbl-dros-prod-magnitude):
 
 ```{r}
 #| label: tbl-dros-prod-magnitude
@@ -5753,9 +5757,9 @@ prod_mag_tbl <- tibble::tibble(
 tinytable::tt(prod_mag_tbl, escape = TRUE)
 ```
 
-The clutch of flies that do reproduce is essentially **unaffected by exposure at 34 °C** ($b \approx 0$; $P(\text{decline}) = `r round(mean(mag_b_F[,1] < 0), 2)`$ for females) and is reduced ever more steeply as temperature rises, reaching $b \approx `r round(stats::median(mag_b_F[,5]), 2)`$ at 38 °C. Because $b(T)$ passes through zero in this range, the implied magnitude $z$ swings from near-zero to large and is dominated by wherever $b(T)$ crosses zero — it is not a stable single quantity, which is exactly why we report $b(T)$ rather than force a $z$. Biologically, the two components separate two effects that a single fecundity curve conflates: heat suppresses reproduction at **every** tested temperature by stopping flies reproducing at all (incidence; a clean $z \approx 3$ °C, the more heat-sensitive endpoint), but it only **shrinks the clutch** of those that still reproduce once temperatures are high ($\gtrsim 36$ °C). At benign temperatures a fly that reproduces produces a full clutch however long it was heat-stressed. Reporting the components separately makes this split visible; pooling them averages a bounded, threshold-defined effect with an unbounded, threshold-less one and obscures both.
+Among flies that reproduce, clutch size is essentially unaffected by exposure at 34 °C ($b \approx 0$; $P(\text{decline}) = `r round(mean(mag_b_F[,1] < 0), 2)`$ for females), but declines increasingly steeply at higher temperatures, reaching $b \approx `r round(stats::median(mag_b_F[,5]), 2)`$ at 38 °C. 
 
-
+The hurdle model reveals two effects that a single fecundity curve combines. Heat reduces the probability of reproducing at every tested temperature, giving a clear incidence-based $z \approx 3$ °C. Among flies that still reproduce, however, heat reduces clutch size mainly at higher temperatures ($\gtrsim 36$ °C). Reporting the two components separately makes this biological split visible and provides a more nuanced understanding of temperature/time effects on reproduction.
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
 
