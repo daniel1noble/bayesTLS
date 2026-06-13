@@ -33,6 +33,7 @@ abstract: |
   Thermal death time (TDT) and thermal load sensitivity (TLS) models link heat intensity and exposure duration to organismal tolerance, but are usually fit with a two-stage analysis that often discards uncertainty, mishandles censored or overdispersed data, and limits hierarchical inference and prediction. We derive analytical equivalences showing how four-parameter logistic and related dose-response models recover classical TDT/TLS quantities, including $z$, $CT_{max}$, $T_{crit}$, heat injury and survival, as summaries of a single fitted surface. We implement this in `bayesTLS`, a Bayesian 4PL model for raw count or proportion data. Simulations show the joint model reproduces classical estimates when two-stage assumptions hold and is more reliable when they fail. Case studies in shrimp, zebrafish, snow gum and *Drosophila* estimate group contrasts and predict survival under field traces. Our new approach provides more robust inference, greater flexibility and more opportunities to better understand the consequences of extreme heat.
 keywords:
   - thermal death time
+  - dose-response
   - thermal tolerance landscape
   - hierarchical Bayesian model
   - 4-parameter logistic
