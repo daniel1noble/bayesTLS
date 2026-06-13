@@ -116,6 +116,7 @@ execute:
 #| warning: false
 #| echo: false
 
+# This chunk loads packages, registers render dependencies and sets shared paths.
 # Setup chunk must NOT be cached — caching skips the package-loading side
 # effects on subsequent renders, so library() calls in pacman::p_load() never
 # run and downstream chunks fail with "could not find function ...".
@@ -159,6 +160,7 @@ To access the `bayesTLS` R package, install it once from GitHub, then load as fo
 #| eval: false
 #| echo: true
 #| code-fold: show
+# This chunk shows how to install bayesTLS from GitHub for a fresh setup.
 # install.packages("remotes")   # if not already installed
 remotes::install_github("daniel1noble/bayesTLS")
 
@@ -173,6 +175,7 @@ library(bayesTLS)
 #| cache: false
 #| code-fold: show
 
+# This chunk reloads bayesTLS and the model-cache path for standalone chunk execution.
 # Cache directory for brms fits (also set in the setup chunk). Defined here too
 # so the fitting chunks downstream can be run independently after just loading
 # the library, without re-running the full setup chunk.
@@ -204,6 +207,7 @@ In addition, if `brms` 4PL models are fit manually to data we also provide a `tl
 #| echo: false
 #| tbl-cap: "Core `bayesTLS` functions for a standard workflow, following the five pipeline steps. `tls()` is the general entry point for deriving TDT quantities from any fitted 4PL, including hand-coded `brms` models. See @tbl-function-tour for the full list of exported functions."
 
+# This chunk lists the core bayesTLS functions used in the main workflow.
 tdt_function_core <- tibble::tribble(
   ~Step,          ~Function,                     ~Purpose,
   "Standardise",  "standardize_data()",          "Reshape raw experimental data to the package schema (temp, duration, counts).",
@@ -226,6 +230,7 @@ Theer are many helper functions in the package that maybe useful for various use
 #| echo: false
 #| tbl-cap: "Functions exported by the TDT analysis library, grouped by pipeline stage. Each function is documented with roxygen2 in its R file; runnable examples accompany every function."
 
+# This chunk lists all exported bayesTLS functions by workflow stage.
 tdt_function_tour <- tibble::tribble(
   ~Stage,             ~Function,                            ~Purpose,
   "Data",             "standardize_data()",                 "Rename raw columns to project schema; attach metadata.",
@@ -298,6 +303,7 @@ We choose values that might be typical of a thermal mortality assay. The four pa
 #| echo: true
 #| code-fold: show
 
+# This chunk defines the generating parameters for the tutorial simulation.
 true_params <- list(
   ell      = 0.03,   # 3% of individuals survive even at the longest exposures
   u        = 0.97,   # 97% are alive at very short exposures
@@ -317,6 +323,7 @@ We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating param
 #| echo: true
 #| code-fold: show
 
+# This chunk computes the true TDT summaries implied by the simulation parameters.
 true_z      <- -1 / true_params$m_beta1
 true_alpha  <- true_params$m_beta0 +
   (1 / true_params$k) *
@@ -342,6 +349,7 @@ We mimic a well-replicated TDT experiment: five assay temperatures crossed with 
 #| echo: true
 #| code-fold: show
 
+# This chunk builds the temperature-by-duration sampling design for the simulation.
 temps     <- c(30, 32, 34, 36, 38)             # 5 assay temperatures (°C)
 durations <- c(1, 5, 15, 45, 135, 405)         # 6 durations (minutes, log-spaced)
 n_rep     <- 30                                # 30 replicates per cell
@@ -374,6 +382,7 @@ Before generating noisy data, let's plot the *true* survival surface (@fig-true-
 #| fig-width: 7
 #| fig-height: 4
 
+# This chunk plots the true survival surface before sampling noise is added.
 truth_grid <- tidyr::expand_grid(
   T = temps,
   t = 10 ^ seq(log10(0.5), log10(1000), length.out = 200)
@@ -413,6 +422,7 @@ Survival counts may exhibit two forms of variation. Under **binomial** sampling,
 #| echo: true
 #| code-fold: show
 
+# This chunk simulates binomial and beta-binomial counts from the true 4PL surface.
 # (a) Binomial: y ~ Binomial(n, p_true)
 sim_bin <- design |>
   dplyr::mutate(y = rbinom(dplyr::n(), size = n, prob = p_true))
@@ -442,6 +452,7 @@ We fit a binomial GLM with a logit link separately at each assay temperature. Th
 #| echo: true
 #| code-fold: show
 
+# This chunk fits the per-temperature dose-response curves for the classical Stage-1 analysis.
 # Stage 1 uses the package function ts_stage1(): a per-temperature binomial GLM
 # (the field-default Stage 1), applied here to both the binomial and the
 # overdispersed beta-binomial datasets.
@@ -455,6 +466,7 @@ stage1_bb  <- ts_stage1(sim_bb,  temp = "T", duration = "t",
 #| label: tbl-stage1-lt50
 #| tbl-cap: "Per-temperature Stage-1 estimates of $\\log_{10}\\text{LT50}$ from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with $\\log_{10}\\text{LT50}$ here because the simulation asymptotes are near 0 and 1)."
 
+# This chunk formats the Stage-1 LT50 estimates and simulation truth.
 stage1_table <- dplyr::full_join(
   stage1_bin |> dplyr::select(temp, bin_log10_lt50 = log10_lt50),
   stage1_bb  |> dplyr::select(temp, bb_log10_lt50  = log10_lt50),
@@ -486,6 +498,7 @@ Stage 2 regresses Stage-1 $\log_{10}\text{LT50}$ on assay temperature with ordin
 #| echo: true
 #| code-fold: show
  
+# This chunk fits the Stage-2 TDT regression to the Stage-1 LT50 estimates.
 # Stage 2 uses the package function ts_stage2(): OLS of log10(LT50) on
 # temperature, returning z, CTmax and T_crit. Durations are in minutes here, so
 # time_multiplier = 1 and the CTmax reference is t_ref = 60 min.
@@ -502,6 +515,7 @@ stage2_bb  <- ts_stage2(stage1_bb,  t_ref = 60, time_multiplier = 1)
 #| fig-width: 7
 #| fig-height: 4.5
 
+# This chunk plots the Stage-2 regression and CTmax reference point.
 stage1_combined <- dplyr::bind_rows(
   stage1_bin |> dplyr::mutate(dataset = "Binomial"),
   stage1_bb  |> dplyr::mutate(dataset = "Beta-binomial")
@@ -584,6 +598,7 @@ The function library exposes this model as a single call: `fit_4pl()` constructs
 #| echo: true
 #| code-fold: show
 
+# This chunk prints the non-linear 4PL brms formula used by fit_4pl().
 make_4pl_formula()
 ```
 
@@ -602,6 +617,7 @@ The first step is to pass the simulated data through `standardize_data()` so the
 #| echo: true
 #| code-fold: show
 
+# This chunk converts the simulated counts into the bayesTLS modelling schema.
 std_bin <- standardize_data(sim_bin,
                             temp = "T", duration = "t",
                             n_total = "n", n_surv = "y",
@@ -620,6 +636,7 @@ We now call `fit_4pl()` twice — once with the built-in `binomial(link = "ident
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the tutorial 4PL models with and without overdispersion.
 # file_refit = "never": once the .rds exists, always reuse it. brms's
 # default ("on_change") over-triggers refits on these simulated-data fits
 # because it picks up subtle differences in tibble attributes between
@@ -648,16 +665,38 @@ fit_bin <- get_brmsfit(wf_bin)
 fit_bb  <- get_brmsfit(wf_bb)
 ```
 
-We also summarise the proportion of outcome variation explained by each fitted model using Bayesian $R^2$.
+We also summarise the proportion of outcome variation explained by each fitted model using Bayesian $R^2$. For any fitted 4PL this is a single `brms::bayes_R2()` call; we define a small helper that runs it per model and tidies the result into a `median [95% CrI]` table, then reuse it in every case study below.
 
-```{r, r2_bayes}
-#| label: r2_bayes
+```{r}
+#| label: bayes-r2-helper
 #| echo: true
 #| code-fold: show
 
-# Obtain the Bayes R2 for each model
-brms::bayes_R2(fit_bin)
-brms::bayes_R2(fit_bb)
+# Bayesian R^2 for a fitted 4PL is one brms::bayes_R2() call per model.
+bayes_r2_table <- function(fits, digits = 3) {
+  purrr::imap_dfr(fits, function(f, nm) {
+    r <- brms::bayes_R2(f)                       # <- R^2 read straight from the fit
+    tibble::tibble(
+      Model         = nm,
+      `Bayesian R²` = format_interval(r[1, "Estimate"], r[1, "Q2.5"],
+                                      r[1, "Q97.5"], digits = digits)
+    )
+  })
+}
+```
+
+```{r, r2_bayes}
+#| label: tbl-r2-tutorial
+#| tbl-cap: "Bayesian $R^2$ for the two tutorial joint 4PL fits (binomial and beta-binomial), read straight from `brms::bayes_R2()`. Cells are the posterior median with the 95% credible interval."
+#| echo: true
+#| code-fold: show
+
+# Bayesian R^2 falls out of each fitted 4PL via brms::bayes_R2(); the `bayes_r2_table()`
+# helper (defined in setup) wraps it into a clean table.
+bayes_r2_table(list(
+  "Binomial 4PL"      = fit_bin,
+  "Beta-binomial 4PL" = fit_bb
+)) |> tinytable::tt(escape = TRUE)
 
 ```
 
@@ -669,6 +708,7 @@ We assess recovery by comparing posterior medians and 95% credible intervals wit
 #| label: tbl-recovery
 #| tbl-cap: "Posterior medians and 95% credible intervals for the four 4PL parameters and the temperature slope, compared to the known truth used to generate the simulated data. Recovery is judged successful when the credible interval covers the truth."
 
+# This chunk formats parameter recovery for the tutorial 4PL fits.
 post_summary <- function(workflow) {
   # extract_4pl_pars() pulls the raw posterior and maps it back to the natural
   # 4PL scale using the model's own stored bounds (no hand-coded constants),
@@ -721,6 +761,7 @@ We can also overlay the posterior fitted curves on the simulated data (@fig-reco
 #| fig-width: 8
 #| fig-height: 5
 
+# This chunk plots fitted survival curves against the simulated observations.
 # Use the library's predict_survival_curves() and plot_survival_curves().
 psc_bin <- predict_survival_curves(
   wf_bin, temps = temps,
@@ -783,6 +824,7 @@ The `extract_tdt()` function automatically applies the right correction factor b
 #| echo: true
 #| code-fold: show
 
+# This chunk extracts z, CTmax and Tcrit from the tutorial models.
 # Data are in minutes (standardize_data was called with duration_unit = "minutes"),
 # so set time_multiplier = 1 to keep the model's time axis unchanged on output,
 # and t_ref = 60 to read CTmax at the 1-hour reference. The simulated data are
@@ -799,6 +841,7 @@ et_bb  <- extract_tdt(wf_bb,  target_surv = "relative", t_ref = 60, time_multipl
 #| label: tbl-tls-recovery
 #| tbl-cap: "Posterior medians and 95% credible intervals for thermal sensitivity ($z$), the critical thermal limit at a 1-hour reference duration ($CT_{max_{1hr}}$), and the rate-multiplier critical temperature ($T_{crit}$, integrated over $r^* \\in [0.1, 1]$ % HI per hour). All three derived via `extract_tdt()` from a single posterior. Each row's truth value is computed analytically from `true_params`."
 
+# This chunk formats recovery of the derived TLS quantities.
 # Helper to pull (median, lower, upper) out of either a $z or temperature summary.
 row_from_summary <- function(s, kind = c("z", "temp")) {
   kind <- match.arg(kind)
@@ -842,6 +885,7 @@ tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 3.5
 
+# This chunk plots posterior distributions of the recovered TLS quantities.
 # Per-draw posteriors for the three quantities, both likelihoods. The
 # accessors return one-column tibbles keyed on `.draw`, so we join on
 # `.draw` to keep posterior draws paired correctly.
@@ -892,6 +936,7 @@ Posterior summary statistics — mean, SD, median, and 95% credible interval —
 #| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval, reported separately for the binomial and beta-binomial fits."
 #| echo: true
 
+# This chunk compares uncertainty in z and CTmax across tutorial fits.
 summarise_draws <- function(x) {
   q <- stats::quantile(x, c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
   tibble::tibble(mean = mean(x, na.rm = TRUE),
@@ -952,6 +997,7 @@ For real data, it is important to compare binomial and beta-binomial fits rather
 #| label: tbl-twostage-compare
 #| tbl-cap: "Point estimates (two-stage) and posterior medians (joint Bayesian) for thermal sensitivity ($z$) and $CT_{max_{1hr}}$, recovered by each of four estimator–dataset combinations from the same simulated datasets. Truth values are the simulation parameters."
 
+# This chunk compares tutorial estimates from the joint and two-stage workflows.
 compare_table <- tibble::tibble(
   quantity   = c("z (°C)", "CTmax at 1 hr (°C)"),
   truth      = c(true_z, true_CTmax),
@@ -986,6 +1032,7 @@ The default `fit_4pl()` places a `temp_c` slope on $\ell$, $u$, and $k$, estimat
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares the extended simulation dataset for the package workflow example.
 # Same factorial design as @sec-sim-step2; re-declared here so this chunk is
 # self-contained.
 temps     <- c(30, 32, 34, 36, 38)
@@ -1043,6 +1090,7 @@ Here the lower asymptote remains at $\ell = 0.05$, while $u$ falls from `r round
 #| fig-width: 8
 #| fig-height: 5
 
+# This chunk plots the true surface for the extended simulation example.
 truth_grid_ext <- tidyr::expand_grid(
   T = temps,
   t = 10 ^ seq(log10(0.5), log10(800), length.out = 200)
@@ -1087,6 +1135,7 @@ Before fitting, we compute the analytical targets: $\log_{10}\text{LT50}(T)$, lo
 #| echo: true
 #| code-fold: show
 
+# This chunk derives the true TLS quantities for the extended simulation example.
 # True log10(LT50) at any T from the T-varying 4PL: solve p(log10_t) = 0.5
 # for log10_t. With the 4PL,
 #   log10_t = mid + (1/k) * log((u - 0.5) / (0.5 - ell))
@@ -1132,6 +1181,7 @@ We now fit with exactly the same `fit_4pl()` call as before. The default formula
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the default package 4PL to the extended simulation data.
 std_ext <- standardize_data(sim_bb_ext,
                             temp = "T", duration = "t",
                             n_total = "n", n_surv = "y",
@@ -1150,6 +1200,7 @@ wf_ext <- fit_4pl(std_ext,
 #| label: tbl-ext-recovery
 #| tbl-cap: "Posterior recovery of the four 4PL sub-parameters on the natural scale at each assay temperature. The fit uses the disjoint-bounds reparameterisation ($\\ell$, $u$ via inv_logit, $k$ via exp); raw posterior columns are transformed back to the biological scale before summarising. Posterior medians and 95% credible intervals are reported alongside the analytical truth."
 
+# This chunk formats parameter recovery for the extended simulation example.
 ext_post  <- posterior::as_draws_df(get_brmsfit(wf_ext)) |> as.data.frame()
 ext_meta  <- wf_ext$meta
 ext_bnds  <- ext_meta$bounds         # compute_4pl_bounds(0, 1)
@@ -1204,6 +1255,7 @@ Now we apply the same `extract_tdt()` call as in @sec-joint-derive — there is 
 #| echo: true
 #| code-fold: show
 
+# This chunk extracts TDT quantities from the extended simulation fit.
 et_ext <- extract_tdt(wf_ext, target_surv = "relative", t_ref = 60, time_multiplier = 1,
                       ndraws = 1000, lethal = TRUE)
 ```
@@ -1214,6 +1266,7 @@ et_ext <- extract_tdt(wf_ext, target_surv = "relative", t_ref = 60, time_multipl
 #| label: tbl-extract-ext
 #| tbl-cap: "Classical TDT quantities from `extract_tdt()` on the T-varying fit, compared against analytical truth. The single-summary $z$ is read directly from the posterior (under the relative threshold $z = -1/\\beta_1$ per draw — the slope of $\\text{mid}(T)$, with no regression); the truth row reports the mean of the analytical local $z(T)$ of the bent absolute-0.5 $\\log_{10}\\text{LT50}(T)$ curve at the assay temperatures. $CT_{max_{1hr}}$ comes from direct inversion of the fitted 4PL at 60 min per draw."
 
+# This chunk formats extracted TDT quantities for the extended simulation fit.
 tibble::tibble(
   Quantity     = c("z (°C)",
                    "CTmax at 1 hr (°C)",
@@ -1245,6 +1298,7 @@ The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both 
 #| fig-width: 6
 #| fig-height: 4
 
+# This chunk plots the extended example LT50 curve.
 truth_overlay <- {
   Ts <- seq(min(temps) - 2, max(temps) + 2, by = 0.05)
   tibble::tibble(temp = Ts,
@@ -1269,6 +1323,7 @@ We can also drop down to the per-draw level and compute a *local* $z(T)$ at each
 #| echo: true
 #| code-fold: show
 
+# This chunk derives local z across the temperature range in the extended example.
 # Finite-difference local z at each assay T, per posterior draw, derived
 # from et_ext$lt50_curve (the same per-draw LT50(T) curve extract_tdt
 # already computed for the OLS).
@@ -1317,6 +1372,7 @@ local_z_summary |>
 #| fig-width: 6
 #| fig-height: 4
 
+# This chunk plots how local z changes across temperature in the extended example.
 truth_curve_z <- {
   Ts <- seq(min(temps), max(temps), by = 0.1)
   tibble::tibble(T_at = Ts,
@@ -1356,6 +1412,7 @@ To mimic conditions for a moderately heat-tolerant ectotherm, we generate 5 days
 #| echo: true
 #| code-fold: show
 
+# This chunk creates example temperature traces for heat-injury prediction.
 hi_trace <- tibble::tibble(
   time = 0:(24 * 5 - 1),
   temp   = 18 + 6 * sin(2 * pi * (0:(24 * 5 - 1) - 6) / 24)   # range 12-24 °C
@@ -1370,6 +1427,7 @@ hi_T_c <- 20    # damage threshold (°C)
 #| fig-width: 7
 #| fig-height: 2.5
 
+# This chunk plots the example temperature traces used for heat-injury prediction.
 ggplot2::ggplot(hi_trace, ggplot2::aes(time, temp)) +
   ggplot2::geom_line(colour = "darkred", linewidth = 0.6) +
   ggplot2::geom_hline(yintercept = hi_T_c, linetype = "dashed", colour = "grey40") +
@@ -1396,6 +1454,7 @@ ggplot2::ggplot(hi_trace, ggplot2::aes(time, temp)) +
 #| echo: true
 #| code-fold: show
 
+# This chunk predicts heat injury and survival for the example temperature traces.
 # The trace's `time` is in hours; `predict_heat_injury()` reconciles it against
 # the model's own time unit (minutes here) internally, so we pass `trace_unit`
 # rather than rescaling the trace by hand.
@@ -1416,6 +1475,7 @@ hi <- predict_heat_injury(
 #| fig-width: 7
 #| fig-height: 5.5
 
+# This chunk plots heat-injury and survival trajectories for the example traces.
 # `plot_heat_injury()` returns the package's canonical two-panel figure:
 # cumulative HI on top (with the 100% = one-LT50 reference line) over the
 # predicted survival fraction, both with 95% credible bands.
@@ -1440,6 +1500,7 @@ Before trusting `predict_heat_injury()` on real field data, we validate it again
 #| echo: true
 #| code-fold: show
 
+# This chunk validates heat-injury predictions against an analytical planted-dose calculation.
 # Three traces: flat baseline (zero HI), single hourly spike, three spikes.
 val_scens <- make_temperature_scenarios(
   baseline    = 20,
@@ -1519,6 +1580,7 @@ once each.
 #| warning: false
 #| message: false
 
+# This chunk loads and summarises the full simulation sweep outputs.
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -1714,6 +1776,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| fig-height: 8
 #| fig-cap: "Bias and coverage at the strict-equivalence baseline (binomial DGP, asymptotes near 0/1, single slope $k$). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom). Columns: $z$ (left) and $CT_{max,1h}$ (right). Dashed reference lines at zero bias and nominal 0.95 coverage."
 
+# This chunk plots bias and coverage for simulation scenario 1.
 .d <- .load_screened("scen1") |>
   dplyr::mutate(panel_n = paste0("n[reps] = ",
                                   sub(".*_n([0-9]+)$", "\\1", scenario)))
@@ -1725,6 +1788,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ at the strict-equivalence baseline, by point estimator and replication budget ($N_{sim}=1000$ per cell). Lower is better; RMSE combines bias and precision on the parameter's own scale."
 #| warning: false
 #| message: false
+# This chunk formats the RMSE table for simulation scenario 1.
 .load_screened("scen1") |>
   dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
                               levels = c("3", "5"))) |>
@@ -1748,6 +1812,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| fig-height: 8
 #| fig-cap: "Bias and coverage with likelihood misspecification only (beta-binomial DGP with $\\phi=5$; curve shape as in the strict-equivalence baseline). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
 
+# This chunk plots bias and coverage for simulation scenario 2.
 .d <- .load_screened("scen2") |>
   dplyr::mutate(panel_n = paste0("n[reps] = ",
                                   sub(".*_n([0-9]+)$", "\\1", scenario)))
@@ -1759,6 +1824,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ under likelihood misspecification only (beta-binomial DGP, $\\phi=5$; curve shape as in the baseline), by point estimator and replication budget."
 #| warning: false
 #| message: false
+# This chunk formats the RMSE table for simulation scenario 2.
 .load_screened("scen2") |>
   dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
                               levels = c("3", "5"))) |>
@@ -1782,6 +1848,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| fig-height: 8
 #| fig-cap: "Bias and coverage when both asymptotes compress symmetrically with temperature. Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
 
+# This chunk plots bias and coverage for simulation scenario 4.
 .d <- .load_screened("scen4") |>
   dplyr::mutate(panel_n = paste0("n[reps] = ",
                                   sub(".*_n([0-9]+)$", "\\1", scenario)))
@@ -1793,6 +1860,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ when both asymptotes compress symmetrically with temperature, by point estimator and replication budget."
 #| warning: false
 #| message: false
+# This chunk formats the RMSE table for simulation scenario 4.
 .load_screened("scen4") |>
   dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
                               levels = c("3", "5"))) |>
@@ -1815,6 +1883,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| fig-height: 4.5
 #| fig-cap: "Empirical 95% CI coverage across the $\\beta_u$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as the main-text $\\beta_u$ bias sweep, with coverage shown for all six methods. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
 
+# This chunk plots coverage for simulation scenario 6.
 .d <- .load_screened("scen6") |>
   dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
 .plot_sweep_cov(.d, "sweep_x",
@@ -1827,6 +1896,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\beta_u$ drift sweep (Scen 6), by point estimator. $\\beta_u$ is the per-°C drift of the upper asymptote (pp/°C)."
 #| warning: false
 #| message: false
+# This chunk formats the RMSE table for simulation scenario 6.
 .load_screened("scen6") |>
   dplyr::mutate(bu   = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
                 Cell = factor(sprintf("%.3f", bu),
@@ -1852,6 +1922,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| fig-height: 4.5
 #| fig-cap: "Empirical 95% CI coverage across the $u_0$ sweep (Scen 7). Same DGP and method set as the main-text $u_0$ bias sweep. Two-stage CTmax coverage collapses as $u_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
 
+# This chunk plots coverage for simulation scenario 7.
 .d <- .load_screened("scen7") |>
   dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100)
 .plot_sweep_cov(.d, "sweep_x",
@@ -1864,6 +1935,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $u_0$ sweep (Scen 7), by point estimator. $u_0$ is the constant upper asymptote held across all temperatures."
 #| warning: false
 #| message: false
+# This chunk formats the RMSE table for simulation scenario 7.
 .load_screened("scen7") |>
   dplyr::mutate(u0   = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
                 Cell = factor(sprintf("%.2f", u0),
@@ -1890,6 +1962,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 #| fig-dpi: 300
 #| fig-cap: "Bias and coverage across six design × replication cells (Scen 8). Two-stage at sparse × 1 produces large, unstable estimates with implausibly wide t-corrected CIs; joint 4PL returns coherent intervals of appropriate width across all six cells."
 
+# This chunk plots bias and coverage for simulation scenario 8.
 .d <- .load_screened("scen8") |>
   dplyr::mutate(
     design = ifelse(grepl("full", scenario), "full", "sparse"),
@@ -1934,6 +2007,7 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
 #| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the six design × replication cells (Scen 8), by point estimator. The sparse, single-replicate design is the most demanding for the two-stage reduction."
 #| warning: false
 #| message: false
+# This chunk formats the RMSE table for simulation scenario 8.
 .load_screened("scen8") |>
   dplyr::mutate(design = ifelse(grepl("full", scenario), "full", "sparse"),
                 n_reps = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
@@ -1957,6 +2031,7 @@ We now apply the full workflow described above — `standardize_data()` → `fit
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares the shrimp data.
 # Bundled with the package (see ?shrimp_lethal); raw CSV in inst/extdata/.
 shrimp_raw <- shrimp_lethal
 
@@ -1975,6 +2050,7 @@ shrimp_std <- standardize_data(
 #| label: tbl-shrimp-summary
 #| tbl-cap: "Summary of the shrimp lethal-TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
 
+# This chunk formats the shrimp summary table.
 shrimp_summary <- tibble::tibble(
   `n trials`              = nrow(shrimp_std),
   `Temperature range (°C)` = paste(range(shrimp_std$temp), collapse = "–"),
@@ -1997,6 +2073,7 @@ Before fitting the joint 4PL, we also run the classical two-stage pipeline on th
 #| echo: true
 #| code-fold: show
 
+# This chunk defines helper functions reused in the case-study two-stage analyses.
 # Classical two-stage helpers for the case studies. These are thin adapters
 # over the bayesTLS package functions ts_stage1() / ts_stage2() / ts_ci() /
 # ts_curve() -- the single canonical two-stage implementation, also used by the
@@ -2052,6 +2129,7 @@ propagate_twostep_case <- function(stage2_fit, temp_grid, n_sim = 1000,
 #| echo: true
 #| code-fold: show
 
+# This chunk fits the shrimp two-stage model.
 shrimp_stage1_twostep <- dplyr::bind_rows(
   fit_stage1_binomial_case(shrimp_std),
   fit_stage1_betabinom_case(shrimp_std)
@@ -2092,6 +2170,7 @@ shrimp_twostep_unc <- list(
 #| label: tbl-shrimp-two-step-tdt
 #| tbl-cap: "Classical two-stage TDT quantities for brown shrimp. Point estimates are from the Stage-2 regression. The 95% CIs for $z$, $CT_{max_{1hr}}$ and $T_{crit}$ all come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used for the joint 4PL extraction."
 
+# This chunk formats the shrimp two-stage TDT table.
 shrimp_twostep_tdt_ci <- dplyr::bind_rows(lapply(
   names(shrimp_twostep_unc),
   function(m) {
@@ -2118,6 +2197,7 @@ tinytable::tt(shrimp_twostep_tdt_ci, escape = TRUE)
 #| fig-width: 7
 #| fig-height: 4.5
 
+# This chunk builds the shrimp two-stage TDT line figure.
 shrimp_twostep_line_min <- dplyr::bind_rows(lapply(
   shrimp_stage2_twostep,
   make_twostep_curve_case,
@@ -2175,6 +2255,7 @@ ggplot2::ggplot() +
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the shrimp model.
 wf_shrimp <- fit_4pl(
   shrimp_std,
   random_effects = c("Date", "Tank"),
@@ -2195,6 +2276,7 @@ summary(wf_shrimp)
 #| tbl-cap: "Sampling diagnostics for the shrimp 4PL fit. Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
 #| cache: false
 
+# This chunk formats the shrimp diagnostics table.
 tinytable::tt(diagnose_tdt_fit(wf_shrimp), digits = 3, escape = TRUE)
 ```
 
@@ -2207,6 +2289,7 @@ The diagnostics table is a numerical pass/fail summary. The canonical visual che
 #| fig-height: 6
 #| cache: false
 
+# This chunk builds the shrimp trace figure.
 brms::mcmc_plot(
   get_brmsfit(wf_shrimp),
   type     = "trace",
@@ -2224,6 +2307,7 @@ brms::mcmc_plot(
 #| label: tbl-shrimp-parameters
 #| tbl-cap: "Posterior medians and 95% credible intervals for the shrimp 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of the survival curve at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}\\text{LT50}$ in hours at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
 
+# This chunk formats the shrimp parameters table.
 tinytable::tt(tdt_parameter_table(wf_shrimp), digits = 3, escape = TRUE)
 ```
 
@@ -2237,6 +2321,7 @@ tinytable::tt(tdt_parameter_table(wf_shrimp), digits = 3, escape = TRUE)
 #| fig-width: 8
 #| fig-height: 5
 
+# This chunk builds the shrimp survival curves figure.
 psc_shrimp <- predict_survival_curves(
   wf_shrimp,
   temps     = sort(unique(shrimp_std$temp)),
@@ -2258,6 +2343,7 @@ plot_survival_curves(psc_shrimp, observed = shrimp_std) +
 #| fig-height: 6
 #| cache: false
 
+# This chunk builds the shrimp landscape figure.
 shrimp_dur_grid <- seq(min(shrimp_std$duration), max(shrimp_std$duration),
                         length.out = 120)
 lsp_shrimp <- derive_tdt_landscape(wf_shrimp,
@@ -2275,6 +2361,7 @@ The one-dimensional **TDT line** summarises the dose-response surface as the pre
 #| echo: true
 #| code-fold: show
 
+# This chunk derives the shrimp TDT line summaries.
 ltx_shrimp <- derive_tdt_curve(
   wf_shrimp,
   target_surv      = "relative",
@@ -2292,6 +2379,7 @@ ltx_shrimp <- derive_tdt_curve(
 #| fig-width: 9
 #| fig-height: 4
 
+# This chunk builds the shrimp TDT line figure.
 plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 ```
 
@@ -2304,6 +2392,7 @@ plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 #| echo: true
 #| code-fold: show
 
+# This chunk extracts TLS summaries from the shrimp 4PL fit.
 et_shrimp <- extract_tdt(
   wf_shrimp,
   target_surv   = "relative",
@@ -2316,8 +2405,9 @@ et_shrimp <- extract_tdt(
 
 ```{r shrimp-extract-table}
 #| label: tbl-shrimp-extract
-#| tbl-cap: "Classical TDT summaries for brown shrimp, with full posterior uncertainty. $z$ is read directly from the posterior (the temperature slope on $\\text{mid}$; $z = -1/\\beta_1$ at the relative threshold). $CT_{max_{1hr}}$ is the temperature at 50% survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$ — the pooled posterior carries both parameter uncertainty and operational uncertainty in $r^*$."
+#| tbl-cap: "Classical TDT summaries for brown shrimp, with full posterior uncertainty. $z$ is read directly from the posterior (the temperature slope on $\\text{mid}$; $z = -1/\\beta_1$ at the relative threshold). $CT_{max_{1hr}}$ is the temperature at midpoint survival after 1-hour exposure (4PL inversion per draw). $T_{crit}$ is the temperature at which the TDT damage rate falls below $r^*$ % HI per hour, with $r^*$ sampled uniformly on $\\log_{10}$ across $[0.1, 1]$ — the pooled posterior carries both parameter uncertainty and operational uncertainty in $r^*$."
 
+# This chunk formats the shrimp TLS summary table.
 shrimp_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
   "z (°C)",                             et_shrimp$z$summary$z_median,
@@ -2340,6 +2430,7 @@ tinytable::tt(shrimp_extract, digits = 2, escape = TRUE)
 #| fig-width: 11
 #| fig-height: 3.5
 
+# This chunk builds the shrimp Tcrit CTmax figure.
 z_draws_shrimp   <- get_z_draws(et_shrimp) |>
   dplyr::transmute(temp = z)
 z_q <- stats::quantile(z_draws_shrimp$temp,
@@ -2368,6 +2459,7 @@ patchwork::wrap_plots(
 #| label: tbl-shrimp-approach-compare
 #| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
 
+# This chunk formats the shrimp approach comparison table.
 shrimp_compare_approaches <- dplyr::bind_rows(
   dplyr::bind_rows(lapply(
     names(shrimp_twostep_unc),
@@ -2408,6 +2500,7 @@ tinytable::tt(shrimp_compare_approaches, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 4
 
+# This chunk builds the shrimp approach comparison TDT lines figure.
 shrimp_twostep_line_h <- dplyr::bind_rows(lapply(
   shrimp_stage2_twostep,
   make_twostep_curve_case,
@@ -2468,13 +2561,13 @@ p_shrimp_cmp_lin <- ggplot2::ggplot() +
   ggplot2::scale_colour_manual(values = shrimp_method_cols) +
   ggplot2::scale_fill_manual(values = shrimp_method_cols) +
   ggplot2::labs(x = "Assay temperature (C)",
-                y = "Time to 50% survival (hours)",
+                y = "Time to midpoint survival (hours)",
                 colour = "Approach", fill = "Approach") +
   ggplot2::theme_classic()
 
 p_shrimp_cmp_log <- p_shrimp_cmp_lin +
   ggplot2::scale_y_log10() +
-  ggplot2::labs(y = expression(log[10]~"time to 50% survival (hours)")) +
+  ggplot2::labs(y = expression(log[10]~"time to midpoint survival (hours)")) +
   ggplot2::theme(legend.position = "none")
 
 patchwork::wrap_plots(p_shrimp_cmp_lin, p_shrimp_cmp_log, ncol = 2) +
@@ -2491,6 +2584,7 @@ patchwork::wrap_plots(p_shrimp_cmp_lin, p_shrimp_cmp_log, ncol = 2) +
 #| echo: true
 #| code-fold: show
 
+# This chunk predicts shrimp heat injury for the temperature scenarios.
 shrimp_T_c       <- et_shrimp$T_crit$summary$temp_median
 shrimp_CTmax_med <- et_shrimp$CTmax$summary$temp_median
 
@@ -2521,6 +2615,7 @@ Setting `repair = TRUE` adds a temperature-dependent Sharpe-Schoolfield repair k
 #| echo: true
 #| code-fold: show
 
+# This chunk predicts shrimp heat injury with temperature-dependent repair.
 shrimp_repair_pars <- list(
   TA = 14065, TAL = 50000, TAH = 120000,
   TL = 10.5 + 273.15, TH = 22.5 + 273.15, TREF = 17 + 273.15,
@@ -2545,15 +2640,17 @@ shrimp_hi_diurnal_rep <- predict_heat_injury(
 #| fig-width: 7
 #| fig-height: 9
 
+# This chunk builds the shrimp heat-injury traces figure.
 plot_temperature_scenarios(shrimp_scens, T_c = shrimp_T_c)
 ```
 
 ```{r shrimp-hi-single-noreapair}
 #| label: fig-shrimp-hi-single-norep
-#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, ~100% LT50-dose accrues by the end of the spike hour, producing ~50% mortality."
+#| fig-cap: "Cumulative heat injury (top) and predicted survival (bottom) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, ~100% LT50-dose accrues by the end of the spike hour, driving predicted survival to the midpoint threshold (~50% mortality here)."
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the shrimp heat-injury single no-repair figure.
 plot_heat_injury(shrimp_hi$single_spike)
 ```
 
@@ -2563,6 +2660,7 @@ plot_heat_injury(shrimp_hi$single_spike)
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the shrimp heat-injury multi no-repair figure.
 plot_heat_injury(shrimp_hi$multi_spike)
 ```
 
@@ -2572,6 +2670,7 @@ plot_heat_injury(shrimp_hi$multi_spike)
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the shrimp heat-injury multi repair figure.
 plot_heat_injury(shrimp_hi_multi_rep)
 ```
 
@@ -2583,6 +2682,7 @@ The diurnal scenario (@fig-shrimp-hi-diurnal-norep, @fig-shrimp-hi-diurnal-rep) 
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the shrimp heat-injury diurnal no-repair figure.
 plot_heat_injury(shrimp_hi$diurnal)
 ```
 
@@ -2592,6 +2692,7 @@ plot_heat_injury(shrimp_hi$diurnal)
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the shrimp heat-injury diurnal repair figure.
 plot_heat_injury(shrimp_hi_diurnal_rep)
 ```
 
@@ -2599,6 +2700,7 @@ plot_heat_injury(shrimp_hi_diurnal_rep)
 #| label: tbl-shrimp-hi-summary
 #| tbl-cap: "Final cumulative HI and predicted survival under each scenario for brown shrimp, posterior medians with 95% credible intervals."
 
+# This chunk formats the shrimp heat-injury summary table.
 final_row <- function(hi) {
   s <- tail(hi$summary, 1)
   tibble::tibble(
@@ -2645,6 +2747,7 @@ The bundled `shrimp_sublethal` dataset provides one row per cup with the elapsed
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares the shrimp sublethal data.
 # Bundled with the package (see ?shrimp_sublethal): clock-time strings already
 # parsed to elapsed minutes-to-knockdown and excluded rows dropped (raw CSV in
 # inst/extdata/). We add the log-time and centred-temperature columns used below.
@@ -2662,6 +2765,7 @@ tdt_sub <- shrimp_sublethal |>
 #| label: tbl-shrimp-sub-summary
 #| tbl-cap: "Brown-shrimp sublethal time-to-knockdown panel: number of cups, median exposure time to knockdown, and 95% range, per assay temperature."
 
+# This chunk formats the shrimp sub summary table.
 tdt_sub |>
   dplyr::group_by(assay_temp) |>
   dplyr::summarise(
@@ -2690,6 +2794,7 @@ $$
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the shrimp sublethal linear model.
 priors_sub_lin <- c(
   brms::prior(normal(2, 1.5),    class = "Intercept"),
   brms::prior(normal(-1, 1),     class = "b"),
@@ -2724,6 +2829,7 @@ Posterior summaries on the natural scale follow from the regression coefficients
 #| echo: true
 #| code-fold: show
 
+# This chunk derives TLS summaries from the shrimp sublethal linear model.
 post_sub_lin <- posterior::as_draws_df(fit_sub_lin) |> as.data.frame()
 temp_mean_sub <- mean(tdt_sub$assay_temp)
 
@@ -2741,6 +2847,7 @@ summarise_post <- function(x) {
 #| label: tbl-shrimp-sub-linear
 #| tbl-cap: "Posterior summaries from the linear Bayesian sublethal time-to-event model: thermal sensitivity $z$ and the critical temperature at the 1-hour reference duration $CT_{max_{1hr}}$, derived from the regression coefficients."
 
+# This chunk formats the shrimp sub linear table.
 tibble::tibble(
   Quantity     = c("z (°C)", "CTmax at 1 hr (°C)"),
   Median       = c(stats::median(z_lin_draws),
@@ -2762,6 +2869,7 @@ Following @orsted_suzukii_2024, the same time-to-knockdown observations can be r
 #| echo: true
 #| code-fold: show
 
+# This chunk aggregates shrimp sublethal observations into 4PL count panels.
 ttd_range <- range(tdt_sub$time_to_event, na.rm = TRUE)
 eval_times_min <- 10 ^ seq(log10(max(0.2, ttd_range[1] * 0.5)),
                             log10(ttd_range[2] * 1.5),
@@ -2802,6 +2910,7 @@ std_sub_4pl <- standardize_data(
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the shrimp sublethal 4PL model.
 wf_sub_4pl <- fit_4pl(
   std_sub_4pl,
   random_effects = c("date_experiment", "tank_ID"),
@@ -2820,6 +2929,7 @@ The fitted survival curves below are on the same axes as the lethal analysis —
 #| fig-width: 8
 #| fig-height: 5
 
+# This chunk builds the shrimp sublethal 4PL survival curves figure.
 psc_sub_4pl <- predict_survival_curves(
   wf_sub_4pl,
   temps  = sort(unique(std_sub_4pl$temp)),
@@ -2840,6 +2950,7 @@ We then call `extract_tdt()` to summarise $z$ and $CT_{max_{1hr}}$. We leave `le
 #| echo: true
 #| code-fold: show
 
+# This chunk derives TLS summaries from the shrimp sublethal 4PL model.
 et_sub_4pl <- extract_tdt(
   wf_sub_4pl,
   target_surv     = "relative",
@@ -2853,6 +2964,7 @@ et_sub_4pl <- extract_tdt(
 #| label: tbl-shrimp-sub-4pl
 #| tbl-cap: "Posterior summaries from the joint Bayesian 4PL on proportion-knocked-down data: $z$ and $CT_{max_{1hr}}$. $T_{crit}$ is not reported for sublethal endpoints (see @sec-joint-derive)."
 
+# This chunk formats the shrimp sub 4PL table.
 tibble::tribble(
   ~Quantity,             ~Median,                              ~Lower,                              ~Upper,
   "z (°C)",              et_sub_4pl$z$summary$z_median,        et_sub_4pl$z$summary$z_lower,        et_sub_4pl$z$summary$z_upper,
@@ -2870,6 +2982,7 @@ The two pipelines analyse the same knockdown observations through different stat
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares the shrimp sublethal comparison data.
 temp_grid_sub <- seq(min(tdt_sub$assay_temp) - 0.25,
                      max(tdt_sub$assay_temp) + 0.25, by = 0.05)
 
@@ -2914,6 +3027,7 @@ tdt_lines_sub <- dplyr::bind_rows(lin_pred, pl_4pl_pred) |>
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the shrimp sub comparison figure.
 ggplot2::ggplot(tdt_lines_sub,
                 ggplot2::aes(x = assay_temp, y = log10_time_med,
                              colour = method, fill = method)) +
@@ -2931,7 +3045,7 @@ ggplot2::ggplot(tdt_lines_sub,
   ggplot2::scale_colour_manual(values = c("#2c7fb8", "#d95f02")) +
   ggplot2::scale_fill_manual(values   = c("#2c7fb8", "#d95f02")) +
   ggplot2::labs(x = "Assay temperature (°C)",
-                y = expression(log[10]~"(time to 50% knockdown, min)"),
+                y = expression(log[10]~"(time to midpoint knockdown, min)"),
                 colour = NULL, fill = NULL) +
   ggplot2::theme_classic() +
   ggplot2::theme(legend.position = "top")
@@ -2944,6 +3058,7 @@ Posterior $\log_{10}(\text{time to 50\% knockdown})$ versus assay temperature, f
 #| label: tbl-shrimp-sub-compare
 #| tbl-cap: "Side-by-side posterior summaries of $z$ and $CT_{max_{1hr}}$ from the linear Bayesian time-to-event model and the joint 4PL on proportion-knocked-down data. Both fits use the same sublethal observations and the same hierarchical grouping structure (date and tank; the linear fit additionally carries a per-cup random intercept that is absorbed into `n_total` in the 4PL aggregation)."
 
+# This chunk formats the shrimp sub comparison table.
 compare_sub <- tibble::tibble(
   Quantity = c("z (°C)", "CTmax at 1 hr (°C)"),
   `Linear median`  = c(stats::median(z_lin_draws),
@@ -2965,11 +3080,27 @@ tinytable::tt(compare_sub, digits = 3, escape = TRUE)
 
 The two sublethal pipelines yield consistent estimates of $z$ and $CT_{max_{1hr}}$ on this dataset (medians within their mutual credible intervals; see @tbl-shrimp-sub-compare). The 4PL has the practical advantage that the same `extract_tdt()` workflow used on the lethal counts also produces a posterior TDT curve and $CT_{max_{1hr}}$ — quantities the linear time-to-event model does not deliver directly. $T_{crit}$, however, should be read from the lethal fit, not the sublethal one (@sec-joint-derive).
 
-### A caution on cross-endpoint comparison of $T_{crit}$ {#sec-shrimp-tcrit-endpoint-caveat}
-
+::: {.callout-note title="A caution on cross-endpoint comparison of $T_{crit}$"}
 If Equation @eq-tcrit is nevertheless applied to both shrimp endpoints, the sublethal value lies ~3.5 °C above the lethal value and their 95% credible intervals do not overlap. This difference is not a biological threshold shift: loss of response to touch precedes death. Rather, $CT_{max_{1hr}}$ is similar between endpoints (~31.4–31.6 °C), while sublethal $z$ ($\approx 1.1$ °C) is less than half lethal $z$ ($\approx 2.6$ °C), yielding a gap of approximately $2.5 \times (2.6 - 1.1)$ °C in the derived $T_{crit}$. Outside the assay window, this extrapolation makes the sublethal TDT line predict knockdown later than death, which is biologically impossible. Thus, rate-multiplier $T_{crit}$ is an endpoint-conditional operational summary, not a universal physiological threshold [@faber2026; @jorgensen_unifying_2021].
+:::
 
 
+
+## Model fit: Bayesian $R^2$ {#sec-shrimp-r2}
+
+The proportion of response variation explained by each brown-shrimp 4PL is read straight from the fit with `brms::bayes_R2()` (@tbl-r2-shrimp).
+
+```{r}
+#| label: tbl-r2-shrimp
+#| tbl-cap: "Bayesian $R^2$ for the brown-shrimp 4PL fits: the lethal-mortality model and the sublethal proportion-knocked-down model. Posterior median with 95% credible interval."
+#| echo: true
+#| code-fold: show
+
+bayes_r2_table(list(
+  "Lethal mortality (4PL)"    = get_brmsfit(wf_shrimp),
+  "Sublethal knockdown (4PL)" = get_brmsfit(wf_sub_4pl)
+)) |> tinytable::tt(escape = TRUE)
+```
 
 # **Case Study 2: Zebrafish lethal-TDT across life stages** {#sec-zebrafish}
 
@@ -2984,6 +3115,7 @@ The raw spreadsheet has a wide format: one row per replicate trial, with mortali
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares the zebrafish data.
 # Bundled with the package (see ?zebrafish_lethal): the per-day morning/afternoon
 # mortality columns have already been summed into n_total / n_surv / n_dead and
 # excluded rows dropped (raw CSV in inst/extdata/). One row per assay trial.
@@ -2996,6 +3128,7 @@ zf_temp_mean <- mean(zf$assay_temp, na.rm = TRUE)
 #| label: tbl-zebrafish-summary
 #| tbl-cap: "Zebrafish lethal-TDT panel summary, by life stage. Each row reports the number of trials, temperature and duration ranges, total individuals assayed, and number of experimental dates contributing to that stage."
 
+# This chunk formats the zebrafish summary table.
 zf |>
   dplyr::group_by(life_stage) |>
   dplyr::summarise(
@@ -3016,6 +3149,7 @@ We build one standardised dataset per life stage, sharing the same `temp_mean` (
 #| echo: true
 #| code-fold: show
 
+# This chunk standardises the zebrafish data for modelling.
 zf_stages <- levels(zf$life_stage)
 
 zf_std_by_stage <- lapply(zf_stages, function(s) {
@@ -3042,6 +3176,7 @@ As for the shrimp case study, we first fit the classical two-stage TDT pipeline 
 #| echo: true
 #| code-fold: show
 
+# This chunk fits the zebrafish two-stage models.
 zf_stage1_twostep <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   dplyr::bind_rows(
     fit_stage1_binomial_case(zf_std_by_stage[[s]]),
@@ -3090,6 +3225,7 @@ names(zf_twostep_unc) <- names(zf_stage2_twostep)
 #| label: tbl-zebrafish-two-step-tdt
 #| tbl-cap: "Classical two-stage TDT quantities for zebrafish, by life stage. Point estimates are from the Stage-2 regression. The 95% CIs for $z$, $CT_{max_{1hr}}$ and $T_{crit}$ all come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ uses the geometric midpoint of the same $r^* \\in [0.1, 1]$ % HI per hour range used by the 4PL extraction."
 
+# This chunk formats the zebrafish two-stage TDT table.
 zf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
   names(zf_twostep_unc),
   function(nm) {
@@ -3119,6 +3255,7 @@ tinytable::tt(zf_twostep_tdt_ci, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 5
 
+# This chunk builds the zebrafish two-stage TDT line figure.
 zf_twostep_line_min <- dplyr::bind_rows(lapply(names(zf_stage2_twostep), function(nm) {
   parts <- strsplit(nm, "\\|\\|")[[1]]
   make_twostep_curve_case(
@@ -3181,6 +3318,7 @@ The simplest option is to repeat the shrimp pipeline three times — one `fit_4p
 #| cache: false
 #| code-fold: show
 
+# This chunk fits separate zebrafish 4PL models by life stage.
 models_dir <- here::here("output", "models")
 
 zf_fits_sep <- lapply(zf_stages, function(s) {
@@ -3209,6 +3347,7 @@ summary(zf_fits_sep[[zf_stages[1]]])
 #| tbl-cap: "Sampling diagnostics for the three separate zebrafish 4PL fits, one row per life stage. Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
 #| cache: false
 
+# This chunk formats the zebrafish separate diagnostics table.
 zf_sep_diag <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   diagnose_tdt_fit(zf_fits_sep[[s]]) |>
     dplyr::mutate(`Life stage` = s, .before = 1)
@@ -3225,6 +3364,7 @@ tinytable::tt(zf_sep_diag, digits = 3, escape = TRUE)
 #| fig-width: 11
 #| fig-height: 4.5
 
+# This chunk builds the zebrafish separate survival curves figure.
 zf_sep_survplots <- lapply(zf_stages, function(s) {
   psc <- predict_survival_curves(zf_fits_sep[[s]],
                                   temps = sort(unique(zf_std_by_stage[[s]]$temp)),
@@ -3248,6 +3388,7 @@ patchwork::wrap_plots(zf_sep_survplots, ncol = 3)
 #| fig-width: 11
 #| fig-height: 4.5
 
+# This chunk builds the zebrafish separate landscape figure.
 zf_temp_range <- range(zf$assay_temp, na.rm = TRUE)
 zf_dur_range  <- range(zf$duration_h, na.rm = TRUE)
 zf_shared_temp_grid <- seq(zf_temp_range[1], zf_temp_range[2],
@@ -3279,6 +3420,7 @@ patchwork::wrap_plots(zf_sep_landplots, ncol = 3) +
 #| cache: false
 #| code-fold: show
 
+# This chunk derives threshold-time curves from the separate zebrafish fits.
 zf_temp_grid <- seq(min(zf$assay_temp) - 0.25,
                     max(zf$assay_temp) + 0.25, by = 0.05)
 
@@ -3309,6 +3451,7 @@ zf_sep_ltx <- dplyr::bind_rows(lapply(zf_stages, function(s) {
 #| fig-width: 10
 #| fig-height: 4.5
 
+# This chunk builds the zebrafish separate TDT line figure.
 # Colour-blind-safe triple, distinct in luminance from each other and from
 # the panel background; replaces the unreadable viridis yellow for larvae.
 zf_palette <- c(young_embryos = "#440154",   # dark purple
@@ -3329,7 +3472,7 @@ p_lin_sep <- ggplot2::ggplot(zf_sep_ltx,
   ggplot2::scale_fill_manual(values   = zf_palette) +
   ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
   ggplot2::labs(x = "Assay temperature (°C)",
-                y = "Time to 50% survival (min)",
+                y = "Time to midpoint survival (min)",
                 colour = "Life stage", fill = "Life stage") +
   ggplot2::theme_classic() +
   ggplot2::theme(panel.border = ggplot2::element_rect(colour = "black",
@@ -3349,7 +3492,7 @@ p_log_sep <- ggplot2::ggplot(zf_sep_ltx,
   ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
   ggplot2::labs(x = "Assay temperature (°C)",
                 y = expression(log[10] *
-                                " time to 50% survival (min)")) +
+                                " time to midpoint survival (min)")) +
   ggplot2::theme_classic() +
   ggplot2::theme(legend.position = "none",
                  panel.border = ggplot2::element_rect(colour = "black",
@@ -3371,6 +3514,7 @@ patchwork::wrap_plots(p_lin_sep, p_log_sep, ncol = 2) +
 #| cache: false
 #| code-fold: show
 
+# This chunk extracts TLS summaries from the separate zebrafish fits.
 zf_et_sep <- lapply(zf_stages, function(s) {
   extract_tdt(zf_fits_sep[[s]],
               target_surv   = "relative",
@@ -3387,6 +3531,7 @@ names(zf_et_sep) <- zf_stages
 #| cache: false
 #| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from the three separate zebrafish 4PL fits, under the package-default relative threshold (`(low + up)/2` per draw). Absolute-threshold values are tabulated in @sec-zebrafish-relative-ltx. Medians with 95 % credible intervals. $T_{crit}$ is integrated over $r^* \\in [0.1, 1]$ % HI per hour, as in Case Study 1."
 
+# This chunk formats TLS summaries from the separate zebrafish fits.
 zf_sep_tdt_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   et <- zf_et_sep[[s]]
   tibble::tibble(
@@ -3414,6 +3559,7 @@ Because the three fits are independent, pairwise contrasts $\Delta_{ij} = q^{(i)
 #| cache: false
 #| tbl-cap: "Pairwise differences in $z$ and $CT_{max_{1hr}}$ across zebrafish life stages from the three separate 4PL fits. Positive values mean the first-listed stage has the larger value."
 
+# This chunk formats the zebrafish separate contrasts table.
 make_contrast <- function(a, b, var) {
   # Pair posterior draws by .draw so the contrast is computed within
   # draw — this is the standard accessor-based contrast pattern shown
@@ -3466,6 +3612,7 @@ All four sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) receive this cell-mea
 #| echo: true
 #| code-fold: show
 
+# This chunk defines the zebrafish joint spec used below.
 zf_bounds <- getFromNamespace("compute_4pl_bounds", "bayesTLS")(lower = 0, upper = 1)
 low_expr  <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)",
                      zf_bounds$low_min, zf_bounds$low_w)
@@ -3492,6 +3639,7 @@ We assemble the standardised per-stage datasets back into a single tibble for th
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares the zebrafish joint data.
 zf_joint_data <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   d <- zf_std_by_stage[[s]]
   d$life_stage <- factor(s, levels = zf_stages)
@@ -3506,6 +3654,7 @@ Priors mirror those used by `make_4pl_priors()`. Cell-means coding suppresses th
 #| echo: true
 #| code-fold: show
 
+# This chunk defines the zebrafish joint priors used below.
 low_target  <- 0 + 0.02 * 1
 up_target   <- 0 + 0.98 * 1
 lowraw_loc  <- stats::qlogis((low_target - zf_bounds$low_min) / zf_bounds$low_w)
@@ -3544,6 +3693,7 @@ zf_joint_priors <- c(
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the zebrafish joint model.
 fit_zf_joint <- brms::brm(
   formula    = f_zf_joint,
   data       = zf_joint_data,
@@ -3565,6 +3715,7 @@ fit_zf_joint <- brms::brm(
 #| tbl-cap: "Sampling diagnostics for the joint zebrafish 4PL fit (one model, all three life stages). Healthy targets: Rhat < 1.01, ESS > 400, zero divergences."
 #| cache: false
 
+# This chunk formats the zebrafish joint diagnostics table.
 np_zj      <- brms::nuts_params(fit_zf_joint)
 divs_zj    <- sum(subset(np_zj, Parameter == "divergent__")$Value)
 td_max_zj  <- max(np_zj$Value[np_zj$Parameter == "treedepth__"], na.rm = TRUE)
@@ -3595,6 +3746,7 @@ To compare the two approaches we build a per-stage TDT curve from the joint fit'
 #| cache: false
 #| code-fold: show
 
+# This chunk derives threshold-time curves from the joint zebrafish fit.
 ndraws_joint <- 500
 
 zf_joint_pred_grid <- tidyr::expand_grid(
@@ -3649,6 +3801,7 @@ zf_joint_summary <- zf_joint_pred_grid |>
 #| fig-width: 10
 #| fig-height: 4.5
 
+# This chunk builds the zebrafish overlay TDT line figure.
 zf_overlay_df <- dplyr::bind_rows(
   dplyr::mutate(zf_sep_ltx,        method = "Separate fits"),
   dplyr::mutate(zf_joint_summary,  method = "Joint fit")
@@ -3687,10 +3840,10 @@ build_overlay <- function(y_log = FALSE) {
     p + ggplot2::scale_y_log10() +
       ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
       ggplot2::labs(y = expression(log[10] *
-                                    " time to 50% survival (min)"))
+                                    " time to midpoint survival (min)"))
   } else {
     p + ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
-      ggplot2::labs(y = "Time to 50% survival (min)")
+      ggplot2::labs(y = "Time to midpoint survival (min)")
   }
 }
 
@@ -3709,6 +3862,7 @@ We compute $z$ and $CT_{max_{1hr}}$ per life stage directly from each stage's re
 #| cache: false
 #| code-fold: show
 
+# This chunk extracts TLS summaries from the joint zebrafish fit.
 TC_rate_range_zf <- c(0.1, 1)
 
 # The joint fit is a hand-coded brms model, but tls() extracts z, CTmax and
@@ -3758,6 +3912,7 @@ names(zf_joint_tdt) <- zf_stages
 #| cache: false
 #| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint 4PL fit, per life stage. Medians with 95 % credible intervals. $T_{crit}$ uses the same rate-multiplier integration ($r^* \\in [0.1, 1]$ % HI per hour) as the shrimp case study. See @sec-zebrafish-relative-ltx for the same quantities under the absolute 0.5 threshold."
 
+# This chunk formats TLS summaries from the joint zebrafish fit.
 zf_joint_table <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   z_summary  <- zf_joint_tdt[[s]]$z$summary
   tc_summary <- zf_joint_tdt[[s]]$T_crit$summary
@@ -3784,6 +3939,7 @@ tinytable::tt(zf_joint_table, escape = TRUE)
 #| cache: false
 #| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ from the three separate fits (Approach 1) and the joint 4PL (Approach 2). The joint fit's credible intervals are typically narrower thanks to partial pooling, while medians are similar — the two approaches agree on the direction of life-stage effects."
 
+# This chunk formats the zebrafish comparison table.
 zf_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   et   <- zf_et_sep[[s]]
   jt   <- zf_joint_tdt[[s]]$z$summary
@@ -3816,6 +3972,7 @@ tinytable::tt(zf_compare, escape = TRUE)
 #| fig-height: 7
 #| cache: false
 
+# This chunk builds the zebrafish method densities figure.
 zf_post_long <- dplyr::bind_rows(
   lapply(zf_stages, function(s) {
     # zf_et_sep is a standard extract_tdt() result → accessors apply.
@@ -3907,6 +4064,7 @@ The joint approach is the recommended default when the dataset spans an identifi
 #| cache: false
 #| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL rows report posterior medians with 95% credible intervals."
 
+# This chunk formats the zebrafish two-stage joint comparison table.
 zf_joint_compare_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   z_summary  <- zf_joint_tdt[[s]]$z$summary
   tc_summary <- zf_joint_tdt[[s]]$T_crit$summary
@@ -3962,6 +4120,7 @@ tinytable::tt(zf_tdt_compare_all, escape = TRUE)
 #| fig-width: 10
 #| fig-height: 4.5
 
+# This chunk builds the zebrafish two-stage joint TDT lines figure.
 zf_twostep_compare_lines <- dplyr::bind_rows(lapply(
   names(zf_twostep_unc),
   function(nm) {
@@ -4035,10 +4194,10 @@ build_zf_twostep_overlay <- function(y_log = FALSE) {
     p + ggplot2::scale_y_log10() +
       ggplot2::coord_cartesian(ylim = c(NA, y_cap_min)) +
       ggplot2::labs(y = expression(log[10] *
-                                    " time to 50% survival (min)"))
+                                    " time to midpoint survival (min)"))
   } else {
     p + ggplot2::coord_cartesian(ylim = c(0, y_cap_min)) +
-      ggplot2::labs(y = "Time to 50% survival (min)")
+      ggplot2::labs(y = "Time to midpoint survival (min)")
   }
 }
 
@@ -4059,6 +4218,7 @@ The joint fit makes the contrast concrete: the three life stages have very diffe
 #| cache: false
 #| tbl-cap: "Posterior summary of the 4PL upper asymptote $\\alpha_{\\text{up}}$ at the grand-mean temperature, per life stage, from the joint fit. Medians with 95 % credible intervals on the natural survival scale. Values markedly below 1 indicate that a stage cannot reach saturating survival even at near-zero exposure, which biases absolute-LT50 comparisons across stages."
 
+# This chunk formats the zebrafish upper asymptote table.
 zf_joint_post <- brms::as_draws_df(fit_zf_joint)
 
 zf_up_intercepts <- dplyr::bind_rows(lapply(zf_stages, function(s) {
@@ -4092,6 +4252,7 @@ The young-embryo upper asymptote, ~0.76 at the grand-mean temperature, does not 
 #| cache: false
 #| code-fold: show
 
+# This chunk extracts absolute-threshold TLS summaries from the separate zebrafish fits.
 zf_et_sep_abs <- lapply(zf_stages, function(s) {
   extract_tdt(zf_fits_sep[[s]],
               target_surv   = "absolute",   # = 0.5
@@ -4108,6 +4269,7 @@ names(zf_et_sep_abs) <- zf_stages
 #| cache: false
 #| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from the three separate zebrafish 4PL fits, under the **absolute 50 % survival** threshold (`target_surv = \"absolute\"`). Medians with 95 % credible intervals. Compare row-by-row with @tbl-zebrafish-sep-extract (relative threshold)."
 
+# This chunk formats absolute-threshold TLS summaries from the separate zebrafish fits.
 zf_sep_tdt_table_abs <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   et <- zf_et_sep_abs[[s]]
   tibble::tibble(
@@ -4140,6 +4302,7 @@ $$
 #| cache: false
 #| code-fold: show
 
+# This chunk derives absolute threshold-time curves from the joint zebrafish fit.
 arg_abs <- ifelse(up_mat > 0.5 & low_mat < 0.5,
                   (up_mat - 0.5) / (0.5 - low_mat), NA_real_)
 log10_t_h_abs <- mid_mat + log(arg_abs) / k_mat
@@ -4165,6 +4328,7 @@ zf_joint_summary_abs <- zf_joint_pred_grid |>
 #| fig-width: 10
 #| fig-height: 4.5
 
+# This chunk builds the zebrafish threshold TDT line figure.
 zf_threshold_overlay <- dplyr::bind_rows(
   dplyr::mutate(zf_joint_summary,     threshold = "Relative (default)"),
   dplyr::mutate(zf_joint_summary_abs, threshold = "Absolute 50 %")
@@ -4223,6 +4387,7 @@ For the separate fits we can put the two `extract_tdt()` outputs next to each ot
 #| cache: false
 #| tbl-cap: "Side-by-side comparison of $z$ and $CT_{max_{1hr}}$ from the three separate zebrafish 4PL fits under the two threshold definitions: package-default mid-based and absolute 50 % survival. Absolute-50 % shifts $CT_{max_{1hr}}$ downward for `young_embryos` (whose upper asymptote sits well below 1) but leaves the other two stages essentially unchanged. $z$ is essentially identical under either definition for these data."
 
+# This chunk formats the zebrafish threshold comparison table.
 zf_threshold_compare <- dplyr::bind_rows(lapply(zf_stages, function(s) {
   rel_s <- zf_et_sep[[s]]
   abs_s <- zf_et_sep_abs[[s]]
@@ -4251,6 +4416,22 @@ tinytable::tt(zf_threshold_compare, escape = TRUE)
 
 The pattern in @tbl-zebrafish-threshold-compare matches the upper-asymptote summary in @tbl-zebrafish-upper-asymptote: stages whose asymptote is near 1 (`old_embryos`, `larvae`) give essentially identical $z$ and $CT_{max_{1hr}}$ under either threshold, while the stage with a substantially sub-unit asymptote (`young_embryos`) sees $CT_{max_{1hr}}$ shift by a few tenths of a °C when the threshold is switched. The mid-based default is the right choice for cross-group comparisons because it isolates the dose-response shape from the group-level ceiling; the absolute threshold is the right choice for operational questions anchored to a fixed mortality fraction.
 
+## Model fit: Bayesian $R^2$ {#sec-zebrafish-r2}
+
+```{r}
+#| label: tbl-r2-zebrafish
+#| tbl-cap: "Bayesian $R^2$ for the zebrafish 4PL fits: the joint model (life stage on every sub-parameter) and the three separate per-stage fits. Posterior median with 95% credible interval."
+#| echo: true
+#| code-fold: show
+
+zf_r2_fits <- c(
+  list("Joint (all stages)" = fit_zf_joint),
+  lapply(stats::setNames(zf_fits_sep, paste0("Separate: ", names(zf_fits_sep))),
+         get_brmsfit)
+)
+bayes_r2_table(zf_r2_fits) |> tinytable::tt(escape = TRUE)
+```
+
 # **Case Study 3: Leaf PSII data** {#sec-leaves}
 
 We apply `standardize_data()` → `fit_4pl()` → `extract_tdt()` to photosystem II (PSII) heat-response data from snow gum leaves (*Eucalyptus pauciflora* var. *pauciflora*). Chlorophyll fluorescence measurements of maximum potential quantum efficiency ($F_v/F_m$) were obtained from excised leaf segments of 11 glasshouse-grown trees before heat exposure and again after exposure. The response is retained PSII function, defined as post-exposure $F_v/F_m$ divided by its pre-exposure value and bounded between 0 and 1.
@@ -4264,6 +4445,7 @@ The trials spanned 28–48 °C and 5 min to 2 h of exposure. Replicate plants or
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares the leaf data.
 # Bundled with the package (see ?snowgum_psii): fvfm_prop (= final/initial
 # Fv/Fm) is already computed (raw CSV in inst/extdata/).
 leaf_raw <- snowgum_psii
@@ -4297,6 +4479,7 @@ str(leaf_std)
 
 ```{r leaf-zero-fraction}
 #| echo: false
+# This chunk checks how often the leaf PSII endpoint reaches zero retained function.
 leaf_n_zero   <- sum(leaf_raw$fvfm_prop <= 0, na.rm = TRUE)
 leaf_n_obs    <- sum(!is.na(leaf_raw$fvfm_prop))
 leaf_pct_zero <- round(100 * leaf_n_zero / leaf_n_obs)
@@ -4308,6 +4491,7 @@ leaf_pct_zero <- round(100 * leaf_n_zero / leaf_n_obs)
 #| label: tbl-leaf-summary
 #| tbl-cap: "Summary of the leaf PSII TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
 
+# This chunk formats the leaf summary table.
 leaf_summary <- tibble::tibble(
   `n individuals`              = length(unique(leaf_std$Unique_ID)),
   `Temperature range (°C)`     = paste(range(leaf_std$assay_temp), collapse = "–"),
@@ -4328,6 +4512,7 @@ Before fitting the joint 4PL, we run the classical two-stage pipeline on retaine
 #| echo: true
 #| code-fold: show
 
+# This chunk defines helper functions for the leaf two-stage comparison.
 fit_stage1_leaf_quasibin_case <- function(dat) {
   validate_stage1_case <- function(log10_lt50, slope, d) {
     is.finite(log10_lt50) &&
@@ -4445,6 +4630,7 @@ fit_stage1_leaf_beta_case <- function(dat) {
 #| echo: true
 #| code-fold: show
 
+# This chunk fits the leaf two-stage model.
 leaf_stage1_twostep <- dplyr::bind_rows(
   fit_stage1_leaf_quasibin_case(leaf_std),
   fit_stage1_leaf_beta_case(leaf_std)
@@ -4501,6 +4687,7 @@ clip_to_stage1 <- function(df) {
 #| label: tbl-leaf-two-step-tdt
 #| tbl-cap: "Classical two-stage TDT quantities for snow gum leaf PSII. Point estimates are from the Stage-2 regression. The 95% CIs for $z$ and $CT_{max_{1hr}}$ both come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ is not reported because loss of PSII function is a sublethal endpoint and the rate-multiplier $T_{crit}$ is only meaningful for lethal endpoints."
 
+# This chunk formats the leaf two-stage TDT table.
 leaf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
   names(leaf_twostep_unc),
   function(m) {
@@ -4526,6 +4713,7 @@ tinytable::tt(leaf_twostep_tdt_ci, escape = TRUE)
 #| fig-width: 7
 #| fig-height: 4.5
 
+# This chunk builds the leaf two-stage TDT line figure.
 leaf_twostep_line_min <- dplyr::bind_rows(lapply(
   leaf_stage2_twostep,
   make_twostep_curve_case,
@@ -4590,6 +4778,7 @@ ggplot2::ggplot() +
 
 
 
+# This chunk fits the leaf model.
 # `fit_4pl()` configures the Beta (continuous-proportion) 4PL directly from the
 # standardised data: because `standardize_data()` recorded
 # `response_type = "proportion"`, the default family is `brms::Beta()`. We use
@@ -4620,6 +4809,7 @@ summary(wf_leaf)
 #| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, high ESS, near-zero divergences."
 #| cache: false
 
+# This chunk formats the leaf diagnostics table.
 tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
 
 ```
@@ -4633,6 +4823,7 @@ The diagnostics table is a numerical pass/fail summary. The canonical visual che
 #| fig-height: 6
 #| cache: false
 
+# This chunk builds the leaf trace figure.
 brms::mcmc_plot(
   get_brmsfit(wf_leaf),
   type     = "trace",
@@ -4651,6 +4842,7 @@ brms::mcmc_plot(
 #| label: tbl-leaf-parameters
 #| tbl-cap: "Posterior medians and 95% credible intervals for the leaf 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of retained PSII function at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}$ threshold time in minutes at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
 
+# This chunk formats the leaf parameters table.
 tinytable::tt(tdt_parameter_table(wf_leaf), digits = 3, escape = TRUE)
 ```
 
@@ -4664,6 +4856,7 @@ Here the library's `survival` interface represents retained PSII function. `pred
 #| fig-width: 8
 #| fig-height: 5
 
+# This chunk builds the leaf survival curves figure.
 psc_leaf <- predict_survival_curves(
   wf_leaf,
   temps     = sort(unique(leaf_std$temp)),
@@ -4690,6 +4883,7 @@ plot_survival_curves(psc_leaf, observed = leaf_std) +
 #| fig-height: 6
 #| cache: false
 
+# This chunk builds the leaf landscape figure.
 leaf_dur_grid <- seq(min(leaf_std$duration), max(leaf_std$duration),
                         length.out = 120)
 lsp_leaf <- derive_tdt_landscape(wf_leaf,
@@ -4707,6 +4901,7 @@ The one-dimensional **TDT line** gives the predicted time to the retained-functi
 #| echo: true
 #| code-fold: show
 
+# This chunk derives the leaf TDT line summaries.
 ltx_leaf <- derive_tdt_curve(
   wf_leaf,
   target_surv      = "relative",
@@ -4724,6 +4919,7 @@ ltx_leaf <- derive_tdt_curve(
 #| fig-width: 9
 #| fig-height: 4
 
+# This chunk builds the leaf TDT line figure.
 plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
 ```
 
@@ -4736,6 +4932,7 @@ plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
 #| echo: true
 #| code-fold: show
 
+# This chunk extracts TLS summaries from the leaf 4PL fit.
 et_leaf <- extract_tdt(
   wf_leaf,
   target_surv     = "relative",
@@ -4753,6 +4950,7 @@ et_leaf <- extract_tdt(
 #| label: tbl-leaf-extract
 #| tbl-cap: "TDT summaries for snow gum leaf PSII function, with full posterior uncertainty. $z$ is read directly from the posterior (the temperature slope on $\\text{mid}$; $z = -1/\\beta_1$ at the relative threshold). $CT_{max_{1hr}}$ is the temperature at which the retained-function threshold is reached after 1 h (4PL inversion per draw)."
 
+# This chunk formats the leaf TLS summary table.
 leaf_extract <- tibble::tribble(
   ~Quantity,                        ~Median, ~Lower, ~Upper,
   "z (°C)",                             et_leaf$z$summary$z_median,
@@ -4771,6 +4969,7 @@ tinytable::tt(leaf_extract, digits = 2, escape = TRUE)
 #| fig-width: 11
 #| fig-height: 3.5
 
+# This chunk builds the leaf CTmax figure.
 z_draws_leaf   <- get_z_draws(et_leaf) |>
   dplyr::transmute(temp = z)
 z_q <- stats::quantile(z_draws_leaf$temp,
@@ -4800,6 +4999,7 @@ The classical two-stage pipeline fits a 0–1 logistic at each temperature, so i
 #| label: tbl-leaf-approach-compare
 #| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL, compared at a **common absolute threshold** ($F_v/F_m = 0.5$). The two-stage pipeline forces a 0–1 logistic per temperature and so can only target an absolute 0.5 crossing; for a like-with-like comparison the joint 4PL row is therefore extracted with `target_surv = \"absolute\"` rather than the package-default relative midpoint (the main leaf result in @tbl-leaf-extract uses the relative midpoint, representing 50% of the fitted functional range given the plateau $u \\approx 0.78$). Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only; Stage-1 LT50 uncertainty is not propagated. The 4PL row reports posterior medians with 95% credible intervals."
 
+# This chunk formats the leaf approach comparison table.
 # Compare like-with-like: the forced-0/1 two-stage can only read an absolute 0.5
 # crossing, so extract the joint 4PL at the same absolute threshold here.
 et_leaf_abs <- extract_tdt(
@@ -4842,6 +5042,7 @@ tinytable::tt(leaf_compare_approaches, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 4
 
+# This chunk builds the leaf approach comparison TDT lines figure.
 leaf_twostep_band_cmp <- dplyr::bind_rows(lapply(
   names(leaf_twostep_unc),
   function(m) {
@@ -4932,6 +5133,7 @@ We illustrate the function on four reference traces built by `make_temperature_s
 #| echo: true
 #| code-fold: show
 
+# This chunk predicts leaf heat injury for the temperature scenarios.
 leaf_T_c       <- 32.5
 leaf_CTmax_med <- et_leaf$CTmax$summary$temp_median
 
@@ -4962,6 +5164,7 @@ Setting `repair = TRUE` adds a temperature-dependent Sharpe-Schoolfield repair k
 #| echo: true
 #| code-fold: show
 
+# This chunk predicts leaf heat injury with temperature-dependent repair.
 leaf_repair_pars <- list(
   TA = 14065, TAL = 50000, TAH = 120000,
   TL = 10.5 + 273.15, TH = 32.5 + 273.15, TREF = 30 + 273.15,
@@ -4986,6 +5189,7 @@ leaf_hi_diurnal_rep <- predict_heat_injury(
 #| fig-width: 7
 #| fig-height: 9
 
+# This chunk builds the leaf heat-injury traces figure.
 plot_temperature_scenarios(leaf_scens, T_c = leaf_T_c)
 ```
 
@@ -4995,6 +5199,7 @@ plot_temperature_scenarios(leaf_scens, T_c = leaf_T_c)
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the leaf heat-injury single no-repair figure.
 plot_heat_injury(leaf_hi$single_spike)
 ```
 
@@ -5004,6 +5209,7 @@ plot_heat_injury(leaf_hi$single_spike)
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the leaf heat-injury multi no-repair figure.
 plot_heat_injury(leaf_hi$multi_spike)
 ```
 
@@ -5013,6 +5219,7 @@ plot_heat_injury(leaf_hi$multi_spike)
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the leaf heat-injury multi repair figure.
 plot_heat_injury(leaf_hi_multi_rep)
 ```
 
@@ -5024,6 +5231,7 @@ The diurnal scenario (@fig-leaf-hi-diurnal-norep, @fig-leaf-hi-diurnal-rep) appr
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the leaf heat-injury diurnal no-repair figure.
 plot_heat_injury(leaf_hi$diurnal)
 ```
 
@@ -5033,6 +5241,7 @@ plot_heat_injury(leaf_hi$diurnal)
 #| fig-width: 7
 #| fig-height: 5
 
+# This chunk builds the leaf heat-injury diurnal repair figure.
 plot_heat_injury(leaf_hi_diurnal_rep)
 ```
 
@@ -5040,6 +5249,7 @@ plot_heat_injury(leaf_hi_diurnal_rep)
 #| label: tbl-leaf-hi-summary
 #| tbl-cap: "Final cumulative functional injury and predicted retained PSII function under each scenario for snow gum leaves, posterior medians with 95% credible intervals."
 
+# This chunk formats the leaf heat-injury summary table.
 final_row <- function(hi) {
   s <- tail(hi$summary, 1)
   tibble::tibble(
@@ -5072,6 +5282,21 @@ tinytable::tt(leaf_hi_table, escape = TRUE)
 ```
 The snow gum leaf case study takes continuous retained-function proportions through a fitted joint 4PL to posterior TDT summaries and illustrative functional-injury projections. Every derived quantity inherits the posterior of the same fit.
 
+## Model fit: Bayesian $R^2$ {#sec-leaf-r2}
+
+Loss of PSII function is described by a single joint 4PL (Beta likelihood), so there is one model to report (@tbl-r2-leaf).
+
+```{r}
+#| label: tbl-r2-leaf
+#| tbl-cap: "Bayesian $R^2$ for the snow gum leaf PSII 4PL fit, from `brms::bayes_R2()`. Posterior median with 95% credible interval."
+#| echo: true
+#| code-fold: show
+
+bayes_r2_table(list(
+  "Leaf PSII (4PL, Beta)" = get_brmsfit(wf_leaf)
+)) |> tinytable::tt(escape = TRUE)
+```
+
 # **Case Study 4: Vinegar fly (*Drosophila suzukii*) across sexes**
 
 We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TDTs for productivity (offspring number; a measure of fertility), time to coma (sublethal) and mortality using *Drosophila suzukii*. 
@@ -5086,6 +5311,7 @@ We'll first load the data and start with the mortality data:
 #| warning: false
 #| code-fold: show
 
+# This chunk loads the Drosophila data and summarises mortality counts by sex.
 # Load the data from BayesTLS
 data(dsuzukii)
 
@@ -5110,6 +5336,7 @@ Now that we have the data set up we'll fit the 4PL model:
 #| code-fold: show
 #| warning: false
 
+# This chunk fits separate mortality 4PL models for female and male Drosophila.
 # Sexes were estimated separately so we'll create two data frames for each sex
 mort_dros_F <- dplyr::filter(mort_dros, sex == "F")
 mort_dros_M <- dplyr::filter(mort_dros, sex == "M")
@@ -5142,10 +5369,20 @@ wf_dros_mort_M <- fit_4pl(
 summary(wf_dros_mort_F)
 summary(wf_dros_mort_M)
 
-# R2 on model fits
-bayes_R2(wf_dros_mort_M$fit)
-bayes_R2(wf_dros_mort_F$fit)
+```
 
+The per-sex Bayesian $R^2$ for the two mortality fits:
+
+```{r}
+#| label: tbl-r2-dros
+#| tbl-cap: "Bayesian $R^2$ for the per-sex *D. suzukii* mortality 4PL fits, from `brms::bayes_R2()`. Posterior median with 95% credible interval."
+#| echo: true
+#| code-fold: show
+
+bayes_r2_table(list(
+  Female = get_brmsfit(wf_dros_mort_F),
+  Male   = get_brmsfit(wf_dros_mort_M)
+)) |> tinytable::tt(escape = TRUE)
 ```
 
 Now that we have the models we can extract the TDT for each sex. Note that the models have converged well with base don the Rhat, but we can also look at the MCMC chains if we need do as per below:
@@ -5157,6 +5394,7 @@ Now that we have the models we can extract the TDT for each sex. Note that the m
 #| eval: false
 #| code-fold: show
 
+# This chunk provides optional MCMC trace plots for the Drosophila mortality fits.
 plot(wf_dros_mort_M)
 plot(wf_dros_mort_F)
 ```
@@ -5170,6 +5408,7 @@ We can extract the TDT parameters now as we have done in other case studies:
 #| echo: true
 #| code-fold: show
 
+# This chunk extracts z, CTmax and Tcrit from the separate Drosophila mortality fits.
 # Extract the TDT parameters and also Tcrit as we have lethal data. Remember this uses a heat injury threshold (1%) to help decide where the Tcrit zone occurs. We want the LT50, so we'll use absolute. NOte that they use a CTmax 4hour threshold, instead of 1 hour.
   tdt_dros_m <- extract_tdt(wf_dros_mort_M, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
   tdt_dros_f <- extract_tdt(wf_dros_mort_F, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
@@ -5195,6 +5434,7 @@ We can extract the TDT parameters now as we have done in other case studies:
 #| message: false
 #| warning: false
 
+# This chunk formats the Drosophila sex TDT table.
 dros_sex_tdt <- data.frame(
   Sex = c("Female", "Male"),
   `z (°C)` = c(
@@ -5226,6 +5466,7 @@ We could ask whether males and females are significantly different or not from e
 #| message: false
 #| warning: false
 
+# This chunk compares female and male posterior z distributions directly.
 # Get the full posteriors for z. Note that we sub-sampled to 1000 draws. 
   z_draws_m  <- get_z_draws(tdt_dros_m)
   z_draws_f  <- get_z_draws(tdt_dros_f)
@@ -5250,6 +5491,7 @@ We can also fit the sex data in a single model, which is a more powerful approac
 #| echo: true
 #| code-fold: show
 
+# This chunk fits a single Drosophila mortality model with sex on the midpoint.
 # Set up the priors: one dataset with both sexes, then the package's
 # weakly-informative priors (their generic per-parameter priors cover the sex terms).
 std_sex    <- standardize_data(mort_dros, temp = "temp", duration = "time",
@@ -5288,6 +5530,7 @@ We can now do some manual manipulation to show how to recover the same $z$ that 
 ```{r}
 #| code-fold: show
 
+# This chunk manually derives relative and absolute z from the joint Drosophila sex model.
 # Get the posterior draws of the joint model's coefficients.
 post <- as_draws_df(joint_sex_fit)
 
@@ -5336,6 +5579,7 @@ We can also calculate the $CT_{max_{4hr}}$ in similar light:
 
 ```{r}
 #| code-fold: show
+# This chunk manually derives relative and absolute CTmax from the joint Drosophila sex model.
 # Reference exposure time for CTmax: 4 hours, matching the per-sex models.
 t_ref <- 60 * 4
 T_bar <- mean(std_sex$temp - std_sex$temp_c)   # centring temperature
@@ -5363,6 +5607,7 @@ Everything above - $z$, $CT_{max_{4hr}}$ and $T_{crit}$, at either the relative 
 #| label: tls_sex
 #| echo: true
 #| code-fold: show
+# This chunk extracts relative TLS summaries by sex from the joint Drosophila model.
 set.seed(123)
 # One call bundles z, CTmax and T_crit for every level of `by` into a tidy,
 # long summary (one row per sex x quantity). mode = "relative" uses the
@@ -5379,6 +5624,7 @@ tls_sex_summary <- tls(joint_sex_fit, by = "sex", mode = "relative",
 #| message: false
 #| warning: false
 
+# This chunk formats the Drosophila sex joint table.
 tls_sex_table <- tls_sex_summary |>
   dplyr::transmute(
     Sex      = dplyr::recode(as.character(sex), F = "Female", M = "Male"),
@@ -5399,6 +5645,7 @@ Switching to the **absolute** LT~50~ threshold — matching the Step-2 by-hand c
 #| label: tls_sex_abs
 #| echo: true
 #| code-fold: show
+# This chunk extracts absolute TLS summaries by sex from the joint Drosophila model.
 set.seed(123)
 # mode = "absolute" reads the curve at the 0.5 absolute-survival crossing
 # (adding the asymmetry correction), matching the Step-2 by-hand calculation.
@@ -5414,6 +5661,7 @@ tls_sex_summary_abs <- tls(joint_sex_fit, by = "sex", mode = "absolute",
 #| message: false
 #| warning: false
 
+# This chunk formats the Drosophila sex joint absolute table.
 tls_sex_table_abs <- tls_sex_summary_abs |>
   dplyr::transmute(
     Sex      = dplyr::recode(as.character(sex), F = "Female", M = "Male"),
@@ -5446,6 +5694,7 @@ Censoring matters because dropping censored flies would select for individuals t
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares right-censored Drosophila heat-coma data for modelling.
 # t_coma is right-censored: flies still awake at the end of their exposure have
 # NA. We keep them by entering the exposure `time` as a right-censoring bound.
 coma_tbar <- mean(dsuzukii$temp)
@@ -5470,6 +5719,7 @@ The classical sublethal TDT model follows the hierarchical log-time regression u
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the censored log-time heat-coma model by sex.
 priors_coma_lin <- c(
   brms::prior(normal(2, 1.5), class = "Intercept"),
   brms::prior(normal(-1, 1),  class = "b"),
@@ -5494,6 +5744,7 @@ fit_coma_lin <- brms::brm(
 #| echo: true
 #| code-fold: show
 
+# This chunk derives z and CTmax from the censored heat-coma model.
 # Treatment coding: females are the reference, males add the interaction.
 post_coma_lin <- posterior::as_draws_df(fit_coma_lin)
 slope_F_c <- post_coma_lin$b_temp_c
@@ -5514,6 +5765,7 @@ The 4PL route reformulates the same data as proportion-awake counts for each tem
 #| echo: true
 #| code-fold: show
 
+# This chunk converts heat-coma observations into proportion-awake counts for the 4PL.
 coma_panel <- dsuzukii |>
   dplyr::group_by(temp, lvl, sex) |>
   dplyr::summarise(n_total  = dplyr::n(),
@@ -5534,6 +5786,7 @@ priors_coma_4pl <- make_4pl_priors(std_coma)
 #| cache: false
 #| code-fold: show
 
+# This chunk fits the joint 4PL to proportion-awake heat-coma counts.
 coma_4pl_bf <- brms::bf(
   n_surv | trials(n_total) ~
     (0.001 + inv_logit(lowraw) * 0.498) +
@@ -5561,6 +5814,7 @@ fit_coma_4pl <- brms::brm(
 #| echo: true
 #| code-fold: show
 
+# This chunk extracts sex-specific heat-coma TLS summaries from the 4PL.
 set.seed(123)
 # One tls() call bundles z and CTmax per sex from the joint 4PL. The model time
 # unit is minutes and CTmax is reported at a 1-hour reference (t_ref = 60).
@@ -5575,6 +5829,7 @@ coma_4pl_tls <- tls(fit_coma_4pl, by = "sex", mode = "relative",
 #| message: false
 #| warning: false
 
+# This chunk formats the Drosophila coma comparison table.
 ctls <- function(q, sx) {
   r <- coma_4pl_tls[coma_4pl_tls$quantity == q & coma_4pl_tls$sex == sx, ]
   format_interval(r$median, r$lower, r$upper)
@@ -5608,6 +5863,7 @@ We compare a Gamma and a log-normal positive part by leave-one-out predictive fi
 #| echo: true
 #| code-fold: show
 
+# This chunk prepares Drosophila productivity data for the hurdle models.
 prod_dat <- dsuzukii |>
   dplyr::mutate(logd = log10(time), temp_c = temp - mean(temp), sex = factor(sex))
 prod_tbar <- mean(dsuzukii$temp)
@@ -5619,6 +5875,7 @@ prod_tbar <- mean(dsuzukii$temp)
 #| cache: false
 #| code-fold: show
 
+# This chunk fits and compares hurdle-Gamma and hurdle-lognormal productivity models.
 # Both hurdle components depend on log-exposure, temperature and sex (and their
 # interactions), so each sex gets its own dose-response at every temperature.
 prod_form <- brms::bf(prod ~ logd * temp_c * sex,
@@ -5645,6 +5902,7 @@ prod_loo <- brms::loo_compare(fit_prod_ga, fit_prod_ln)
 #| echo: true
 #| code-fold: show
 
+# This chunk compares productivity models by leave-one-out predictive fit.
 prod_loo            # Gamma positive part is preferred (elpd difference / SE below)
 # loo_compare sorts best-first, so row 2 is the worse (log-normal) model.
 prod_loo_dz <- abs(prod_loo[2, "elpd_diff"]) / prod_loo[2, "se_diff"]
@@ -5659,6 +5917,7 @@ We derive the reproductive summaries directly from the joint posterior.  For rep
 #| echo: true
 #| code-fold: show
 
+# This chunk defines helpers for reading productivity TDT summaries from posterior coefficients.
 prod_post  <- posterior::as_draws_df(fit_prod_ga)
 prod_tbar  <- mean(dsuzukii$temp)
 prod_temps <- sort(unique(dsuzukii$temp))
@@ -5682,6 +5941,7 @@ prod_eff <- function(pre, male) {
 #| echo: true
 #| code-fold: show
 
+# This chunk derives productivity incidence and clutch-size thermal summaries.
 # INCIDENCE has an intrinsic 50% threshold (a fly reproduces or not; hu = 0.5,
 # i.e. logit hu = 0), so the log10-duration to 50% incidence at temperature T is
 # logd50(T) = -(I + T*tc) / (D + DT*tc), read straight from the hu posterior.
@@ -5726,6 +5986,7 @@ mag_b_M <- mag_b(TRUE)
 #| message: false
 #| warning: false
 
+# This chunk formats the Drosophila productivity incidence table.
 fmt_q <- function(x) format_interval(stats::median(x, na.rm = TRUE),
                                      stats::quantile(x, .025, names = FALSE, na.rm = TRUE),
                                      stats::quantile(x, .975, names = FALSE, na.rm = TRUE))
@@ -5747,6 +6008,7 @@ The magnitude component answers a different biological question. Conditional clu
 #| message: false
 #| warning: false
 
+# This chunk formats the Drosophila productivity magnitude table.
 prod_mag_tbl <- tibble::tibble(
   `Temp (°C)`      = prod_temps,
   `b (F)`          = round(apply(mag_b_F, 2, stats::median), 2),
@@ -5772,6 +6034,7 @@ This figure compiles the joint Bayesian 4PL posterior distributions of the TDT q
 #| out-width: "100%"
 #| cache: false
 
+# This chunk assembles the manuscript cross-case posterior-density figure.
 # 4PL posterior draws (one row per draw, per case study × group × quantity).
 fig4_draws <- dplyr::bind_rows(
   tibble::tibble(
@@ -5870,6 +6133,12 @@ fig4_summary <- dplyr::bind_rows(
   mk_row("Vinegar fly (mortality)", "Male", "CTmax_4hr",
          ctmax4_m$temp_median, ctmax4_m$temp_lower, ctmax4_m$temp_upper)
 )
+
+# Persist the per-group z/CTmax medians so the manuscript can report figures
+# (e.g. the CTmax_1hr range across case studies) as inline code, not magic
+# numbers. Read back in ms/ms.qmd.
+dir.create(here::here("output", "data"), showWarnings = FALSE, recursive = TRUE)
+saveRDS(fig4_summary, here::here("output", "data", "fig4_summary.rds"))
 
 # ---- Manuscript Figure 4 design: illustrations, colours, pMCMC brackets ----
 suppressPackageStartupMessages({
@@ -6011,6 +6280,7 @@ relative-threshold critical temperature from each fit.
 #| message: false
 #| warning: false
 
+# This chunk prepares temperature traces and posterior summaries for the manuscript heat-injury figure.
 ## Fly: real Chilean hourly air temperature (Rezende et al. 2020, Dryad),
 ## hottest-summer station for D. suzukii (Curicó, Los Niches; Jan–Mar 2018).
 rez <- utils::read.csv(here::here("inst", "extdata", "rezende_2020",
@@ -6103,6 +6373,7 @@ saveRDS(list(fly = fig5_fly, fly_trace = fly_trace, fly_Tc = mean(c(Tc_F, Tc_M))
 #| out-width: "100%"
 #| cache: false
 
+# This chunk builds the manuscript heat-injury and survival prediction figure.
 f5  <- readRDS(here::here("output", "data", "fig5_hi_data.rds"))
 fdat <- f5$fly; ftr <- f5$fly_trace; fTc <- f5$fly_Tc
 sdat <- f5$shr; str <- f5$shr_trace; sTc <- f5$shr_Tc
@@ -6346,6 +6617,7 @@ at $t_{\text{ref}}=60$ min.
 #| message: false
 #| warning: false
 
+# This chunk checks the one-step correction against numerical inversion.
 low_a  <- 0.05
 up_a   <- 0.85           # asymmetric: (up - 0.5) != (0.5 - low), so the correction is non-zero
 kk     <- 4
@@ -6421,5 +6693,6 @@ correction matters when $\text{low}$ and $\text{up}$ are not equidistant from
 #| label: session-info
 #| results: asis
 
+# This chunk records package versions and session details for reproducibility.
 pander::pander(sessionInfo())
 ```
