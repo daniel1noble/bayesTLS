@@ -5730,7 +5730,7 @@ tinytable::tt(prod_inc_tbl, escape = TRUE)
 
 The incidence component recovers a clean reproduction TDT — $z \approx `r round(stats::median(prod_incidence$F$z),1)`$–`r round(stats::median(prod_incidence$M$z),1)` °C and $CT_{max_{1hr}} \approx `r round(stats::median(prod_incidence$F$ct),1)`$ °C — close to the @orsted_suzukii_2024 fecundity values (@tbl-dros-prod-incidence), with $ED_{50}$ defined in `r round(100*prod_incidence$F$frac_defined)`% of draws. (Our per-individual `prod` is faithful to the raw counts but is not the authors' undocumented normalised cell average — see `?dsuzukii` — so an exact match to their point estimate is not expected.)
 
-The **magnitude** component tells a different story. Among flies that did reproduce, the conditional clutch halves only at the most stressful temperatures and not at the milder ones:
+The **magnitude** component tells a different story. Among flies that did reproduce, the conditional clutch halves only at the most stressful temperatures and not at the milder ones (@tbl-dros-prod-magnitude):
 
 ```{r}
 #| label: tbl-dros-prod-magnitude
