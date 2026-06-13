@@ -588,7 +588,7 @@ We have shown that the Bayesian 4PL dose-response model provides a flexible and 
 
 # Acknowledgements
 
-This manuscripts ideas benefited greatly from dicussions with Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, Arnaud Sentis and Jeff Arnoldi during an extreme heat workshop funded by ERC Grant (awardded to Arnaud Sentis: XX). We would like to thank them all for their insightful comments and suggestions on the ideas presented here. D.W.A.N was supported by an ARC Future Fellowship (), and would also like to thank Lund University, the ANU Hansen Friendship fellowship
+We thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, Arnaud Sentis and Jeff Arnoldi for discussions during an extreme heat workshop funded by an ERC Grant (awarded to Arnaud Sentis: XX), and Gwenaëlle Deconninck, Charlie Cornwallis and Tobias Uller for helpful comments on the ideas developed here. D.W.A.N was supported by an ARC Future Fellowship (FT220100276) and thanks the ANU, Lund University, the ANU Hansen Scandinavian Friendship Grant and the Royal Physiographic Society of Lund for funding that supported the sabbatical during which this paper was written.
 
 # Author contributions {.unnumbered}
 
