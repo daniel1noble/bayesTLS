@@ -1,0 +1,54 @@
+---
+title: "Correction-factor derivation: the 'subtract 1' step"
+date: 2026-06-13
+format: html
+---
+
+## Question
+
+In the absolute-threshold correction derivation (supplement
+`#sec-supp-corr-lt50`, Step 5), how does
+
+$$\frac{\text{up}-\text{low}}{0.5-\text{low}} - 1$$
+
+become $\dfrac{\text{up}-0.5}{0.5-\text{low}}$? The confusion was reading the
+"$-1$" as "$\times-1$" rather than as **subtracting one**.
+
+## Answer
+
+It is a plain subtraction. Write the `1` over the **same denominator** so the two
+fractions combine:
+
+$$1 = \frac{0.5-\text{low}}{0.5-\text{low}}.$$
+
+Then
+
+$$\frac{\text{up}-\text{low}}{0.5-\text{low}} - \frac{0.5-\text{low}}{0.5-\text{low}}
+= \frac{(\text{up}-\text{low}) - (0.5-\text{low})}{0.5-\text{low}}.$$
+
+Expand the numerator, distributing the minus sign over the second bracket:
+
+$$(\text{up}-\text{low}) - (0.5-\text{low}) = \text{up} - \text{low} - 0.5 + \text{low} = \text{up} - 0.5,$$
+
+because $-\text{low} + \text{low} = 0$. Hence
+
+$$\frac{\text{up}-\text{low}}{0.5-\text{low}} - 1 = \frac{\text{up}-0.5}{0.5-\text{low}}.$$
+
+## Why it matters
+
+The `low` cancels only in the numerator; the denominator keeps $0.5-\text{low}$.
+So the asymmetry correction
+$\frac{1}{k}\log\frac{\text{up}-0.5}{0.5-\text{low}}$ measures how far `up` sits
+**above** 0.5 relative to how far `low` sits **below** it. When the curve is
+symmetric about 0.5 (i.e. $\text{up}-0.5 = 0.5-\text{low}$) the ratio is 1, its
+log is 0, and the correction vanishes — the absolute $\log_{10}t_{50}$ then
+coincides with the midpoint `mid(T)` (see `#sec-supp-corr-vanish`).
+
+## Numerical check
+
+```{r}
+up <- 0.92; low <- 0.05
+lhs <- (up - low) / (0.5 - low) - 1
+rhs <- (up - 0.5) / (0.5 - low)
+c(lhs = lhs, rhs = rhs, equal = isTRUE(all.equal(lhs, rhs)))
+```
