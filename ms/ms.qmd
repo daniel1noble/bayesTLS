@@ -169,7 +169,7 @@ We show how classical TDT/TLS quantities, such as thermal sensitivity ($z$), the
 #| echo: false
 #| fig-cap: "Conceptual comparison of the classical two-stage TDT/TLS workflow and the joint Bayesian four-parameter logistic (4PL) model. (a) In the two-stage workflow, separate dose-response curves are fit at each assay temperature and the resulting $t_{50}$ estimates are regressed against temperature. This can fail when assays do not bracket $t_{50}$, treats first-stage estimates as fixed and independent, and does not naturally propagate uncertainty, covariates, or hierarchical structure into $z$ and $CT_{max,1h}$. (b) The joint 4PL model estimates the full survival surface in one model. Coloured curves show posterior median survival probabilities at assay temperatures, with shaded pointwise 95% credible intervals. Filled circles mark the model midpoint, `mid(T)`, defining relative $\\log_{10}t_{50}$; open triangles mark the absolute 50% survival crossing. The black and steelblue trajectories give the relative and absolute $t_{50}$ relationships used to derive $z_{rel}$, $z_{abs}$, and $CT_{max,1h}$ at the 60-min reference. Dashed ghost curves show the fitted dose response at the corresponding relative and absolute $CT_{max,1h}$ values. Inset: the 4PL parameters `low`, `up`, `mid`, and `k`. Values are illustrative."
 #| fig-align: center
-#| out-width: "100%"
+#| out-width: "65%"
 knitr::include_graphics(here::here("output", "figs", "fig1.png"))
 ```
 
