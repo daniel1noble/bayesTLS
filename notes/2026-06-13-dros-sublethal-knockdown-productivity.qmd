@@ -1,0 +1,166 @@
+---
+title: "Drosophila suzukii sublethal endpoints: knockdown and productivity TDTs"
+date: 2026-06-13
+format: html
+execute:
+  warning: false
+  message: false
+---
+
+## Question
+
+Case Study 4 (*D. suzukii*, Ørsted et al. 2024) already analyses **mortality** by
+sex. The long-format `dsuzukii` dataset also carries two sublethal endpoints —
+**time to heat coma** (`t_coma`) and **productivity** (`prod`, offspring / female
+/ day). This note validates how we estimate thermal-death-time quantities ($z$,
+$CT_{max_{1hr}}$) for both, by sex, in a joint model, and how those compare to the
+two-stage `drc` values Ørsted report (their `TDT_parameters_R3.csv`):
+
+| trait  | sex | z    | sCTmax1h |
+|--------|-----|------|----------|
+| coma   | M   | 2.33 | 36.31    |
+| coma   | F   | 2.23 | 36.36    |
+| fecund | M   | 3.46 | 36.66    |
+| fecund | F   | 3.27 | 36.27    |
+
+The analysis itself lives in `ms/supplement.qmd` (§ *Analysing sublethal
+measures*, `#sec-dros-coma` and `#sec-dros-productivity`). This note records the
+decisions and the validation, loading the cached fits rather than re-fitting.
+
+```{r setup}
+library(bayesTLS); library(dplyr); library(brms); library(posterior); library(here)
+models_dir <- here::here("output", "models")
+data(dsuzukii)
+TBAR <- mean(dsuzukii$temp)
+```
+
+## Knockdown (time to coma)
+
+**Key assumption — right-censoring.** A fly was scored awake/in-coma at the end
+of its assigned exposure (`time` = a % of the temperature-specific median coma
+time), and `t_coma` was recorded only for flies that comatosed *during* the
+exposure. Flies still awake have `t_coma = NA`. So `t_coma` is **right-censored
+at `time`** (≈ `r round(100*mean(is.na(dsuzukii$t_coma)))`% of flies). Dropping
+the NA rows would select for early-coma individuals and bias the slope. We use
+two censoring-aware routes:
+
+1. **Censored linear** log-time regression (`log10(coma) | cens(...) ~ temp_c *
+   sex + (1|cell)`, Gaussian) — keeps every fly via the censoring bound.
+2. **4PL on proportion awake** — `in_coma = !is.na(t_coma)`; the proportion awake
+   per (temp × level × sex) cell is a survival-type curve, fit with `sex` on the
+   midpoint and read with `tls()`. This is exactly Ørsted's `awake ~ time`
+   dose-response and is censoring-safe by construction.
+
+The proportion-awake reconstruction reproduces Ørsted's published cell
+proportions for 91/94 cells (the 3 misses are the denominator discrepancies
+documented in `?dsuzukii`).
+
+```{r coma-validate}
+coma_tbar <- mean(dsuzukii$temp)
+fit_coma_lin <- readRDS(file.path(models_dir, "fit_dsuzukii_coma_linear.rds"))
+fit_coma_4pl <- readRDS(file.path(models_dir, "fit_dsuzukii_coma_4pl.rds"))
+
+p  <- as_draws_df(fit_coma_lin)
+sF <- p$b_temp_c; sM <- p$b_temp_c + p[["b_temp_c:sexM"]]
+iF <- p$b_Intercept; iM <- p$b_Intercept + p$b_sexM
+lin <- data.frame(
+  sex = c("F","M"),
+  z   = c(median(-1/sF), median(-1/sM)),
+  ct1 = c(median(coma_tbar + (log10(60)-iF)/sF), median(coma_tbar + (log10(60)-iM)/sM)))
+
+coma_panel <- dsuzukii |> group_by(temp, lvl, sex) |>
+  summarise(n_total = n(), n_awake = sum(is.na(t_coma)),
+            duration = first(time), .groups = "drop") |> filter(duration > 0)
+std_coma <- standardize_data(coma_panel, temp = "temp", duration = "duration",
+              n_total = "n_total", n_surv = "n_awake", duration_unit = "minutes")
+set.seed(123)
+tls4 <- tls(fit_coma_4pl, by = "sex", mode = "relative", t_ref = 60,
+            time_multiplier = 1,
+            temp_mean = mean(std_coma$temp - std_coma$temp_c))$summary
+
+knitr::kable(lin, digits = 2, caption = "Censored linear: z, CTmax1h")
+knitr::kable(subset(tls4, quantity %in% c("z","CTmax")), digits = 2,
+             caption = "4PL (proportion awake): z, CTmax1h")
+```
+
+**Result.** Both routes give $z \approx 2.3$–2.4 and $CT_{max_{1hr}} \approx
+36.3$–36.5 for both sexes, matching Ørsted's coma values (2.23 / 2.33) within the
+credible intervals. Sexes are statistically indistinguishable.
+
+## Productivity (reproductive output)
+
+**Family.** `prod` is continuous with a large zero-mass (≈55%). brms has no
+Tweedie, so we use a **hurdle** model and pick the positive part by LOO:
+
+```{r prod-loo}
+ga <- add_criterion(readRDS(file.path(models_dir,"fit_dsuzukii_prod_hurdle_gamma.rds")), "loo")
+ln <- add_criterion(readRDS(file.path(models_dir,"fit_dsuzukii_prod_hurdle_lognormal.rds")), "loo")
+loo_compare(ga, ln)
+```
+
+hurdle_**gamma** wins decisively (≈48 elpd, ~7 SE), so the original "log-normal"
+preference does not hold for these data — we use gamma.
+
+**Two components, two stories.** We read each hurdle component's TDT from its
+posterior by extracting the exposure that halves the component ($ED_{50}$) at
+each temperature, then regressing $\log_{10} ED_{50}$ on temperature (per draw).
+The helper (`tdt_from_epred()`, defined in the supplement) generalises
+`tls()`/`extract_tdt()` to an arbitrary brms response curve.
+
+```{r prod-tdt}
+prod_dat <- dsuzukii |> mutate(logd = log10(time), temp_c = temp - mean(temp), sex = factor(sex))
+tdt_from_epred <- function(fit, data, predict_fn, t_ref = 60, n_grid = 80) {
+  temps <- sort(unique(data$temp)); tbar <- mean(data$temp)
+  grid <- do.call(rbind, lapply(temps, function(tt){ rng <- range(data$time[data$temp==tt])
+    data.frame(temp=tt, temp_c=tt-tbar, time=10^seq(log10(rng[1]),log10(rng[2]),length.out=n_grid))}))
+  grid$logd <- log10(grid$time)
+  lapply(setNames(levels(data$sex), levels(data$sex)), function(sx){
+    nd <- grid; nd$sex <- factor(sx, levels=levels(data$sex)); M <- predict_fn(nd)
+    led <- matrix(NA_real_, nrow(M), length(temps))
+    for (j in seq_along(temps)){ cl <- which(nd$temp==temps[j]); lt <- log10(nd$time[cl]); sub <- M[,cl,drop=FALSE]
+      thr <- (sub[,1]+sub[,ncol(sub)])/2
+      for (d in seq_len(nrow(sub))){ v <- sub[d,]; k <- which(v<=thr[d])[1]
+        if(!is.na(k)&&k>1) led[d,j] <- approx(c(v[k-1],v[k]), c(lt[k-1],lt[k]), thr[d])$y }}
+    w <- temps-mean(temps); slope <- as.vector((led%*%w)/sum(w^2)); inter <- rowMeans(led)
+    list(z=-1/slope, ct=mean(temps)+(log10(t_ref)-inter)/slope, frac_defined=mean(rowSums(is.na(led))==0))})
+}
+inc <- tdt_from_epred(ga, prod_dat, function(nd) 1 - posterior_epred(ga, newdata=nd, dpar="hu", re_formula=NA))
+mag <- tdt_from_epred(ga, prod_dat, function(nd)     posterior_epred(ga, newdata=nd, dpar="mu", re_formula=NA))
+
+data.frame(component = c("incidence (F)","incidence (M)","magnitude (F)","magnitude (M)"),
+           z   = c(median(inc$F$z),  median(inc$M$z),  median(mag$F$z),  median(mag$M$z)),
+           ct1 = c(median(inc$F$ct), median(inc$M$ct), median(mag$F$ct), median(mag$M$ct)),
+           ED50_defined = c(inc$F$frac_defined, inc$M$frac_defined,
+                            mag$F$frac_defined, mag$M$frac_defined)) |>
+  knitr::kable(digits = 2)
+```
+
+**Result / biological finding.**
+
+- **Incidence** (whether a fly reproduces at all): a clean TDT, $z \approx 3.0$ /
+  2.8, $CT_{max_{1hr}} \approx 36.2$ / 36.4, $ED_{50}$ defined in 100% of draws.
+  Close to Ørsted's fecundity values (3.27 / 3.46). This is the *more*
+  heat-sensitive endpoint (lower $z$ than mortality's ~3.0–3.3).
+- **Magnitude** (offspring among reproducers): $ED_{50}$ identified in only ~45%
+  (F) / 67% (M) of draws — the conditional clutch halves only at the most
+  stressful temperatures (36–38 °C) and not at 34–35 °C (it even rises at 34).
+  So a magnitude TDT slope is **not identified**.
+
+Reproductive failure under heat is therefore about **whether** a fly reproduces,
+not **how much** a surviving reproducer produces. Reporting the components
+separately makes this visible; **pooling** them (e.g. ED50 of overall expected
+productivity) is artifactual — the per-temperature baseline differs because each
+temperature's shortest exposure differs, and there are no `lvl = 0` controls in
+the long file to anchor a common baseline (`?dsuzukii`). Decision (with D.N.,
+2026-06-13): report incidence + magnitude separately, no pooled number.
+
+**Caveat.** Per-individual `prod` is faithful to the raw counts but is *not*
+Ørsted's undocumented normalised cell average (`?dsuzukii`), so exact matches to
+their fecundity point estimates are not expected.
+
+## Open questions
+
+- `tdt_from_epred()` is currently a supplement-local helper. It is a candidate
+  for promotion to `R/` (a general "TLS for arbitrary brms response models",
+  complementing `tls()`/`extract_tdt()` which target the disjoint-bounds 4PL),
+  with roxygen + tests — pending a decision on the package API.
