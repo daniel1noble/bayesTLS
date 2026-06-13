@@ -1,6 +1,6 @@
 Package: bayesTLS
 Title: Joint Bayesian 4PL Models for Thermal Load Sensitivity
-Version: 0.1.0
+Version: 1.0.0
 Authors@R: c(
     person("Daniel W. A.", "Noble",
            email = "daniel.noble@anu.edu.au",

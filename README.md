@@ -26,7 +26,8 @@ Please cite the companion paper when using `bayesTLS`:
 
 This paper is the primary citation for both the statistical framework and the
 `bayesTLS` package. Citation details will be updated here when the paper is
-published.
+published. You can also run `citation("bayesTLS")` in R for the formatted
+reference and a BibTeX entry.
 
 ## Installing the `bayesTLS` package
 
@@ -41,8 +42,10 @@ library(bayesTLS)
 
 The package depends on [`brms`](https://paulbuerkner.com/brms/) (which needs a
 Stan backend; [`cmdstanr`](https://mc-stan.org/cmdstanr/) is recommended). All
-other dependencies (`dplyr`, `ggplot2`, `patchwork`, `posterior`, `tibble`) are
-CRAN packages and resolve automatically.
+other imported dependencies (`dplyr`, `ggplot2`, `MASS`, `patchwork`,
+`posterior`, `tibble`) are CRAN packages and resolve automatically. The classical
+two-stage beta-binomial Stage 1 additionally uses the suggested
+[`glmmTMB`](https://glmmtmb.github.io/glmmTMB/) package.
 
 ## Key functions in `bayesTLS`
 
@@ -63,6 +66,7 @@ The coding workflow is **decoupled** — each step is a standalone function so u
 | `diagnose_tdt_fit()` | Sampling diagnostics (R-hat, ESS, divergences) for a fitted workflow. |
 | `plot_*()` + `theme_tdt()` | Plotting helpers (survival curves, TDT curve, tolerance landscape, heat injury, temperature scenarios/density, repair TPC) with a shared project theme. |
 | `get_brmsfit()`, `get_z_draws()` / `get_z_summary()`, `get_ctmax_draws()` / `get_ctmax_summary()`, `get_tcrit_draws()` / `get_tcrit_summary()`, `get_surv_draws()`, `get_hi_draws()`, `has_fit()`, … | Accessors for the underlying fit, posterior draws, and posterior summaries. |
+| `clock_to_minutes()`, `format_interval()` | Utilities: parse clock-time strings to elapsed minutes; format a posterior median with its interval as `median [lower, upper]`. |
 
 Full reference: `?fit_4pl`, `?extract_tdt`, `?predict_heat_injury`, etc.
 
