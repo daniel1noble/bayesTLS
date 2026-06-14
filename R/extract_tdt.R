@@ -79,8 +79,11 @@ tdt_loglt <- function(pars, Tbar, bnd, ts, T) {
 }
 
 # z per draw from coefficient draws. See derive_z() for the documented maths.
+# `local = FALSE` skips the per-temperature z(T) breakdown (local_draws /
+# local_summary); only the pooled z is needed unless the caller requests it.
 tdt_z_from_pars <- function(pars, Tbar, bnd, ts, temp_grid,
-                            probs = c(0.025, 0.5, 0.975), h = 1e-3) {
+                            probs = c(0.025, 0.5, 0.975), h = 1e-3,
+                            local = TRUE) {
   np <- nrow(pars)
   if (ts$mode == "relative") {
     # log10 LT_rel(T) = mid(T) is linear, so z = -1 / b_mid_temp_c at every T.
@@ -100,20 +103,29 @@ tdt_z_from_pars <- function(pars, Tbar, bnd, ts, temp_grid,
   draws <- tibble::tibble(.draw = seq_len(np), z = z_pooled) |>
     dplyr::filter(is.finite(z))
   qz <- stats::quantile(draws$z, probs, names = FALSE, na.rm = TRUE)
-  local_draws <- tibble::tibble(
-    .draw = rep(seq_len(np), times = length(temp_grid)),
-    temp  = rep(temp_grid, each = np),
-    z     = as.vector(zloc)
-  ) |>
-    dplyr::filter(is.finite(z))
-  local_summary <- local_draws |>
-    dplyr::group_by(temp) |>
-    dplyr::summarise(
-      z_median = stats::median(z),
-      z_lower  = stats::quantile(z, probs[1], names = FALSE),
-      z_upper  = stats::quantile(z, probs[3], names = FALSE),
-      .groups  = "drop"
-    )
+  # The per-temperature local-z breakdown is only surfaced by
+  # extract_tdt(z_local = TRUE) and derive_z(); the pooled z above (rowMeans of
+  # zloc) is unaffected by it. Building the np x nT tibble + group-by is the
+  # dominant cost of this function, so skip it when it is not requested.
+  if (isTRUE(local)) {
+    local_draws <- tibble::tibble(
+      .draw = rep(seq_len(np), times = length(temp_grid)),
+      temp  = rep(temp_grid, each = np),
+      z     = as.vector(zloc)
+    ) |>
+      dplyr::filter(is.finite(z))
+    local_summary <- local_draws |>
+      dplyr::group_by(temp) |>
+      dplyr::summarise(
+        z_median = stats::median(z),
+        z_lower  = stats::quantile(z, probs[1], names = FALSE),
+        z_upper  = stats::quantile(z, probs[3], names = FALSE),
+        .groups  = "drop"
+      )
+  } else {
+    local_draws   <- NULL
+    local_summary <- NULL
+  }
   list(draws = draws,
        summary = tibble::tibble(z_median = qz[2], z_lower = qz[1],
                                 z_upper = qz[3]),
@@ -483,11 +495,14 @@ derive_z <- function(workflow,
 #'                    T_crit and emits a one-line reminder that T_crit is
 #'                    valid only for damage-accumulation (lethal) endpoints.
 #'                    Default `FALSE`.
-#' @param z_local     Logical. When `TRUE`, additionally returns the per-draw
-#'                    local `z(T)` at each assay temperature in
+#' @param z_local     Logical. When `TRUE`, additionally computes and returns
+#'                    the per-draw local `z(T)` at each assay temperature in
 #'                    `z$local` (relevant when an absolute threshold and
-#'                    temperature-varying asymptotes bend the LT curve). Default
-#'                    `FALSE`. For a model R\eqn{^2}, call
+#'                    temperature-varying asymptotes bend the LT curve). When
+#'                    `FALSE` (default) this per-temperature breakdown is not
+#'                    computed, which saves the dominant per-call cost; the
+#'                    pooled `z` draws and summary are identical either way.
+#'                    For a model R\eqn{^2}, call
 #'                    `brms::bayes_R2(get_brmsfit(workflow))`.
 #' @return A list with elements:
 #'   - `z`: list with `draws` (per-draw pooled z) and `summary`; plus `local`
@@ -567,7 +582,8 @@ extract_tdt <- function(workflow,
   z_temp_grid <- sort(unique(data$temp))
   z_temp_grid <- z_temp_grid[is.finite(z_temp_grid)]
 
-  z_obj <- tdt_z_from_pars(pars, Tbar, bnd, ts, z_temp_grid)
+  z_obj <- tdt_z_from_pars(pars, Tbar, bnd, ts, z_temp_grid,
+                           local = isTRUE(z_local))
 
   # Express the t_ref reference duration back in model time units so the
   # inverse-4PL lookup uses the same scale as the fitted model.

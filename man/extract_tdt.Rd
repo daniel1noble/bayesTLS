@@ -60,11 +60,14 @@ T_crit and emits a one-line reminder that T_crit is
 valid only for damage-accumulation (lethal) endpoints.
 Default \code{FALSE}.}
 
-\item{z_local}{Logical. When \code{TRUE}, additionally returns the per-draw
-local \code{z(T)} at each assay temperature in
+\item{z_local}{Logical. When \code{TRUE}, additionally computes and returns
+the per-draw local \code{z(T)} at each assay temperature in
 \code{z$local} (relevant when an absolute threshold and
-temperature-varying asymptotes bend the LT curve). Default
-\code{FALSE}. For a model R\eqn{^2}, call
+temperature-varying asymptotes bend the LT curve). When
+\code{FALSE} (default) this per-temperature breakdown is not
+computed, which saves the dominant per-call cost; the
+pooled \code{z} draws and summary are identical either way.
+For a model R\eqn{^2}, call
 \code{brms::bayes_R2(get_brmsfit(workflow))}.}
 }
 \value{
