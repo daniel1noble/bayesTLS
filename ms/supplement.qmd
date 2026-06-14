@@ -2025,6 +2025,102 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
 
 #### *Performance when estimating under short timeframes*
 
+Thermal-tolerance assays are often limited by how long they can run. Long exposures at cooler assay temperatures are costly, so experiments may stop before those treatments reach their LT50. This scenario isolates that cost. We held the data-generating process fixed at the baseline beta-binomial shape ($u = 0.92$, $\text{low}=0.05$, $k=8$, midpoint linear in $T$, $\phi=5$), used the full five-temperature design (30–38 °C) with $n_{\text{reps}} = 5$, and varied only the maximum exposure duration. Each design used six log-spaced durations capped at 60, 120, 240, or 405 min; the 405-min cap reproduces the full grid. Because the truth is identical across caps, changes in bias, coverage, and RMSE reflect only how well each design recovers the same $z$ and $CT_{max_{1hr}}$.
+
+Shorter windows remove the long-duration observations that anchor the cooler-temperature LT50s. At the shortest caps, the coolest temperatures may never reach 50% mortality, so the LT50 must be extrapolated rather than observed. This scenario therefore tests whether each estimator degrades gracefully as duration information is withdrawn, and whether the joint 4PL retains calibration better than the two-stage reduction by borrowing strength across temperatures.
+
+Across the 1{,}000 datasets per cap, the two-stage Stage-1 fits failed or produced extreme bias for `r .sim_fail("scen9", "two_stage_bin")` binomial and `r .sim_fail("scen9", "two_stage_bb")` beta-binomial (glmmTMB) fits, compared with `r .sim_fail("scen9", "joint_4pl")` for the joint 4PL.
+
+```{r}
+#| label: fig-sim-supp-scen9
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 11.5
+#| fig-height: 8.2
+#| fig-dpi: 300
+#| fig-cap: "Effect of maximum exposure duration on estimator performance (Scen 9). Rows show mean bias (a; estimate minus truth) and empirical 95% interval coverage (b) for $z$ and $CT_{max_{1hr}}$. The 405-min cap is the full design; shorter caps progressively remove the long-duration observations that anchor LT50 at cooler assay temperatures."
+
+# This chunk plots bias and coverage for simulation scenario 9. The scenario
+# name encodes the maximum exposure duration, which we parse into an ordered
+# factor so the y-axis runs from the shortest to longest assay window.
+.d <- .load_screened("scen9") |>
+  dplyr::mutate(
+    tmax = as.integer(sub(".*_tmax_([0-9]+)$", "\\1", scenario)),
+    cell = factor(sprintf("%d min", tmax),
+                  levels = c("60 min", "120 min", "240 min", "405 min"))
+  )
+
+# Use shorter legend labels locally; the colour values are still taken from the
+# shared simulation palette defined in the setup chunk.
+.method_short <- c(
+  "Two-stage bin (Normal CI)" = "2-stage bin, normal",
+  "Two-stage bin (t CI)"      = "2-stage bin, t",
+  "Two-stage BB (Normal CI)"  = "2-stage BB, normal",
+  "Two-stage BB (t CI)"       = "2-stage BB, t",
+  "Joint 4PL (relative)"      = "Joint 4PL, relative",
+  "Joint 4PL (absolute)"      = "Joint 4PL, absolute"
+)
+
+# Panel (a): Monte Carlo mean bias with 95% Monte Carlo SE intervals.
+p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(name = "Estimator",
+                      values = .method_cols,
+                      breaks = names(.method_short),
+                      labels = unname(.method_short)) +
+  guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Mean bias (estimate − truth)", y = "Maximum exposure",
+       title = "(a) Bias") +
+  .theme_proj
+
+# Panel (b): empirical coverage; the dashed line marks the nominal 95% target.
+p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(name = "Estimator",
+                      values = .method_cols,
+                      breaks = names(.method_short),
+                      labels = unname(.method_short)) +
+  scale_x_continuous(limits = c(0, 1),
+                     breaks = c(0, 0.5, 0.95),
+                     labels = c("0", "0.50", "0.95 target")) +
+  guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Empirical coverage", y = "Maximum exposure",
+       title = "(b) Coverage") +
+  .theme_proj
+
+# Stack the panels and collect one shared, readable estimator legend.
+p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom",
+        legend.title = element_text(face = "bold"))
+```
+
+```{r}
+#| label: tbl-sim-supp-scen9-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ by maximum exposure duration (Scen 9). Lower RMSE indicates more accurate point estimates. The 60-min cap is the most demanding because the coolest assay temperatures may not reach 50% mortality within the observation window."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 9. It uses the same
+# ordered maximum-exposure factor as the figure, then delegates table formatting
+# to the shared `.rmse_table()` helper.
+.load_screened("scen9") |>
+  dplyr::mutate(tmax = as.integer(sub(".*_tmax_([0-9]+)$", "\\1", scenario)),
+                Cell = factor(sprintf("%d min", tmax),
+                              levels = c("60 min", "120 min",
+                                         "240 min", "405 min"))) |>
+  .rmse_table(cell_name = "Max exposure")
+```
+
 # **Case Study 1: Shrimp data** {#sec-shrimp}
 
 We now apply the full workflow described above — `standardize_data()` → `fit_4pl()` → `extract_tdt()` → `predict_heat_injury()` — to lethal-TDT data from brown shrimp (*Crangon crangon*). The data are 148 replicate trials spanning 30–33 °C and 5 min to 6 hours of exposure, with each replicate exposing a tank of individuals to a fixed temperature × duration combination on a specific date. The two grouping factors `Date` and `Tank` enter the model as random intercepts on `mid`, allowing day-to-day batch variation and tank-level cohort variation to be partitioned out of the dose-response surface.
