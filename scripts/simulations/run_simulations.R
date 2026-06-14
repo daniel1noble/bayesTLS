@@ -109,7 +109,7 @@ run_scenario <- function(sc) {
     ts_bin <- fit_two_stage(data, stage1 = "binomial")
     ts_bb  <- fit_two_stage(data, stage1 = "betabinomial")
     joint  <- do.call(fit_joint_4pl, c(list(data, seed = seed), SAMPLER))
-    saveRDS(score_run(joint, ts_bin, ts_bb, truth, sim_id, sc$label, seed), f)
+    save_retry(score_run(joint, ts_bin, ts_bb, truth, sim_id, sc$label, seed), f)
     invisible(NULL)
   }
 
@@ -124,7 +124,7 @@ run_scenario <- function(sc) {
   # one named helper call, so the output set is trivial to track.
   agg <- collect_raw(raw_dir)
   out <- function(prefix, obj)
-    saveRDS(obj, file.path(OUT_DIR, sprintf("%s_%s.rds", prefix, sc$label)))
+    save_retry(obj, file.path(OUT_DIR, sprintf("%s_%s.rds", prefix, sc$label)))
   out("per_sim",      agg$per_sim)
   out("meta",         agg$meta)
   out("draws",        agg$draws)

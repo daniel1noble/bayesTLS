@@ -647,6 +647,30 @@ done_ids <- function(raw_dir, force = FALSE) {
 #' which is not fork-safe on macOS. Workers load bayesTLS and source this file,
 #' then `fun` runs with the exported objects visible.
 #'
+#' Robust saveRDS: retry on transient I/O errors.
+#'
+#' Dropbox/CloudStorage and other networked file providers occasionally fail a
+#' write with "cannot open the connection" / "Interrupted system call" (EINTR)
+#' when the provider is busy. A single such failure crashed an entire run
+#' (2026-06-13) at the final aggregate save. This retries the write a few times
+#' with a pause so a transient hiccup does not lose hours of compute.
+#'
+#' @param object,file Passed to [saveRDS()].
+#' @param tries,wait Max attempts and seconds to wait between them.
+save_retry <- function(object, file, tries = 10, wait = 6) {
+  for (i in seq_len(tries)) {
+    ok <- tryCatch({ saveRDS(object, file); TRUE },
+                   error = function(e) {
+                     message(sprintf("  saveRDS retry %d/%d for %s: %s",
+                                     i, tries, basename(file), conditionMessage(e)))
+                     FALSE
+                   })
+    if (ok) return(invisible(file))
+    Sys.sleep(wait)
+  }
+  stop("save_retry: gave up after ", tries, " attempts writing ", file)
+}
+
 #' @param ids Integer ids to map over.
 #' @param fun Function of one id (the per-sim worker).
 #' @param workers Cluster size; 1 runs serially (easier debugging).
