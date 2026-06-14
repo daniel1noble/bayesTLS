@@ -325,6 +325,9 @@ We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating param
 
 # This chunk computes the true TDT summaries implied by the simulation parameters.
 true_z      <- -1 / true_params$m_beta1
+# The midpoint model is fit on centred temperature, T_c = T - T_bar. For the
+# closed-form CTmax calculation below, rewrite it as an uncentred intercept
+# alpha + beta_1 * T on the original temperature scale.
 true_alpha  <- true_params$m_beta0 +
   (1 / true_params$k) *
   log((true_params$u - 0.5) / (0.5 - true_params$ell)) -
@@ -1596,6 +1599,8 @@ library(patchwork)
 .method_cols <- setNames(c("#54278f","#cbc9e2","#a63603","#fdae6b",
                            "#006d2c","#a1d99b"), .method_labels)
 
+# The simulated midpoint is linear in centred temperature with T_bar = 34.
+# Add 34 after inversion so CTmax_1hr is on the original temperature scale.
 .TRUTH_REL <- c(z = -1 / -0.15,
                 CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
 
@@ -2822,7 +2827,7 @@ fit_sub_lin <- brms::brm(
 )
 ```
 
-Posterior summaries on the natural scale follow from the regression coefficients and the mean-centring temperature:
+Posterior summaries on the natural scale follow from the regression coefficients and the mean-centring temperature. Because the model is fit with centred temperature, the CTmax inversion first solves for the centred-temperature offset and then adds the centring temperature back to report CTmax in °C:
 
 ```{r shrimp-sublethal-linear-derive}
 #| label: shrimp-sublethal-linear-derive
@@ -2834,6 +2839,8 @@ post_sub_lin <- posterior::as_draws_df(fit_sub_lin) |> as.data.frame()
 temp_mean_sub <- mean(tdt_sub$assay_temp)
 
 z_lin_draws       <- -1 / post_sub_lin$b_temp_c
+# The model uses temp_c = assay_temp - temp_mean_sub. The fraction below solves
+# for temp_c, so adding temp_mean_sub returns CTmax to the original deg C scale.
 CTmax_1hr_lin_draws <- temp_mean_sub +
   (log10(60) - post_sub_lin$b_Intercept) / post_sub_lin$b_temp_c
 
@@ -5586,6 +5593,8 @@ T_bar <- mean(std_sex$temp - std_sex$temp_c)   # centring temperature
 
 # Step 1: relative CTmax = temperature where the midpoint line reaches t_ref.
 # mid(T) = log10(t_ref)  =>  T = T_bar + (log10(t_ref) - intercept) / slope
+# The model was fit with temp_c = temp - T_bar, so the inversion gives a
+# centred-temperature offset; adding T_bar reports CTmax on the original scale.
 ctmax_F <- T_bar + (log10(t_ref) - int_F) / slope_F
 ctmax_M <- T_bar + (log10(t_ref) - int_M) / slope_M
 round(quantile(ctmax_F, c(0.025, 0.5, 0.975)), 2)
@@ -5594,6 +5603,8 @@ round(quantile(ctmax_M, c(0.025, 0.5, 0.975)), 2)
 # Step 2: absolute CTmax = temperature where the full 4PL LT50 reaches t_ref.
 # Reuse lt50(); the curve is locally linear, so invert with the absolute slope
 # over a 1 degC step about the mean temperature.
+# Again, lt50(0, ...) is evaluated at the centring temperature, so T_bar is
+# added after solving for the centred offset.
 slope_abs <- function(slope, intercept) lt50(0.5, slope, intercept) - lt50(-0.5, slope, intercept)
 ctmax_F_abs <- T_bar + (log10(t_ref) - lt50(0, slope_F, int_F)) / slope_abs(slope_F, int_F)
 ctmax_M_abs <- T_bar + (log10(t_ref) - lt50(0, slope_M, int_M)) / slope_abs(slope_M, int_M)
@@ -5754,6 +5765,8 @@ int_M_c   <- post_coma_lin$b_Intercept + post_coma_lin$b_sexM
 
 z_coma_lin_F  <- -1 / slope_F_c
 z_coma_lin_M  <- -1 / slope_M_c
+# The fitted model uses temp_c = temp - coma_tbar. The CTmax equation solves
+# for temp_c, so add coma_tbar to express the threshold in degrees C.
 ct_coma_lin_F <- coma_tbar + (log10(60) - int_F_c) / slope_F_c
 ct_coma_lin_M <- coma_tbar + (log10(60) - int_M_c) / slope_M_c
 ```
@@ -5960,6 +5973,8 @@ inc_tdt <- function(male) {
   ctm <- apply(ldm, 1, function(r) {
     k <- which(diff(sign(r - log10(60))) != 0)[1]
     if (is.na(k)) NA_real_
+    # `tcg` is centred temperature; add prod_tbar after inversion to return
+    # CTmax_1hr to the observed temperature scale.
     else prod_tbar + stats::approx(r[k:(k + 1)], tcg[k:(k + 1)], log10(60))$y
   })
   list(z = rowMeans(zT), ct = ctm)        # z = mean local z over the assay range
@@ -6642,7 +6657,9 @@ log10_LT50_direct <- stats::uniroot(
   interval = c(-5, 10)
 )$root
 
-# Closed-form CTmax_1hr from eq-supp-corr-ctmax.
+# Closed-form CTmax_1hr from eq-supp-corr-ctmax. Because mid(T) was written
+# with centred temperature, beta_0 + beta_1 * (T - T_bar), alpha converts the
+# line to the uncentred form alpha + beta_1 * T before inversion.
 alpha             <- beta_0 - beta_1 * T_bar + correction
 CT_max_1hr_closed <- (log10(60) - alpha) / beta_1
 z_from_b1         <- -1 / beta_1
