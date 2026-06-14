@@ -115,3 +115,8 @@ _output/~$ms.docx
 output/figs/presentation_bias_coverage.pdf
 output/figs/presentation_bias_coverage.png
 scripts/fig_presentation_bias_coverage.R
+
+# Legacy analysis objects from a superseded pipeline (untracked 2026-06-14;
+# unused by the package, manuscript, supplement, and tests; superseded by
+# output/models/). Removed from Git LFS tracking.
+Rdata/
