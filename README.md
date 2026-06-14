@@ -35,7 +35,7 @@ The analytical workflow ships as an installable R package at the root of this
 repository. Install from GitHub:
 
 ```r
-# install.packages("remotes")  # if needed
+install.packages("remotes")  # if needed
 remotes::install_github("daniel1noble/bayesTLS")
 library(bayesTLS)
 ```
