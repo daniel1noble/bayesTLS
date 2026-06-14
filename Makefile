@@ -81,7 +81,15 @@ sync-sources:
 define RENDER
 	$(MAKE) sync-sources
 	cd $(BUILD_MS) && quarto render $(notdir $(1)) --to $(2) --output $(3) $(4)
-	cp $(BUILD_MS)/$(3) $(OUTDIR)/$(3)
+	@src="$(BUILD_MS)/$(3)"; out="$(OUTDIR)/$(3)"; ok=0; \
+	for i in 1 2 3 4 5 6 7 8; do \
+	  rm -f "$$out" 2>/dev/null; \
+	  if cp "$$src" "$$out"; then ok=1; echo "  copied $(3) -> $(OUTDIR)/"; break; fi; \
+	  echo "  copy of $(3) into Dropbox-backed $(OUTDIR)/ timed out (attempt $$i/8); retrying in 15s..."; \
+	  sleep 15; \
+	done; \
+	[ $$ok = 1 ] || { echo "ERROR: could not copy $(3) into $(OUTDIR) after 8 tries (Dropbox file provider jammed)."; \
+	  echo "       The rendered file is intact at $$src — copy it out once Dropbox is responsive."; exit 1; }
 endef
 
 # Standalone supp targets need "S" labels for figures/tables/equations
