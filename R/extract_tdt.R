@@ -134,8 +134,9 @@ tdt_z_from_pars <- function(pars, Tbar, bnd, ts, temp_grid,
 }
 
 # CTmax per draw: temperature where log10 LT(T) = log10(exposure_model). Relative
-# is the closed-form inverse of the linear mid(T); absolute interpolates the
-# crossing of the closed-form LT curve over temp_grid, per draw.
+# is the closed-form inverse of the linear mid(T); absolute finds the crossing of
+# the closed-form LT curve over temp_grid by a vectorised inverse interpolation
+# across draws, with an exact per-row fallback for non-monotone/non-finite curves.
 tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
                                 probs = c(0.025, 0.5, 0.975)) {
   np     <- nrow(pars)
@@ -144,14 +145,33 @@ tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
     col <- function(nm) if (nm %in% names(pars)) pars[[nm]] else rep(0, np)
     Tc  <- Tbar + (target - col("b_mid_Intercept")) / col("b_mid_temp_c")
   } else {
+    # log10 LT_p(T) is monotone-decreasing in T for the disjoint-bounds 4PL, so
+    # it crosses `target` exactly once. Find that crossing by a vectorised
+    # inverse linear interpolation across all draws at once: `j` is the column of
+    # the last grid point still above target, and we interpolate within the
+    # [j, j+1] interval. This replaces a per-draw stats::approx() loop and is
+    # identical to it (verified to machine precision) for monotone curves.
     M  <- tdt_loglt(pars, Tbar, bnd, ts, temp_grid)   # [np x nT]
-    Tc <- vapply(seq_len(np), function(i) {
-      y <- M[i, ]; ok <- is.finite(y)
-      if (sum(ok) < 2L) return(NA_real_)
-      o <- order(y[ok])
-      suppressWarnings(stats::approx(y[ok][o], temp_grid[ok][o],
-                                     xout = target)$y)
-    }, numeric(1))
+    nT <- length(temp_grid)
+    Tc <- rep(NA_real_, np)
+    j  <- rowSums(M > target, na.rm = TRUE)
+    ok <- is.finite(j) & j >= 1L & j <= (nT - 1L)
+    iv <- which(ok); jj <- j[iv]
+    y1 <- M[cbind(iv, jj)]; y2 <- M[cbind(iv, jj + 1L)]
+    Tc[iv] <- temp_grid[jj] +
+      (target - y1) * (temp_grid[jj + 1L] - temp_grid[jj]) / (y2 - y1)
+    # Exact fallback: any draw whose curve is non-monotone or carries non-finite
+    # values breaks the single-crossing assumption above, so reproduce the
+    # original per-row interpolation for just those (rare) rows.
+    dM  <- M[, -1, drop = FALSE] - M[, -nT, drop = FALSE]
+    bad <- !is.finite(rowSums(M)) | rowSums(dM >= 0, na.rm = TRUE) > 0
+    for (i in which(bad)) {
+      y <- M[i, ]; fin <- is.finite(y)
+      if (sum(fin) < 2L) { Tc[i] <- NA_real_; next }
+      o <- order(y[fin])
+      Tc[i] <- suppressWarnings(stats::approx(y[fin][o], temp_grid[fin][o],
+                                              xout = target)$y)
+    }
   }
   draws <- tibble::tibble(.draw = seq_len(np), temp = Tc) |>
     dplyr::filter(is.finite(temp))
