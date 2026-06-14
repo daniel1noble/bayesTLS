@@ -2084,14 +2084,14 @@ Before fitting the joint 4PL, we also run the classical two-stage pipeline on th
 fit_stage1_binomial_case <- function(dat) {
   ts_stage1(dat, temp = "temp", duration = "duration",
             n_surv = "n_surv", n_total = "n_total", family = "binomial") |>
-    dplyr::transmute(temp, method = "Two-step binomial",
+    dplyr::transmute(temp, method = "Two-stage binomial",
                      log10_lt50, stage1_slope = slope, phi, stage1_ok)
 }
 
 fit_stage1_betabinom_case <- function(dat) {
   ts_stage1(dat, temp = "temp", duration = "duration",
             n_surv = "n_surv", n_total = "n_total", family = "betabinomial") |>
-    dplyr::transmute(temp, method = "Two-step beta-binomial",
+    dplyr::transmute(temp, method = "Two-stage beta-binomial",
                      log10_lt50, stage1_slope = slope, phi, stage1_ok)
 }
 
@@ -2151,14 +2151,14 @@ shrimp_twostep_grid <- seq(min(shrimp_std$temp) - 1.5,
                            max(shrimp_std$temp) + 1.5, by = 0.05)
 
 shrimp_twostep_unc <- list(
-  "Two-step binomial" = propagate_twostep_case(
-    shrimp_stage2_twostep[["Two-step binomial"]]$fit,
+  "Two-stage binomial" = propagate_twostep_case(
+    shrimp_stage2_twostep[["Two-stage binomial"]]$fit,
     temp_grid = shrimp_twostep_grid,
     n_sim = 1000, time_multiplier = 60, t_ref = 60,
     TC_rate_range = c(0.1, 1), seed = 123
   ),
-  "Two-step beta-binomial" = propagate_twostep_case(
-    shrimp_stage2_twostep[["Two-step beta-binomial"]]$fit,
+  "Two-stage beta-binomial" = propagate_twostep_case(
+    shrimp_stage2_twostep[["Two-stage beta-binomial"]]$fit,
     temp_grid = shrimp_twostep_grid,
     n_sim = 1000, time_multiplier = 60, t_ref = 60,
     TC_rate_range = c(0.1, 1), seed = 124
@@ -2457,7 +2457,7 @@ patchwork::wrap_plots(
 
 ```{r shrimp-approach-compare-table}
 #| label: tbl-shrimp-approach-compare
-#| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
+#| tbl-cap: "Brown shrimp TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-stage TDT estimates are reported in the literature. The 4PL row reports posterior medians with 95% credible intervals."
 
 # This chunk formats the shrimp approach comparison table.
 shrimp_compare_approaches <- dplyr::bind_rows(
@@ -2531,8 +2531,8 @@ shrimp_4pl_line_h <- ltx_shrimp$summary |>
 
 shrimp_method_cols <- c(
   "Joint Bayesian 4PL" = "#b2182b",
-  "Two-step binomial" = "#2166ac",
-  "Two-step beta-binomial" = "#1b9e77"
+  "Two-stage binomial" = "#2166ac",
+  "Two-stage beta-binomial" = "#1b9e77"
 )
 
 p_shrimp_cmp_lin <- ggplot2::ggplot() +
@@ -4062,7 +4062,7 @@ The joint approach is the recommended default when the dataset spans an identifi
 ```{r zebrafish-twostep-joint-compare-table}
 #| label: tbl-zebrafish-twostep-joint-compare
 #| cache: false
-#| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-step TDT estimates are reported in the literature. The 4PL rows report posterior medians with 95% credible intervals."
+#| tbl-cap: "Zebrafish TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL. Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only — $z$, $CT_{max_{1hr}}$ and $T_{crit}$ from 1000 parametric simulations of the Stage-2 MVN coefficient distribution. Stage-1 LT50 uncertainty is not propagated, mirroring how classical two-stage TDT estimates are reported in the literature. The 4PL rows report posterior medians with 95% credible intervals."
 
 # This chunk formats the zebrafish two-stage joint comparison table.
 zf_joint_compare_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
@@ -4147,19 +4147,19 @@ zf_twostep_joint_overlay <- dplyr::bind_rows(
   dplyr::mutate(
     approach = factor(approach,
                       levels = c("Joint Bayesian 4PL",
-                                 "Two-step binomial",
-                                 "Two-step beta-binomial"))
+                                 "Two-stage binomial",
+                                 "Two-stage beta-binomial"))
   )
 
 zf_approach_linetypes <- c(
   "Joint Bayesian 4PL" = "solid",
-  "Two-step binomial" = "dashed",
-  "Two-step beta-binomial" = "dotdash"
+  "Two-stage binomial" = "dashed",
+  "Two-stage beta-binomial" = "dotdash"
 )
 zf_approach_alphas <- c(
   "Joint Bayesian 4PL" = 0.28,
-  "Two-step binomial" = 0.14,
-  "Two-step beta-binomial" = 0.14
+  "Two-stage binomial" = 0.14,
+  "Two-stage beta-binomial" = 0.14
 )
 
 build_zf_twostep_overlay <- function(y_log = FALSE) {
@@ -4528,7 +4528,7 @@ fit_stage1_leaf_quasibin_case <- function(dat) {
     dplyr::group_modify(function(d, key) {
       if (dplyr::n_distinct(d$logd) < 3) {
         return(tibble::tibble(
-          method       = "Two-step quasi-binomial",
+          method       = "Two-stage quasi-binomial",
           log10_lt50   = NA_real_,
           stage1_slope = NA_real_,
           phi          = NA_real_,
@@ -4543,7 +4543,7 @@ fit_stage1_leaf_quasibin_case <- function(dat) {
       lt <- as.numeric(-co[1] / co[2])
       sl <- as.numeric(co[2])
       tibble::tibble(
-        method       = "Two-step quasi-binomial",
+        method       = "Two-stage quasi-binomial",
         log10_lt50   = lt,
         stage1_slope = sl,
         phi          = NA_real_,
@@ -4577,7 +4577,7 @@ fit_stage1_leaf_beta_case <- function(dat) {
     dplyr::group_modify(function(d, key) {
       if (dplyr::n_distinct(d$logd) < 3) {
         return(tibble::tibble(
-          method       = "Two-step beta",
+          method       = "Two-stage beta",
           log10_lt50   = NA_real_,
           stage1_slope = NA_real_,
           phi          = NA_real_,
@@ -4603,7 +4603,7 @@ fit_stage1_leaf_beta_case <- function(dat) {
       ), silent = TRUE)
       if (inherits(fit, "try-error")) {
         return(tibble::tibble(
-          method       = "Two-step beta",
+          method       = "Two-stage beta",
           log10_lt50   = NA_real_,
           stage1_slope = NA_real_,
           phi          = NA_real_,
@@ -4614,7 +4614,7 @@ fit_stage1_leaf_beta_case <- function(dat) {
       lt <- as.numeric(-co[1] / co[2])
       sl <- as.numeric(co[2])
       tibble::tibble(
-        method       = "Two-step beta",
+        method       = "Two-stage beta",
         log10_lt50   = lt,
         stage1_slope = sl,
         phi          = exp(co[3]),
@@ -4652,14 +4652,14 @@ leaf_twostep_grid <- seq(min(leaf_std$temp) - 1.5,
                          max(leaf_std$temp) + 1.5, by = 0.05)
 
 leaf_twostep_unc <- list(
-  "Two-step quasi-binomial" = propagate_twostep_case(
-    leaf_stage2_twostep[["Two-step quasi-binomial"]]$fit,
+  "Two-stage quasi-binomial" = propagate_twostep_case(
+    leaf_stage2_twostep[["Two-stage quasi-binomial"]]$fit,
     temp_grid = leaf_twostep_grid,
     n_sim = 1000, time_multiplier = 1, t_ref = 60,
     TC_rate_range = c(0.1, 1), seed = 301
   ),
-  "Two-step beta" = propagate_twostep_case(
-    leaf_stage2_twostep[["Two-step beta"]]$fit,
+  "Two-stage beta" = propagate_twostep_case(
+    leaf_stage2_twostep[["Two-stage beta"]]$fit,
     temp_grid = leaf_twostep_grid,
     n_sim = 1000, time_multiplier = 1, t_ref = 60,
     TC_rate_range = c(0.1, 1), seed = 302
@@ -5078,8 +5078,8 @@ leaf_4pl_line <- ltx_leaf_abs$summary |>
 
 leaf_method_cols <- c(
   "Joint Bayesian 4PL"       = "#b2182b",
-  "Two-step quasi-binomial"  = "#2166ac",
-  "Two-step beta"            = "#1b9e77"
+  "Two-stage quasi-binomial"  = "#2166ac",
+  "Two-stage beta"            = "#1b9e77"
 )
 
 p_leaf_cmp_lin <- ggplot2::ggplot() +
