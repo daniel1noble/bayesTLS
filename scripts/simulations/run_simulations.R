@@ -22,6 +22,12 @@ source(here::here("scripts", "simulations", "sim_functions.R"))
 
 # ---- 1. Config (edit these) ------------------------------------------------
 OUT_DIR     <- here::here("output", "sim_twostage")
+# Raw per-sim .rds files are written OUTSIDE Dropbox. The 29k tiny raw files
+# overwhelm the Dropbox file provider, which dehydrates them to online-only and
+# jams, corrupting reads during aggregation. Only the small aggregate objects
+# below live in OUT_DIR (Dropbox), where the manuscript figures read them. Set
+# RAW_ROOT to OUT_DIR/raw to revert to the old in-Dropbox layout.
+RAW_ROOT    <- path.expand("~/tls_sim_raw")
 N_SIMS      <- 1000          # simulated datasets per scenario
 WORKERS     <- 5             # PSOCK cluster size (cmdstanr is not fork-safe)
 MASTER_SEED <- 20260513L     # seed_sim = MASTER_SEED + 1000*scenario_index + sim_id
@@ -94,7 +100,7 @@ run_scenario <- function(sc) {
   message(sprintf("\n=== %s  (z_true=%.3f  CTmax_1hr_true=%.3f) ===",
                   sc$label, truth$z_true, truth$CTmax_1hr_true))
 
-  raw_dir <- file.path(OUT_DIR, "raw", sc$label)
+  raw_dir <- file.path(RAW_ROOT, sc$label)
   dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
 
   # The whole per-simulation story, in plain sight:
