@@ -1721,7 +1721,7 @@ library(patchwork)
     facet_grid(reformulate("quantity", panel_var), scales = "free_x",
                labeller = labeller(quantity = .quantity_labeller)) +
     scale_colour_manual(values = .method_cols) +
-    labs(x = "Mean bias (estimate − truth)", y = NULL,
+    labs(x = "Mean bias (estimate - truth)", y = NULL,
          title = "(a) Bias") +
     .theme_proj + theme(legend.position = "none")
   p_cov <- ggplot(d, aes(x = coverage, y = method, colour = method)) +
@@ -2001,7 +2001,7 @@ p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
   facet_wrap(~ quantity, scales = "free_x",
              labeller = labeller(quantity = .quantity_labeller)) +
   scale_colour_manual(values = .method_cols) +
-  labs(x = "Mean bias (estimate − truth)", y = NULL,
+  labs(x = "Mean bias (estimate - truth)", y = NULL,
        title = "(a) Bias") +
   .theme_proj
 
@@ -2090,7 +2090,7 @@ p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
                       breaks = names(.method_short),
                       labels = unname(.method_short)) +
   guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
-  labs(x = "Mean bias (estimate − truth)", y = "Maximum exposure",
+  labs(x = "Mean bias (estimate - truth)", y = "Maximum exposure",
        title = "(a) Bias") +
   .theme_proj
 
@@ -3995,7 +3995,7 @@ zf_tls <- tls(fit_zf_joint, by = "life_stage", newdata = zf_joint_pred_grid,
               re_formula = NA, ndraws = ndraws_joint)
 
 # Repackage tls() output into the per-stage structure the downstream tables and
-# figures (and Manuscript Figure 4) consume.
+# figures (and Manuscript Figure 5) consume.
 zf_joint_tdt <- lapply(zf_stages, function(s) {
   sm   <- zf_tls$summary[zf_tls$summary$life_stage == s, ]
   dr   <- zf_tls$draws[zf_tls$draws$life_stage == s, ]
@@ -6149,13 +6149,13 @@ Among flies that reproduce, clutch size is essentially unaffected by exposure at
 
 The hurdle model reveals two effects that a single fecundity curve combines. Heat reduces the probability of reproducing at every tested temperature, giving a clear incidence-based $z \approx 3$ °C. Among flies that still reproduce, however, heat reduces clutch size mainly at higher temperatures ($\gtrsim 36$ °C). Reporting the two components separately makes this biological split visible and provides a more nuanced understanding of temperature/time effects on reproduction.
 
-# **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig4}
+# **Manuscript Figure 5: cross-case-study summary** {#sec-ms-fig4}
 
 This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. The zebrafish row splits into three ridges (one per life stage) and the vinegar fly row into two (female, male). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for shrimp, zebrafish and leaf, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale in any case.
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig4-case-study-densities
-#| fig-cap: "Manuscript Figure 4. Posterior distributions of thermal sensitivity $z$ (left) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: brown shrimp (*Crangon crangon*), snow gum leaf PSII (*Eucalyptus pauciflora*), zebrafish (*Danio rerio*; three life stages, panel c) and the vinegar fly (*Drosophila suzukii*; by sex, panel d). Filled ridges are the posterior densities, coloured by species and level; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study’s own analysis: 1 h for shrimp, zebrafish and leaf (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). For the zebrafish life stages and fly sexes, pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
+#| fig-cap: "Manuscript Figure 5. Posterior distributions of thermal sensitivity $z$ (left) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: brown shrimp (*Crangon crangon*), snow gum leaf PSII (*Eucalyptus pauciflora*), zebrafish (*Danio rerio*; three life stages, panel c) and the vinegar fly (*Drosophila suzukii*; by sex, panel d). Filled ridges are the posterior densities, coloured by species and level; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study’s own analysis: 1 h for shrimp, zebrafish and leaf (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). For the zebrafish life stages and fly sexes, pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
@@ -6266,7 +6266,7 @@ fig4_summary <- dplyr::bind_rows(
 dir.create(here::here("output", "data"), showWarnings = FALSE, recursive = TRUE)
 saveRDS(fig4_summary, here::here("output", "data", "fig4_summary.rds"))
 
-# ---- Manuscript Figure 4 design: illustrations, colours, pMCMC brackets ----
+# ---- Manuscript Figure 5 design: illustrations, colours, pMCMC brackets ----
 suppressPackageStartupMessages({
   library(ggplot2); library(dplyr); library(tibble); library(ggridges)
   library(patchwork); library(ggtext); library(cowplot); library(magick); library(here)
@@ -6400,9 +6400,9 @@ ggsave(here("output", "figs", "fig4_case_study_densities.png"), fig4_final,
 knitr::include_graphics(here("output", "figs", "fig4_case_study_densities.png"))
 ```
 
-# **Manuscript Figure 5: Heat injury and survival** {#sec-ms-fig5}
+# **Manuscript Figure 6: Heat injury and survival** {#sec-ms-fig5}
 
-Manuscript Figure 5 illustrates how a fitted joint 4PL translates a *natural*
+Manuscript Figure 6 illustrates how a fitted joint 4PL translates a *natural*
 temperature trajectory into cumulative heat-injury (HI) accumulation and
 predicted survival, with uncertainty, for two case studies side by side: the
 vinegar fly (*Drosophila suzukii*) and the brown shrimp (*Crangon crangon*).
@@ -6528,7 +6528,7 @@ saveRDS(list(fly = fig5_fly, fly_trace = fly_trace, fly_Tc = mean(c(Tc_F, Tc_M))
 
 ```{r}
 #| label: fig-ms-fig5-heat-injury
-#| fig-cap: "Manuscript Figure 5. Heat-injury accumulation and predicted survival under field-derived temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels a-c) and the brown shrimp (*Crangon crangon*, panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2018, the warmest summer on record) warmed by a **+4 °C projection** — with the relative-threshold $T_{crit}$ (purple dotted line). The fjord itself never reaches the shrimp's $T_{crit}$ (27.7 °C; 17-year maximum 26.1 °C), so the projection makes the heat-injury dynamics visible. (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (c, f) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Predicted survival begins at each taxon's fitted upper asymptote rather than at 100%: the vinegar-fly 4PL estimates a maximum survival of ≈85% (the upper asymptote *up* < 1), so its survival trajectories start at ≈85%, whereas the shrimp asymptote is ≈100%. Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
+#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field-derived temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels a-c) and the brown shrimp (*Crangon crangon*, panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2018, the warmest summer on record) warmed by a **+4 °C projection** — with the relative-threshold $T_{crit}$ (purple dotted line). The fjord itself never reaches the shrimp's $T_{crit}$ (27.7 °C; 17-year maximum 26.1 °C), so the projection makes the heat-injury dynamics visible. (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (c, f) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Predicted survival begins at each taxon's fitted upper asymptote rather than at 100%: the vinegar-fly 4PL estimates a maximum survival of ≈85% (the upper asymptote *up* < 1), so its survival trajectories start at ≈85%, whereas the shrimp asymptote is ≈100%. Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false

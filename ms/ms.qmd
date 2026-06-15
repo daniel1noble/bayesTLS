@@ -149,10 +149,11 @@ set.seed(123)
 # Define once here; load via source() into every figure chunk.
 # source(here::here("R", "theme_ms.R"))
 
-# Per-group z / CTmax medians written by ms/supplement.qmd's Figure 4 build
-# (output/data/fig4_summary.rds). Used for inline reporting so headline numbers
-# are produced by code, not typed. Same render dependency as the Fig 4/5 PNGs:
-# render the supplement first to (re)generate it.
+# Per-group z / CTmax medians written by ms/supplement.qmd's case-study summary
+# build (output/data/fig4_summary.rds; the file name is a stable identifier).
+# Used for inline reporting so headline numbers are produced by code, not typed.
+# Same render dependency as the case-study and heat-injury figure PNGs: render
+# the supplement first to (re)generate it.
 fig4_summary <- readRDS(here::here("output", "data", "fig4_summary.rds"))
 
 # CTmax_1hr across the 1-hour-reference case studies (shrimp, zebrafish stages,
@@ -277,7 +278,7 @@ We also evaluated how different experimental designs impact estimates by simulat
 
 When the data-generating process matched the classical assumptions, with survival spanning the full 0-1 range and temperature affecting only the dose-response midpoint, the two-stage approach performed similarly to the joint 4PL model, producing little bias and near-nominal coverage when confidence intervals were constructed with *t*-distribution quantiles. This distinction was important: using normal (z) quantiles instead produced anti-conservative intervals with coverage well below the nominal 95% level (@fig-sims & [Supplement 3.1](https://daniel1noble.github.io/bayesTLS/#strict-equivalence-baseline) & [3.2](https://daniel1noble.github.io/bayesTLS/#likelihood-misspecification-alone)).
 
-In contrast, the two-stage approach resulted in biased *z* and $CT_{max_{1hr}}$, often with poor coverage, when temperature affected the upper asymptote (`up`) or the rate of decline (`k`) (@fig-sims). These biases were consistent even with larger sample sizes (@fig-sims), but they became most consequential under exactly the kinds of designs often used in practice: sparse temperature-duration grids, short exposure windows, and low replication (see [Supplement 3.6](https://daniel1noble.github.io/bayesTLS/#experimental-design-impacts)). Bias for both *z* and $CT_{max_{1hr}}$ from the two-stage approaches was particularly severe as the upper survival threshold decreased (@fig-sims2).
+In contrast, the two-stage approach resulted in biased *z* and $CT_{max_{1hr}}$, often with poor coverage, when temperature affected the upper asymptote (`up`) or the rate of decline (`k`) (@fig-sims). These biases were consistent even with larger sample sizes (@fig-sims), but they became most consequential under exactly the kinds of designs often used in practice: sparse temperature-duration grids, short exposure windows, and low replication (@fig-sim-design). The joint 4PL remained near-unbiased and well-calibrated across these designs, whereas two-stage bias grew and interval coverage collapsed as grids became sparser, replication fell, or exposure windows shortened — most severely at the shortest exposure cap, where two-stage coverage of *z* fell below 0.05 even with the *t*-correction (@fig-sim-design; full per-cell detail in [Supplement 3.6](https://daniel1noble.github.io/bayesTLS/#experimental-design-impacts)). Bias for both *z* and $CT_{max_{1hr}}$ from the two-stage approaches was particularly severe as the upper survival threshold decreased (@fig-sims2).
 
 Overall, these results show that the joint 4PL is most valuable when the assumptions of the classical two-stage model are least defensible: when response curves do not span 0-1, when asymptotes or slopes vary with temperature, and when experimental designs are information-limited. In those settings, fitting the raw response surface directly improves recovery of *z* and $CT_{max}$ and yields better-calibrated uncertainty.
 
@@ -385,7 +386,7 @@ library(patchwork)
   geom_point(size = 2.4) +
   facet_grid(scenario_label ~ quantity, scales = "free_x") +
   scale_colour_manual(values = .method_cols) +
-  labs(x = "Mean bias (estimate − truth)", y = NULL,
+  labs(x = "Mean bias (estimate - truth)", y = NULL,
        title = "(a) Bias") +
   .theme_proj + theme(legend.position = "none")
 
@@ -477,7 +478,7 @@ library(patchwork)
 
 .scen6 <- .load_screened("scen6") |>
   dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
-                sweep_label = "up drifts with T (varying β_up, percentage points / °C)")
+                sweep_label = "up drifts with T (varying beta_up, percentage points / degC)")
 
 .scen7 <- .load_screened("scen7") |>
   dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
@@ -514,14 +515,14 @@ library(patchwork)
     facet_wrap(~ quantity, scales = "free_y", nrow = 1) +
     scale_colour_manual(values = .method_cols) +
     scale_x_continuous(breaks = x_breaks) +
-    labs(x = x_label, y = "Mean bias (estimate − truth)") +
+    labs(x = x_label, y = "Mean bias (estimate - truth)") +
     .theme_proj
 }
 
 .p6 <- .build(.shape_fmt(.scen6),
               x_label  = expression(beta[up]~"(percentage points / °C, drift of "*plain(up)*" with T)"),
               x_breaks = c(-0.019, -0.015, -0.010, -0.005)) +
-  ggtitle("(a) up drifts with T (varying β_up)")
+  ggtitle(expression("(a) " * plain(up) * " drifts with T (varying " * beta[up] * ")"))
 
 .p7 <- .build(.shape_fmt(.scen7),
               x_label  = expression(up[0]~"(constant upper asymptote, all T)"),
@@ -530,6 +531,129 @@ library(patchwork)
 
 .p6 / .p7 + plot_layout(guides = "collect", heights = c(1, 1)) &
   theme(legend.position = "bottom")
+```
+
+```{r}
+#| label: fig-sim-design
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-align: center
+#| out-width: "100%"
+#| fig-cap: "Estimator performance under information-limited experimental designs — the conditions most common in real thermal-tolerance datasets. **(a, b)** Varying the experimental design and replication: a full (5 temperatures × 6 durations) versus sparse (3 × 4) temperature–duration grid, crossed with 1, 3, or 5 replicate cups per cell. **(c, d)** Varying the maximum exposure duration (the longest assay window: 60, 120, 240, or 405 min) on the full grid with five replicates. Panels **(a, c)** show mean signed bias and **(b, d)** empirical 95% interval coverage for thermal sensitivity $z$ (left) and $CT_{max_{1hr}}$ (right). Points are Monte Carlo means with 95% Monte Carlo standard-error bars (bias: $\\text{SD}/\\sqrt{N}$; coverage: $\\sqrt{p(1-p)/N}$); dashed lines mark zero bias and nominal 0.95 coverage. Bias panels show the four distinct point estimators (the two-stage Normal- and *t*-CI variants share point estimates); coverage panels additionally distinguish the *t*-CI variants. All cells use a beta-binomial data-generating process ($\\phi=5$) with a fixed 4PL shape ($\\text{up}=0.92$, $\\text{low}=0.05$, $k=8$, midpoint linear in $T$); $N_{sim}=1000$ datasets per cell. The joint 4PL stays near-unbiased with near-nominal coverage across every design, whereas the two-stage estimators degrade sharply as designs become sparse, under-replicated, or short — most extremely at the 60-min cap, where two-stage coverage of $z$ falls below 0.05 even with the *t*-correction while the joint 4PL holds near 0.95. Full per-cell detail and RMSE are in the supplement."
+
+# Combined experimental-design figure (scen8 = design × replication; scen9 =
+# maximum exposure duration). Reads the per-simulation aggregates only — no
+# model fits here. Mirrors the screening/aggregation used by the other
+# simulation figures.
+library(dplyr); library(tidyr); library(ggplot2); library(here); library(patchwork)
+
+.method_levels <- c("two_stage_bin","two_stage_bin_t","two_stage_bb",
+                    "two_stage_bb_t","joint_4pl","joint_4pl_abs")
+.method_labels <- c("Two-stage bin (Normal CI)","Two-stage bin (t CI)",
+                    "Two-stage BB (Normal CI)","Two-stage BB (t CI)",
+                    "Joint 4PL (relative)","Joint 4PL (absolute)")
+.method_cols <- setNames(c("#54278f","#cbc9e2","#a63603","#fdae6b",
+                           "#006d2c","#a1d99b"), .method_labels)
+.point_codes <- c("two_stage_bin","two_stage_bb","joint_4pl","joint_4pl_abs")
+.TRUTH_REL   <- c(z = -1 / -0.15, CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+.load_screened <- function(prefix) {
+  files <- list.files(here::here("output","sim_twostage"),
+                      pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+                      full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z" & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |> dplyr::mutate(bb_path = TRUE)
+  ps |>
+    dplyr::left_join(bad, by = c("scenario","sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb","two_stage_bb_t"))) |>
+    dplyr::select(-bb_path) |>
+    dplyr::mutate(truth_use = ifelse(method == "joint_4pl",
+                                     .TRUTH_REL[as.character(quantity)], truth),
+                  bias = estimate - truth_use,
+                  covered = is.finite(lower) & is.finite(upper) &
+                            lower <= truth_use & truth_use <= upper) |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(n = dplyr::n(),
+                     mean_bias = mean(bias, na.rm = TRUE),
+                     mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+                     coverage  = mean(covered, na.rm = TRUE),
+                     mcse_cov  = sqrt(mean(covered) * (1 - mean(covered)) / dplyr::n()),
+                     .groups = "drop") |>
+    dplyr::mutate(method_code = as.character(method))
+}
+
+.fmt <- function(d) d |>
+  dplyr::mutate(
+    quantity = factor(quantity, levels = c("z","CTmax_1hr"),
+                      labels = c("z (°C)","CT[max,1h] (°C)")),
+    method_lab = factor(.method_labels[match(method_code, .method_levels)],
+                        levels = .method_labels),
+    bias_lo = mean_bias - 1.96 * mcse_bias, bias_hi = mean_bias + 1.96 * mcse_bias,
+    cov_lo  = coverage  - 1.96 * mcse_cov,  cov_hi  = coverage  + 1.96 * mcse_cov)
+
+.d8 <- .fmt(.load_screened("scen8")) |>
+  dplyr::mutate(design = ifelse(grepl("full", scenario), "full", "sparse"),
+                nrep = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
+                cell = factor(sprintf("%s × %d", design, nrep),
+                              levels = rev(c("sparse × 1","full × 1","sparse × 3",
+                                             "full × 3","sparse × 5","full × 5"))))
+.d9 <- .fmt(.load_screened("scen9")) |>
+  dplyr::mutate(tmax = as.integer(sub(".*_tmax_([0-9]+)$", "\\1", scenario)),
+                cell = factor(sprintf("%d min", tmax),
+                              levels = rev(c("60 min","120 min","240 min","405 min"))))
+
+.qlab <- as_labeller(c(`z (°C)` = "italic(z)~(degree*C)",
+                       `CT[max,1h] (°C)` = "CT[max[1*hr]]~(degree*C)"), label_parsed)
+.thm <- theme_classic(base_size = 10) +
+  theme(strip.background = element_blank(), strip.text = element_text(face = "bold"),
+        plot.title = element_text(face = "bold", size = 11), legend.position = "bottom",
+        legend.title = element_blank(), legend.text = element_text(size = 8),
+        panel.spacing = unit(0.6, "lines"))
+.scol <- scale_colour_manual(values = .method_cols, breaks = .method_labels,
+                             limits = .method_labels, drop = FALSE)
+
+.bias_panel <- function(d, title)
+  ggplot(dplyr::filter(d, method_code %in% .point_codes),
+         aes(mean_bias, cell, colour = method_lab, group = method_lab)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi), height = .3,
+                 position = position_dodge(.6)) +
+  geom_point(size = 1.7, position = position_dodge(.6)) +
+  facet_wrap(~ quantity, scales = "free_x", labeller = .qlab) +
+  .scol + guides(colour = "none") +
+  labs(x = "Mean bias (estimate - truth)", y = NULL, title = title) + .thm
+.cov_panel <- function(d, title)
+  ggplot(d, aes(coverage, cell, colour = method_lab, group = method_lab)) +
+  geom_vline(xintercept = .95, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi), height = .3,
+                 position = position_dodge(.6)) +
+  geom_point(size = 1.7, position = position_dodge(.6)) +
+  facet_wrap(~ quantity, labeller = .qlab) +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, .5, .95)) +
+  .scol + guides(colour = guide_legend(nrow = 2, byrow = TRUE,
+                                       override.aes = list(size = 2.6))) +
+  labs(x = "Empirical 95% CI coverage", y = NULL, title = title) + .thm
+
+.fig_design <-
+  (.bias_panel(.d8, "a. Design × replication — bias") |
+   .cov_panel(.d8,  "b. Design × replication — coverage")) /
+  (.bias_panel(.d9, "c. Maximum exposure duration — bias") |
+   .cov_panel(.d9,  "d. Maximum exposure duration — coverage")) +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+dir.create(here::here("output","figs"), recursive = TRUE, showWarnings = FALSE)
+ggsave(here::here("output","figs","fig_sim_design.png"), .fig_design,
+       width = 11, height = 8.5, dpi = 600, bg = "white")
+ggsave(here::here("output","figs","fig_sim_design.svg"), .fig_design,
+       width = 11, height = 8.5, bg = "white")
+knitr::include_graphics(here::here("output","figs","fig_sim_design.png"))
 ```
 
 # Application of Bayesian dose-response models to case studies
