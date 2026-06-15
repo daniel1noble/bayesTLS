@@ -1,0 +1,86 @@
+---
+title: "Plan: simulation-figure revision pass (Patrice's comments)"
+date: 2026-06-15
+format: html
+---
+
+Implementation plan for the simulation-figure changes from
+`comments/ms_PP.docx` (see [[2026-06-15-patrice-ms-review-comments]]).
+Decisions locked with Daniel 2026-06-15. Nothing implemented yet.
+
+## A. Figure 2 — `fig-sims` (ms.qmd ~L284) — shape-violation bias/coverage
+
+Currently 2 rows (scen3 "up varies with T", scen5 "k varies with T", `_n5`
+cells), bias panel (a) + coverage panel (b), faceted `scenario_label × quantity`.
+
+- **Add "Assumptions met" top row** (PP #117): bind `scen1` (strict-equivalence
+  baseline, `_n5`) into `.d`; extend the `scenario_label` recode; set factor
+  order top→bottom = **Assumptions met → up varies with T → k varies with T**.
+  Shows all methods agreeing when assumptions hold (Normal-CI two-stage still
+  under-covers ~0.86; t-CI and joint ~0.95–0.98), contrasting the rows below.
+- **Coverage x-axis → 50–100%** (PP #117): `limits = c(0.5, 1)`,
+  `breaks = c(0.5, 0.75, 0.95)`. Verified min coverage across scen1/3/5 n5 ≈ 0.59,
+  so no points clip; re-confirm after adding scen1.
+- **High-res export + untrimmed strip labels** (PP #117): mirror Fig 4/5 — `ggsave`
+  a 600-dpi PNG and an `.svg` to `output/figs/`, then `include_graphics`. Raise
+  `fig-height` ~6.5 → ~8 (third row + label room).
+- Lowercase panel titles "a. Bias" / "b. Coverage" (PP #116).
+
+## B. Figure 3 — `fig-sims2` (ms.qmd ~L408) — partial-mortality sweeps
+
+Currently top = scen6 (β_up drift), bottom = scen7 (up0 constant-reduced),
+bias-only, 4 distinct point estimators.
+
+- **Reorder** to `.p7 / .p6` (simpler scenario on top) (PP #143).
+- **Relabel rows** (PP #143): scen7 → "a. Upper asymptote differs from one";
+  scen6 → "b. Upper asymptote drifts with temperature".
+- **Simplify caption**: drop the explicit `{−0.005,…}` / `{0.65,…}` brace sets,
+  give ranges instead (the "curly-bracket values" PP flagged) (PP #143).
+- Confirm no bare "pp" remains; axis already reads "percentage points / °C"
+  (PP #177). Keep the 4 point estimators (bias-only).
+- High-res SVG export as in A.
+
+## C. NEW Figure 4 — combined experimental-design figure (main text)
+
+Daniel: one new main-text figure combining **both** design considerations.
+Sources: `scen8` (sparse vs full grid × replication 1/3/5, 6 cells) and `scen9`
+(max exposure cap 60/120/240/405 min, 4 caps). Data exist
+(`per_sim_scen8_*`, `per_sim_scen9_*`) with bias + coverage.
+
+**Layout (locked): bias + coverage, 2 rows.**
+
+```
+a. scen8 Bias (z|CTmax)      b. scen8 Coverage (z|CTmax)
+c. scen9 Bias (z|CTmax)      d. scen9 Coverage (z|CTmax)
+```
+
+- **Methods (locked, "match the panel type"):** bias sub-panels = 4 distinct
+  point estimators (two_stage_bin, two_stage_bb, joint relative, joint absolute);
+  coverage sub-panels = all 6 (Normal vs t CIs differ in coverage). Shared legend
+  spans all 6; bias panels simply omit the t-variants (identical bias). Note the
+  mixed legend in the caption.
+- Headline: joint 4PL stays ~unbiased and ~nominal across sparse designs, low
+  replication, and short exposure caps; two-stage degrades badly (e.g. scen9 at
+  60-min cap: two-stage coverage ~0.01–0.02 vs joint ~0.95–0.97; scen8 sparse×1:
+  two-stage z RMSE ~32 vs joint ~2). This is PP's flagged "main selling point"
+  (#106–108).
+- High-res PNG + SVG export to `output/figs/`.
+- **Supplement keeps its full versions** (all 6 methods, bias+coverage+RMSE,
+  fig-sim-supp-scen8/9); main-text figure is the distilled headline. Cross-ref
+  the supplement for full detail to avoid duplication confusion.
+- **Renumbering:** this becomes Figure 4; case-study Figs 4→5, 5→6. Quarto
+  renumbers `@fig-` refs automatically; update any plain-text figure mentions and
+  add a results paragraph introducing it (tie to #106–108 take-home).
+
+## D. Cross-cutting (all three figures)
+
+- Lowercase "a./b." panel labels everywhere (PP #116).
+- One sentence defining the Monte Carlo SE bars (PP #126): `mcse_bias = sd/√N`;
+  `mcse_cov = √(p(1−p)/N)` — add to methods or each caption.
+- High-res SVG export for all three sim figures (PP #117).
+- `u` → `up` already done in these chunks' labels; keep new figure consistent.
+
+## Verification
+- Render `make ms-html` (or just exercise the chunks) and inspect: assumptions-met
+  row reads correctly; coverage axis 0.5–1 clips nothing; new Fig 4 legible;
+  cross-refs renumber cleanly. Confirm before declaring done (no "should work").
