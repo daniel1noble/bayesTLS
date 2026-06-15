@@ -121,3 +121,5 @@ scripts/fig_presentation_bias_coverage.R
 # unused by the package, manuscript, supplement, and tests; superseded by
 # output/models/). Removed from Git LFS tracking.
 Rdata/
+notes/2026-06-15-patrice-ms-review-comments.qmd
+notes/2026-06-15-patrice-ms-review-comments.html
