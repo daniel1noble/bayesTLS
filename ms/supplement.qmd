@@ -154,7 +154,10 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty. It predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel. It also contains all the data used throughout the manuscript and supplement. 
 
-To access the `bayesTLS` R package, install it once from GitHub, then load as follows:
+To access the `bayesTLS` R package, install it once from GitHub. Installing
+`bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
+`posterior`, `tibble`, `patchwork`) automatically; the tutorial also uses a few
+small helper packages:
 
 ```{r install-bayesTLS}
 #| eval: false
@@ -164,21 +167,29 @@ To access the `bayesTLS` R package, install it once from GitHub, then load as fo
 # install.packages("remotes")   # if not already installed
 remotes::install_github("daniel1noble/bayesTLS")
 
-# Load library
-library(bayesTLS)
-
+# Helper packages used throughout this tutorial.
+install.packages(c("here", "purrr", "tidyr"))
 ```
+
+Then load the package and helpers, and choose a folder in which to cache the
+fitted models. Every fit below passes `file = file.path(models_dir, "...")`, so
+re-running a chunk reloads the saved model instead of refitting it. Run this
+setup chunk once, before the analyses that follow:
 
 ```{r load-bayesTLS}
 #| label: load-bayesTLS
-#| echo: false
+#| echo: true
 #| cache: false
 #| code-fold: show
 
-# This chunk reloads bayesTLS and the model-cache path for standalone chunk execution.
-# Cache directory for brms fits (also set in the setup chunk). Defined here too
-# so the fitting chunks downstream can be run independently after just loading
-# the library, without re-running the full setup chunk.
+# Load bayesTLS and the helper packages used throughout this tutorial.
+pacman::p_load(bayesTLS, brms, dplyr, tidyr, purrr, ggplot2, here)
+
+set.seed(123)
+
+# Folder where fitted brms models are cached as .rds files (created if absent).
+# Each fit below passes `file = file.path(models_dir, "...")`, so re-running a
+# chunk reloads the saved model instead of refitting it.
 models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
@@ -1767,7 +1778,7 @@ library(patchwork)
 
 This scenario is the strict-equivalence baseline. The data-generating curve spans the full survival range ($u = 0.999$, $\text{low} = 0.001$), has a shared slope ($k = 8$), and has a midpoint that declines linearly with temperature (slope $-0.15$) under a binomial likelihood with no overdispersion. We crossed this scenario with two replicate designs, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
 
-We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles did nothave nominal coverage, whereas the *t*-quantile delta-method intervals were close to the nominal 95% coverage. Again, it is important to recognise that we have ensured error from the two-stage is correctly propagated for comparison but often this is ignored.
+We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles did not have nominal coverage, whereas the *t*-quantile delta-method intervals were close to the nominal 95% coverage. Again, it is important to recognise that we have ensured error from the two-stage is correctly propagated for comparison but often this is ignored.
 
 Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias — here and throughout, $|z|$ bias above 20 °C or $|CT_{max,1h}|$ bias above 10 °C, far outside any plausible value — for `r .sim_fail("scen1", "two_stage_bin")` binomial and `r .sim_fail("scen1", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen1", "joint_4pl")` for the joint 4PL, across the simulations. The overdispersion-corrected two-stage thus fails to converge on a sensible estimate even in this most benign scenario, whereas the joint 4PL does not.
 
@@ -1804,7 +1815,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 
 This scenario keeps the same mean dose-response shape as the strict-equivalence baseline, but generates counts from a beta-binomial likelihood with overdispersion $\phi = 5$. We again used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
 
-We included this scenario to isolate the cost of likelihood misspecification: the mean structure is correct for all estimators, but the binomial two-stage variant ignores overdispersion at Stage 1. Point estimates remained largely unbiased, showing that overdispersion alone did not shift the target estimands. The main effect was on uncertainty, with likelihood-aware beta-binomial and joint 4PL fits giving better-calibrated intervals than binomial two-stage fits.
+We included this scenario to isolate the cost of likelihood misspecification: the mean structure is correct for all estimators, but the binomial two-stage variant ignores overdispersion at Stage 1. Point estimates remained largely unbiased, showing that overdispersion alone did not shift the target estimands. The effect was on uncertainty rather than location, and it was modest here: overdispersion alone barely separated the binomial and beta-binomial two-stage fits, in either point estimates or calibration. Both produced Normal-quantile intervals that under-covered and were brought close to nominal by the *t*-quantile correction, while the joint 4PL was well calibrated throughout.
 
 Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen2", "two_stage_bin")` binomial and `r .sim_fail("scen2", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen2", "joint_4pl")` for the joint 4PL, across the simulations.
 
@@ -1840,7 +1851,7 @@ Of the 1{,}000 datasets per cell, models in the two-stage analytical approach fa
 
 In this scenario, both asymptotes move toward each other as temperature increases: $u$ declines by 0.01 per °C from 0.92, while $\text{low}$ increases by 0.01 per °C from 0.05. This preserves the approximate logit-difference but compresses the response range. Although this symmetric compression is not biologically realistic, it is useful as a diagnostic test: it changes the dose-response range while largely preserving the midpoint-temperature relationship. We used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
 
-Bias was smaller than in the asymmetric upper-asymptote scenario, but the two-stage fits still showed poorer calibration than the joint 4PL because the classical model cannot represent changing asymptotes directly.
+The two-stage fits showed clear bias here — negative in $CT_{max,1h}$ and positive in $z$ — together with under-coverage, because the classical model cannot represent changing asymptotes directly. The joint 4PL remained close to unbiased with near-nominal coverage.
 
 Of the 1{,}000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen4", "two_stage_bin")` binomial and `r .sim_fail("scen4", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen4", "joint_4pl")` for the joint 4PL, across the simulations.
 
@@ -6271,10 +6282,27 @@ qlab <- as_labeller(c(z = "italic(z)~(degree*C)", CTmax_1hr = "CT[max[1*hr]]~(de
                       CTmax_4hr = "CT[max[4*hr]]~(degree*C)"), default = label_parsed)
 P <- function(x) here("pics", x)
 
+# Patrice's v2 illustrations are vector SVGs. Rasterise each to a high-resolution
+# temporary PNG so the 600-dpi figure stays crisp and the existing
+# draw_image()/<img> paths (which expect a raster file) work unchanged. Cached so
+# each SVG is rasterised once per session.
+svg_png <- local({
+  cache <- new.env(parent = emptyenv())
+  function(svg, width = 1600) {
+    key <- paste0(svg, "@", width)
+    if (is.null(cache[[key]])) {
+      o <- tempfile(fileext = ".png")
+      magick::image_write(magick::image_read_svg(P(svg), width = width), o)
+      cache[[key]] <- o
+    }
+    cache[[key]]
+  }
+})
+
 # Trim white margins so the danio stage illustrations are size-comparable.
-danio_src  <- c(young_embryos = "danio_early.png", old_embryos = "danio_late_embryo.png", larvae = "danio_larvae.png")
+danio_src  <- c(young_embryos = "danio_early_v2.svg", old_embryos = "danio_late_embryo_v2.svg", larvae = "danio_larvae_v2.svg")
 danio_trim <- vapply(danio_src, function(f) {
-  o <- tempfile(fileext = ".png"); image_write(image_trim(image_read(P(f)), fuzz = 8), o); o
+  o <- tempfile(fileext = ".png"); image_write(image_trim(image_read_svg(P(f), width = 900), fuzz = 8), o); o
 }, character(1))
 imgH <- function(p, h) sprintf("<img src='%s' height='%d'/>", p, h)
 imgW <- function(p, w) sprintf("<img src='%s' width='%d'/>", p, w)
@@ -6334,14 +6362,14 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag, texp = 1.15, xexp_
 }
 ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
-fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "A"), P("shrimp.png"), .11, .42, .69, .95)
-fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "B"), P("euca.png"), .06, .60, .46, .88)
+fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "A"), svg_png("shrimp_v2.svg"), .11, .42, .69, .95)
+fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "B"), svg_png("euca_v2.svg"), .06, .60, .46, .88)
 fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
             setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
             "Zebrafish", "Danio rerio", "C", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
-fig4_C <- ins(fig4_C, P("zebrafish.png"), .13, .585, .50, .925)
+fig4_C <- ins(fig4_C, svg_png("zebrafish_v2.svg"), .13, .585, .50, .925)
 fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "D", texp = 1.35, xexp_r = 0.27), "Vinegar fly (mortality)", c("Female", "Male"))
-fig4_D <- ins(fig4_D, P("dros_male.png"), .16, .63, .52, .85)
+fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .16, .63, .52, .85)
 
 fig4_final <- (fig4_A | fig4_B) / (fig4_C | fig4_D)
 
@@ -6533,11 +6561,11 @@ f5_surv <- function(dd, lt) {
   else    g + geom_line(linewidth = 0.6)
 }
 f5_ins <- function(p, f, l, b, r, t, sc = 1) p +
-  inset_element(ggdraw() + draw_image(P(f), scale = sc),
+  inset_element(ggdraw() + draw_image(svg_png(f), scale = sc),
                 left = l, bottom = b, right = r, top = t, align_to = "panel")
 
-fly_hi <- f5_ins(f5_tg(f5_hi(fdat, TRUE),  "B"), "dros_male.png", .02, .55, .34, .98)
-shr_hi <- f5_ins(f5_tg(f5_hi(sdat, FALSE), "E"), "shrimp.png",    .02, .34, .66, .99, sc = 1.25)
+fly_hi <- f5_ins(f5_tg(f5_hi(fdat, TRUE),  "B"), "dros_male_v2.svg", .02, .55, .34, .98)
+shr_hi <- f5_ins(f5_tg(f5_hi(sdat, FALSE), "E"), "shrimp_v2.svg",    .02, .34, .66, .99, sc = 1.25)
 f5_leg <- cowplot::get_legend(
   f5_hi(fdat, TRUE) + theme(legend.position = "bottom", legend.title = element_blank()) +
     guides(fill = "none", colour = guide_legend(order = 1), linetype = guide_legend(order = 2)))
