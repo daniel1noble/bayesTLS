@@ -183,6 +183,9 @@ setup chunk once, before the analyses that follow:
 #| code-fold: show
 
 # Load bayesTLS and the helper packages used throughout this tutorial.
+# Bootstrap pacman if it is not already installed, then load (installing any
+# missing) the helper packages in one call.
+if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(bayesTLS, brms, dplyr, tidyr, purrr, ggplot2, here)
 
 set.seed(123)
