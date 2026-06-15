@@ -6345,11 +6345,12 @@ add_brackets <- function(p, case, glevels) {
       geom_text(data = filter(br, side == "L"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 1, size = 3.1, colour = "grey10", fontface = "bold") +
       geom_text(data = filter(br, side == "R"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 0, size = 3.1, colour = "grey10", fontface = "bold")
 }
-fig4_panel <- function(cs, glevels, ylabels, title, sci, tag, texp = 1.15, xexp_r = 0.05) {
+fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
+                       texp = 1.15, xexp_r = 0.05, ridge_scale = 0.65) {
   d <- filter(fig4_draws,   case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)))
   s <- filter(fig4_summary, case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)), ci_col = fig4_pal_dark[as.character(group)])
   ggplot(d, aes(value, group, fill = group)) +
-    geom_density_ridges(colour = "white", linewidth = .2, alpha = .9, scale = .65, rel_min_height = .005) +
+    geom_density_ridges(colour = "white", linewidth = .2, alpha = .9, scale = ridge_scale, rel_min_height = .005) +
     geom_linerange(data = s, aes(y = group, xmin = lower, xmax = upper, colour = ci_col), inherit.aes = FALSE, linewidth = 1.3) +
     geom_point(data = s, aes(median, group, fill = group), inherit.aes = FALSE, shape = 21, colour = "black", size = 3.6, stroke = 0.7) +
     geom_label(data = s, aes(median, group, label = sprintf("%.1f [%.1f, %.1f]", median, lower, upper)), inherit.aes = FALSE, vjust = -0.7, size = 3.2, fontface = "bold", colour = "grey10", fill = alpha("white", 0.7), label.size = 0, label.padding = unit(0.08, "lines")) +
@@ -6366,14 +6367,14 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag, texp = 1.15, xexp_
 }
 ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
-fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a."), svg_png("shrimp_v2.svg"), .13, .58, .52, .93)
-fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b."), svg_png("euca_v2.svg"), .06, .60, .46, .88)
+fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a."), svg_png("shrimp_v2.svg"), .23, .58, .62, .93)
+fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b.", ridge_scale = .42), svg_png("euca_v2.svg"), .06, .60, .46, .88)
 fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
             setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
             "Zebrafish", "Danio rerio", "c.", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
-fig4_C <- ins(fig4_C, svg_png("zebrafish_v2.svg"), .15, .62, .45, .90)
+fig4_C <- ins(fig4_C, svg_png("zebrafish_v2.svg"), .27, .62, .57, .90)
 fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "d.", texp = 1.35, xexp_r = 0.27), "Vinegar fly (mortality)", c("Female", "Male"))
-fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .18, .66, .48, .86)
+fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .18, .62, .48, .82)
 
 fig4_final <- (fig4_A | fig4_B) / (fig4_C | fig4_D)
 
@@ -6395,10 +6396,10 @@ Manuscript Figure 5 illustrates how a fitted joint 4PL translates a *natural*
 temperature trajectory into cumulative heat-injury (HI) accumulation and
 predicted survival, with uncertainty, for two case studies side by side: the
 vinegar fly (*Drosophila suzukii*) and the brown shrimp (*Crangon crangon*).
-For the fly we use a real Chilean hourly **air**-temperature series — the
-hottest-summer station in the Rezende et al. (2020) Dryad record (Curicó, Los
-Niches; January–March 2018) — and predict HI for each sex with and without
-damage repair.
+For the fly we use the shaded hourly **microclimate** trace from the
+Ørsted et al. (2024) NicheMapR workflow (Rennes, France; June-August 2018;
+Zenodo record 10821572) and predict HI for each sex with and without damage
+repair.
 
 For the shrimp we downloaded the full hourly
 **sea-surface**-temperature record (2008–2024) from the Kristineberg Marine
@@ -6426,18 +6427,22 @@ relative-threshold critical temperature from each fit.
 #| warning: false
 
 # This chunk prepares temperature traces and posterior summaries for the manuscript heat-injury figure.
-## Fly: real Chilean hourly air temperature (Rezende et al. 2020, Dryad),
-## hottest-summer station for D. suzukii (Curicó, Los Niches; Jan–Mar 2018).
-rez <- utils::read.csv(here::here("inst", "extdata", "rezende_2020",
-                                  "rezende2020_chile_hourly_temps.csv.gz"))
-fly_trace <- rez |>
-  dplyr::filter(site == "Curico", substr(datetime, 1, 4) == "2018",
-                source == "INIA-Curico_Los_Niches",
-                substr(datetime, 6, 7) %in% c("01", "02", "03"),
-                is.finite(temp_c)) |>
-  dplyr::arrange(datetime) |>
-  dplyr::transmute(time = dplyr::row_number() - 1, temp = temp_c,
-                   datetime = as.POSIXct(datetime, tz = "UTC"))
+## Fly: shaded hourly microclimate temperature from the Oersted et al. (2024)
+## Zenodo/NicheMapR workflow (Rennes, France; Jun-Aug 2018). The cached CSV is
+## built by data-raw/build_orsted_microclimate_trace.R from the original
+## microclimate_injury_accumulation.R script in Zenodo record 10821572.
+orsted_micro <- utils::read.csv(here::here(
+  "inst", "extdata", "orsted_2024",
+  "orsted2024_nichemapr_rennes_2018_hourly.csv.gz"
+))
+fly_trace <- orsted_micro |>
+  dplyr::mutate(datetime_utc = as.POSIXct(datetime_utc, tz = "UTC")) |>
+  dplyr::filter(substr(datetime_utc, 1, 4) == "2018",
+                substr(datetime_utc, 6, 7) %in% c("06", "07", "08"),
+                is.finite(micro_temp_c)) |>
+  dplyr::arrange(datetime_utc) |>
+  dplyr::transmute(time = dplyr::row_number() - 1, temp = micro_temp_c,
+                   datetime = datetime_utc)
 
 ## Relative-threshold T_crit per group (matches the relative HI integration).
 Tc_F <- extract_tdt(wf_dros_mort_F, target_surv = "relative", t_ref = 60,
@@ -6513,7 +6518,7 @@ saveRDS(list(fly = fig5_fly, fly_trace = fly_trace, fly_Tc = mean(c(Tc_F, Tc_M))
 
 ```{r}
 #| label: fig-ms-fig5-heat-injury
-#| fig-cap: "Manuscript Figure 5. Heat-injury accumulation and predicted survival under natural temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels a-c) and the brown shrimp (*Crangon crangon*, panels d-f). (a, d) the temperature trace — real Chilean summer air temperature for the fly (Curicó, Jan–Mar 2018; Rezende et al. 2020) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2018, the warmest summer on record) warmed by a **+4 °C projection** — with the relative-threshold $T_{crit}$ (purple dotted line). The fjord itself never reaches the shrimp's $T_{crit}$ (27.7 °C; 17-year maximum 26.1 °C), so the projection makes the heat-injury dynamics visible. (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (c, f) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
+#| fig-cap: "Manuscript Figure 5. Heat-injury accumulation and predicted survival under field-derived temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels a-c) and the brown shrimp (*Crangon crangon*, panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2018, the warmest summer on record) warmed by a **+4 °C projection** — with the relative-threshold $T_{crit}$ (purple dotted line). The fjord itself never reaches the shrimp's $T_{crit}$ (27.7 °C; 17-year maximum 26.1 °C), so the projection makes the heat-injury dynamics visible. (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (c, f) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Predicted survival begins at each taxon's fitted upper asymptote rather than at 100%: the vinegar-fly 4PL estimates a maximum survival of ≈85% (the upper asymptote *up* < 1), so its survival trajectories start at ≈85%, whereas the shrimp asymptote is ≈100%. Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
@@ -6578,7 +6583,7 @@ f5_leg <- cowplot::get_legend(
   f5_hi(fdat, TRUE) + theme(legend.position = "bottom", legend.title = element_blank()) +
     guides(fill = "none", colour = guide_legend(order = 1), linetype = guide_legend(order = 2)))
 
-col_f <- f5_tg(f5_temp(ftr, fTc, "Vinegar fly (*D. suzukii*)",  "Air temp (°C)"),   "a.") / fly_hi / f5_tg(f5_surv(fdat, TRUE),  "c.")
+col_f <- f5_tg(f5_temp(ftr, fTc, "Vinegar fly (*D. suzukii*)",  "Microclimate temp (°C)"), "a.") / fly_hi / f5_tg(f5_surv(fdat, TRUE),  "c.")
 col_s <- f5_tg(f5_temp(str, sTc, "Brown shrimp (*C. crangon*)", "Water temp (°C)"), "d.") / shr_hi / f5_tg(f5_surv(sdat, FALSE), "f.")
 f5_body  <- (col_f | col_s) + plot_layout(heights = c(0.5, 1, 1))
 fig5_final <- cowplot::plot_grid(f5_body, f5_leg, ncol = 1, rel_heights = c(1, 0.06))

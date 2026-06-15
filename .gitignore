@@ -129,3 +129,4 @@ data-raw/orsted_2024/README_and_metadata.pdf
 .gitignore
 inst/extdata/orsted_2024/README.md
 data-raw/orsted_2024/TDT_parameters_R3.csv
+ms/supplement.rmarkdown
