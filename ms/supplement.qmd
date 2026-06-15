@@ -6346,11 +6346,21 @@ add_brackets <- function(p, case, glevels) {
       geom_text(data = filter(br, side == "R"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 0, size = 3.1, colour = "grey10", fontface = "bold")
 }
 fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
-                       texp = 1.15, xexp_r = 0.05, ridge_scale = 0.65) {
+                       texp = 1.15, xexp_r = 0.05, ridge_scale = 0.65,
+                       ridge_scale_ctmax = ridge_scale) {
   d <- filter(fig4_draws,   case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)))
   s <- filter(fig4_summary, case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)), ci_col = fig4_pal_dark[as.character(group)])
   ggplot(d, aes(value, group, fill = group)) +
-    geom_density_ridges(colour = "white", linewidth = .2, alpha = .9, scale = ridge_scale, rel_min_height = .005) +
+    geom_density_ridges(
+      data = dplyr::filter(d, !as.character(quantity) %in% c("CTmax_1hr", "CTmax_4hr")),
+      colour = "white", linewidth = .2, alpha = .9, scale = ridge_scale,
+      rel_min_height = .005
+    ) +
+    geom_density_ridges(
+      data = dplyr::filter(d, as.character(quantity) %in% c("CTmax_1hr", "CTmax_4hr")),
+      colour = "white", linewidth = .2, alpha = .9, scale = ridge_scale_ctmax,
+      rel_min_height = .005
+    ) +
     geom_linerange(data = s, aes(y = group, xmin = lower, xmax = upper, colour = ci_col), inherit.aes = FALSE, linewidth = 1.3) +
     geom_point(data = s, aes(median, group, fill = group), inherit.aes = FALSE, shape = 21, colour = "black", size = 3.6, stroke = 0.7) +
     geom_label(data = s, aes(median, group, label = sprintf("%.1f [%.1f, %.1f]", median, lower, upper)), inherit.aes = FALSE, vjust = -0.7, size = 3.2, fontface = "bold", colour = "grey10", fill = alpha("white", 0.7), label.size = 0, label.padding = unit(0.08, "lines")) +
@@ -6367,8 +6377,8 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
 }
 ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
-fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a."), svg_png("shrimp_v2.svg"), .23, .58, .62, .93)
-fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b.", ridge_scale = .42), svg_png("euca_v2.svg"), .06, .60, .46, .88)
+fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a.", ridge_scale_ctmax = .28), svg_png("shrimp_v2.svg"), .23, .58, .62, .93)
+fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b."), svg_png("euca_v2.svg"), .06, .60, .46, .88)
 fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
             setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
             "Zebrafish", "Danio rerio", "c.", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
