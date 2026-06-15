@@ -6362,14 +6362,14 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag, texp = 1.15, xexp_
 }
 ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
-fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "A"), svg_png("shrimp_v2.svg"), .11, .42, .69, .95)
+fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "A"), svg_png("shrimp_v2.svg"), .13, .58, .52, .93)
 fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "B"), svg_png("euca_v2.svg"), .06, .60, .46, .88)
 fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
             setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
             "Zebrafish", "Danio rerio", "C", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
-fig4_C <- ins(fig4_C, svg_png("zebrafish_v2.svg"), .13, .585, .50, .925)
+fig4_C <- ins(fig4_C, svg_png("zebrafish_v2.svg"), .15, .62, .45, .90)
 fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "D", texp = 1.35, xexp_r = 0.27), "Vinegar fly (mortality)", c("Female", "Male"))
-fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .16, .63, .52, .85)
+fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .18, .66, .48, .86)
 
 fig4_final <- (fig4_A | fig4_B) / (fig4_C | fig4_D)
 
@@ -6565,7 +6565,7 @@ f5_ins <- function(p, f, l, b, r, t, sc = 1) p +
                 left = l, bottom = b, right = r, top = t, align_to = "panel")
 
 fly_hi <- f5_ins(f5_tg(f5_hi(fdat, TRUE),  "B"), "dros_male_v2.svg", .02, .55, .34, .98)
-shr_hi <- f5_ins(f5_tg(f5_hi(sdat, FALSE), "E"), "shrimp_v2.svg",    .02, .34, .66, .99, sc = 1.25)
+shr_hi <- f5_ins(f5_tg(f5_hi(sdat, FALSE), "E"), "shrimp_v2.svg",    .04, .58, .44, .96)
 f5_leg <- cowplot::get_legend(
   f5_hi(fdat, TRUE) + theme(legend.position = "bottom", legend.title = element_blank()) +
     guides(fill = "none", colour = guide_legend(order = 1), linetype = guide_legend(order = 2)))
