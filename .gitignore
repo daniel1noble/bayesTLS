@@ -123,3 +123,9 @@ scripts/fig_presentation_bias_coverage.R
 Rdata/
 notes/2026-06-15-patrice-ms-review-comments.qmd
 notes/2026-06-15-patrice-ms-review-comments.html
+data-raw/orsted_2024/microclimate_injury_accumulation.R
+data-raw/orsted_2024/README_and_metadata.pdf
+.gitignore
+.gitignore
+inst/extdata/orsted_2024/README.md
+data-raw/orsted_2024/TDT_parameters_R3.csv
