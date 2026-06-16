@@ -22,12 +22,14 @@ source(here::here("scripts", "simulations", "sim_functions.R"))
 
 # ---- 1. Config (edit these) ------------------------------------------------
 OUT_DIR     <- here::here("output", "sim_twostage")
-# Raw per-sim .rds files are written OUTSIDE Dropbox. The 29k tiny raw files
-# overwhelm the Dropbox file provider, which dehydrates them to online-only and
-# jams, corrupting reads during aggregation. Only the small aggregate objects
-# below live in OUT_DIR (Dropbox), where the manuscript figures read them. Set
-# RAW_ROOT to OUT_DIR/raw to revert to the old in-Dropbox layout.
-RAW_ROOT    <- path.expand("~/tls_sim_raw")
+# Raw per-sim .rds files live in-repo under OUT_DIR/raw (gitignored) so the whole
+# workflow runs from the project root: clone the repo, drop the raw files from
+# OSF into output/sim_twostage/raw/, then re-aggregate or re-run. The durable
+# copy of the ~29k raw files lives on OSF, not Git. NOTE: on a Dropbox-synced
+# checkout the file provider may dehydrate these many small files to online-only;
+# rehydrate them (Finder > Make Available Offline) or re-pull from OSF before
+# aggregation. Point RAW_ROOT at a non-synced path to opt out of Dropbox.
+RAW_ROOT    <- file.path(OUT_DIR, "raw")
 N_SIMS      <- 1000          # simulated datasets per scenario
 WORKERS     <- 5             # PSOCK cluster size (cmdstanr is not fork-safe)
 MASTER_SEED <- 20260513L     # seed_sim = MASTER_SEED + 1000*scenario_index + sim_id
