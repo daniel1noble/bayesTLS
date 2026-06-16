@@ -1722,7 +1722,7 @@ library(patchwork)
                labeller = labeller(quantity = .quantity_labeller)) +
     scale_colour_manual(values = .method_cols) +
     labs(x = "Mean bias (estimate - truth)", y = NULL,
-         title = "(a) Bias") +
+         title = "a) Bias") +
     .theme_proj + theme(legend.position = "none")
   p_cov <- ggplot(d, aes(x = coverage, y = method, colour = method)) +
     geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
@@ -1733,7 +1733,7 @@ library(patchwork)
     scale_colour_manual(values = .method_cols) +
     scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
     labs(x = "95% CI coverage", y = NULL,
-         title = "(b) Coverage") +
+         title = "b) Coverage") +
     .theme_proj + theme(legend.position = "none")
   p_bias / p_cov + plot_layout(heights = c(1, 1))
 }
@@ -1901,7 +1901,7 @@ Of the 1,000 datasets per cell, models in the two-stage analytical approach fail
 #| message: false
 #| fig-width: 8
 #| fig-height: 4.5
-#| fig-cap: "Empirical 95% CI coverage across the $\\beta_{up}$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as the main-text $\\beta_{up}$ bias sweep, with coverage shown for all six methods. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
+#| fig-cap: "95% CI coverage across the $\\beta_{up}$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as the main-text $\\beta_{up}$ bias sweep, with coverage shown for all six methods. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
 
 # This chunk plots coverage for simulation scenario 6.
 .d <- .load_screened("scen6") |>
@@ -1940,7 +1940,7 @@ Of the 1,000 datasets per cell, models in the two-stage analytical approach fail
 #| message: false
 #| fig-width: 8
 #| fig-height: 4.5
-#| fig-cap: "Empirical 95% CI coverage across the $\\text{up}_0$ sweep (Scen 7). Same DGP and method set as the main-text $\\text{up}_0$ bias sweep. Two-stage CTmax coverage collapses as $\\text{up}_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
+#| fig-cap: "95% CI coverage across the $\\text{up}_0$ sweep (Scen 7). Same DGP and method set as the main-text $\\text{up}_0$ bias sweep. Two-stage CTmax coverage collapses as $\\text{up}_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
 
 # This chunk plots coverage for simulation scenario 7.
 .d <- .load_screened("scen7") |>
@@ -2002,7 +2002,7 @@ p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
              labeller = labeller(quantity = .quantity_labeller)) +
   scale_colour_manual(values = .method_cols) +
   labs(x = "Mean bias (estimate - truth)", y = NULL,
-       title = "(a) Bias") +
+       title = "a) Bias") +
   .theme_proj
 
 p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
@@ -2014,8 +2014,8 @@ p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
              labeller = labeller(quantity = .quantity_labeller)) +
   scale_colour_manual(values = .method_cols) +
   scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
-  labs(x = "Empirical 95% CI coverage", y = NULL,
-       title = "(b) Coverage") +
+  labs(x = "95% CI coverage", y = NULL,
+       title = "b) Coverage") +
   .theme_proj
 
 p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
@@ -2054,7 +2054,7 @@ Across the 1,000 datasets per cap, the two-stage Stage-1 fits failed or produced
 #| fig-width: 11.5
 #| fig-height: 8.2
 #| fig-dpi: 300
-#| fig-cap: "Effect of maximum exposure duration on estimator performance (Scen 9). Rows show mean bias (a; estimate minus truth) and empirical 95% interval coverage (b) for $z$ and $CT_{max_{1hr}}$. The 405-min cap is the full design; shorter caps progressively remove the long-duration observations that anchor LT50 at cooler assay temperatures."
+#| fig-cap: "Effect of maximum exposure duration on estimator performance (Scen 9). Rows show mean bias (a; estimate minus truth) and 95% interval coverage (b) for $z$ and $CT_{max_{1hr}}$. The 405-min cap is the full design; shorter caps progressively remove the long-duration observations that anchor LT50 at cooler assay temperatures."
 
 # This chunk plots bias and coverage for simulation scenario 9. The scenario
 # name encodes the maximum exposure duration, which we parse into an ordered
@@ -2091,7 +2091,7 @@ p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
                       labels = unname(.method_short)) +
   guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
   labs(x = "Mean bias (estimate - truth)", y = "Maximum exposure",
-       title = "(a) Bias") +
+       title = "a) Bias") +
   .theme_proj
 
 # Panel (b): empirical coverage; the dashed line marks the nominal 95% target.
@@ -2111,7 +2111,7 @@ p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
                      labels = c("0", "0.50", "0.95 target")) +
   guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
   labs(x = "Empirical coverage", y = "Maximum exposure",
-       title = "(b) Coverage") +
+       title = "b) Coverage") +
   .theme_proj
 
 # Stack the panels and collect one shared, readable estimator legend.
@@ -6377,13 +6377,13 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
 }
 ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
-fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a.", ridge_scale_ctmax = .28), svg_png("shrimp_v2.svg"), .23, .58, .62, .93)
-fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b."), svg_png("euca_v2.svg"), .06, .60, .46, .88)
+fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a)", ridge_scale_ctmax = .28), svg_png("shrimp_v2.svg"), .23, .58, .62, .93)
+fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b)"), svg_png("euca_v2.svg"), .06, .60, .46, .88)
 fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
             setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
-            "Zebrafish", "Danio rerio", "c.", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
+            "Zebrafish", "Danio rerio", "c)", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
 fig4_C <- ins(fig4_C, svg_png("zebrafish_v2.svg"), .27, .62, .57, .90)
-fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "d.", texp = 1.35, xexp_r = 0.27), "Vinegar fly (mortality)", c("Female", "Male"))
+fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "d)", texp = 1.35, xexp_r = 0.27), "Vinegar fly (mortality)", c("Female", "Male"))
 fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .18, .62, .48, .82)
 
 fig4_final <- (fig4_A | fig4_B) / (fig4_C | fig4_D)
@@ -6587,14 +6587,14 @@ f5_ins <- function(p, f, l, b, r, t, sc = 1) p +
   inset_element(ggdraw() + draw_image(svg_png(f), scale = sc),
                 left = l, bottom = b, right = r, top = t, align_to = "panel")
 
-fly_hi <- f5_ins(f5_tg(f5_hi(fdat, TRUE),  "b."), "dros_male_v2.svg", .02, .55, .34, .98)
-shr_hi <- f5_ins(f5_tg(f5_hi(sdat, FALSE), "e."), "shrimp_v2.svg",    .04, .58, .44, .96)
+fly_hi <- f5_ins(f5_tg(f5_hi(fdat, TRUE),  "b)"), "dros_male_v2.svg", .02, .55, .34, .98)
+shr_hi <- f5_ins(f5_tg(f5_hi(sdat, FALSE), "e)"), "shrimp_v2.svg",    .04, .58, .44, .96)
 f5_leg <- cowplot::get_legend(
   f5_hi(fdat, TRUE) + theme(legend.position = "bottom", legend.title = element_blank()) +
     guides(fill = "none", colour = guide_legend(order = 1), linetype = guide_legend(order = 2)))
 
-col_f <- f5_tg(f5_temp(ftr, fTc, "Vinegar fly (*D. suzukii*)",  "Microclimate temp (°C)"), "a.") / fly_hi / f5_tg(f5_surv(fdat, TRUE),  "c.")
-col_s <- f5_tg(f5_temp(str, sTc, "Brown shrimp (*C. crangon*)", "Water temp (°C)"), "d.") / shr_hi / f5_tg(f5_surv(sdat, FALSE), "f.")
+col_f <- f5_tg(f5_temp(ftr, fTc, "Vinegar fly (*D. suzukii*)",  "Microclimate temp (°C)"), "a)") / fly_hi / f5_tg(f5_surv(fdat, TRUE),  "c)")
+col_s <- f5_tg(f5_temp(str, sTc, "Brown shrimp (*C. crangon*)", "Water temp (°C)"), "d)") / shr_hi / f5_tg(f5_surv(sdat, FALSE), "f)")
 f5_body  <- (col_f | col_s) + plot_layout(heights = c(0.5, 1, 1))
 fig5_final <- cowplot::plot_grid(f5_body, f5_leg, ncol = 1, rel_heights = c(1, 0.06))
 
