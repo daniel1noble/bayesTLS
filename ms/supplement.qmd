@@ -2193,9 +2193,7 @@ Before fitting the joint 4PL, we also run the classical two-stage pipeline on th
 # Classical two-stage helpers for the case studies. These are thin adapters
 # over the bayesTLS package functions ts_stage1() / ts_stage2() / ts_ci() /
 # ts_curve() -- the single canonical two-stage implementation, also used by the
-# bias simulation. The per-temperature beta-binomial Stage 1 uses glmmTMB (it
-# matches the previous hand-written MLE to 4 dp). See
-# notes/2026-06-11-unify-two-stage.qmd.
+# bias simulation.
 
 fit_stage1_binomial_case <- function(dat) {
   ts_stage1(dat, temp = "temp", duration = "duration",
@@ -2363,7 +2361,7 @@ ggplot2::ggplot() +
 
 ## Fitting the joint Bayesian 4PL {#sec-shrimp-fit}
 
-`fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL with sensible defaults: a beta-binomial likelihood, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter. We add random intercepts on `mid` for `Date` and `Tank` to absorb the day-to-day and tank-to-tank variation that would otherwise contaminate the dose-response surface.
+`fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL with sensible defaults: a beta-binomial likelihood, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter. We add random intercepts on `mid` for `Date` and `Tank` to absorb the day-to-day and tank-to-tank variation across samples.
 
 ```{r shrimp-fit}
 #| label: shrimp-fit
@@ -2376,7 +2374,7 @@ wf_shrimp <- fit_4pl(
   shrimp_std,
   random_effects = c("Date", "Tank"),
   chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-  control = list(adapt_delta = 0.99, max_treedepth = 12),
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
   file    = file.path(models_dir, "fit_shrimp_lethal_4pl")
 )
 
@@ -3444,7 +3442,7 @@ zf_fits_sep <- lapply(zf_stages, function(s) {
     zf_std_by_stage[[s]],
     random_effects = "Date_experiment",
     chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-    control = list(adapt_delta = 0.99, max_treedepth = 15),
+    control = list(adapt_delta = 0.99, max_treedepth = 25),
     silent  = 2, refresh = 0,
     file    = file.path(models_dir,
                         paste0("fit_zf_separate_", s)),
@@ -3723,7 +3721,7 @@ A **joint model** fits all three life stages together and lets every 4PL sub-par
 
 We write the formula by hand to keep the same disjoint-bounds reparameterisation used by `make_4pl_formula()`. The life-stage covariate enters via **cell-means coding** (`~ 0 + life_stage + temp_c:life_stage`) rather than treatment-contrast coding. Cell-means estimates each stage's intercept and slope directly, with the same prior width on every stage's coefficient. Treatment contrasts (`temp_c * life_stage`) would place asymmetric priors on the non-reference stages — the effective slope for a non-reference stage is the sum of two `normal(0, 0.5)` coefficients, with implicit SD $\sqrt{2} \cdot 0.5 \approx 0.71$, $\sqrt{2}\times$ wider than the reference stage. Zebrafish life stages are biologically distinct enough that we do not want one of them designated as a "baseline".
 
-All four sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) receive this cell-means structure. No observation-level random effect is included: the beta-binomial family already absorbs the extra-binomial variance via $\phi$.
+All four sub-parameters (`lowraw`, `upraw`, `logk`, `mid`) receive this cell-means structure.
 
 ```{r zebrafish-joint-spec}
 #| label: zebrafish-joint-spec
@@ -3817,7 +3815,7 @@ fit_zf_joint <- brms::brm(
   data       = zf_joint_data,
   prior      = zf_joint_priors,
   chains     = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-  control    = list(adapt_delta = 0.995, max_treedepth = 15),
+  control    = list(adapt_delta = 0.995, max_treedepth = 20),
   init       = 0,
   backend    = "cmdstanr",
   silent     = 2, refresh = 0,
@@ -3915,7 +3913,7 @@ zf_joint_summary <- zf_joint_pred_grid |>
 ```{r zebrafish-overlay-tdt-line}
 #| label: fig-zebrafish-overlay-tdt-line
 #| cache: false
-#| fig-cap: "TDT lines for zebrafish comparing the three independent per-life-stage fits (dashed, lighter ribbons) with the joint 4PL fit (solid, darker ribbons); 95 % credible bands shown for both. Linear-time panel on the left, $\\log_{10}$-time panel on the right. Same hue per life stage across methods. The joint-fit bands are typically narrower thanks to partial pooling of the priors and the shared $\\phi$. See @sec-zebrafish-relative-ltx for the same overlay under the absolute 0.5 threshold."
+#| fig-cap: "TDT lines for zebrafish comparing the three independent per-life-stage fits (dashed, lighter ribbons) with the joint 4PL fit (solid, darker ribbons); 95 % credible bands shown for both. Linear-time panel on the left, $\\log_{10}$-time panel on the right. The joint-fit bands are typically narrower thanks to partial pooling of the priors and the shared $\\phi$. See @sec-zebrafish-relative-ltx for the same overlay under the absolute 0.5 threshold."
 #| fig-width: 10
 #| fig-height: 4.5
 
@@ -4910,7 +4908,7 @@ wf_leaf <- fit_4pl(
   chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
   init    = 0,
   backend = "cmdstanr",
-  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  control = list(adapt_delta = 0.995, max_treedepth = 25),
   file_refit = "on_change",
   file    = file.path(models_dir, "fit_leaf_function_4pl")
 )
@@ -5228,7 +5226,8 @@ p_leaf_cmp_lin <- ggplot2::ggplot() +
   ggplot2::labs(x = "Assay temperature (C)",
                 y = expression("Time to "*italic(F)[v]/italic(F)[m]*" = 0.5 (min)"),
                 colour = "Approach", fill = "Approach") +
-  ggplot2::theme_classic()
+  ggplot2::theme_classic() + 
+  ggplot2::coord_cartersian(xlim = c(36, 48))
 
 p_leaf_cmp_log <- p_leaf_cmp_lin +
   ggplot2::scale_y_log10() +
