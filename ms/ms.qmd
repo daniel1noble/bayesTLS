@@ -717,7 +717,7 @@ Bayesian methods may be more complicated to implement; however, our `bayesTLS` R
 
 # Acknowledgements
 
-We thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, Arnaud Sentis and Jeff Arnoldi for discussions during an extreme heat workshop funded by an ERC Grant (awarded to Arnaud Sentis: XX), and Gwenaëlle Deconninck, Charlie Cornwallis and Tobias Uller for helpful comments on the ideas developed here. D.W.A.N was supported by an ARC Future Fellowship (FT220100276) and thanks the ANU, Lund University, the ANU Hansen Scandinavian Friendship Grant and the Royal Physiographic Society of Lund for funding that supported the sabbatical during which this paper was written. P.P. was supported by a Wenner-Gren Stiftelserna postdoctoral fellowship (UPD2024-0239).
+We thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ignacio Peralta-Maraver, Arnaud Sentis and Jeff Arnoldi for discussions during an extreme heat workshop supported by the ClimateCountDown ERC Consolidator Grant, funded by the European Research Council under the European Union’s Horizon 2020 research and innovation programme (Grant agreement no. 101169909). We would also like to thank Gwenaëlle Deconninck, Charlie Cornwallis and Tobias Uller for helpful comments. D.W.A.N was supported by an ARC Future Fellowship (FT220100276) and thanks the ANU, Lund University, the ANU Hansen Scandinavian Friendship Grant and the Royal Physiographic Society of Lund for funding that supported the sabbatical during which this paper was written. P.P. was supported by a Wenner-Gren Stiftelserna postdoctoral fellowship (UPD2024-0239).
 
 # Author contributions {.unnumbered}
 
