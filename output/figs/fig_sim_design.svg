@@ -355,8 +355,8 @@
 <polyline points='50.05,129.88 52.54,129.88 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='50.05,97.31 52.54,97.31 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='50.05,64.75 52.54,64.75 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
-<text x='221.78' y='268.68' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='124.80px' lengthAdjust='spacingAndGlyphs'>Mean bias (estimate − truth)</text>
-<text x='52.54' y='18.34' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='156.30px' lengthAdjust='spacingAndGlyphs'>a. Design × replication — bias</text>
+<text x='221.78' y='268.68' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='122.28px' lengthAdjust='spacingAndGlyphs'>Mean bias (estimate - truth)</text>
+<text x='52.54' y='18.34' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='156.89px' lengthAdjust='spacingAndGlyphs'>a) Design × replication — bias</text>
 </g>
 <defs>
   <clipPath id='cpNDQzLjA2fDYwNy45OHw0NS4yMHwyNDcuMTM='>
@@ -731,8 +731,8 @@
 <polyline points='440.57,129.88 443.06,129.88 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='440.57,97.31 443.06,97.31 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='440.57,64.75 443.06,64.75 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
-<text x='612.30' y='268.68' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='120.61px' lengthAdjust='spacingAndGlyphs'>Empirical 95% CI coverage</text>
-<text x='443.06' y='18.34' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='183.20px' lengthAdjust='spacingAndGlyphs'>b. Design × replication — coverage</text>
+<text x='612.30' y='268.68' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='76.72px' lengthAdjust='spacingAndGlyphs'>95% CI coverage</text>
+<text x='443.06' y='18.34' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='183.80px' lengthAdjust='spacingAndGlyphs'>b) Design × replication — coverage</text>
 </g>
 <defs>
   <clipPath id='cpNTIuNTR8NzgxLjU0fDMxNS40OXw1MTcuNDI='>
@@ -984,8 +984,8 @@
 <polyline points='50.05,440.50 52.54,440.50 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='50.05,392.42 52.54,392.42 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='50.05,344.34 52.54,344.34 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
-<text x='224.06' y='538.97' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='124.80px' lengthAdjust='spacingAndGlyphs'>Mean bias (estimate − truth)</text>
-<text x='52.54' y='288.63' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='201.22px' lengthAdjust='spacingAndGlyphs'>c. Maximum exposure duration — bias</text>
+<text x='224.06' y='538.97' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='122.28px' lengthAdjust='spacingAndGlyphs'>Mean bias (estimate - truth)</text>
+<text x='52.54' y='288.63' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='201.81px' lengthAdjust='spacingAndGlyphs'>c) Maximum exposure duration — bias</text>
 </g>
 <defs>
   <clipPath id='cpNDM4LjUwfDYwNS43MHwzMTUuNDl8NTE3LjQy'>
@@ -1258,8 +1258,8 @@
 <polyline points='436.01,440.50 438.50,440.50 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='436.01,392.42 438.50,392.42 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
 <polyline points='436.01,344.34 438.50,344.34 ' style='stroke-width: 0.97; stroke-linecap: butt;' />
-<text x='610.02' y='538.97' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='120.61px' lengthAdjust='spacingAndGlyphs'>Empirical 95% CI coverage</text>
-<text x='438.50' y='288.63' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='228.12px' lengthAdjust='spacingAndGlyphs'>d. Maximum exposure duration — coverage</text>
+<text x='610.02' y='538.97' text-anchor='middle' style='font-size: 10.00px; font-family: "Arial";' textLength='76.72px' lengthAdjust='spacingAndGlyphs'>95% CI coverage</text>
+<text x='438.50' y='288.63' style='font-size: 11.00px; font-weight: bold; font-family: "Arial";' textLength='228.72px' lengthAdjust='spacingAndGlyphs'>d) Maximum exposure duration — coverage</text>
 <rect x='245.32' y='552.04' width='343.43' height='49.50' style='stroke-width: 0.97; stroke: none; fill: #FFFFFF;' />
 <rect x='250.31' y='557.02' width='17.28' height='17.28' style='stroke-width: 0.97; stroke: none; fill: #FFFFFF;' />
 <line x1='252.03' y1='565.66' x2='265.86' y2='565.66' style='stroke-width: 0.97; stroke: #54278F; stroke-linecap: butt;' />
