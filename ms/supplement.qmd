@@ -6377,7 +6377,7 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
 ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
 fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a)", ridge_scale_ctmax = .28), svg_png("shrimp_v2.svg"), .23, .58, .62, .93)
-fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b)"), svg_png("euca_v2.svg"), .06, .60, .46, .88)
+fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b)"), svg_png("snowgum_v4.svg"), .06, .60, .46, .88)
 fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
             setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
             "Zebrafish", "Danio rerio", "c)", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
