@@ -5227,7 +5227,7 @@ p_leaf_cmp_lin <- ggplot2::ggplot() +
                 y = expression("Time to "*italic(F)[v]/italic(F)[m]*" = 0.5 (min)"),
                 colour = "Approach", fill = "Approach") +
   ggplot2::theme_classic() + 
-  ggplot2::coord_cartersian(xlim = c(36, 48))
+  ggplot2::coord_cartesian(xlim = c(36, 48))
 
 p_leaf_cmp_log <- p_leaf_cmp_lin +
   ggplot2::scale_y_log10() +
