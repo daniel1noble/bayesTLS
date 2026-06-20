@@ -2507,12 +2507,17 @@ plot_tdt_curve(ltx_shrimp, panels = "both", colour = "#b2182b")
 #| code-fold: show
 
 # This chunk extracts TLS summaries from the shrimp 4PL fit.
+# Deterministic T_crit: extract_tdt() draws the rate-multiplier r* with runif()
+# per posterior draw, so we fix the seed and use *all* draws (ndraws = NULL) to
+# remove both the subsampling and the r* Monte-Carlo noise from the reported
+# T_crit (otherwise the median wobbles by ~0.1 deg C between renders).
+set.seed(123)
 et_shrimp <- extract_tdt(
   wf_shrimp,
   target_surv   = "relative",
   t_ref         = 60,
   TC_rate_range = c(0.1, 1),
-  ndraws        = 500,
+  ndraws        = NULL,
   lethal        = TRUE
 )
 ```

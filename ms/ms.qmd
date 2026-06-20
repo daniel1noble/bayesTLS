@@ -671,15 +671,28 @@ The main case-study models used four MCMC chains with 8000 iterations per chain,
 ```{r}
 #| label: shrimp-hi-facts
 #| echo: false
-# Shrimp heat-injury facts, read from the cached figure data the supplement
-# builds (output/data/fig5_hi_data.rds), so the manuscript numbers match the
-# figure and the shipped Kristineberg record exactly (no hand-typed values).
-.f5 <- readRDS(here::here("output", "data", "fig5_hi_data.rds"))
-shr_year     <- .f5$shr_year
-shr_offset   <- .f5$shr_offset
-shr_Tc       <- .f5$shr_Tc
-shr_max_file <- .f5$shr_max_file
-shr_n_years  <- .f5$shr_n_years
+#| message: false
+#| warning: false
+# Code-generated shrimp heat-injury facts. Year and warming offset are the
+# figure's design choices; the record maximum and number of years come straight
+# from the shipped Kristineberg file; T_crit is read from the supplement's
+# cached figure data when present (output/data/fig5_hi_data.rds) and otherwise
+# falls back to the corrected fit value, so this manuscript renders independently
+# of the supplement (matching this project's independent-render architecture).
+shr_year   <- 2021L   # warmest fjord summer by peak hourly SST (matches the figure)
+shr_offset <- 3L      # warming projection added to the observed trace
+.kb_ms <- utils::read.csv(here::here("inst", "extdata", "kristineberg",
+                                     "kristineberg_sea_temp_hourly.csv.gz"))
+.kb_ms <- .kb_ms[is.finite(.kb_ms$sea_temp_c), ]
+shr_max_file <- max(.kb_ms$sea_temp_c)
+shr_n_years  <- length(unique(.kb_ms$year))
+.f5 <- tryCatch(readRDS(here::here("output", "data", "fig5_hi_data.rds")),
+                error = function(e) NULL)
+# Trust the cached T_crit only when the .rds is from the *updated* supplement
+# (identified by the shr_max_file field it now writes); otherwise fall back to
+# the corrected fitted value so a stale cache cannot reintroduce an old number.
+.f5_fresh <- !is.null(.f5$shr_max_file)
+shr_Tc <- if (.f5_fresh && is.numeric(.f5$shr_Tc)) .f5$shr_Tc else 24.9
 ```
 
 For the heat-injury forecasts, we combined posterior draws from the lethal 4PL fits with `predict_heat_injury()`. For the vinegar fly, we used the shaded hourly microclimate trace from the @orsted_suzukii_2024 NicheMapR workflow (Rennes, France; June-August 2018; Zenodo record 10821572). For brown shrimp, we used hourly sea-surface temperatures from the Kristineberg Marine Research Station on the Gullmar fjord, Sweden, where animals were sampled from the field. We used June-August `r shr_year`, the warmest summer (by peak hourly temperature) in the station's 2008-2024 archive. Because even this observed record only just reaches the shrimp's $T_{crit}$ (`r round(shr_Tc, 1)` °C; `r shr_n_years`-year hourly maximum `r round(shr_max_file, 1)` °C), we added a +`r shr_offset` °C warming scenario that preserved the observed diurnal and seasonal structure but warmed the trace enough to cross the damage threshold. For both species, we predicted heat injury and survival with and without an illustrative damage-repair model. Following @arnold_thermal_2025, repair is represented as a Sharpe-Schoolfield thermal performance curve, so repair is temperature-dependent, highest near an intermediate optimum, and reduced at colder or hotter temperatures.
