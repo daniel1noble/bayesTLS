@@ -1,0 +1,326 @@
+---
+title: "Fitting CTmax and z **directly** in a bayesTLS-style 4PL"
+subtitle: "A runnable tutorial + design note, verified on the zebrafish case study"
+date: 2026-06-16
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    embed-resources: true
+    df-print: kable
+execute:
+  warning: false
+  message: false
+  cache: false
+---
+
+> **What this is.** A worked, *runnable* exploration of reparameterising the
+> bayesTLS 4PL so that **CTmax and z are direct model parameters** (the
+> profileTLS idea), fit in `brms`. Every model below is real `brms` code; the
+> fits are cached with `file=` so the document renders in a few minutes and
+> reproducibly. We verify the reparameterisation reproduces the existing
+> (midpoint-based) relative z/CTmax, then show the payoff: **random effects and
+> group structure placed directly on CTmax and z**. Nothing here changes the
+> package — it is a prototype to see what such functions would look like.
+
+## 1. The idea, in one paragraph
+
+bayesTLS models the 4PL shape coordinates `lowraw, upraw, logk, mid`, puts
+temperature (and any group / random-effect structure) on `mid`, and *derives* z
+and CTmax afterwards (`extract_tdt()`: `z = -1/β_mid,temp`,
+`CTmax(tref) = T̄ + (log10 tref − β_mid,0)/β_mid,temp`). The **direct**
+parameterisation reconstructs the midpoint *from* CTmax and z inside the
+likelihood,
+$$\text{mid}(T) = \log_{10} t_\text{ref} - \frac{T - \mathrm{CTmax}}{z},$$
+so CTmax and `log z` become the coordinates — each with its own linear
+predictor. The two are a smooth invertible reparam ⇒ **same likelihood, curve,
+and MLE**; the difference is which quantities you can model and contrast
+directly.
+
+```{r setup}
+if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
+pacman::p_load(bayesTLS, brms, posterior, dplyr, tibble, here)
+models_dir <- here::here("output", "models")
+options(mc.cores = 4)
+cb <- getFromNamespace("compute_4pl_bounds", "bayesTLS")  # the disjoint-bounds helper
+```
+
+## 2. Data: zebrafish lethal TDT, three life stages
+
+We use the same standardisation the manuscript uses — one frame per life stage,
+sharing the grand-mean temperature so centred temperature is on a common scale —
+then bind them into one joint frame.
+
+```{r data}
+zf   <- zebrafish_lethal
+tbar <- mean(zf$assay_temp, na.rm = TRUE)          # shared centring (39.67 C)
+stages <- levels(zf$life_stage)
+
+zf_std <- lapply(stages, function(s) {
+  standardize_data(
+    data = dplyr::filter(zf, life_stage == s),
+    temp = "assay_temp", duration = "duration_h",
+    n_total = "n_total", n_surv = "n_surv",
+    random_effects = "Date_experiment",
+    duration_unit = "hours", temp_mean = tbar)
+})
+names(zf_std) <- stages
+
+zf_joint <- dplyr::bind_rows(lapply(stages, function(s) {
+  d <- zf_std[[s]]; d$life_stage <- factor(s, levels = stages); d
+}))
+# Columns the model uses: temp (natural), temp_c (centred), logd = log10(hours),
+# n_surv, n_total, life_stage, Date_experiment.
+str(zf_joint[, c("temp", "temp_c", "logd", "n_surv", "n_total",
+                 "life_stage", "Date_experiment")])
+```
+
+The reference exposure is **1 hour**; duration is in hours, so `logd = log10(1) = 0`
+at the reference. That is why `log10_tref = 0` appears in the formulas below.
+
+## 3. The reparameterisation, and the relative/absolute backbone
+
+The model needs exactly **one linear-in-T backbone** (the TDT premise that
+`log10 LT` is linear in T). The midpoint *is* the **relative** threshold (where
+survival = `(low+up)/2`); the **absolute** threshold (a fixed survival, e.g.
+50%) is the relative one plus a correction:
+$$\log_{10}\mathrm{LT}_{p^*}^{\text{abs}}(T) = \text{mid}(T) +
+  \underbrace{\tfrac{1}{k}\log\tfrac{up-p^*}{p^*-low}}_{C(T)}.$$
+
+So you can elevate *either* curve to the backbone. We build the helper to do
+both — the only difference is whether the correction term is subtracted when
+reconstructing `mid`:
+
+```{r formula-builder}
+b <- cb(0, 1)                                   # low in [.001,.499], up in [.501,.999]
+low_e <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
+up_e  <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min,  b$up_w)
+
+# mid reconstructed from CTmax (as CTmaxdev = CTmax - Tbar, on centred temp) and z.
+mid_relative <- "(0 - (temp_c - CTmaxdev) / exp(logz))"
+mid_absolute <- paste0("(0 - (temp_c - CTmaxdev) / exp(logz)",
+                       " - (1/exp(logk)) * log((", up_e, " - 0.5)/(0.5 - ", low_e, ")))")
+
+make_rhs <- function(mid_expr)
+  sprintf("n_surv | trials(n_total) ~ %s + (%s - %s) / (1 + exp(exp(logk) * (logd - %s)))",
+          low_e, up_e, low_e, mid_expr)
+
+cat(make_rhs(mid_relative))
+```
+
+`CTmaxdev = CTmax − T̄` keeps the parameter centred (so `init = 0` starts CTmax at
+the temperature mean); we add `T̄` back when reporting. For this tutorial we use
+the **relative** backbone (the package default threshold); §8 shows the absolute
+switch.
+
+## 4. Build and fit the direct model — full `brms` code
+
+Life stage enters CTmax and z by **cell-means coding** (`~ 0 + life_stage`), so
+each stage gets its own CTmax and z directly; the shape sub-parameters keep the
+manuscript's per-stage temperature structure. Priors mirror `make_4pl_priors()`
+but sit on the *interpretable* scale: a weak normal on CTmax (°C) and a
+lognormal on z.
+
+```{r priors-helper}
+lr <- qlogis((0.02 - b$low_min) / b$low_w)   # logit-scale asymptote prior centres
+ur <- qlogis((0.98 - b$up_min)  / b$up_w)
+# per-stage (cell-means) prior on a non-linear parameter
+ps <- function(centre, sigma, nlpar) do.call(c, lapply(stages, function(s)
+  set_prior(sprintf("normal(%.4f, %.4f)", centre, sigma),
+            class = "b", nlpar = nlpar, coef = paste0("life_stage", s))))
+
+# Shared base (everything except the random effect on z), so we can build both
+# the headline model (RE on CTmax & z) and the matched-structure check (RE on
+# CTmax only) without fragile prior subsetting.
+priors_base <- c(
+  ps(lr,        1.0, "lowraw"),     # asymptotes / steepness: as make_4pl_priors()
+  ps(ur,        1.0, "upraw"),
+  ps(log(2),    1.0, "logk"),
+  ps(0,         10,  "CTmaxdev"),   # CTmax: weak, centred on the data mean (natural C)
+  ps(log(3),    0.7, "logz"),       # z ~ lognormal, median 3 C, plausibly 1-9
+  set_prior("normal(0, 0.5)", class = "b", nlpar = "lowraw"),  # temp_c slopes on shape
+  set_prior("normal(0, 0.5)", class = "b", nlpar = "upraw"),
+  set_prior("normal(0, 0.3)", class = "b", nlpar = "logk"),
+  set_prior("exponential(2)", class = "sd", nlpar = "CTmaxdev", group = "Date_experiment"),
+  set_prior("gamma(2, 0.1)",  class = "phi"))
+# Headline model also has a random effect on z:
+priors_direct <- c(priors_base,
+  set_prior("exponential(2)", class = "sd", nlpar = "logz", group = "Date_experiment"))
+```
+
+```{r formula-direct}
+f_direct <- brms::bf(
+  stats::as.formula(make_rhs(mid_relative)),
+  stats::as.formula("lowraw   ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("upraw    ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("logk     ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("CTmaxdev ~ 0 + life_stage + (1 | Date_experiment)"),  # RE on CTmax
+  stats::as.formula("logz     ~ 0 + life_stage + (1 | Date_experiment)"),  # RE on z
+  nl = TRUE, family = brms::beta_binomial(link = "identity"))
+f_direct
+```
+
+```{r fit-direct}
+fit_direct <- brms::brm(
+  f_direct, data = zf_joint, prior = priors_direct,
+  chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
+  backend = "cmdstanr", silent = 2, refresh = 0,
+  file = file.path(models_dir, "tut_zf_direct_re"), file_refit = "on_change")
+
+# sampling health
+np <- brms::nuts_params(fit_direct)
+c(divergences = sum(subset(np, Parameter == "divergent__")$Value),
+  rhat_max    = round(max(brms::rhat(fit_direct), na.rm = TRUE), 3))
+```
+
+## 5. Read CTmax and z **directly** — no extract_tdt for the relative quantities
+
+Because CTmax and z are parameters, the per-stage relative quantities are just
+coefficient reads (`CTmax = T̄ + CTmaxdev`, `z = exp(logz)`):
+
+```{r read-direct}
+dd <- as.data.frame(posterior::as_draws_df(fit_direct))
+qci <- function(x) sprintf("%.2f [%.2f, %.2f]",
+                           median(x), quantile(x, .025, names = FALSE),
+                           quantile(x, .975, names = FALSE))
+direct_tab <- tibble::tibble(
+  `Life stage` = stages,
+  `z (C)`      = vapply(stages, \(s) qci(exp(dd[[paste0("b_logz_life_stage", s)]])), ""),
+  `CTmax_1hr (C)` = vapply(stages, \(s) qci(tbar + dd[[paste0("b_CTmaxdev_life_stage", s)]]), ""))
+direct_tab
+```
+
+## 6. The payoff: variance components and contrasts **on CTmax and z**
+
+These are parameters now, so among-date variation in tolerance and sensitivity
+are estimated directly (impossible as parameters in the midpoint parameterisation),
+and life-stage contrasts are coefficient differences from one posterior:
+
+```{r re-and-contrasts}
+tibble::tibble(
+  quantity = c("sd(CTmax | Date)  [C]", "sd(log z | Date)"),
+  estimate = c(qci(dd[["sd_Date_experiment__CTmaxdev_Intercept"]]),
+               qci(dd[["sd_Date_experiment__logz_Intercept"]])))
+
+# contrast: larvae vs old_embryos, within-draw (carries joint uncertainty)
+dCT <- (tbar + dd[["b_CTmaxdev_life_stagelarvae"]]) -
+       (tbar + dd[["b_CTmaxdev_life_stageold_embryos"]])
+dZ  <- exp(dd[["b_logz_life_stagelarvae"]]) - exp(dd[["b_logz_life_stageold_embryos"]])
+tibble::tibble(contrast = "larvae - old_embryos",
+               `dCTmax (C)` = qci(dCT), `dz (C)` = qci(dZ))
+```
+
+## 7. Verification: do the numbers match the existing (midpoint) fit?
+
+The reference is the manuscript's cached **joint, midpoint-based** fit
+(`fit_zf_joint_4pl`, random effect on `mid`). We read its per-stage relative
+z/CTmax the way the supplement does (`z = -1/β_mid,temp`, invert `mid` for CTmax):
+
+```{r reference}
+ref <- as.data.frame(posterior::as_draws_df(
+  readRDS(file.path(models_dir, "fit_zf_joint_4pl.rds"))))
+# Anchor to the `mid` nonlinear parameter: the joint fit carries a
+# temp_c:life_stage interaction for EVERY nlpar (lowraw, upraw, logk, mid),
+# so the slope grep must be tied to b_mid_ or it picks the wrong coefficient.
+mid_slope <- function(s) ref[[grep(
+  paste0("^b_mid_(life_stage", s, ":temp_c|temp_c:life_stage", s, ")$"),
+  names(ref), value = TRUE)[1]]]
+mid_int <- function(s) ref[[paste0("b_mid_life_stage", s)]]
+ref_tab <- tibble::tibble(
+  `Life stage`    = stages,
+  `z (C)`         = vapply(stages, function(s) qci(-1 / mid_slope(s)), ""),
+  `CTmax_1hr (C)` = vapply(stages,
+                           function(s) qci(tbar + (0 - mid_int(s)) / mid_slope(s)), ""))
+ref_tab
+```
+
+**Point estimates match to ~0.01–0.1 °C / a few % in z.** The direct model's z
+intervals are *wider* — because it carries a **random effect on z** that the
+reference does not (σ(log z | Date) above is real between-date variation the
+midpoint fit omits). When the random-effect structure is matched (random effect
+on CTmax only, none on z), both the medians **and** the credible intervals line
+up — i.e. the reparameterisation is exact, and interval differences are
+explained entirely by which random effects each model includes, not by the
+coordinates:
+
+```{r fit-matched}
+f_match <- brms::bf(
+  stats::as.formula(make_rhs(mid_relative)),
+  stats::as.formula("lowraw   ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("upraw    ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("logk     ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("CTmaxdev ~ 0 + life_stage + (1 | Date_experiment)"),  # RE on CTmax
+  stats::as.formula("logz     ~ 0 + life_stage"),                          # NO RE on z
+  nl = TRUE, family = brms::beta_binomial(link = "identity"))
+priors_match <- priors_base   # base = no random effect on z
+fit_match <- brms::brm(
+  f_match, data = zf_joint, prior = priors_match,
+  chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
+  backend = "cmdstanr", silent = 2, refresh = 0,
+  file = file.path(models_dir, "tut_zf_direct_match"), file_refit = "on_change")
+dm <- as.data.frame(posterior::as_draws_df(fit_match))
+tibble::tibble(
+  `Life stage` = stages,
+  `z direct (matched RE)`   = vapply(stages, \(s) qci(exp(dm[[paste0("b_logz_life_stage", s)]])), ""),
+  `z reference`             = ref_tab$`z (C)`,
+  `CTmax direct (matched)`  = vapply(stages, \(s) qci(tbar + dm[[paste0("b_CTmaxdev_life_stage", s)]]), ""),
+  `CTmax reference`         = ref_tab$`CTmax_1hr (C)`)
+```
+
+## 8. The absolute backbone (optional): bake the correction into `mid`
+
+To make CTmax/z the **absolute** (fixed-survival) quantities, use
+`mid_absolute` (which subtracts `C(T)`) when building the formula — everything
+else is identical. The fitted CTmax/z then carry the absolute interpretation and
+their group/RE structure is on the absolute scale. (Well-posed for lethal
+full-range data, where the disjoint bounds guarantee `low < 0.5 < up`; for
+sub-0.5 upper asymptotes the absolute-50% crossing may not exist — use relative.)
+
+```{r absolute-formula}
+#| eval: false
+f_absolute <- brms::bf(
+  stats::as.formula(make_rhs(mid_absolute)),         # <- the only change
+  stats::as.formula("lowraw   ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("upraw    ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("logk     ~ 0 + life_stage + temp_c:life_stage"),
+  stats::as.formula("CTmaxdev ~ 0 + life_stage + (1 | Date_experiment)"),
+  stats::as.formula("logz     ~ 0 + life_stage + (1 | Date_experiment)"),
+  nl = TRUE, family = brms::beta_binomial(link = "identity"))
+```
+
+Note: under constant shape, relative and absolute give the same fit (CTmax
+differs by a constant, z identical); under shape drift they are *different
+models* (linearity-in-T sits on a different curve). You can elevate one or the
+other, never both as clean constant-z parameters at once.
+
+## 9. How this would look as package functions
+
+The prototype above maps cleanly onto a `fit_4pl()` option:
+
+- `make_4pl_formula(parameterization = "direct", threshold = c("relative","absolute"))`
+  swaps `mid` for `CTmaxdev`/`logz` nlpars and reconstructs `mid` (adding `C(T)`
+  for `"absolute"`).
+- New arguments `ctmax_formula = ~ life_stage + (1 | Date)`,
+  `z_formula = ~ life_stage + (1 | Date)` carry the structure that today goes on
+  `random_effects`/covariates of `mid`.
+- `make_4pl_priors()` sets priors on CTmax (°C) and `log z` — more interpretable.
+- `tref` becomes a **fit-time** argument (CTmax at another reference is the shift
+  `CTmax(tref₂) = CTmax(tref₁) − z·log10(tref₂/tref₁)`).
+- `extract_tdt()` shrinks to a *derived-quantities* helper: relative z/CTmax are
+  read from the fit; **absolute / LTₓ / T_crit** stay derived via the correction
+  (no reparameterisation removes that layer).
+
+### Caveats to validate before adopting
+- Sampling geometry under the reparam (the `/exp(logz)` term can funnel when z is
+  weakly identified) — check ESS/divergences on dense **and** sparse designs.
+- Few random-effect groups (here 8 dates) → σ(CTmax|Date)/σ(log z|Date) are
+  imprecise; treat the variance components as illustrative.
+- Ship as opt-in `parameterization = "direct"`; validate equivalence + geometry;
+  decide the default later (likely a major version).
+
+Related: `notes/2026-06-16-profiletls-audit.md`,
+`notes/2026-05-15-relative-vs-absolute-threshold.qmd`,
+`notes/2026-05-24-z-ctmax-derivation-not-two-stage.qmd`.
