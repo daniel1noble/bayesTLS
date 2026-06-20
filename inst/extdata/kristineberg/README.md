@@ -36,10 +36,18 @@ before Figure 5 is finalised for submission.
 
 ## Use in Figure 5 (important)
 
-The Gullmar fjord surface never reaches this shrimp population's thermal limits:
-across all 17 years the maximum hourly sea temperature is **26.1 °C**, whereas
-the fitted shrimp **T_crit ≈ 27.7 °C** and **CTmax₁ₕ ≈ 32.6 °C**. A literal
-trace therefore accumulates **zero** heat injury. Figure 5 instead uses the
-warmest summer on record (**2018**, JJA mean 19.6 °C) with an explicit
-**+6 °C marine-heatwave projection** so the trace crosses T_crit — labelled as a
-projection in the figure caption, not as observed lethal exposure.
+The Gullmar fjord surface only just reaches this shrimp population's thermal
+limits: across all 17 years (2008–2024) the maximum hourly sea-surface
+temperature in this file is **25.4 °C**, and the warmest summer by peak hourly
+temperature (**2021**) reaches **24.8 °C**, while the corrected shrimp fit gives
+**T_crit ≈ 24.9 °C** and **CTmax₁ₕ ≈ 31.6 °C**. A literal trace therefore
+accumulates little or no heat injury. The manuscript heat-injury figure instead
+uses the warmest summer on record by peak temperature (**2021**) with an
+explicit **+3 °C warming projection** so the trace clearly crosses T_crit —
+labelled as a projection in the figure caption, not as observed lethal exposure.
+
+(These T_crit / CTmax values are the corrected fit after the 2026-06 shrimp
+data-processing fix: `Mortality_after_trial` is a proportion, so survivor counts
+are `round((1 - mortality) * N)`. The earlier figures used 26.1 °C / T_crit
+27.7 °C, which were artefacts of the mis-processed mortality column and of an
+older temperature extract; do not reuse those numbers.)
