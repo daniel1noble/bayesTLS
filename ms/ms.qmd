@@ -668,11 +668,25 @@ where $\mathbf{x}_{ij}$ contains fixed covariates and $b_j$ is a group-level ran
 
 The main case-study models used four MCMC chains with 8000 iterations per chain, including 4000 warmup iterations. The custom joint vinegar-fly sex model used the same Bayesian 4PL structure but a shorter run of 3000 iterations with 1000 warmup iterations. Full formulas, priors, sampler controls, and diagnostics are reported in the [online supplement](https://daniel1noble.github.io/bayesTLS/).
 
-For the heat-injury forecasts, we combined posterior draws from the lethal 4PL fits with `predict_heat_injury()`. For the vinegar fly, we used the shaded hourly microclimate trace from the @orsted_suzukii_2024 NicheMapR workflow (Rennes, France; June-August 2018; Zenodo record 10821572). For brown shrimp, we used hourly sea-surface temperatures from the Kristineberg Marine Research Station on the Gullmar fjord, Sweden, where animals were sampled from the field. We used June-August 2018, the warmest summer in the station's 2008-2024 archive. Because this observed record never reached the shrimp's $T_{crit}$ (27.7 °C; 17-year hourly maximum 26.1 °C), we added a +4 °C warming scenario that preserved the observed diurnal and seasonal structure but warmed the trace enough to cross the damage threshold. For both species, we predicted heat injury and survival with and without an illustrative damage-repair model. Following @arnold_thermal_2025, repair is represented as a Sharpe-Schoolfield thermal performance curve, so repair is temperature-dependent, highest near an intermediate optimum, and reduced at colder or hotter temperatures.
+```{r}
+#| label: shrimp-hi-facts
+#| echo: false
+# Shrimp heat-injury facts, read from the cached figure data the supplement
+# builds (output/data/fig5_hi_data.rds), so the manuscript numbers match the
+# figure and the shipped Kristineberg record exactly (no hand-typed values).
+.f5 <- readRDS(here::here("output", "data", "fig5_hi_data.rds"))
+shr_year     <- .f5$shr_year
+shr_offset   <- .f5$shr_offset
+shr_Tc       <- .f5$shr_Tc
+shr_max_file <- .f5$shr_max_file
+shr_n_years  <- .f5$shr_n_years
+```
+
+For the heat-injury forecasts, we combined posterior draws from the lethal 4PL fits with `predict_heat_injury()`. For the vinegar fly, we used the shaded hourly microclimate trace from the @orsted_suzukii_2024 NicheMapR workflow (Rennes, France; June-August 2018; Zenodo record 10821572). For brown shrimp, we used hourly sea-surface temperatures from the Kristineberg Marine Research Station on the Gullmar fjord, Sweden, where animals were sampled from the field. We used June-August `r shr_year`, the warmest summer (by peak hourly temperature) in the station's 2008-2024 archive. Because even this observed record only just reaches the shrimp's $T_{crit}$ (`r round(shr_Tc, 1)` °C; `r shr_n_years`-year hourly maximum `r round(shr_max_file, 1)` °C), we added a +`r shr_offset` °C warming scenario that preserved the observed diurnal and seasonal structure but warmed the trace enough to cross the damage threshold. For both species, we predicted heat injury and survival with and without an illustrative damage-repair model. Following @arnold_thermal_2025, repair is represented as a Sharpe-Schoolfield thermal performance curve, so repair is temperature-dependent, highest near an intermediate optimum, and reduced at colder or hotter temperatures.
 
 ## Brown shrimp (*Crangon crangon*)
 
-Brown shrimp had a comparatively large $z$ (low sensitivity of tolerance time to warming), high $CT_{max}$, and a high $T_{crit}$ for this high-latitude population ([@fig-tls-comparison]a). Under the +4 °C warming scenario, heat injury accumulated once temperatures exceeded $T_{crit}$, leading to predicted survival declines, with the illustrative repair model delaying this decline but not suppressing it ([@fig-heat-injury]d-f).
+Brown shrimp had a comparatively large $z$ (low sensitivity of tolerance time to warming) and high $CT_{max}$ for this high-latitude population, with a $T_{crit}$ sitting close to the warmest temperatures the fjord currently experiences ([@fig-tls-comparison]a). Under the +`r shr_offset` °C warming scenario, heat injury accumulated once temperatures exceeded $T_{crit}$, leading to predicted survival declines, with the illustrative repair model delaying this decline but not suppressing it ([@fig-heat-injury]d-f).
 
 ## Snow gum (*Eucalyptus pauciflora*)
 
@@ -700,7 +714,7 @@ knitr::include_graphics(here::here("output", "figs", "fig4_case_study_densities.
 ```{r}
 #| label: fig-heat-injury
 #| echo: false
-#| fig-cap: "Heat-injury accumulation and predicted survival under field-derived temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels a-c) and the brown shrimp (*Crangon crangon*, panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; @orsted_suzukii_2024 Zenodo record 10821572) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2018, the warmest summer on record) warmed by a **+4 °C projection** — with the relative-threshold $T_{crit}$ (purple dotted line). The fjord itself never reaches the shrimp's $T_{crit}$ (27.7 °C; 17-year maximum 26.1 °C), so the projection makes the heat-injury dynamics visible. (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (c, f) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
+#| fig-cap: "Heat-injury accumulation and predicted survival under field-derived temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels a-c) and the brown shrimp (*Crangon crangon*, panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; @orsted_suzukii_2024 Zenodo record 10821572) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2021, the warmest summer on record by peak temperature) warmed by a **+3 °C projection** — with the relative-threshold $T_{crit}$ (purple dotted line). The observed fjord trace only just reaches the shrimp's $T_{crit}$, so the modest warming projection makes the heat-injury dynamics visible. (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (c, f) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 knitr::include_graphics(here::here("output", "figs", "fig5_heat_injury.png"))
