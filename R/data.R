@@ -7,8 +7,8 @@
 #'
 #' Replicate lethal-TDT trials for brown shrimp (\emph{Crangon crangon}). Each
 #' row is one tank of individuals exposed to a fixed assay temperature for a
-#' fixed duration; the response is the number that died. The model-ready frame
-#' for Case Study 1 (lethal endpoint).
+#' fixed duration; the response is the proportion that died. The model-ready
+#' frame for Case Study 1 (lethal endpoint).
 #'
 #' @format A data frame with 148 rows and 6 variables:
 #' \describe{
@@ -17,8 +17,10 @@
 #'   \item{Temperature_assay}{Assay temperature (degrees C).}
 #'   \item{Duration_exposure_hours}{Exposure duration (hours).}
 #'   \item{N_individuals_after_trial}{Number of individuals in the trial.}
-#'   \item{Mortality_after_trial}{Number that died during the trial, out of
-#'         \code{N_individuals_after_trial}.}
+#'   \item{Mortality_after_trial}{Proportion that died during the trial
+#'         (deaths / \code{N_individuals_after_trial}), in the unit interval.
+#'         Consumed by
+#'         \code{standardize_data(mortality = "Mortality_after_trial")}.}
 #' }
 #' @source Brown shrimp lethal-TDT assay (Case Study 1). Raw file:
 #'   \code{system.file("extdata", "data_lethal_TDT_brown_shrimp.csv", package = "bayesTLS")}.

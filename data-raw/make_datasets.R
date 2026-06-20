@@ -20,9 +20,13 @@ ext <- function(f) {
   if (file.exists(p)) p else system.file("extdata", f, package = "bayesTLS")
 }
 
-## 1. Brown shrimp — lethal TDT (counts) -------------------------------------
-# Already model-ready; keep the columns standardize_data() and the case study
-# use. `Mortality_after_trial` is a death count out of `N_individuals_after_trial`.
+## 1. Brown shrimp — lethal TDT -----------------------------------------------
+# Keep the columns standardize_data() and the case study use. In the raw CSV
+# `Mortality_after_trial` is the death PROPORTION (deaths / N_individuals_after_trial,
+# in [0, 1]) — it is consumed downstream by standardize_data(mortality = ...),
+# which derives n_surv = round((1 - mortality) * n_total). It must therefore stay
+# numeric: a previous as.integer() here floored every proportion < 1 to 0, which
+# collapsed the shipped death counts to ~all-zero (fixed 2026-06-16).
 shrimp_lethal <- read_csv(ext("data_lethal_TDT_brown_shrimp.csv"),
                           show_col_types = FALSE) |>
   dplyr::transmute(
@@ -31,7 +35,7 @@ shrimp_lethal <- read_csv(ext("data_lethal_TDT_brown_shrimp.csv"),
     Temperature_assay        = as.numeric(Temperature_assay),
     Duration_exposure_hours  = as.numeric(Duration_exposure_hours),
     N_individuals_after_trial = as.integer(N_individuals_after_trial),
-    Mortality_after_trial    = as.integer(Mortality_after_trial)
+    Mortality_after_trial    = as.numeric(Mortality_after_trial)
   ) |>
   as.data.frame()
 
