@@ -18,7 +18,8 @@
 #'   \item{Duration_exposure_hours}{Exposure duration (hours).}
 #'   \item{N_individuals_after_trial}{Number of individuals in the trial.}
 #'   \item{Mortality_after_trial}{Proportion that died during the trial
-#'         (deaths / \code{N_individuals_after_trial}), in [0, 1]. Consumed by
+#'         (deaths / \code{N_individuals_after_trial}), in the unit interval.
+#'         Consumed by
 #'         \code{standardize_data(mortality = "Mortality_after_trial")}.}
 #' }
 #' @source Brown shrimp lethal-TDT assay (Case Study 1). Raw file:
