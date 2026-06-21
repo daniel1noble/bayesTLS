@@ -1,0 +1,166 @@
+---
+title: "Prior sensitivity of the direct CTmax/z 4PL: the lower-asymptote funnel"
+subtitle: "Why the asymptote priors can't be naively flattened"
+date: 2026-06-21
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+    code-fold: show
+---
+
+## Question
+
+The direct CTmax/z parameterisation
+(`notes/2026-06-16-direct-ctmax-z-parameterisation.qmd`) carries a fairly long
+prior block — a per-life-stage (cell-means) prior on each 4PL sub-parameter plus
+separate priors for the temperature slopes. Daniel asked whether this can be
+collapsed to a single generic weakly-informative prior per parameter.
+
+**Short answer: no — not for the asymptotes.** Flattening them turns a clean fit
+(0 divergences) into a badly-behaved one (≈150–190 divergences) because the
+lower asymptote is *identified only at its boundary*, and the prior is the only
+thing supplying curvature there. Increasing `adapt_delta` does **not** fix it,
+confirming the problem is the posterior geometry (the prior), not the sampler
+step size.
+
+All numbers below are read live from the cached zebrafish fits.
+
+```{r setup}
+#| message: false
+#| warning: false
+pacman::p_load(brms, posterior, dplyr, tibble, purrr, here)
+models_dir <- here::here("output", "models")
+inv_logit  <- function(x) 1 / (1 + exp(-x))
+low_of     <- function(raw) 0.001 + inv_logit(raw) * 0.498   # disjoint-bounds lower asymptote
+stages     <- c("young_embryos", "old_embryos", "larvae")
+```
+
+## The two prior regimes
+
+The model is identical in all fits (relative direct CTmax/z 4PL, beta-binomial,
+random effects on CTmax and z; see the 2026-06-16 note). Only the priors on the
+**asymptotes / steepness** differ.
+
+```{r priors-shown}
+#| eval: false
+# CENTRED (package-style) — asymptotes pinned near survival 0/1:
+prior(normal(-3.23, 1), class = b, nlpar = lowraw, coef = life_stage<each>)  # low ~ 0.02
+prior(normal( 3.23, 1), class = b, nlpar = upraw,  coef = life_stage<each>)  # up  ~ 0.98
+prior(normal(log(2), 1), class = b, nlpar = logk,  coef = life_stage<each>)
+prior(normal(0, 0.5), class = b, nlpar = lowraw)   # temp slopes
+prior(normal(0, 0.5), class = b, nlpar = upraw)
+prior(normal(0, 0.3), class = b, nlpar = logk)
+
+# GENERIC — one weakly-informative prior per parameter, centred at survival 0.5:
+prior(normal(0, 1.5), class = b, nlpar = lowraw)   # prior-median low = 0.25
+prior(normal(0, 1.5), class = b, nlpar = upraw)    # prior-median up  = 0.75
+prior(normal(0, 1),   class = b, nlpar = logk)
+# (CTmaxdev ~ normal(0,10), logz ~ normal(log 3, 0.7), RE-SDs, phi: identical in both)
+```
+
+The `normal(0, 1.5)` on `lowraw` expects the survival curve to bottom out at
+**25 %**, not at ~0. For lethal full-range data (everything dies at long
+exposure × high temperature) that is the wrong centre.
+
+## Three fits, compared
+
+```{r diagnostics}
+#| message: false
+#| warning: false
+fits <- c(
+  "centred N(±3.23,1), ad=0.99"  = "tut_zf_direct_re",
+  "generic N(0,1.5), ad=0.99"    = "tut_zf_direct_simplepriors",
+  "generic N(0,1.5), ad=0.999"   = "tut_zf_direct_simplepriors_ad999")
+
+diag_tbl <- purrr::imap_dfr(fits, function(file, lab) {
+  f  <- readRDS(file.path(models_dir, paste0(file, ".rds")))
+  np <- brms::nuts_params(f)
+  s  <- posterior::summarise_draws(posterior::as_draws_df(f), "rhat", "ess_bulk")
+  tibble::tibble(
+    `prior / sampler` = lab,
+    divergences  = sum(subset(np, Parameter == "divergent__")$Value),
+    `max R-hat`  = round(max(s$rhat, na.rm = TRUE), 3),
+    `min ESS`    = round(min(s$ess_bulk, na.rm = TRUE)))
+})
+diag_tbl
+```
+
+The centred priors give **0 divergences**. The generic priors give ~190
+divergences at `adapt_delta = 0.99`, and still ~140 at `adapt_delta = 0.999`
+with a deeper tree — a small reduction, nowhere near zero. (The centred fit's
+*min ESS* is actually lower, but that is its random-effect SD `sd(CTmax | Date)`,
+which is inherently imprecise with only 8 date groups — a benign kind of
+"slow", not divergent exploration.)
+
+## Why: a boundary funnel, not a step-size problem
+
+On the disjoint-bounds scale `low = 0.001 + inv_logit(lowraw) · 0.498`. The data
+want `low ≈ 0`, which means `lowraw → −∞`, where `inv_logit` **saturates** and
+the likelihood becomes flat in `lowraw` — the data cannot distinguish
+`low = 0.005` from `low = 0.001`. That is a classic funnel: a direction the
+likelihood does not constrain, where only the prior supplies curvature.
+
+- A **tight centred prior** `N(−3.23, 1)` provides that curvature → the sampler
+  stays in the identified region → 0 divergences.
+- A **wide generic prior** `N(0, 1.5)` is mis-centred (pulls toward `low = 0.25`)
+  *and* too diffuse to regularise the saturated tail → it funnels.
+
+Because the funnel is a property of the posterior geometry, shrinking the step
+size (`adapt_delta`) can only chip at it — hence 191 → 143, not 191 → 0.
+
+```{r asymptote-comparison}
+#| message: false
+#| warning: false
+asym <- purrr::imap_dfr(fits[c(1, 2)], function(file, lab) {
+  d <- as.data.frame(posterior::as_draws_df(readRDS(file.path(models_dir, paste0(file, ".rds")))))
+  purrr::map_dfr(stages, function(s) {
+    raw <- d[[paste0("b_lowraw_life_stage", s)]]
+    tibble::tibble(prior = lab, stage = s,
+      `low (median)` = round(median(low_of(raw)), 3),
+      `low 97.5%`    = round(quantile(low_of(raw), .975, names = FALSE), 3))
+  })
+})
+tidyr::pivot_wider(asym, names_from = prior,
+                   values_from = c(`low (median)`, `low 97.5%`))
+```
+
+Under the generic prior the estimated survival floor drifts **up** and widens
+(e.g. old_embryos' upper credible bound reaches ~0.17 vs ~0.03 under the centred
+prior), and that asymptote uncertainty propagates into a slightly inflated,
+wider `z`.
+
+```{r z-comparison}
+#| message: false
+#| warning: false
+zt <- purrr::imap_dfr(fits, function(file, lab) {
+  d <- as.data.frame(posterior::as_draws_df(readRDS(file.path(models_dir, paste0(file, ".rds")))))
+  purrr::map_dfr(stages, function(s) {
+    z <- exp(d[[paste0("b_logz_life_stage", s)]])
+    tibble::tibble(prior = lab, stage = s,
+      z = sprintf("%.2f [%.2f, %.2f]", median(z),
+                  quantile(z, .025, names = FALSE), quantile(z, .975, names = FALSE)))
+  })
+})
+tidyr::pivot_wider(zt, names_from = prior, values_from = z)
+```
+
+## Conclusion and recommendation
+
+1. The asymptote priors are **regularising a boundary-identified parameter**, not
+   injecting biological opinion. They are load-bearing.
+2. The funnel is **structural** (geometry/prior), confirmed by the near-null
+   effect of raising `adapt_delta` to 0.999. Tuning the sampler is the wrong
+   lever; the prior is the right one.
+3. The only genuine verbosity is the **per-stage repetition forced by cell-means
+   coding** (`~ 0 + life_stage`). `CTmaxdev` and `logz` (no temperature slope)
+   collapse safely to one no-`coef` prior each. The asymptote/steepness blocks
+   cannot, unless the *model* drops temperature dependence on those parameters
+   (then each is a single coefficient — still wanting a centred prior).
+4. Practical guidance for the package / tutorial: keep centred asymptote priors;
+   do **not** offer a flat `N(0, 1.5)`-style default. If a "simple priors" mode
+   is ever exposed, it must still centre `low` near 0 and `up` near 1.
+
+Related: `notes/2026-06-16-direct-ctmax-z-parameterisation.qmd` (the model and
+the package-style priors).
