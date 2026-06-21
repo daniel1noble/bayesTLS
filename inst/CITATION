@@ -6,13 +6,14 @@ bibentry(
   author  = c(
     person("Daniel W. A.", "Noble"),
     person("Pieter A.",    "Arnold"),
+    person("Shinichi",     "Nakagawa"),
     person("Patrice",      "Pottier")
   ),
   year    = "2026",
   note    = "Manuscript in preparation",
   url     = "https://github.com/daniel1noble/bayesTLS",
   textVersion = paste(
-    "Noble DWA, Arnold PA, Pottier P (2026).",
+    "Noble DWA, Arnold PA, Nakagawa S, Pottier P (2026).",
     "A flexible modelling framework for estimating thermal tolerance and sensitivity.",
     "Manuscript in preparation. https://github.com/daniel1noble/bayesTLS"
   )

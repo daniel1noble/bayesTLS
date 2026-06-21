@@ -10,6 +10,9 @@ authors:
   - name: "Pieter A. Arnold"
     affiliations:
       - ref: anu
+  - name: "Shinichi Nakagawa"
+    affiliations:
+      - ref: ualberta
   - name: "Patrice Pottier"
     email: patrice.pottier@bioenv.gu.se
     corresponding: true
@@ -30,6 +33,11 @@ affiliations:
     city: Sydney
     state: New South Wales
     country: Australia
+  - id: ualberta
+    name: Department of Biological Sciences, University of Alberta
+    city: Edmonton
+    state: Alberta
+    country: Canada
 abstract: |
   Extreme heat events are becoming more frequent, intense and prolonged, increasing the need for models that predict impacts on organismal fitness. Thermal death time (TDT) and thermal load sensitivity (TLS) models provide this link, but conventional two-stage analyses often discard uncertainty, mishandle censored or overdispersed data and limit hierarchical inference and prediction. We derive equivalences showing how the four-parameter logistic model can recover TDT/TLS quantities, including thermal sensitivity ($z$), critical maxima ($CT_{max}$), $T_{crit}$, heat injury and survival, from one fitted model. Simulations show the joint model reproduces classical estimates when two-stage assumptions hold and is more reliable when they fail. We introduce `bayesTLS`, an R package for count/proportion data. We use case studies across plant and animal taxa to demonstrate its power for estimating group contrasts and predicting survival under field temperature-time series. This framework provides robust inference and flexible tools for predicting organismal responses to future extreme heat events.
 keywords:

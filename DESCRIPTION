@@ -6,6 +6,7 @@ Authors@R: c(
            email = "daniel.noble@anu.edu.au",
            role  = c("aut", "cre")),
     person("Pieter A.", "Arnold", role = "aut"),
+    person("Shinichi", "Nakagawa", role = "aut"),
     person("Patrice", "Pottier",
            email = "patrice.pottier@bioenv.gu.se",
            role  = "aut"))
@@ -15,7 +16,7 @@ Description: A function library for fitting joint Bayesian four-parameter
     T_crit) with full posterior uncertainty, and predicting heat-injury
     accumulation and survival under fluctuating temperature regimes with
     optional Sharpe-Schoolfield repair. Implements the framework described
-    in Noble, Arnold and Pottier (in preparation).
+    in Noble, Arnold, Nakagawa and Pottier (in preparation).
 License: CC BY 4.0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
