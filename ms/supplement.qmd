@@ -11,6 +11,9 @@ authors:
   - name: "Pieter A. Arnold"
     affiliations:
       - ref: anu
+  - name: "Shinichi Nakagawa"
+    affiliations:
+      - ref: ualberta
   - name: "Patrice Pottier"
     email: patrice.pottier@bioenv.gu.se
     corresponding: true
@@ -25,6 +28,11 @@ affiliations:
     name: Department of Biological and Environmental Sciences, University of Gothenburg
     city: Gothenburg
     country: Sweden
+  - id: ualberta
+    name: Department of Biological Sciences, University of Alberta
+    city: Edmonton
+    state: Alberta
+    country: Canada
 date: today
 output-file: supp
 format:

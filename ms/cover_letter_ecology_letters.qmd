@@ -25,6 +25,6 @@ Thank you for considering our submission.
 
 Sincerely,
 
-Daniel W.A. Noble, Pieter A. Arnold, and Patrice Pottier
+Daniel W.A. Noble, Pieter A. Arnold, Shinichi Nakagawa, and Patrice Pottier
 
 ![Conceptual overview of the proposed modelling framework.](../output/figs/fig1.png){#fig-cover-framework width=100%}

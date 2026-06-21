@@ -21,8 +21,8 @@ bundled case-study data.
 
 Please cite the companion paper when using `bayesTLS`:
 
-> Noble, D.W.A., Arnold, P.A. & Pottier, P. (in preparation). A flexible
-> modelling framework for estimating thermal tolerance and sensitivity.
+> Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (in preparation). A
+> flexible modelling framework for estimating thermal tolerance and sensitivity.
 
 This paper is the primary citation for both the statistical framework and the
 `bayesTLS` package. Citation details will be updated here when the paper is
