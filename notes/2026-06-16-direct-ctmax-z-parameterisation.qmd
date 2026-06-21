@@ -324,3 +324,98 @@ The prototype above maps cleanly onto a `fit_4pl()` option:
 Related: `notes/2026-06-16-profiletls-audit.md`,
 `notes/2026-05-15-relative-vs-absolute-threshold.qmd`,
 `notes/2026-05-24-z-ctmax-derivation-not-two-stage.qmd`.
+
+## Appendix: the raw `brms` model and priors (no helpers)
+
+For readers who want the model without the `make_rhs()` / `cb()` / `ps()`
+plumbing, here is the **relative** direct model written out literally — the exact
+formula and priors `brms` receives (zebrafish, three life stages; data frame
+`zf_joint` with `n_surv, n_total, logd, temp_c, life_stage, Date_experiment`).
+These chunks are display-only (`eval: false`); the fits above use the equivalent
+helper-built versions.
+
+```{r appendix-formula}
+#| eval: false
+library(brms)
+
+f_direct <- bf(
+  # 4PL: low + (up - low) / (1 + exp(k * (log10 t - mid))),
+  # disjoint-bounds asymptotes; mid reconstructed from CTmax and z.
+  n_surv | trials(n_total) ~
+    (0.001 + inv_logit(lowraw) * 0.498) +
+    ((0.501 + inv_logit(upraw) * 0.498) - (0.001 + inv_logit(lowraw) * 0.498)) /
+    (1 + exp(exp(logk) * (logd - (0 - (temp_c - CTmaxdev) / exp(logz))))),
+
+  lowraw   ~ 0 + life_stage + temp_c:life_stage,      # lower asymptote (raw scale)
+  upraw    ~ 0 + life_stage + temp_c:life_stage,      # upper asymptote (raw scale)
+  logk     ~ 0 + life_stage + temp_c:life_stage,      # log steepness
+  CTmaxdev ~ 0 + life_stage + (1 | Date_experiment),  # CTmax - mean(temp), in C
+  logz     ~ 0 + life_stage + (1 | Date_experiment),  # log z
+  nl = TRUE, family = beta_binomial(link = "identity"))
+```
+
+For the **absolute** threshold, swap only the `mid` term to subtract the
+correction `C(T) = (1/k) log((up - 0.5)/(0.5 - low))`:
+
+```{r appendix-absolute}
+#| eval: false
+# replace  (0 - (temp_c - CTmaxdev) / exp(logz))  with:
+  (0 - (temp_c - CTmaxdev) / exp(logz)
+     - (1/exp(logk)) * log( ((0.501 + inv_logit(upraw) * 0.498) - 0.5) /
+                            (0.5 - (0.001 + inv_logit(lowraw) * 0.498)) ))
+```
+
+```{r appendix-priors}
+#| eval: false
+priors_direct <- c(
+  # interpretable parameters — one prior each, broadcast to all life stages
+  prior(normal(0, 10),       class = b, nlpar = CTmaxdev),   # CTmax (C, centred on mean temp)
+  prior(normal(log(3), 0.7), class = b, nlpar = logz),       # z ~ lognormal, median 3 C
+
+  # asymptote levels + steepness, per life stage, centred so low ~ 0.02, up ~ 0.98, k ~ 2.
+  # (These per-stage centres are load-bearing — see "Can the priors be simpler?" below.)
+  prior(normal(-3.23, 1), class = b, nlpar = lowraw, coef = life_stageyoung_embryos),
+  prior(normal(-3.23, 1), class = b, nlpar = lowraw, coef = life_stageold_embryos),
+  prior(normal(-3.23, 1), class = b, nlpar = lowraw, coef = life_stagelarvae),
+  prior(normal( 3.23, 1), class = b, nlpar = upraw,  coef = life_stageyoung_embryos),
+  prior(normal( 3.23, 1), class = b, nlpar = upraw,  coef = life_stageold_embryos),
+  prior(normal( 3.23, 1), class = b, nlpar = upraw,  coef = life_stagelarvae),
+  prior(normal(log(2), 1), class = b, nlpar = logk,  coef = life_stageyoung_embryos),
+  prior(normal(log(2), 1), class = b, nlpar = logk,  coef = life_stageold_embryos),
+  prior(normal(log(2), 1), class = b, nlpar = logk,  coef = life_stagelarvae),
+
+  # temperature slopes on the shape parameters (the temp_c:life_stage coefs):
+  # no `coef` -> applies to every b-coef of that nlpar without a specific prior
+  prior(normal(0, 0.5), class = b, nlpar = lowraw),
+  prior(normal(0, 0.5), class = b, nlpar = upraw),
+  prior(normal(0, 0.3), class = b, nlpar = logk),
+
+  # random-effect SDs and beta-binomial dispersion
+  prior(exponential(2), class = sd, nlpar = CTmaxdev, group = Date_experiment),
+  prior(exponential(2), class = sd, nlpar = logz,     group = Date_experiment),  # drop for RE on CTmax only
+  prior(gamma(2, 0.1),  class = phi))
+
+fit_direct <- brm(f_direct, data = zf_joint, prior = priors_direct,
+  chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
+  backend = "cmdstanr")
+```
+
+### Can the priors be simpler?
+
+Partly. The interpretable parameters (`CTmaxdev`, `logz`) carry no temperature
+slope, so a single `class = b` prior with no `coef` broadcasts to all three life
+stages — that is the collapse shown above (saving four lines versus one prior per
+stage).
+
+The asymptote/steepness priors, however, are **load-bearing, not decoration**.
+Replacing the whole block with a single generic weakly-informative prior per
+parameter (`normal(0, 1.5)` on `lowraw`/`upraw`, centred at survival 0.5)
+produced **191 divergent transitions versus 0** for the centred priors, and
+slightly inflated `z` (e.g. larvae 2.44 [1.62, 3.85] vs 2.28 [1.51, 3.49]).
+Full-range survival data wants the asymptotes pinned near 0 and 1; a prior
+centred at 0.5 fights the data and the sampler funnels. So keep the centred
+asymptote priors. The remaining verbosity is the per-stage repetition forced by
+cell-means coding (`~ 0 + life_stage`); the only way to collapse it fully is to
+drop temperature dependence on the shape parameters — a model simplification, not
+just a prior one.

@@ -2330,6 +2330,10 @@ window.Quarto = {
   <ul class="collapse">
   <li><a href="#caveats-to-validate-before-adopting" id="toc-caveats-to-validate-before-adopting" class="nav-link" data-scroll-target="#caveats-to-validate-before-adopting">Caveats to validate before adopting</a></li>
   </ul></li>
+  <li><a href="#appendix-the-raw-brms-model-and-priors-no-helpers" id="toc-appendix-the-raw-brms-model-and-priors-no-helpers" class="nav-link" data-scroll-target="#appendix-the-raw-brms-model-and-priors-no-helpers">Appendix: the raw <code>brms</code> model and priors (no helpers)</a>
+  <ul class="collapse">
+  <li><a href="#can-the-priors-be-simpler" id="toc-can-the-priors-be-simpler" class="nav-link" data-scroll-target="#can-the-priors-be-simpler">Can the priors be simpler?</a></li>
+  </ul></li>
   </ul>
 </nav>
 </div>
@@ -2804,6 +2808,83 @@ logz ~ 0 + life_stage + (1 | Date_experiment)</code></pre>
 <li>Ship as opt-in <code>parameterization = &quot;direct&quot;</code>; validate equivalence + geometry; decide the default later (likely a major version).</li>
 </ul>
 <p>Related: <code>notes/2026-06-16-profiletls-audit.md</code>, <code>notes/2026-05-15-relative-vs-absolute-threshold.qmd</code>, <code>notes/2026-05-24-z-ctmax-derivation-not-two-stage.qmd</code>.</p>
+</section>
+</section>
+<section id="appendix-the-raw-brms-model-and-priors-no-helpers" class="level2">
+<h2 class="anchored" data-anchor-id="appendix-the-raw-brms-model-and-priors-no-helpers">Appendix: the raw <code>brms</code> model and priors (no helpers)</h2>
+<p>For readers who want the model without the <code>make_rhs()</code> / <code>cb()</code> / <code>ps()</code> plumbing, here is the <strong>relative</strong> direct model written out literally — the exact formula and priors <code>brms</code> receives (zebrafish, three life stages; data frame <code>zf_joint</code> with <code>n_surv, n_total, logd, temp_c, life_stage, Date_experiment</code>). These chunks are display-only (<code>eval: false</code>); the fits above use the equivalent helper-built versions.</p>
+<div class="cell">
+<details open class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(brms)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>f_direct <span class="ot">&lt;-</span> <span class="fu">bf</span>(</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 4PL: low + (up - low) / (1 + exp(k * (log10 t - mid))),</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>  <span class="co"># disjoint-bounds asymptotes; mid reconstructed from CTmax and z.</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>  n_surv <span class="sc">|</span> <span class="fu">trials</span>(n_total) <span class="sc">~</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    (<span class="fl">0.001</span> <span class="sc">+</span> <span class="fu">inv_logit</span>(lowraw) <span class="sc">*</span> <span class="fl">0.498</span>) <span class="sc">+</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    ((<span class="fl">0.501</span> <span class="sc">+</span> <span class="fu">inv_logit</span>(upraw) <span class="sc">*</span> <span class="fl">0.498</span>) <span class="sc">-</span> (<span class="fl">0.001</span> <span class="sc">+</span> <span class="fu">inv_logit</span>(lowraw) <span class="sc">*</span> <span class="fl">0.498</span>)) <span class="sc">/</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(<span class="fu">exp</span>(logk) <span class="sc">*</span> (logd <span class="sc">-</span> (<span class="dv">0</span> <span class="sc">-</span> (temp_c <span class="sc">-</span> CTmaxdev) <span class="sc">/</span> <span class="fu">exp</span>(logz))))),</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>  lowraw   <span class="sc">~</span> <span class="dv">0</span> <span class="sc">+</span> life_stage <span class="sc">+</span> temp_c<span class="sc">:</span>life_stage,      <span class="co"># lower asymptote (raw scale)</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>  upraw    <span class="sc">~</span> <span class="dv">0</span> <span class="sc">+</span> life_stage <span class="sc">+</span> temp_c<span class="sc">:</span>life_stage,      <span class="co"># upper asymptote (raw scale)</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>  logk     <span class="sc">~</span> <span class="dv">0</span> <span class="sc">+</span> life_stage <span class="sc">+</span> temp_c<span class="sc">:</span>life_stage,      <span class="co"># log steepness</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>  CTmaxdev <span class="sc">~</span> <span class="dv">0</span> <span class="sc">+</span> life_stage <span class="sc">+</span> (<span class="dv">1</span> <span class="sc">|</span> Date_experiment),  <span class="co"># CTmax - mean(temp), in C</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>  logz     <span class="sc">~</span> <span class="dv">0</span> <span class="sc">+</span> life_stage <span class="sc">+</span> (<span class="dv">1</span> <span class="sc">|</span> Date_experiment),  <span class="co"># log z</span></span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">nl =</span> <span class="cn">TRUE</span>, <span class="at">family =</span> <span class="fu">beta_binomial</span>(<span class="at">link =</span> <span class="st">&quot;identity&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>For the <strong>absolute</strong> threshold, swap only the <code>mid</code> term to subtract the correction <code>C(T) = (1/k) log((up - 0.5)/(0.5 - low))</code>:</p>
+<div class="cell">
+<details open class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># replace  (0 - (temp_c - CTmaxdev) / exp(logz))  with:</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">0</span> <span class="sc">-</span> (temp_c <span class="sc">-</span> CTmaxdev) <span class="sc">/</span> <span class="fu">exp</span>(logz)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>     <span class="sc">-</span> (<span class="dv">1</span><span class="sc">/</span><span class="fu">exp</span>(logk)) <span class="sc">*</span> <span class="fu">log</span>( ((<span class="fl">0.501</span> <span class="sc">+</span> <span class="fu">inv_logit</span>(upraw) <span class="sc">*</span> <span class="fl">0.498</span>) <span class="sc">-</span> <span class="fl">0.5</span>) <span class="sc">/</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>                            (<span class="fl">0.5</span> <span class="sc">-</span> (<span class="fl">0.001</span> <span class="sc">+</span> <span class="fu">inv_logit</span>(lowraw) <span class="sc">*</span> <span class="fl">0.498</span>)) ))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell">
+<details open class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>priors_direct <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>  <span class="co"># interpretable parameters — one prior each, broadcast to all life stages</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="dv">10</span>),       <span class="at">class =</span> b, <span class="at">nlpar =</span> CTmaxdev),   <span class="co"># CTmax (C, centred on mean temp)</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fu">log</span>(<span class="dv">3</span>), <span class="fl">0.7</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> logz),       <span class="co"># z ~ lognormal, median 3 C</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>  <span class="co"># asymptote levels + steepness, per life stage, centred so low ~ 0.02, up ~ 0.98, k ~ 2.</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>  <span class="co"># (These per-stage centres are load-bearing — see &quot;Can the priors be simpler?&quot; below.)</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="sc">-</span><span class="fl">3.23</span>, <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> lowraw, <span class="at">coef =</span> life_stageyoung_embryos),</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="sc">-</span><span class="fl">3.23</span>, <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> lowraw, <span class="at">coef =</span> life_stageold_embryos),</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="sc">-</span><span class="fl">3.23</span>, <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> lowraw, <span class="at">coef =</span> life_stagelarvae),</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>( <span class="fl">3.23</span>, <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> upraw,  <span class="at">coef =</span> life_stageyoung_embryos),</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>( <span class="fl">3.23</span>, <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> upraw,  <span class="at">coef =</span> life_stageold_embryos),</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>( <span class="fl">3.23</span>, <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> upraw,  <span class="at">coef =</span> life_stagelarvae),</span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fu">log</span>(<span class="dv">2</span>), <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> logk,  <span class="at">coef =</span> life_stageyoung_embryos),</span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fu">log</span>(<span class="dv">2</span>), <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> logk,  <span class="at">coef =</span> life_stageold_embryos),</span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="fu">log</span>(<span class="dv">2</span>), <span class="dv">1</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> logk,  <span class="at">coef =</span> life_stagelarvae),</span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>  <span class="co"># temperature slopes on the shape parameters (the temp_c:life_stage coefs):</span></span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>  <span class="co"># no `coef` -&gt; applies to every b-coef of that nlpar without a specific prior</span></span>
+<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">0.5</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> lowraw),</span>
+<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">0.5</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> upraw),</span>
+<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>, <span class="fl">0.3</span>), <span class="at">class =</span> b, <span class="at">nlpar =</span> logk),</span>
+<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a>  <span class="co"># random-effect SDs and beta-binomial dispersion</span></span>
+<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">exponential</span>(<span class="dv">2</span>), <span class="at">class =</span> sd, <span class="at">nlpar =</span> CTmaxdev, <span class="at">group =</span> Date_experiment),</span>
+<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">exponential</span>(<span class="dv">2</span>), <span class="at">class =</span> sd, <span class="at">nlpar =</span> logz,     <span class="at">group =</span> Date_experiment),  <span class="co"># drop for RE on CTmax only</span></span>
+<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prior</span>(<span class="fu">gamma</span>(<span class="dv">2</span>, <span class="fl">0.1</span>),  <span class="at">class =</span> phi))</span>
+<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-29"><a href="#cb19-29" aria-hidden="true" tabindex="-1"></a>fit_direct <span class="ot">&lt;-</span> <span class="fu">brm</span>(f_direct, <span class="at">data =</span> zf_joint, <span class="at">prior =</span> priors_direct,</span>
+<span id="cb19-30"><a href="#cb19-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">chains =</span> <span class="dv">4</span>, <span class="at">iter =</span> <span class="dv">2000</span>, <span class="at">warmup =</span> <span class="dv">1000</span>, <span class="at">cores =</span> <span class="dv">4</span>, <span class="at">seed =</span> <span class="dv">123</span>,</span>
+<span id="cb19-31"><a href="#cb19-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">control =</span> <span class="fu">list</span>(<span class="at">adapt_delta =</span> <span class="fl">0.99</span>, <span class="at">max_treedepth =</span> <span class="dv">15</span>), <span class="at">init =</span> <span class="dv">0</span>,</span>
+<span id="cb19-32"><a href="#cb19-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">backend =</span> <span class="st">&quot;cmdstanr&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<section id="can-the-priors-be-simpler" class="level3">
+<h3 class="anchored" data-anchor-id="can-the-priors-be-simpler">Can the priors be simpler?</h3>
+<p>Partly. The interpretable parameters (<code>CTmaxdev</code>, <code>logz</code>) carry no temperature slope, so a single <code>class = b</code> prior with no <code>coef</code> broadcasts to all three life stages — that is the collapse shown above (saving four lines versus one prior per stage).</p>
+<p>The asymptote/steepness priors, however, are <strong>load-bearing, not decoration</strong>. Replacing the whole block with a single generic weakly-informative prior per parameter (<code>normal(0, 1.5)</code> on <code>lowraw</code>/<code>upraw</code>, centred at survival 0.5) produced <strong>191 divergent transitions versus 0</strong> for the centred priors, and slightly inflated <code>z</code> (e.g. larvae 2.44 [1.62, 3.85] vs 2.28 [1.51, 3.49]). Full-range survival data wants the asymptotes pinned near 0 and 1; a prior centred at 0.5 fights the data and the sampler funnels. So keep the centred asymptote priors. The remaining verbosity is the per-stage repetition forced by cell-means coding (<code>~ 0 + life_stage</code>); the only way to collapse it fully is to drop temperature dependence on the shape parameters — a model simplification, not just a prior one.</p>
 </section>
 </section>
 
