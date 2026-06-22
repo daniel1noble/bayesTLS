@@ -4,7 +4,7 @@
 \alias{new_tdt_grid}
 \title{Build a prediction grid for a fitted TDT workflow}
 \usage{
-new_tdt_grid(workflow, temps, durations, n_total = NULL)
+new_tdt_grid(workflow, temps, durations, n_total = NULL, by = NULL)
 }
 \arguments{
 \item{workflow}{A \code{bayes_tls} object.}
@@ -17,9 +17,14 @@ training data, typically hours).}
 \item{n_total}{Integer trials count for count families. \code{NULL} (default)
 uses the median of the training data. Ignored for a
 continuous-proportion (Beta) fit, which has no denominator.}
+
+\item{by}{Optional moderator column(s) to cross with the temp x
+duration grid (one block of rows per group, tagged in
+\code{.grp}). \code{NULL} (default) builds the ungrouped grid.}
 }
 \value{
-A tibble with one row per \verb{(temp, duration)} pair.
+A tibble with one row per \verb{(temp, duration)} pair (per group when
+\code{by} is supplied).
 }
 \description{
 Constructs a \code{newdata} tibble covering all combinations of \code{temps} and

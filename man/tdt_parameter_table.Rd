@@ -4,13 +4,18 @@
 \alias{tdt_parameter_table}
 \title{Posterior parameter table on the natural scale}
 \usage{
-tdt_parameter_table(workflow)
+tdt_parameter_table(workflow, by = NULL)
 }
 \arguments{
 \item{workflow}{A fitted \code{bayes_tls}.}
+
+\item{by}{Optional character vector of moderator columns to report per group.
+\code{NULL} (default) uses the fit's moderators (\code{meta$group_vars}); a
+single-condition fit then returns one block (no group column).}
 }
 \value{
-A tibble with columns \code{parameter}, \code{median}, \code{lower}, \code{upper}.
+A tibble with columns \code{parameter}, \code{median}, \code{lower}, \code{upper}
+(plus the moderator column(s) for a grouped fit).
 }
 \description{
 Pulls the population-level posterior of the reparameterised 4PL parameters,
@@ -20,10 +25,12 @@ one-row-per-parameter tibble with median + 95\% CrI.
 \details{
 For the \strong{midpoint} parameterisation the rows are \code{low}, \code{up}, \code{k}, the
 \code{mid} intercept and temperature slope, and \code{z = -1 / mid_temp}. For the
-\strong{direct} CTmax/z parameterisation there is no \code{mid} coefficient, so the
-rows are \code{low}, \code{up}, \code{k}, \code{CTmax = temp_mean + CTmaxdev} (at the model's
-reference dose) and \code{z = exp(logz)}, read directly from the fitted
-coefficients. Single-group fits only.
+\strong{direct} CTmax/z parameterisation the rows are \code{low}, \code{up}, \code{k},
+\code{CTmax} (at the model's reference dose) and \code{z}. All quantities are read by
+evaluating \code{brms::posterior_linpred(nlpar=)} at \code{temp_c = 0} and \code{temp_c = 1}
+(so the result is parameterisation- and coding-agnostic \u2014 no coefficient-name
+parsing). For a fit whose CTmax/z vary by a moderator the table is returned
+per group, with the moderator column(s) prepended.
 }
 \examples{
 \dontrun{

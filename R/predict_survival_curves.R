@@ -17,12 +17,17 @@
 #' @param n_total   Integer trials count for count families. `NULL` (default)
 #'                  uses the median of the training data. Ignored for a
 #'                  continuous-proportion (Beta) fit, which has no denominator.
-#' @return A tibble with one row per `(temp, duration)` pair.
+#' @param by        Optional moderator column(s) to cross with the temp x
+#'                  duration grid (one block of rows per group, tagged in
+#'                  `.grp`). `NULL` (default) builds the ungrouped grid.
+#' @return A tibble with one row per `(temp, duration)` pair (per group when
+#'         `by` is supplied).
 #' @keywords internal
 new_tdt_grid <- function(workflow,
                          temps,
                          durations,
-                         n_total = NULL) {
+                         n_total = NULL,
+                         by      = NULL) {
   data <- workflow$data
   meta <- workflow$meta
 
@@ -34,10 +39,24 @@ new_tdt_grid <- function(workflow,
     (if ("n_total" %in% names(data)) "count" else "proportion")
   is_count <- !identical(response_type, "proportion")
 
-  nd <- expand.grid(temp     = temps,
+  td <- expand.grid(temp     = temps,
                     duration = durations,
                     KEEP.OUT.ATTRS = FALSE,
                     stringsAsFactors = FALSE)
+  # Grouped fits: cross the moderator level combinations with temp x duration so
+  # posterior_linpred() has the moderator column it needs (the single-condition
+  # grid is unchanged when by = NULL).
+  if (is.null(by)) {
+    nd <- td
+  } else {
+    lev <- unique(data[, by, drop = FALSE])
+    nd  <- do.call(rbind, lapply(seq_len(nrow(lev)), function(i) {
+      g <- td
+      for (v in by) g[[v]] <- rep(lev[[v]][i], nrow(td))
+      g
+    }))
+    rownames(nd) <- NULL
+  }
 
   if (is_count) {
     if (is.null(n_total) && "n_total" %in% names(data)) {
@@ -50,7 +69,7 @@ new_tdt_grid <- function(workflow,
   nd$temp_c  <- nd$temp - meta$temp_mean
 
   for (re_var in tdt_random_effect_variables(meta$random_effects)) {
-    if (re_var %in% names(data)) {
+    if (re_var %in% names(data) && !(re_var %in% names(nd))) {
       if (is.factor(data[[re_var]])) {
         nd[[re_var]] <- factor(levels(data[[re_var]])[1],
                                levels = levels(data[[re_var]]))
@@ -59,6 +78,7 @@ new_tdt_grid <- function(workflow,
       }
     }
   }
+  if (!is.null(by)) nd$.grp <- do.call(paste, c(nd[by], sep = " / "))
 
   tibble::as_tibble(nd)
 }
@@ -147,8 +167,13 @@ summarise_observed_survival <- function(observed) {
 #' @param ndraws    Integer number of posterior draws to use. Default 1000.
 #' @param probs     Numeric length-3 quantile probabilities (lower, median,
 #'                  upper). Default `c(0.025, 0.5, 0.975)`.
+#' @param by        Optional moderator column(s) for per-group curves. `NULL`
+#'                  (default) uses the fit's moderators; a single-condition fit
+#'                  returns the ungrouped curves, a grouped fit one block per
+#'                  group with the moderator column(s) prepended to `summary`.
 #' @return A list with elements `summary` (tibble of `temp`, `duration`,
-#'         `survival_median`, `survival_lower`, `survival_upper`) and `draws`
+#'         `survival_median`, `survival_lower`, `survival_upper`; plus the
+#'         moderator column(s) for a grouped fit) and `draws`
 #'         (the raw posterior matrix as a long tibble).
 #' @examples
 #' \dontrun{
@@ -160,10 +185,14 @@ predict_survival_curves <- function(workflow,
                                     temps     = NULL,
                                     durations = NULL,
                                     ndraws    = 1000,
-                                    probs     = c(0.025, 0.5, 0.975)) {
+                                    probs     = c(0.025, 0.5, 0.975),
+                                    by        = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
-
+  # Grouped fits predict per group: the moderator column(s) are crossed into the
+  # grid so posterior_linpred() validates. `by = NULL` uses the fit's moderators
+  # (a single-condition fit has none -> the original ungrouped curves).
+  by   <- tdt_resolve_by(workflow, by)
   data <- workflow$data
   if (is.null(temps))     temps     <- sort(unique(data$temp))
   if (is.null(durations)) {
@@ -172,7 +201,7 @@ predict_survival_curves <- function(workflow,
                           length.out = 250)
   }
 
-  nd   <- new_tdt_grid(workflow, temps = temps, durations = durations)
+  nd   <- new_tdt_grid(workflow, temps = temps, durations = durations, by = by)
   pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws, re_formula = NA)
 
   summary <- tibble::tibble(
@@ -182,6 +211,8 @@ predict_survival_curves <- function(workflow,
     survival_median = apply(pred, 2, stats::quantile, probs = probs[2], na.rm = TRUE),
     survival_upper  = apply(pred, 2, stats::quantile, probs = probs[3], na.rm = TRUE)
   )
+  if (!is.null(by))   # prepend the moderator column(s) for a grouped fit
+    summary <- tibble::as_tibble(cbind(nd[, by, drop = FALSE], summary))
 
   list(summary = summary, draws_matrix = pred, grid = nd)
 }

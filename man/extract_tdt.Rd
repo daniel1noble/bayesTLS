@@ -16,7 +16,8 @@ extract_tdt(
   output_time_unit = "min",
   lethal = FALSE,
   z_local = FALSE,
-  seed = NULL
+  seed = NULL,
+  by = NULL
 )
 }
 \arguments{
@@ -74,6 +75,13 @@ For a model R\eqn{^2}, call
 \item{seed}{Optional integer. When supplied, seeds the RNG so the draw
 subsample and the \code{T_crit} rate draws are reproducible.
 \code{NULL} (default) leaves the RNG untouched.}
+
+\item{by}{Optional moderator column(s) for per-group results. \code{NULL}
+(default) uses the fit's moderators (\code{meta$group_vars}); a
+single-condition fit then returns the ungrouped result
+(the original nested shape). For a grouped fit, \code{z},
+\code{CTmax} and \code{T_crit} summaries/draws gain the moderator
+column(s) (one block per group); \code{lt50_curve} is \code{NULL}.}
 }
 \value{
 A list with elements:

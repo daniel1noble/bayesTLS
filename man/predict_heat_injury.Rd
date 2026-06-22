@@ -16,7 +16,8 @@ predict_heat_injury(
   repair_scales_with_survival = TRUE,
   irreversible_mortality = TRUE,
   save_draws = FALSE,
-  seed = NULL
+  seed = NULL,
+  by = NULL
 )
 }
 \arguments{
@@ -68,12 +69,19 @@ trajectories. Default \code{FALSE}.}
 
 \item{seed}{Optional integer seeding the posterior-draw subsample for
 reproducibility. \code{NULL} (default) leaves the RNG untouched.}
+
+\item{by}{Optional moderator column(s) for per-group injury. \code{NULL}
+(default) uses the fit's moderators; a single-condition fit
+returns the ungrouped result. A grouped fit runs the dose
+integral through each group's 4PL and \code{summary} gains the
+moderator column(s).}
 }
 \value{
 A list with elements:
 \itemize{
 \item \code{summary}: tibble with \code{time}, \code{temp}, and posterior median + 95\%
-CrI for \code{hi}, \code{survival}, and \code{mortality} at each time step.
+CrI for \code{hi}, \code{survival}, and \code{mortality} at each time step (plus the
+moderator column(s) for a grouped fit).
 \item \code{draws}: optional per-draw trajectories (when \code{save_draws = TRUE}).
 \item \code{meta}: list of inputs used.
 }

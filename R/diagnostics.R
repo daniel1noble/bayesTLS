@@ -96,59 +96,67 @@ diagnose_tdt_fit <- function(workflow) {
 #'
 #' For the **midpoint** parameterisation the rows are `low`, `up`, `k`, the
 #' `mid` intercept and temperature slope, and `z = -1 / mid_temp`. For the
-#' **direct** CTmax/z parameterisation there is no `mid` coefficient, so the
-#' rows are `low`, `up`, `k`, `CTmax = temp_mean + CTmaxdev` (at the model's
-#' reference dose) and `z = exp(logz)`, read directly from the fitted
-#' coefficients. Single-group fits only.
+#' **direct** CTmax/z parameterisation the rows are `low`, `up`, `k`,
+#' `CTmax` (at the model's reference dose) and `z`. All quantities are read by
+#' evaluating `brms::posterior_linpred(nlpar=)` at `temp_c = 0` and `temp_c = 1`
+#' (so the result is parameterisation- and coding-agnostic \u2014 no coefficient-name
+#' parsing). For a fit whose CTmax/z vary by a moderator the table is returned
+#' per group, with the moderator column(s) prepended.
 #'
 #' @param workflow A fitted `bayes_tls`.
-#' @return A tibble with columns `parameter`, `median`, `lower`, `upper`.
+#' @param by Optional character vector of moderator columns to report per group.
+#'   `NULL` (default) uses the fit's moderators (`meta$group_vars`); a
+#'   single-condition fit then returns one block (no group column).
+#' @return A tibble with columns `parameter`, `median`, `lower`, `upper`
+#'   (plus the moderator column(s) for a grouped fit).
 #' @examples
 #' \dontrun{
 #' tdt_parameter_table(wf)
 #' }
 #' @export
-tdt_parameter_table <- function(workflow) {
+tdt_parameter_table <- function(workflow, by = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
-  # Grouped fits (CTmax/z or mid by a moderator) have no single set of
-  # *_Intercept coefficients to summarise; redirect (coding-independent, so both
-  # `~ 0 + G` and `~ 1 + G` are caught rather than silently using the reference).
-  tdt_stop_if_grouped(workflow, "tdt_parameter_table()")
-
-  d <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
-  b <- workflow$meta$bounds
+  fit    <- get_brmsfit(workflow)
+  by     <- tdt_resolve_by(workflow, by)
   direct <- identical(workflow$meta$parameterization, "direct")
+  l10    <- workflow$meta$log10_tref %||% 0
+  tbar   <- workflow$meta$temp_mean  %||% 0
 
-  low <- b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w
-  up  <- b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w
-  k   <- exp(d$b_logk_Intercept)
+  # Evaluate low/up/k/mid at temp_c = 0 (constant-shape asymptotes + midpoint
+  # intercept) and temp_c = 1 (for the linear midpoint slope), per group.
+  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1))
+  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
 
   summary_row <- function(x, name) {
     q <- stats::quantile(x, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
-    tibble::tibble(parameter = name,
-                   median = q[2], lower = q[1], upper = q[3])
+    tibble::tibble(parameter = name, median = q[2], lower = q[1], upper = q[3])
   }
 
-  if (direct) {
-    ctmax <- (workflow$meta$temp_mean %||% 0) + d$b_CTmaxdev_Intercept
-    z     <- exp(d$b_logz_Intercept)
-    return(dplyr::bind_rows(
-      summary_row(low,   "low (lower asymptote)"),
-      summary_row(up,    "up (upper asymptote)"),
-      summary_row(k,     "k (slope)"),
-      summary_row(ctmax, "CTmax (\u00b0C, at reference dose)"),
-      summary_row(z,     "z (\u00b0C)")
-    ))
-  }
-
-  dplyr::bind_rows(
-    summary_row(low,             "low (lower asymptote)"),
-    summary_row(up,              "up (upper asymptote)"),
-    summary_row(k,               "k (slope)"),
-    summary_row(d$b_mid_Intercept, "mid intercept (at T_bar)"),
-    summary_row(d$b_mid_temp_c,  "mid temp_c slope"),
-    summary_row(-1 / d$b_mid_temp_c, "z (\u00b0C)")
-  )
+  per_group <- lapply(unique(nd$.grp), function(g) {
+    ci <- which(nd$.grp == g)
+    c0 <- ci[which(nd$temp_c[ci] == 0)]; c1 <- ci[which(nd$temp_c[ci] == 1)]
+    low <- sp$low[, c0]; up <- sp$up[, c0]; k <- sp$k[, c0]
+    mid_int <- sp$mid[, c0]; mid_temp <- sp$mid[, c1] - sp$mid[, c0]
+    z <- -1 / mid_temp
+    tab <- if (direct) dplyr::bind_rows(
+      summary_row(low, "low (lower asymptote)"),
+      summary_row(up,  "up (upper asymptote)"),
+      summary_row(k,   "k (slope)"),
+      summary_row(tbar + (l10 - mid_int) / mid_temp, "CTmax (\u00b0C, at reference dose)"),
+      summary_row(z,   "z (\u00b0C)")
+    ) else dplyr::bind_rows(
+      summary_row(low,      "low (lower asymptote)"),
+      summary_row(up,       "up (upper asymptote)"),
+      summary_row(k,        "k (slope)"),
+      summary_row(mid_int,  "mid intercept (at T_bar)"),
+      summary_row(mid_temp, "mid temp_c slope"),
+      summary_row(z,        "z (\u00b0C)")
+    )
+    if (!is.null(by))
+      tab <- cbind(nd[ci[1], by, drop = FALSE], tab, row.names = NULL)
+    tab
+  })
+  dplyr::bind_rows(per_group)
 }

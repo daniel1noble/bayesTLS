@@ -9,7 +9,8 @@ predict_survival_curves(
   temps = NULL,
   durations = NULL,
   ndraws = 1000,
-  probs = c(0.025, 0.5, 0.975)
+  probs = c(0.025, 0.5, 0.975),
+  by = NULL
 )
 }
 \arguments{
@@ -25,10 +26,16 @@ spanning 0.2× to 5× the observed range.}
 
 \item{probs}{Numeric length-3 quantile probabilities (lower, median,
 upper). Default \code{c(0.025, 0.5, 0.975)}.}
+
+\item{by}{Optional moderator column(s) for per-group curves. \code{NULL}
+(default) uses the fit's moderators; a single-condition fit
+returns the ungrouped curves, a grouped fit one block per
+group with the moderator column(s) prepended to \code{summary}.}
 }
 \value{
 A list with elements \code{summary} (tibble of \code{temp}, \code{duration},
-\code{survival_median}, \code{survival_lower}, \code{survival_upper}) and \code{draws}
+\code{survival_median}, \code{survival_lower}, \code{survival_upper}; plus the
+moderator column(s) for a grouped fit) and \code{draws}
 (the raw posterior matrix as a long tibble).
 }
 \description{

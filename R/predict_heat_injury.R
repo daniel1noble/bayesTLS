@@ -20,65 +20,49 @@
 #' same approximation the classical HI framework makes.
 #'
 #' @param workflow Fitted `bayes_tls`.
-#' @return A tibble with `(.draw, low, up, k, mid_int, mid_temp)` columns,
-#'         filtered to draws producing valid parameter values.
+#' @param by Optional moderator column(s) for per-group parameters. `NULL`
+#'   (default) uses the fit's moderators; a single-condition fit returns the
+#'   ungrouped tibble. A grouped fit prepends the moderator column(s).
+#' @return A tibble with `(.draw, low, up, k, mid_int, mid_temp)` columns
+#'         (plus the moderator column(s) for a grouped fit), filtered to draws
+#'         producing valid parameter values.
 #' @examples
 #' \dontrun{
 #' pars <- extract_4pl_pars(wf)
 #' head(pars)
 #' }
 #' @export
-extract_4pl_pars <- function(workflow) {
+extract_4pl_pars <- function(workflow, by = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
-  # Single-condition coefficient reader. Grouped fits (CTmax/z by a moderator)
-  # have no single *_Intercept set; redirect (coding-independent — catches both
-  # `~ 0 + G` and `~ 1 + G`, so a grouped treatment-coded fit can't silently
-  # return the reference level). Per-group heat injury: predict_heat_injury(by=).
-  tdt_stop_if_grouped(workflow, "extract_4pl_pars()")
+  # Constant-in-T 4PL parameters for the heat-injury integral, read by evaluating
+  # posterior_linpred(nlpar=) at temp_c = 0 (low/up/k + midpoint intercept) and
+  # temp_c = 1 (for the linear midpoint slope) — parameterisation- and
+  # coding-agnostic, no coefficient-name parsing. The classical constant-shape
+  # assumption is preserved: low/up/k are read at temp_c = 0 only; mid is the one
+  # T-varying quantity (intercept + slope). For a direct absolute fit the nlf mid
+  # already folds in the (constant-shape) asymmetry correction, so it stays linear.
+  fit <- get_brmsfit(workflow)
+  by  <- tdt_resolve_by(workflow, by)
+  nd  <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1))
+  sp  <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
 
-  d  <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
-  b  <- workflow$meta$bounds
-  direct <- identical(workflow$meta$parameterization, "direct")
-
-  low <- b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w
-  up  <- b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w
-  k   <- exp(d$b_logk_Intercept)
-
-  # Linear midpoint coefficients (mid = mid_int + mid_temp * temp_c). Midpoint
-  # parameterisation reads them directly. Direct parameterisation has no `mid`
-  # coefficient, so reconstruct the *relative* midpoint backbone from
-  # CTmaxdev/logz: mid(T) = log10_tref - (temp_c - CTmaxdev)/exp(logz), giving
-  # slope -1/exp(logz) and intercept log10_tref + CTmaxdev/exp(logz). Under the
-  # heat-injury constant-shape assumption (low/up/k read at the Intercept), an
-  # absolute fit's relative midpoint is that backbone shifted by a constant
-  # C = log((up - 0.5)/(0.5 - low))/k, so it stays linear here.
-  if (direct) {
-    z        <- exp(d$b_logz_Intercept)
-    l10      <- workflow$meta$log10_tref %||% 0
-    mid_temp <- -1 / z
-    mid_int  <- l10 + d$b_CTmaxdev_Intercept / z
-    if (identical(workflow$meta$threshold %||% "relative", "absolute"))
-      mid_int <- mid_int - log((up - 0.5) / (0.5 - low)) / k
-  } else {
-    mid_int  <- d$b_mid_Intercept
-    mid_temp <- d$b_mid_temp_c
-  }
-
-  out <- tibble::tibble(
-    .draw    = seq_len(nrow(d)),
-    low      = low,
-    up       = up,
-    k        = k,
-    mid_int  = mid_int,
-    mid_temp = mid_temp
-  )
-
-  dplyr::filter(out,
-                is.finite(low) & is.finite(up) & is.finite(k) &
-                is.finite(mid_int) & is.finite(mid_temp) &
-                k > 0 & up > low)
+  per_group <- lapply(unique(nd$.grp), function(g) {
+    gi <- which(nd$.grp == g)
+    c0 <- gi[which(nd$temp_c[gi] == 0)]; c1 <- gi[which(nd$temp_c[gi] == 1)]
+    out <- tibble::tibble(
+      .draw    = seq_len(nrow(sp$mid)),
+      low      = sp$low[, c0], up = sp$up[, c0], k = sp$k[, c0],
+      mid_int  = sp$mid[, c0], mid_temp = sp$mid[, c1] - sp$mid[, c0]
+    )
+    out <- dplyr::filter(out,
+                         is.finite(low) & is.finite(up) & is.finite(k) &
+                         is.finite(mid_int) & is.finite(mid_temp) & k > 0 & up > low)
+    if (!is.null(by)) out <- cbind(nd[gi[1], by, drop = FALSE], out, row.names = NULL)
+    out
+  })
+  dplyr::bind_rows(per_group)
 }
 
 #' Analytical inverse 4PL: duration to reach a target survival at a given temperature
@@ -190,9 +174,15 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'                     trajectories. Default `FALSE`.
 #' @param seed         Optional integer seeding the posterior-draw subsample for
 #'                     reproducibility. `NULL` (default) leaves the RNG untouched.
+#' @param by           Optional moderator column(s) for per-group injury. `NULL`
+#'                     (default) uses the fit's moderators; a single-condition fit
+#'                     returns the ungrouped result. A grouped fit runs the dose
+#'                     integral through each group's 4PL and `summary` gains the
+#'                     moderator column(s).
 #' @return A list with elements:
 #'   - `summary`: tibble with `time`, `temp`, and posterior median + 95%
-#'     CrI for `hi`, `survival`, and `mortality` at each time step.
+#'     CrI for `hi`, `survival`, and `mortality` at each time step (plus the
+#'     moderator column(s) for a grouped fit).
 #'   - `draws`: optional per-draw trajectories (when `save_draws = TRUE`).
 #'   - `meta`: list of inputs used.
 #' @examples
@@ -212,7 +202,8 @@ predict_heat_injury <- function(trace, workflow,
                                 repair_scales_with_survival = TRUE,
                                 irreversible_mortality      = TRUE,
                                 save_draws                  = FALSE,
-                                seed                        = NULL) {
+                                seed                        = NULL,
+                                by                          = NULL) {
 
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
@@ -245,78 +236,79 @@ predict_heat_injury <- function(trace, workflow,
   unit_h <- to_hours(workflow$meta$duration_unit %||% "hours")               # model -> hours
   dt     <- (if (n >= 2L) diff(trace$time)[1] else 1) * to_hours(trace_unit)  # trace -> hours
 
-  pars <- extract_4pl_pars(workflow)
-  if (!is.null(seed)) set.seed(seed)   # reproducible posterior-draw subsample
-  pars <- dplyr::slice_sample(pars, n = min(ndraws, nrow(pars)))
+  by       <- tdt_resolve_by(workflow, by)
+  pars_all <- extract_4pl_pars(workflow, by = by)
 
-  pred_list <- vector("list", nrow(pars))
-
-  for (i in seq_len(nrow(pars))) {
-
-    tau <- time_to_surv_threshold_4pl(
-      temp = trace$temp, survival_target = ts_arg,
-      low = pars$low[i], up = pars$up[i], k = pars$k[i],
-      mid_int = pars$mid_int[i], mid_temp = pars$mid_temp[i],
-      temp_mean = temp_mean
-    )
-    dmg <- 1 / (tau * unit_h)               # doses per hour (unit-reconciled)
-    dmg[!is.finite(dmg)] <- 0
-    if (!is.null(T_c)) dmg[trace$temp <= T_c] <- 0
-
-    rep_rate <- if (repair) {
-      repair_rate_schoolfield(
-        temp_celsius = trace$temp,
-        TA = repair_pars$TA, TAL = repair_pars$TAL,
-        TAH = repair_pars$TAH, TL = repair_pars$TL,
-        TH = repair_pars$TH, TREF = repair_pars$TREF,
-        r_ref = repair_pars$r_ref
+  # Per-draw Euler dose-accumulation integral for one set of 4PL parameter draws.
+  integrate_pars <- function(pars) {
+    pred_list <- vector("list", nrow(pars))
+    for (i in seq_len(nrow(pars))) {
+      tau <- time_to_surv_threshold_4pl(
+        temp = trace$temp, survival_target = ts_arg,
+        low = pars$low[i], up = pars$up[i], k = pars$k[i],
+        mid_int = pars$mid_int[i], mid_temp = pars$mid_temp[i],
+        temp_mean = temp_mean
       )
-    } else {
-      rep(0, n)
-    }
+      dmg <- 1 / (tau * unit_h)               # doses per hour (unit-reconciled)
+      dmg[!is.finite(dmg)] <- 0
+      if (!is.null(T_c)) dmg[trace$temp <= T_c] <- 0
 
-    # Euler integration matching planted_dose_from_trace() and supplement
-    # Equation 7: rate at point j applies for dt forward; cumulative dose at
-    # point i is the sum of (rate × dt) for j = 1..i.
-    dose      <- numeric(n)
-    survival  <- numeric(n)
-    prev_dose <- 0
-    prev_surv <- pars$up[i]
+      rep_rate <- if (repair) {
+        repair_rate_schoolfield(
+          temp_celsius = trace$temp,
+          TA = repair_pars$TA, TAL = repair_pars$TAL,
+          TAH = repair_pars$TAH, TL = repair_pars$TL,
+          TH = repair_pars$TH, TREF = repair_pars$TREF,
+          r_ref = repair_pars$r_ref
+        )
+      } else {
+        rep(0, n)
+      }
 
-    for (j in seq_len(n)) {
-      rep_j <- rep_rate[j] * dt
-      if (repair_scales_with_survival) rep_j <- rep_j * prev_surv / pars$up[i]
-
-      new_dose <- max(0, prev_dose + dmg[j] * dt - rep_j)
-      surv_raw <- survival_from_dose(
-        new_dose, low = pars$low[i], up = pars$up[i], k = pars$k[i],
-        target_surv = ts_arg
+      # Euler integration matching planted_dose_from_trace() and supplement
+      # Equation 7: rate at point j applies for dt forward; cumulative dose at
+      # point i is the sum of (rate × dt) for j = 1..i.
+      dose <- numeric(n); survival <- numeric(n)
+      prev_dose <- 0; prev_surv <- pars$up[i]
+      for (j in seq_len(n)) {
+        rep_j <- rep_rate[j] * dt
+        if (repair_scales_with_survival) rep_j <- rep_j * prev_surv / pars$up[i]
+        new_dose <- max(0, prev_dose + dmg[j] * dt - rep_j)
+        surv_raw <- survival_from_dose(
+          new_dose, low = pars$low[i], up = pars$up[i], k = pars$k[i],
+          target_surv = ts_arg
+        )
+        surv_new <- if (irreversible_mortality) min(prev_surv, surv_raw) else surv_raw
+        dose[j] <- new_dose; survival[j] <- surv_new
+        prev_dose <- new_dose; prev_surv <- surv_new
+      }
+      pred_list[[i]] <- data.frame(
+        .draw = pars$.draw[i], time = trace$time, temp = trace$temp,
+        dose = dose, hi = dose * 100, survival = survival, mortality = 1 - survival
       )
-      surv_new <- if (irreversible_mortality) min(prev_surv, surv_raw) else surv_raw
-
-      dose[j]     <- new_dose
-      survival[j] <- surv_new
-      prev_dose   <- new_dose
-      prev_surv   <- surv_new
     }
-
-    pred_list[[i]] <- data.frame(
-      .draw     = pars$.draw[i],
-      time    = trace$time,
-      temp      = trace$temp,
-      dose      = dose,
-      hi        = dose * 100,        # % of LT_{target_surv} dose
-      survival  = survival,
-      mortality = 1 - survival
-    )
+    dplyr::bind_rows(pred_list)
   }
 
-  draws <- dplyr::bind_rows(pred_list)
+  if (!is.null(seed)) set.seed(seed)   # reproducible posterior-draw subsample
+  if (is.null(by)) {
+    draws <- integrate_pars(dplyr::slice_sample(pars_all, n = min(ndraws, nrow(pars_all))))
+    n_used <- min(ndraws, nrow(pars_all))
+  } else {
+    groups <- unique(pars_all[, by, drop = FALSE])
+    draws <- dplyr::bind_rows(lapply(seq_len(nrow(groups)), function(gi) {
+      gp <- dplyr::inner_join(pars_all, groups[gi, , drop = FALSE], by = by)
+      cbind(groups[gi, , drop = FALSE],
+            integrate_pars(dplyr::slice_sample(gp, n = min(ndraws, nrow(gp)))),
+            row.names = NULL)
+    }))
+    n_used <- ndraws
+  }
 
   q_lower <- function(x) stats::quantile(x, 0.025, na.rm = TRUE)
   q_upper <- function(x) stats::quantile(x, 0.975, na.rm = TRUE)
   summary <- draws |>
-    dplyr::group_by(time, temp) |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(c(by, "time", "temp")))) |>
     dplyr::summarise(
       hi_median   = stats::median(hi,        na.rm = TRUE),
       hi_lower    = q_lower(hi),
@@ -334,7 +326,7 @@ predict_heat_injury <- function(trace, workflow,
     summary = summary,
     meta    = list(target_surv = ts$label, target_mode = ts$mode,
                    target_prob = ts$prob, T_c = T_c, repair = repair,
-                   repair_pars = repair_pars, ndraws = nrow(pars))
+                   repair_pars = repair_pars, ndraws = n_used, by = by)
   )
   if (save_draws) out$draws <- draws
   out

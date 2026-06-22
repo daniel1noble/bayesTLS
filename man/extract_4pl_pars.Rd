@@ -4,14 +4,19 @@
 \alias{extract_4pl_pars}
 \title{Per-draw 4PL parameters from a fitted workflow}
 \usage{
-extract_4pl_pars(workflow)
+extract_4pl_pars(workflow, by = NULL)
 }
 \arguments{
 \item{workflow}{Fitted \code{bayes_tls}.}
+
+\item{by}{Optional moderator column(s) for per-group parameters. \code{NULL}
+(default) uses the fit's moderators; a single-condition fit returns the
+ungrouped tibble. A grouped fit prepends the moderator column(s).}
 }
 \value{
-A tibble with \verb{(.draw, low, up, k, mid_int, mid_temp)} columns,
-filtered to draws producing valid parameter values.
+A tibble with \verb{(.draw, low, up, k, mid_int, mid_temp)} columns
+(plus the moderator column(s) for a grouped fit), filtered to draws
+producing valid parameter values.
 }
 \description{
 Extracts \verb{(low, up, k, mid_int, mid_temp)} per posterior draw, suitable for

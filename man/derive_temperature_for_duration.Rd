@@ -11,7 +11,8 @@ derive_temperature_for_duration(
   target_surv = "absolute",
   ndraws = 1000,
   probs = c(0.025, 0.5, 0.975),
-  seed = NULL
+  seed = NULL,
+  by = NULL
 )
 }
 \arguments{
@@ -31,11 +32,16 @@ Default 1000.}
 
 \item{seed}{Optional integer seeding the draw subsample for
 reproducibility. \code{NULL} (default) leaves the RNG alone.}
+
+\item{by}{Optional moderator column(s) for per-group results.
+\code{NULL} (default) uses the fit's moderators; a
+single-condition fit returns one ungrouped result.}
 }
 \value{
 A list with \code{draws} (per-draw threshold temperatures; \code{target_surv}
 column is a character label), \code{summary} (quantile summary),
-\code{exposure_duration}, \code{target_surv} (the label).
+\code{exposure_duration}, \code{target_surv} (the label), \code{target_mode},
+\code{target_prob}. A grouped fit adds the moderator column(s).
 }
 \description{
 The \strong{vertical} read of the survival surface: fix an exposure duration,

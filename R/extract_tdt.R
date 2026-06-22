@@ -38,201 +38,6 @@ resolve_target_surv <- function(target_surv) {
        call. = FALSE)
 }
 
-# --- Shared posterior machinery for z and CTmax ------------------------------
-# Both z and CTmax are deterministic transforms of the SAME population-level 4PL
-# coefficient draws. extract_tdt() pulls ONE subsample with tdt_extract_pars()
-# and feeds it to tdt_z_from_pars() and tdt_ctmax_from_pars(), so the two
-# quantities share draws by construction — their correlation, and the joint
-# pairing used for T_crit, are preserved with no draw-id bookkeeping and no
-# random re-subsampling between quantities.
-
-# Population-level 4PL coefficient draws, optionally subsampled to `ndraws`.
-tdt_extract_pars <- function(workflow, ndraws = NULL) {
-  if (!has_fit(workflow))
-    stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
-  d <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
-  if (!is.null(ndraws) && is.finite(ndraws) && ndraws < nrow(d))
-    d <- d[sort(sample.int(nrow(d), ndraws)), , drop = FALSE]
-  d
-}
-
-# Build the `direct` reconstruction spec for a single-condition direct fit, or
-# NULL for a midpoint fit. Grouped direct fits are redirected upstream by
-# tdt_stop_if_grouped(); the `%in%` check is a belt-and-suspenders fallback so a
-# caller that forgets the grouped guard still errors rather than silently reading
-# the reference level. `p_fit` is the absolute backbone's anchoring probability
-# baked in by make_4pl_formula (fit_4pl always anchors at 0.5).
-tdt_direct_spec <- function(workflow, par_names) {
-  if (!identical(workflow$meta$parameterization, "direct")) return(NULL)
-  if (!all(c("b_CTmaxdev_Intercept", "b_logz_Intercept") %in% par_names))
-    stop("This function supports single-condition direct fits; for grouped ",
-         "direct fits use tls(object, by = ...).", call. = FALSE)
-  list(ctmaxdev      = "b_CTmaxdev_Intercept",
-       logz          = "b_logz_Intercept",
-       fit_threshold = workflow$meta$threshold  %||% "relative",
-       log10_tref    = workflow$meta$log10_tref %||% 0,
-       p_fit         = workflow$meta$p          %||% 0.5)
-}
-
-# log10 LT_threshold(T) per draw, a [nrow(pars) x length(T)] matrix, from the
-# coefficient draws. Relative threshold: log10 LT = mid(T). Absolute p:
-# mid(T) + log((u - p)/(p - low))/k. A missing temp_c column (a dropped
-# temp_effects slope) counts as zero slope — population level, no random effects.
-tdt_loglt <- function(pars, Tbar, bnd, ts, T, direct = NULL) {
-  np  <- nrow(pars)
-  col <- function(nm) if (nm %in% names(pars)) pars[[nm]] else rep(0, np)
-  lp  <- function(nlpar, Tv)
-    outer(col(paste0("b_", nlpar, "_temp_c")), Tv - Tbar) +
-      col(paste0("b_", nlpar, "_Intercept"))
-
-  fit_abs <- !is.null(direct) && identical(direct$fit_threshold, "absolute")
-  req_abs <- ts$mode != "relative"
-
-  # Asymmetry correction C(T; p) = log((u - p)/(p - l))/k. TWO distinct
-  # probabilities are involved and must NOT be conflated (a single Cmat at
-  # p = ts$prob produced all-NA for an absolute-fit relative request, where
-  # ts$prob is NA, and the wrong curve for a custom absolute request, where the
-  # subtraction and addition cancelled):
-  #   - p0 = the absolute backbone's anchoring probability baked in by
-  #     make_4pl_formula (fit_4pl always uses 0.5). Used ONLY to UNDO the fit's
-  #     baked-in midpoint correction (mid_curve = backbone - C(T; p0)).
-  #   - p_req = ts$prob, the REQUESTED absolute level. Used ONLY to ADD the
-  #     correction for an absolute request. They coincide only at p_req = 0.5.
-  Cof <- NULL
-  if (req_abs || fit_abs) {
-    l <- bnd$low_min + bnd$low_w * stats::plogis(lp("lowraw", T))
-    u <- bnd$up_min  + bnd$up_w  * stats::plogis(lp("upraw",  T))
-    k <- exp(lp("logk", T))
-    Cof <- function(pp) {
-      arg <- (u - pp) / (pp - l)
-      out <- log(arg) / k
-      out[!is.finite(arg) | arg <= 0] <- NA_real_
-      out
-    }
-  }
-
-  # Curve midpoint mid(T). Midpoint parameterisation: the `mid` nlpar. Direct
-  # parameterisation: reconstruct the linear backbone from CTmaxdev/logz
-  # (= log10_tref - ((T - Tbar) - CTmaxdev)/exp(logz)); for an absolute FIT the
-  # estimated midpoint is that backbone minus the fit-anchor correction C(T; p0).
-  if (is.null(direct)) {
-    mid <- lp("mid", T)
-  } else {
-    cd  <- col(direct$ctmaxdev)
-    lz  <- col(direct$logz)
-    mid <- direct$log10_tref - (outer(rep(1, np), T - Tbar) - cd) / exp(lz)
-    if (fit_abs) mid <- mid - Cof(direct$p_fit %||% 0.5)
-  }
-
-  if (!req_abs) return(mid)
-  mid + Cof(ts$prob)
-}
-
-# z per draw from coefficient draws. See derive_z() for the documented maths.
-# `local = FALSE` skips the per-temperature z(T) breakdown (local_draws /
-# local_summary); only the pooled z is needed unless the caller requests it.
-tdt_z_from_pars <- function(pars, Tbar, bnd, ts, temp_grid,
-                            probs = c(0.025, 0.5, 0.975), h = 1e-3,
-                            local = TRUE, direct = NULL) {
-  np <- nrow(pars)
-  if (ts$mode == "relative" && is.null(direct)) {
-    # Midpoint param: log10 LT_rel(T) = mid(T) is linear, z = -1 / b_mid_temp_c.
-    zvec <- -1 / (if ("b_mid_temp_c" %in% names(pars)) pars$b_mid_temp_c
-                  else rep(0, np))
-    zloc <- matrix(zvec, nrow = np, ncol = length(temp_grid))
-  } else {
-    # Local slope of the (possibly bent / direct-reconstructed) log10 LT(T) by
-    # central finite difference. Direct relative recovers z = exp(logz); direct
-    # absolute / either-mode absolute reflects the curve's local slope.
-    slope <- (tdt_loglt(pars, Tbar, bnd, ts, temp_grid + h, direct) -
-              tdt_loglt(pars, Tbar, bnd, ts, temp_grid - h, direct)) / (2 * h)
-    zloc  <- -1 / slope
-    zloc[!is.finite(zloc)] <- NA_real_
-  }
-  z_pooled <- rowMeans(zloc, na.rm = TRUE)
-  z_pooled[is.nan(z_pooled)] <- NA_real_
-
-  draws <- tibble::tibble(.draw = seq_len(np), z = z_pooled) |>
-    dplyr::filter(is.finite(z))
-  qz <- stats::quantile(draws$z, probs, names = FALSE, na.rm = TRUE)
-  # The per-temperature local-z breakdown is only surfaced by
-  # extract_tdt(z_local = TRUE) and derive_z(); the pooled z above (rowMeans of
-  # zloc) is unaffected by it. Building the np x nT tibble + group-by is the
-  # dominant cost of this function, so skip it when it is not requested.
-  if (isTRUE(local)) {
-    local_draws <- tibble::tibble(
-      .draw = rep(seq_len(np), times = length(temp_grid)),
-      temp  = rep(temp_grid, each = np),
-      z     = as.vector(zloc)
-    ) |>
-      dplyr::filter(is.finite(z))
-    local_summary <- local_draws |>
-      dplyr::group_by(temp) |>
-      dplyr::summarise(
-        z_median = stats::median(z),
-        z_lower  = stats::quantile(z, probs[1], names = FALSE),
-        z_upper  = stats::quantile(z, probs[3], names = FALSE),
-        .groups  = "drop"
-      )
-  } else {
-    local_draws   <- NULL
-    local_summary <- NULL
-  }
-  list(draws = draws,
-       summary = tibble::tibble(z_median = qz[2], z_lower = qz[1],
-                                z_upper = qz[3]),
-       local_draws = local_draws, local_summary = local_summary,
-       target_surv = ts$label, temp_grid = temp_grid)
-}
-
-# CTmax per draw: temperature where log10 LT(T) = log10(exposure_model). Relative
-# is the closed-form inverse of the linear mid(T); absolute finds the crossing of
-# the closed-form LT curve over temp_grid by a vectorised inverse interpolation
-# across draws, with an exact per-row fallback for non-monotone/non-finite curves.
-tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
-                                probs = c(0.025, 0.5, 0.975), direct = NULL) {
-  np     <- nrow(pars)
-  target <- log10(exposure_model)
-  if (ts$mode == "relative" && is.null(direct)) {
-    # Midpoint param: closed-form inverse of the linear mid(T).
-    col <- function(nm) if (nm %in% names(pars)) pars[[nm]] else rep(0, np)
-    Tc  <- Tbar + (target - col("b_mid_Intercept")) / col("b_mid_temp_c")
-  } else {
-    # log10 LT_p(T) is monotone-decreasing in T for the disjoint-bounds 4PL, so
-    # it crosses `target` exactly once. Find that crossing by a vectorised
-    # inverse linear interpolation across all draws at once: `j` is the column of
-    # the last grid point still above target, and we interpolate within the
-    # [j, j+1] interval. This replaces a per-draw stats::approx() loop and is
-    # identical to it (verified to machine precision) for monotone curves.
-    M  <- tdt_loglt(pars, Tbar, bnd, ts, temp_grid, direct)   # [np x nT]
-    nT <- length(temp_grid)
-    Tc <- rep(NA_real_, np)
-    j  <- rowSums(M > target, na.rm = TRUE)
-    ok <- is.finite(j) & j >= 1L & j <= (nT - 1L)
-    iv <- which(ok); jj <- j[iv]
-    y1 <- M[cbind(iv, jj)]; y2 <- M[cbind(iv, jj + 1L)]
-    Tc[iv] <- temp_grid[jj] +
-      (target - y1) * (temp_grid[jj + 1L] - temp_grid[jj]) / (y2 - y1)
-    # Exact fallback: any draw whose curve is non-monotone or carries non-finite
-    # values breaks the single-crossing assumption above, so reproduce the
-    # original per-row interpolation for just those (rare) rows.
-    dM  <- M[, -1, drop = FALSE] - M[, -nT, drop = FALSE]
-    bad <- !is.finite(rowSums(M)) | rowSums(dM >= 0, na.rm = TRUE) > 0
-    for (i in which(bad)) {
-      y <- M[i, ]; fin <- is.finite(y)
-      if (sum(fin) < 2L) { Tc[i] <- NA_real_; next }
-      o <- order(y[fin])
-      Tc[i] <- suppressWarnings(stats::approx(y[fin][o], temp_grid[fin][o],
-                                              xout = target)$y)
-    }
-  }
-  draws <- tibble::tibble(.draw = seq_len(np), temp = Tc) |>
-    dplyr::filter(is.finite(temp))
-  q <- stats::quantile(draws$temp, probs, names = FALSE, na.rm = TRUE)
-  list(draws   = draws,
-       summary = tibble::tibble(temp_lower = q[1], temp_median = q[2],
-                                temp_upper = q[3]))
-}
 
 #' Posterior LT_x curve: time to reach a survival target at each temperature
 #'
@@ -391,9 +196,13 @@ derive_tdt_curve <- function(workflow,
 #' @param probs            Quantile probabilities. Default `c(0.025, 0.5, 0.975)`.
 #' @param seed             Optional integer seeding the draw subsample for
 #'                         reproducibility. `NULL` (default) leaves the RNG alone.
+#' @param by               Optional moderator column(s) for per-group results.
+#'                         `NULL` (default) uses the fit's moderators; a
+#'                         single-condition fit returns one ungrouped result.
 #' @return A list with `draws` (per-draw threshold temperatures; `target_surv`
 #'         column is a character label), `summary` (quantile summary),
-#'         `exposure_duration`, `target_surv` (the label).
+#'         `exposure_duration`, `target_surv` (the label), `target_mode`,
+#'         `target_prob`. A grouped fit adds the moderator column(s).
 #' @export
 derive_temperature_for_duration <- function(workflow,
                                             exposure_duration,
@@ -401,28 +210,51 @@ derive_temperature_for_duration <- function(workflow,
                                             target_surv = "absolute",
                                             ndraws      = 1000,
                                             probs       = c(0.025, 0.5, 0.975),
-                                            seed        = NULL) {
+                                            seed        = NULL,
+                                            by          = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
-  tdt_stop_if_grouped(workflow, "derive_temperature_for_duration()")
-
   ts     <- resolve_target_surv(target_surv)
+  by     <- tdt_resolve_by(workflow, by)
+  tbar   <- workflow$meta$temp_mean
+  target <- log10(exposure_duration)
   if (!is.null(seed)) set.seed(seed)   # reproducible draw subsample
-  pars   <- tdt_extract_pars(workflow, ndraws)
-  direct <- tdt_direct_spec(workflow, names(pars))
-  ct     <- tdt_ctmax_from_pars(pars, workflow$meta$temp_mean,
-                                workflow$meta$bounds, ts, exposure_duration,
-                                temp_grid, probs, direct = direct)
+  fit <- get_brmsfit(workflow)
+  did <- tls_draw_ids(fit, ndraws)
 
-  draws <- ct$draws |>
-    dplyr::mutate(target_surv = ts$label) |>
-    dplyr::select(.draw, target_surv, temp)
-  summary <- ct$summary |>
-    dplyr::mutate(target_surv = ts$label) |>
-    dplyr::select(target_surv, temp_lower, temp_median, temp_upper)
+  # Relative: closed-form inverse of the linear midpoint (2-temp grid). Absolute:
+  # numerical inversion of the bent logLT curve over the search grid.
+  if (ts$mode == "relative") {
+    nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1))
+    sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, draw_ids = did, mode = "relative")
+  } else {
+    nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = temp_grid - tbar)
+    sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, draw_ids = did,
+                           mode = "absolute", p = ts$prob %||% 0.5)
+  }
 
-  list(draws             = draws,
-       summary           = summary,
+  per_group <- lapply(unique(nd$.grp), function(g) {
+    gi <- which(nd$.grp == g)
+    Tc <- if (ts$mode == "relative") {
+      c0 <- gi[which(nd$temp_c[gi] == 0)]; c1 <- gi[which(nd$temp_c[gi] == 1)]
+      tbar + (target - sp$mid[, c0]) / (sp$mid[, c1] - sp$mid[, c0])
+    } else {
+      tls_invert_logLT(sp$logLT[, gi, drop = FALSE], target, temp_grid)
+    }
+    d <- tibble::tibble(.draw = seq_along(Tc), target_surv = ts$label, temp = Tc) |>
+      dplyr::filter(is.finite(temp))
+    q <- stats::quantile(d$temp, probs, names = FALSE, na.rm = TRUE)
+    s <- tibble::tibble(target_surv = ts$label, temp_lower = q[1],
+                        temp_median = q[2], temp_upper = q[3])
+    if (!is.null(by)) {
+      gc <- nd[gi[1], by, drop = FALSE]
+      d <- cbind(gc, d, row.names = NULL); s <- cbind(gc, s, row.names = NULL)
+    }
+    list(draws = d, summary = s)
+  })
+
+  list(draws             = dplyr::bind_rows(lapply(per_group, `[[`, "draws")),
+       summary           = dplyr::bind_rows(lapply(per_group, `[[`, "summary")),
        exposure_duration = exposure_duration,
        target_surv       = ts$label,
        target_mode       = ts$mode,
@@ -467,17 +299,22 @@ derive_temperature_for_duration <- function(workflow,
 #' @param ndraws      Posterior draws to subsample, or `NULL` (default) for all.
 #' @param probs       Quantile probabilities for the summaries. Default
 #'                    `c(0.025, 0.5, 0.975)`.
-#' @param h           Temperature step (°C) for the central finite difference
-#'                    used in absolute mode. Default `1e-3`.
+#' @param h           Temperature step (°C) for the central finite difference.
+#'                    Default `1e-3`. (For a linear midpoint — the relative
+#'                    threshold — the central difference is exact regardless.)
 #' @param seed        Optional integer seeding the draw subsample (relevant only
 #'                    when `ndraws` is set) for reproducibility. `NULL` (default)
 #'                    leaves the RNG untouched.
+#' @param by          Optional moderator column(s) for per-group z. `NULL`
+#'                    (default) uses the fit's moderators (`meta$group_vars`); a
+#'                    single-condition fit then returns one ungrouped result.
 #' @return A list with:
 #'   - `draws`: tibble `(.draw, z)` — pooled per-draw z.
 #'   - `summary`: tibble `(z_median, z_lower, z_upper)`.
 #'   - `local_draws`: tibble `(.draw, temp, z)` — local z(T) per draw.
 #'   - `local_summary`: tibble `(temp, z_median, z_lower, z_upper)`.
 #'   - `target_surv`, `temp_grid`.
+#'   For a grouped fit each tibble gains the moderator column(s).
 #' @examples
 #' \dontrun{
 #' wf <- fit_4pl(std)
@@ -492,21 +329,50 @@ derive_z <- function(workflow,
                      ndraws      = NULL,
                      probs       = c(0.025, 0.5, 0.975),
                      h           = 1e-3,
-                     seed        = NULL) {
+                     seed        = NULL,
+                     by          = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
-  tdt_stop_if_grouped(workflow, "derive_z()")
-  ts <- resolve_target_surv(target_surv)
+  ts   <- resolve_target_surv(target_surv)
+  by   <- tdt_resolve_by(workflow, by)
+  tbar <- workflow$meta$temp_mean
 
   if (is.null(temp_grid)) temp_grid <- sort(unique(workflow$data$temp))
   temp_grid <- temp_grid[is.finite(temp_grid)]
   if (length(temp_grid) < 1L) stop("temp_grid is empty.", call. = FALSE)
 
   if (!is.null(seed)) set.seed(seed)   # reproducible draw subsample (when ndraws set)
-  pars   <- tdt_extract_pars(workflow, ndraws)
-  direct <- tdt_direct_spec(workflow, names(pars))
-  tdt_z_from_pars(pars, workflow$meta$temp_mean, workflow$meta$bounds,
-                  ts, temp_grid, probs, h, direct = direct)
+  fit  <- get_brmsfit(workflow)
+  did  <- tls_draw_ids(fit, ndraws)
+  L    <- length(temp_grid)
+  tc   <- temp_grid - tbar
+  # Evaluate logLT at temp_grid - h (first L cols per group) and + h (next L), so
+  # z(T) = -1 / central-difference. Linear (relative) mid -> exact; absolute ->
+  # local slope of the bent curve. Same maths as before, posterior_linpred source.
+  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(tc - h, tc + h))
+  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, draw_ids = did,
+                         mode = if (ts$mode == "relative") "relative" else "absolute",
+                         p = ts$prob %||% 0.5)
+
+  per_group <- lapply(unique(nd$.grp), function(g) {
+    gi <- which(nd$.grp == g)                      # 2L cols: 1:L minus, (L+1):2L plus
+    zo <- tls_local_z(sp$logLT[, gi[(L + 1):(2 * L)], drop = FALSE],
+                      sp$logLT[, gi[1:L], drop = FALSE], h, temp_grid, probs)
+    if (!is.null(by)) {
+      gc <- nd[gi[1], by, drop = FALSE]
+      zo$draws         <- cbind(gc, zo$draws,         row.names = NULL)
+      zo$summary       <- cbind(gc, zo$summary,       row.names = NULL)
+      zo$local_draws   <- cbind(gc, zo$local_draws,   row.names = NULL)
+      zo$local_summary <- cbind(gc, zo$local_summary, row.names = NULL)
+    }
+    zo
+  })
+  cmb <- if (is.null(by)) per_group[[1]] else list(
+    draws         = dplyr::bind_rows(lapply(per_group, `[[`, "draws")),
+    summary       = dplyr::bind_rows(lapply(per_group, `[[`, "summary")),
+    local_draws   = dplyr::bind_rows(lapply(per_group, `[[`, "local_draws")),
+    local_summary = dplyr::bind_rows(lapply(per_group, `[[`, "local_summary")))
+  c(cmb, list(target_surv = ts$label, temp_grid = temp_grid))
 }
 
 #' Extract classical TDT quantities from a fitted 4PL: z, CTmax (optional T_crit)
@@ -593,6 +459,12 @@ derive_z <- function(workflow,
 #' @param seed        Optional integer. When supplied, seeds the RNG so the draw
 #'                    subsample and the `T_crit` rate draws are reproducible.
 #'                    `NULL` (default) leaves the RNG untouched.
+#' @param by          Optional moderator column(s) for per-group results. `NULL`
+#'                    (default) uses the fit's moderators (`meta$group_vars`); a
+#'                    single-condition fit then returns the ungrouped result
+#'                    (the original nested shape). For a grouped fit, `z`,
+#'                    `CTmax` and `T_crit` summaries/draws gain the moderator
+#'                    column(s) (one block per group); `lt50_curve` is `NULL`.
 #' @return A list with elements:
 #'   - `z`: list with `draws` (per-draw pooled z) and `summary`; plus `local`
 #'     (`draws` + per-temperature `summary`) when `z_local = TRUE`, else `NULL`.
@@ -635,12 +507,10 @@ extract_tdt <- function(workflow,
                         output_time_unit = "min",
                         lethal           = FALSE,
                         z_local          = FALSE,
-                        seed             = NULL) {
+                        seed             = NULL,
+                        by               = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
-  # Grouped fits (CTmax/z by a moderator) -> per-group derivation via tls();
-  # detected coding-independently so `~ 0 + G` and `~ 1 + G` both redirect.
-  tdt_stop_if_grouped(workflow, "extract_tdt()")
   if (length(TC_rate_range) != 2L ||
       any(!is.finite(TC_rate_range)) ||
       any(TC_rate_range <= 0) ||
@@ -653,106 +523,119 @@ extract_tdt <- function(workflow,
   # correctly regardless of whether the model was fit in minutes or hours.
   time_multiplier <- tdt_resolve_time_multiplier(time_multiplier, workflow$meta,
                                                  output_time_unit)
-
-  # Validate up front so both helpers receive a normalised label.
-  ts <- resolve_target_surv(target_surv)
-
+  ts   <- resolve_target_surv(target_surv)
   data <- workflow$data
   if (is.null(temp_grid)) {
     trange   <- range(data$temp, na.rm = TRUE)
     temp_grid <- seq(trange[1] - 2, trange[2] + 2, by = 0.05)
   }
 
-  # Extract the population-level 4PL coefficient posterior ONCE and subsample
-  # ONCE, then compute BOTH z and CTmax from this single set of draws. They
-  # therefore share draws by construction — their correlation, and the per-
-  # `.draw` pairing used for T_crit below, are preserved without any draw-id
-  # bookkeeping. z is read directly (no regression): relative => -1/b_mid_temp_c
-  # per draw; absolute => pooled local z over the observed assay temperatures.
-  # Reproducibility: seed the draw subsample (below) and the T_crit rate draws
-  # (further down) from one stream, so a supplied seed fixes the whole result.
+  # Reproducibility: one set.seed() governs both the draw subsample (draw_ids,
+  # matching the retired tdt_extract_pars selection) and the T_crit rate draws.
   if (!is.null(seed)) set.seed(seed)
-  pars        <- tdt_extract_pars(workflow, ndraws)
-  Tbar        <- workflow$meta$temp_mean
-  bnd         <- workflow$meta$bounds
-
-  # Direct CTmax/z parameterisation: there is no `mid` coefficient, so mid(T) is
-  # reconstructed from the CTmaxdev/logz coefficient draws (grouped fits already
-  # redirected by tdt_stop_if_grouped above; midpoint fits get NULL).
-  direct <- tdt_direct_spec(workflow, names(pars))
-
-  z_temp_grid <- sort(unique(data$temp))
-  z_temp_grid <- z_temp_grid[is.finite(z_temp_grid)]
-
-  z_obj <- tdt_z_from_pars(pars, Tbar, bnd, ts, z_temp_grid,
-                           local = isTRUE(z_local), direct = direct)
-
-  # Express the t_ref reference duration back in model time units so the
-  # inverse-4PL lookup uses the same scale as the fitted model.
+  fit  <- get_brmsfit(workflow)
+  Tbar <- workflow$meta$temp_mean
+  bnd  <- workflow$meta$bounds
+  by   <- tdt_resolve_by(workflow, by)
+  did  <- tls_draw_ids(fit, ndraws)
   exposure_in_model_units <- t_ref / time_multiplier
-  ctmax <- tdt_ctmax_from_pars(pars, Tbar, bnd, ts, exposure_in_model_units,
-                               temp_grid, direct = direct)
+  target <- log10(exposure_in_model_units)
+  z_temp_grid <- sort(unique(data$temp)); z_temp_grid <- z_temp_grid[is.finite(z_temp_grid)]
+  Lz <- length(z_temp_grid); Lc <- length(temp_grid); h <- 1e-3
+  p  <- ts$prob %||% 0.5
+  # Midpoint relative keeps the exact closed-form CTmax; direct/absolute use the
+  # numerical inversion (the bent/backbone curve). z is always the central-diff
+  # local z (exact for a linear midpoint), evaluated via posterior_linpred — so
+  # there is no coefficient-name parsing and no parameterisation branch.
+  mid_rel_closed <- ts$mode == "relative" &&
+    !identical(workflow$meta$parameterization %||% "midpoint", "direct")
 
-  # LT_x curve retained as descriptive output (plotting / inspection); it is no
-  # longer used to compute z or CTmax. The threshold is set by target_surv;
-  # `"relative"` (default) returns mid(T) directly.
-  lt50_curve <- derive_tdt_curve(
-    workflow         = workflow,
-    temp_grid        = temp_grid,
-    duration_grid    = duration_grid,
-    target_surv      = target_surv,
-    ndraws           = ndraws,
-    time_multiplier  = time_multiplier,
-    output_time_unit = output_time_unit
-  )
-
-  t_crit_block <- NULL
-  if (isTRUE(lethal)) {
+  if (isTRUE(lethal))
     message("extract_tdt(): T_crit reported under the rate-multiplier ",
             "definition; valid for damage-accumulation (lethal) endpoints ",
             "only. If your data are sublethal (knockdown, performance, ",
             "PSII, ...) ignore T_crit and supply T_c manually downstream.")
 
-    # T_crit via rate-multiplier integration. For each posterior draw, sample
-    # r* uniformly on log10 across TC_rate_range, then compute
-    # T_crit = CTmax + z * log10(r*/100). z and CTmax were computed from the
-    # same `pars` draws, so pairing by `.draw` is genuinely joint.
-    z_df     <- z_obj$draws  |> dplyr::select(.draw, z)
-    ctmax_df <- ctmax$draws  |> dplyr::select(.draw, CTmax_temp = temp)
-    paired   <- dplyr::inner_join(z_df, ctmax_df, by = ".draw")
+  # Single combined grid per group: temp_c = 0 (mid intercept) | z_temp_grid -/+ h
+  # (local z) | temp_grid (CTmax inversion). One eval -> z and CTmax share draws,
+  # so the T_crit pairing is genuinely joint.
+  ztc      <- z_temp_grid - Tbar
+  combo_tc <- c(0, ztc - h, ztc + h, temp_grid - Tbar)
+  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = combo_tc)
+  sp <- tls_eval_subpars(fit, nd, bnd, draw_ids = did, mode = ts$mode, p = p)
 
-    log10_low  <- log10(TC_rate_range[1] / 100)
-    log10_high <- log10(TC_rate_range[2] / 100)
-    paired$log10_rate <- stats::runif(nrow(paired),
-                                       min = log10_low, max = log10_high)
-    paired$T_crit     <- paired$CTmax_temp + paired$z * paired$log10_rate
+  # LT_x curve: descriptive intermediate (single-condition only; grouped fits use
+  # the per-group z/CTmax/T_crit below, or tls()/predict_*(by=)). Computed HERE,
+  # before the per-group T_crit rate draws, so derive_tdt_curve's posterior_linpred
+  # subsample consumes RNG in the same order as the pre-refactor code and T_crit
+  # stays reproducible against the existing fixtures.
+  lt50_curve <- if (is.null(by)) derive_tdt_curve(
+    workflow = workflow, temp_grid = temp_grid, duration_grid = duration_grid,
+    target_surv = target_surv, ndraws = ndraws, time_multiplier = time_multiplier,
+    output_time_unit = output_time_unit) else NULL
 
-    t_crit_draws <- tibble::tibble(.draw = paired$.draw,
-                                    temp = paired$T_crit,
-                                    log10_rate = paired$log10_rate)
-    q <- stats::quantile(t_crit_draws$temp,
-                         c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
-    t_crit_summary <- tibble::tibble(
-      TC_rate_low  = TC_rate_range[1],
-      TC_rate_high = TC_rate_range[2],
-      temp_lower   = q[1],
-      temp_median  = q[2],
-      temp_upper   = q[3]
-    )
-    t_crit_block <- list(draws = t_crit_draws, summary = t_crit_summary)
-  }
+  per_group <- lapply(unique(nd$.grp), function(g) {
+    gi      <- which(nd$.grp == g)              # 1 + 2Lz + Lc columns, in combo order
+    c_mid0  <- gi[1]
+    c_minus <- gi[1 + seq_len(Lz)]
+    c_plus  <- gi[1 + Lz + seq_len(Lz)]
+    c_ctmax <- gi[1 + 2L * Lz + seq_len(Lc)]
+
+    z_obj <- tls_local_z(sp$logLT[, c_plus, drop = FALSE],
+                         sp$logLT[, c_minus, drop = FALSE], h, z_temp_grid,
+                         local = isTRUE(z_local))
+
+    if (mid_rel_closed) {
+      slope   <- rowMeans((sp$logLT[, c_plus, drop = FALSE] -
+                           sp$logLT[, c_minus, drop = FALSE]) / (2 * h))
+      Tc <- Tbar + (target - sp$logLT[, c_mid0]) / slope   # exact closed-form
+    } else {
+      Tc <- tls_invert_logLT(sp$logLT[, c_ctmax, drop = FALSE], target, temp_grid)
+    }
+    cd <- tibble::tibble(.draw = seq_along(Tc), temp = Tc) |> dplyr::filter(is.finite(temp))
+    cq <- stats::quantile(cd$temp, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+    ctmax <- list(draws = cd,
+                  summary = tibble::tibble(temp_lower = cq[1], temp_median = cq[2],
+                                           temp_upper = cq[3]))
+
+    tcb <- NULL
+    if (isTRUE(lethal)) {
+      paired <- dplyr::inner_join(dplyr::select(z_obj$draws, .draw, z),
+                                  dplyr::select(cd, .draw, CTmax_temp = temp),
+                                  by = ".draw")
+      paired$log10_rate <- stats::runif(nrow(paired), log10(TC_rate_range[1] / 100),
+                                        log10(TC_rate_range[2] / 100))
+      paired$T_crit <- paired$CTmax_temp + paired$z * paired$log10_rate
+      tcd <- tibble::tibble(.draw = paired$.draw, temp = paired$T_crit,
+                            log10_rate = paired$log10_rate)
+      tq  <- stats::quantile(tcd$temp, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+      tcb <- list(draws = tcd,
+                  summary = tibble::tibble(TC_rate_low = TC_rate_range[1],
+                                           TC_rate_high = TC_rate_range[2],
+                                           temp_lower = tq[1], temp_median = tq[2],
+                                           temp_upper = tq[3]))
+    }
+    list(gc = if (!is.null(by)) nd[gi[1], by, drop = FALSE] else NULL,
+         z = z_obj, ctmax = ctmax, tcrit = tcb)
+  })
+
+  # Assemble. Single-condition (one group, by = NULL) -> the original nested
+  # contract, byte-identical. Grouped -> each summary/draws gains moderator col(s).
+  tag <- function(tb, gc) if (is.null(gc) || is.null(tb)) tb else cbind(gc, tb, row.names = NULL)
+  z_summary       <- dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$z$summary, pg$gc)))
+  z_draws         <- dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$z$draws, pg$gc)))
+  ctmax_summary   <- dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$ctmax$summary, pg$gc)))
+  ctmax_draws     <- dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$ctmax$draws, pg$gc)))
+  z_local_block <- if (isTRUE(z_local)) list(
+    draws   = dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$z$local_draws, pg$gc))),
+    summary = dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$z$local_summary, pg$gc)))) else NULL
+  t_crit_block <- if (isTRUE(lethal)) list(
+    draws   = dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$tcrit$draws, pg$gc))),
+    summary = dplyr::bind_rows(lapply(per_group, function(pg) tag(pg$tcrit$summary, pg$gc)))) else NULL
 
   list(
-    z          = list(draws   = z_obj$draws,
-                      summary = z_obj$summary,
-                      local   = if (isTRUE(z_local)) {
-                        list(draws = z_obj$local_draws,
-                             summary = z_obj$local_summary)
-                      } else {
-                        NULL
-                      }),
-    CTmax      = list(draws   = ctmax$draws,
-                      summary = ctmax$summary),
+    z          = list(draws = z_draws, summary = z_summary, local = z_local_block),
+    CTmax      = list(draws = ctmax_draws, summary = ctmax_summary),
     T_crit     = t_crit_block,
     lt50_curve = lt50_curve,
     meta       = list(target_surv      = ts$label,
@@ -761,6 +644,7 @@ extract_tdt <- function(workflow,
                       t_ref            = t_ref,
                       TC_rate_range    = TC_rate_range,
                       lethal           = isTRUE(lethal),
-                      output_time_unit = output_time_unit)
+                      output_time_unit = output_time_unit,
+                      by               = by)
   )
 }

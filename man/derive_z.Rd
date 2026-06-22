@@ -11,7 +11,8 @@ derive_z(
   ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
   h = 0.001,
-  seed = NULL
+  seed = NULL,
+  by = NULL
 )
 }
 \arguments{
@@ -29,12 +30,17 @@ to pool. Default: the observed (unique) assay temperatures
 \item{probs}{Quantile probabilities for the summaries. Default
 \code{c(0.025, 0.5, 0.975)}.}
 
-\item{h}{Temperature step (°C) for the central finite difference
-used in absolute mode. Default \code{1e-3}.}
+\item{h}{Temperature step (°C) for the central finite difference.
+Default \code{1e-3}. (For a linear midpoint — the relative
+threshold — the central difference is exact regardless.)}
 
 \item{seed}{Optional integer seeding the draw subsample (relevant only
 when \code{ndraws} is set) for reproducibility. \code{NULL} (default)
 leaves the RNG untouched.}
+
+\item{by}{Optional moderator column(s) for per-group z. \code{NULL}
+(default) uses the fit's moderators (\code{meta$group_vars}); a
+single-condition fit then returns one ungrouped result.}
 }
 \value{
 A list with:
@@ -44,6 +50,7 @@ A list with:
 \item \code{local_draws}: tibble \verb{(.draw, temp, z)} — local z(T) per draw.
 \item \code{local_summary}: tibble \verb{(temp, z_median, z_lower, z_upper)}.
 \item \code{target_surv}, \code{temp_grid}.
+For a grouped fit each tibble gains the moderator column(s).
 }
 }
 \description{

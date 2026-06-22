@@ -56,6 +56,27 @@ load_fixture_workflow_direct <- function() {
           refresh = 0)
 }
 
+# Grouped direct fixture: a 2-group simulate_tdt_2group() fit with CTmax/z varying
+# by `grp` (ctmax/z ~ 0 + grp, cell-means). Exercises the group-aware extraction
+# (per-group z/CTmax via the posterior_linpred engine) against known per-group
+# truth. Cached at tests/testthat/fixtures/sim_fit_grouped_small.rds.
+load_fixture_workflow_grouped <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  fit_path  <- file.path(fixture_dir, "sim_fit_grouped_small")  # brms appends .rds
+
+  raw <- simulate_tdt_2group(seed = 20260622)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours")
+  wf <- fit_4pl(std, ctmax = ~ 0 + grp, z = ~ 0 + grp,
+                chains = 2, iter = 1200, warmup = 600, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = fit_path, refresh = 0)
+  attr(wf, "truth_2group") <- attr(raw, "truth_2group")
+  wf
+}
+
 # Beta (continuous-proportion) fixture: standardize_data(proportion =) ->
 # fit_4pl(family = Beta(link = "identity")). Cached at
 # tests/testthat/fixtures/sim_fit_beta_small.rds.

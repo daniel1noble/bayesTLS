@@ -71,3 +71,17 @@ truth_summary <- function(truth = list(ell = 0.05, u = 0.95, k = 6,
   CT1     <- (log10(60) - alpha) / truth$m_beta1
   list(z = z, CTmax_1hr = CT1, truth = truth)
 }
+
+# Two-group simulator with DELIBERATELY different per-group z (large gap so a
+# swapped group mapping can't pass by coincidence): group A m_beta1 = -0.18
+# (z = 5.56), group B m_beta1 = -0.30 (z = 3.33). Same design otherwise. Used for
+# the grouped/per-group gated tests (fit with ctmax/z ~ 0 + grp).
+simulate_tdt_2group <- function(seed = 20260622) {
+  tA <- list(ell = 0.05, u = 0.95, k = 6, m_beta0 = 1.5, m_beta1 = -0.18, T_bar = 33)
+  tB <- list(ell = 0.05, u = 0.95, k = 6, m_beta0 = 1.2, m_beta1 = -0.30, T_bar = 33)
+  a <- simulate_tdt(seed = seed,     truth = tA); a$grp <- "A"
+  b <- simulate_tdt(seed = seed + 1, truth = tB); b$grp <- "B"
+  d <- rbind(a, b); d$grp <- factor(d$grp)
+  attr(d, "truth_2group") <- list(A = truth_summary(tA), B = truth_summary(tB))
+  d
+}

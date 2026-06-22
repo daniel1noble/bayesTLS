@@ -107,40 +107,18 @@ tls <- function(object, by = NULL, params = "all",
          call. = FALSE)
   }
 
-  # --- build the moderator x temperature grid --------------------------------
-  if (is.null(newdata)) {
-    if (is.null(temp_grid)) {
-      temp_grid <- seq(min(mdata[[temp]]), max(mdata[[temp]]), length.out = 11)
-    }
-    base <- if (is.null(by)) data.frame(.dummy = 1) else unique(mdata[, by, drop = FALSE])
-    newdata <- do.call(rbind, lapply(seq_len(nrow(base)), function(i) {
-      g <- base[rep(i, length(temp_grid)), , drop = FALSE]
-      g[[temp]] <- temp_grid
-      g
-    }))
-    newdata$.dummy <- NULL
-    rownames(newdata) <- NULL
-  }
-  # Fill any model-data columns the grid lacks so posterior_linpred validates.
-  for (v in setdiff(names(mdata), names(newdata))) {
-    newdata[[v]] <- mdata[[v]][1]
-  }
-  newdata$.grp <- if (is.null(by)) "all" else
-    do.call(paste, c(newdata[by], sep = " / "))
+  # --- build the moderator x temperature grid (shared engine) ----------------
+  newdata <- tls_build_grid(mdata, by = by, temp = temp,
+                            temp_grid = temp_grid, newdata = newdata)
 
   # Reproducibility: seed the posterior_linpred draw subsample (when `ndraws` is
   # set) and the T_crit rate draws below from one stream.
   if (!is.null(seed)) set.seed(seed)
 
-  # --- evaluate sub-parameters at every grid row -----------------------------
-  b  <- compute_4pl_bounds(lower, upper)
-  lp <- function(np) brms::posterior_linpred(fit, newdata = newdata, nlpar = np,
-                                             re_formula = re_formula, ndraws = ndraws)
-  low <- b$low_min + stats::plogis(lp(nlpars[1])) * b$low_w
-  up  <- b$up_min  + stats::plogis(lp(nlpars[2])) * b$up_w
-  k   <- exp(lp(nlpars[3]))
-  mid <- lp(nlpars[4])
-  logLT <- if (mode == "absolute") mid + log((up - p) / (p - low)) / k else mid
+  # --- evaluate sub-parameters at every grid row (shared engine) -------------
+  logLT <- tls_eval_subpars(fit, newdata, compute_4pl_bounds(lower, upper),
+                            nlpars = nlpars, re_formula = re_formula,
+                            ndraws = ndraws, mode = mode, p = p)$logLT
 
   # --- derive per-group quantities from the shared draws ---------------------
   tc <- newdata[[temp]]
