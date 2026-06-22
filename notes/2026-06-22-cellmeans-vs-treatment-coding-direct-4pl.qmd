@@ -1,0 +1,98 @@
+---
+title: "Direct CTmax/z 4PL: why `~ 0 + group` (cell-means) not `~ 1 + group` (treatment)"
+date: 2026-06-22
+format: html
+---
+
+**Question (DN).** In the direct parameterisation, what happens if we fit
+`ctmax = ~ 1 + species` (treatment/reference coding, = the default `~ species`)
+instead of `ctmax = ~ 0 + species` (cell-means coding)?
+
+## Short answer
+
+It is the **same statistical model** — identical likelihood, fitted surface, and
+predictions, so `tls(wf, by = "species")` returns the same per-species z/CTmax
+and the same contrasts either way (it works off `posterior_linpred`, not the raw
+coefficients). What changes is (1) what `summary()` shows and, more importantly,
+(2) **which priors get applied to what**. The package's default direct-mode
+priors are built for **cell-means** coding; under treatment coding they land on
+the wrong quantities. **Use `~ 0 + species`.**
+
+## The two concrete problems with `~ 1 + species`
+
+`make_4pl_priors()` recognises a group term only when it is cell-means coded
+(`^0 + G`, via `cell_means_coefs()`). Generating the priors both ways on a toy
+3-species dataset:
+
+```{r}
+#| message: false
+#| warning: false
+suppressMessages(pkgload::load_all(here::here(), quiet = TRUE))
+set.seed(1)
+raw <- expand.grid(species = c("Md","Rp","Sa"), temp = c(34,36,38),
+                   duration = c(10,60,240))
+raw$n <- 30L; raw$alive <- rbinom(nrow(raw), 30, 0.6)
+d <- standardize_data(raw, temp = "temp", duration = "duration",
+                      n_total = "n", n_surv = "alive", duration_unit = "minutes")
+d$species <- factor(raw$species)
+
+rows <- function(p) as.data.frame(p)[as.data.frame(p)$nlpar %in%
+                      c("upraw","CTmaxdev","logz"), c("prior","coef","nlpar")]
+rows(make_4pl_priors(d, ctmax = ~ 0 + species, z = ~ 0 + species))  # cell-means
+rows(make_4pl_priors(d, ctmax = ~ species,     z = ~ species))      # treatment
+```
+
+Observed output:
+
+```
+CELL-MEANS  ~ 0 + species
+  normal(3.23, 1)   speciesMd   upraw     <- each species' asymptote centred
+  normal(3.23, 1)   speciesRp   upraw
+  normal(3.23, 1)   speciesSa   upraw
+  normal(0, 0.5)                upraw
+  normal(0, 10)                 CTmaxdev  <- per-species (no intercept)
+  normal(1.10, 0.7)             logz      <- per-species, centred at log(3): z≈3
+
+TREATMENT   ~ species  (= 1 + species)
+  normal(3.23, 1)   Intercept   upraw     <- ONLY the reference level centred
+  normal(0, 0.5)                upraw     <- Rp, Sa asymptotes: generic dev prior
+  normal(0, 10)                 CTmaxdev  <- now on Intercept AND the contrasts
+  normal(1.10, 0.7)             logz      <- now on Intercept AND the contrasts
+```
+
+1. **Asymptote centring is lost for non-reference groups.** The centred
+   `upraw`/`lowraw`/`logk` priors are applied per level under cell-means, but only
+   to the `Intercept` under treatment coding — so Rp and Sa keep only the generic
+   `normal(0, 0.5)` deviation prior. This centring is *load-bearing*: a flat
+   asymptote prior produced 191 divergences
+   (`notes/2026-06-21-prior-sensitivity-direct-ctmax-z.qmd`). Treatment coding
+   reintroduces that fragility for every non-reference group.
+
+2. **The `logz` prior becomes a wrong prior on the contrast.** `normal(log 3,
+   0.7)` is meant to say "each species' z ≈ 3 °C". Under cell-means it does.
+   Under treatment coding the contrast coefficients (`speciesRp = logz_Rp −
+   logz_Md`) *also* get `normal(log 3, 0.7)` — i.e. the prior now expects each
+   non-reference species' z to be **≈ 3× the reference species' z**, instead of
+   centred on "no difference" (0). That biases the species sensitivity contrasts.
+   (`CTmaxdev`'s `normal(0, 10)` is wide enough that the analogous effect on the
+   CTmax contrasts is mild, but still conceptually a prior on a difference rather
+   than an absolute.)
+
+## Recommendation
+
+- Keep **`ctmax = ~ 0 + species`, `z = ~ 0 + species`** — each group's CTmax/z is
+  a parameter with the correct, symmetric informative prior, and `summary()`
+  reads the per-species values directly.
+- For reference-vs-other **contrasts**, don't switch coding — difference the
+  per-group posterior draws from `tls(wf, by = "species")` (correct priors,
+  correct contrast, with pMCMC).
+- The `0 + G` machinery (`cell_means_coefs`, `resolve_shape`) is the package's
+  intended path for grouped direct-parameterisation fits; the tests use it.
+
+## Aside (caught while testing)
+
+`library(bayesTLS)` (installed) does **not** yet have the direct-mode `ctmax`/`z`
+arguments — that code is in the working tree only. The new case-study scaffold
+(`ms/case_studies_new.qmd`) uses them, so the package must be **reinstalled**
+(or chunks run via `pkgload::load_all()`) before those chunks will run. See
+[[project_render_uses_installed_package]].
