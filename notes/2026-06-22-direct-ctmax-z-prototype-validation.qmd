@@ -28,14 +28,19 @@ A **mock-up** of the direct CTmax/z parameterisation, prototyped in *this note
 only* — `R/` and the supplement are untouched. Design decisions (Daniel,
 2026-06-22):
 
-- **No `parameterization` argument.** Supplying `ctmax_formula` and/or
-  `z_formula` *is* the switch to direct mode. Don't overcomplicate.
+- **No `parameterization` argument.** Supplying a `ctmax` and/or `z` formula *is*
+  the switch to direct mode. Don't overcomplicate.
+- **Arguments are formulas, no `_formula` suffix:** `ctmax`, `z`, `up`, `low`,
+  `k` (the docs/examples make clear they take formulas); the asymptote bounds
+  collapse to a single `bounds = c(0, 1)` so `low`/`up` don't clash with the old
+  `lower`/`upper`.
 - **`threshold` selects the fitted backbone.** `"relative"` (default) puts the
   linear-in-T backbone on the midpoint; `"absolute"` bakes the up/low/k
   temperature effects into the asymmetry correction so the fitted CTmax and z
   **are** the absolute (fixed-survival) quantities.
-- **Per-parameter formulas for `low`/`up`/`k` too** (symmetry with CTmax/z),
-  defaulting to the current `~ temp_c` when omitted.
+- **Per-parameter formulas for `low`/`up`/`k` too** (symmetry with CTmax/z);
+  when omitted they inherit the CTmax/z fixed effects crossed with `temp_c` (RE
+  not inherited), else `~ temp_c` (see *Formula resolution / inheritance*).
 - Estimated nonlinear parameters change from `(lowraw, upraw, logk, mid)` to
   `(lowraw, upraw, logk, CTmaxdev, logz)`; `low/up/k/mid` become `nlf`-derived.
 
@@ -52,29 +57,46 @@ This is what `make_4pl_formula()` becomes. `low/up/k/mid` are defined with
 ```{r proto-formula}
 rhs <- function(f, default) if (is.null(f)) default else paste(deparse(f[[2]]), collapse = " ")
 
-proto_4pl_formula <- function(ctmax_formula = NULL, z_formula = NULL,
-                              low_formula = NULL, up_formula = NULL, k_formula = NULL,
+# Resolution rule: an explicit shape formula wins; otherwise the shape inherits
+# the CTmax/z FIXED effects crossed with temp_c (RE is NOT inherited — it stays
+# on CTmax/z); intercept-only CTmax/z -> shape ~ temp_c.
+resolve_shape <- function(shape_f, inherit_rhs) {
+  if (!is.null(shape_f)) return(rhs(shape_f, "temp_c"))
+  fe <- trimws(gsub("\\+?\\s*\\([^|]*\\|[^)]*\\)", "", inherit_rhs))   # drop (x | g) RE terms
+  fe <- trimws(gsub("\\+\\s*$|^\\s*\\+\\s*", "", fe))
+  if (fe %in% c("", "1")) return("temp_c")
+  if (grepl("^0\\s*\\+", fe)) {                                        # cell-means: 0 + G
+    core <- trimws(sub("^0\\s*\\+\\s*", "", fe))
+    if (grepl("\\+", core)) paste0("0 + ", core, " + temp_c:(", core, ")")
+    else                    paste0("0 + ", core, " + temp_c:", core)
+  } else paste0("(", fe, ") * temp_c")                                 # treatment: G * temp_c
+}
+
+# Final API: ctmax / z / up / low / k are FORMULAS (no `_formula` suffix);
+# `bounds = c(lower, upper)` is the disjoint-bounds asymptote range.
+proto_4pl_formula <- function(ctmax = NULL, z = NULL, up = NULL, low = NULL, k = NULL,
                               threshold = c("relative", "absolute"),
-                              log10_tref = 0, p = 0.5, lower = 0, upper = 1,
+                              log10_tref = 0, p = 0.5, bounds = c(0, 1),
                               family = brms::beta_binomial(link = "identity")) {
   threshold <- match.arg(threshold)
-  b     <- cb(lower, upper)
+  b     <- cb(bounds[1], bounds[2])
   low_e <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
   up_e  <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min,  b$up_w)
   # one linear-in-T backbone; mid reconstructed from CTmax (centred) and z
   mid_rel <- sprintf("(%g - (temp_c - CTmaxdev) / exp(logz))", log10_tref)
   mid_e   <- if (threshold == "relative") mid_rel else
     sprintf("(%s - (1/exp(logk)) * log((up - %g)/(%g - low)))", mid_rel, p, p)  # absolute: + C(T)
+  inherit <- if (!is.null(ctmax)) rhs(ctmax, "1") else if (!is.null(z)) rhs(z, "1") else "1"
   brms::bf(
     stats::as.formula("n_surv | trials(n_total) ~ low + (up - low) / (1 + exp(exp(logk) * (logd - mid)))"),
     brms::nlf(stats::as.formula(paste("low ~", low_e))),
     brms::nlf(stats::as.formula(paste("up  ~", up_e))),
     brms::nlf(stats::as.formula(paste("mid ~", mid_e))),
-    stats::as.formula(paste("lowraw   ~", rhs(low_formula,   "temp_c"))),  # default = current
-    stats::as.formula(paste("upraw    ~", rhs(up_formula,    "temp_c"))),
-    stats::as.formula(paste("logk     ~", rhs(k_formula,     "temp_c"))),
-    stats::as.formula(paste("CTmaxdev ~", rhs(ctmax_formula, "1"))),         # CTmax structure
-    stats::as.formula(paste("logz     ~", rhs(z_formula,     "1"))),         # z structure
+    stats::as.formula(paste("lowraw   ~", resolve_shape(low, inherit))),  # inherit FE x temp_c, else temp_c
+    stats::as.formula(paste("upraw    ~", resolve_shape(up,  inherit))),
+    stats::as.formula(paste("logk     ~", resolve_shape(k,   inherit))),
+    stats::as.formula(paste("CTmaxdev ~", rhs(ctmax, "1"))),               # CTmax structure (FE + RE)
+    stats::as.formula(paste("logz     ~", rhs(z,     "1"))),               # z structure (FE + RE)
     nl = TRUE, family = family)
 }
 ```
@@ -85,10 +107,10 @@ are well identified, so they take simple priors. Cell-means terms (`0 + factor`)
 get one centred prior per level.
 
 ```{r proto-priors}
-proto_priors <- function(cells = NULL, lower = 0, upper = 1, re_ctmax = NULL, re_z = NULL) {
-  b  <- cb(lower, upper)
-  lr <- qlogis((lower + 0.02 * (upper - lower) - b$low_min) / b$low_w)
-  ur <- qlogis((lower + 0.98 * (upper - lower) - b$up_min)  / b$up_w)
+proto_priors <- function(cells = NULL, bounds = c(0, 1), re_ctmax = NULL, re_z = NULL) {
+  b  <- cb(bounds[1], bounds[2])
+  lr <- qlogis((bounds[1] + 0.02 * (bounds[2] - bounds[1]) - b$low_min) / b$low_w)
+  ur <- qlogis((bounds[1] + 0.98 * (bounds[2] - bounds[1]) - b$up_min)  / b$up_w)
   per <- function(centre, sd, nlpar) if (is.null(cells))
       set_prior(sprintf("normal(%.4f,%.1f)", centre, sd), class = "b", nlpar = nlpar, coef = "Intercept")
     else do.call(c, lapply(cells, \(cf) set_prior(sprintf("normal(%.4f,%.1f)", centre, sd),
@@ -105,6 +127,30 @@ proto_priors <- function(cells = NULL, lower = 0, upper = 1, re_ctmax = NULL, re
 }
 ```
 
+### Formula resolution / inheritance
+
+When `up`/`low`/`k` are omitted they are resolved from the CTmax/z structure:
+fixed effects are inherited **crossed with `temp_c`** (so the absolute correction
+is correct per group), random effects are **not** inherited (they stay on
+CTmax/z), and intercept-only CTmax/z gives `shape ~ temp_c`:
+
+```{r resolution-demo}
+inh  <- function(ctmax) if (is.null(ctmax)) "1" else rhs(ctmax, "1")
+demo <- function(ctmax) data.frame(`ctmax / z` = inh(ctmax),
+                                   `shape (resolved)` = resolve_shape(NULL, inh(ctmax)),
+                                   check.names = FALSE)
+do.call(rbind, list(demo(~ 1),
+                    demo(~ 0 + life_stage + (1 | Date_experiment)),
+                    demo(~ 0 + sex),
+                    demo(~ life_stage)))
+```
+
+The grouped default (`shape ~ 0 + life_stage + temp_c:life_stage`, RE on CTmax/z
+only) is exactly the `proto_zf_direct_rel` structure validated below — **0
+divergences**, matches the reference. The alternative of inheriting RE onto the
+shape too was tested (`proto_zf_inherit`) and gave **4 divergences** with no
+better estimates, so RE is not inherited.
+
 ## 3. The generated model (zebrafish)
 
 ```{r show-formula}
@@ -117,11 +163,11 @@ zf_joint <- dplyr::bind_rows(lapply(stages, function(s) {
   d$life_stage <- factor(s, levels = stages); d }))
 
 f_zf <- proto_4pl_formula(
-  ctmax_formula = ~ 0 + life_stage + (1 | Date_experiment),
-  z_formula     = ~ 0 + life_stage + (1 | Date_experiment),
-  low_formula   = ~ 0 + life_stage + temp_c:life_stage,   # match the reference: group on all params
-  up_formula    = ~ 0 + life_stage + temp_c:life_stage,
-  k_formula     = ~ 0 + life_stage + temp_c:life_stage,
+  ctmax = ~ 0 + life_stage + (1 | Date_experiment),
+  z     = ~ 0 + life_stage + (1 | Date_experiment),
+  low   = ~ 0 + life_stage + temp_c:life_stage,   # explicit here to match the reference structure
+  up    = ~ 0 + life_stage + temp_c:life_stage,   # (omitting these would inherit the same by the rule)
+  k     = ~ 0 + life_stage + temp_c:life_stage,
   threshold = "relative")
 f_zf
 ```
@@ -198,9 +244,9 @@ the midpoint reference cannot — exactly as the 2026-06-16 note documented.
 #| warning: false
 ref_d <- readRDS(file.path(models_dir, "fit_dsuzukii_mortality_sex_joint.rds"))
 dat_d <- ref_d$data
-fit_d <- brm(proto_4pl_formula(ctmax_formula = ~ 0 + sex, z_formula = ~ 0 + sex,
-                               low_formula = ~ 0 + sex + temp_c:sex, up_formula = ~ 0 + sex + temp_c:sex,
-                               k_formula = ~ 0 + sex + temp_c:sex, threshold = "relative"),
+fit_d <- brm(proto_4pl_formula(ctmax = ~ 0 + sex, z = ~ 0 + sex,
+                               low = ~ 0 + sex + temp_c:sex, up = ~ 0 + sex + temp_c:sex,
+                               k = ~ 0 + sex + temp_c:sex, threshold = "relative"),
              data = dat_d, prior = proto_priors(cells = c("sexF", "sexM")),
              chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
              control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
@@ -221,15 +267,15 @@ Near-identical (the Ørsted-reported values are 3.03 F / 3.28 M). Both fits have
 ## 7. Flexibility: model CTmax by group but pool z
 
 The point of the layered formulas — here CTmax varies by sex while z is shared
-(`z_formula` omitted ⇒ `logz ~ 1`). Shape parameters keep their per-sex
+(`z` omitted ⇒ `logz ~ 1`). Shape parameters keep their per-sex
 temperature structure.
 
 ```{r flex}
 #| message: false
 #| warning: false
-fit_flex <- brm(proto_4pl_formula(ctmax_formula = ~ 0 + sex,         # CTmax per sex
-                                  low_formula = ~ 0 + sex + temp_c:sex, up_formula = ~ 0 + sex + temp_c:sex,
-                                  k_formula = ~ 0 + sex + temp_c:sex),  # z_formula omitted -> pooled
+fit_flex <- brm(proto_4pl_formula(ctmax = ~ 0 + sex,         # CTmax per sex
+                                  low = ~ 0 + sex + temp_c:sex, up = ~ 0 + sex + temp_c:sex,
+                                  k = ~ 0 + sex + temp_c:sex),  # z omitted -> logz ~ 1 (pooled)
                 data = dat_d, prior = proto_priors(cells = c("sexF", "sexM")),
                 chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
                 control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
@@ -257,9 +303,9 @@ which is why relative ≈ absolute there — the 2026-06-16 finding).
 ```{r abs-fit}
 #| message: false
 #| warning: false
-fit_abs <- brm(proto_4pl_formula(ctmax_formula = ~ 0 + sex, z_formula = ~ 0 + sex,
-                                 low_formula = ~ 0 + sex + temp_c:sex, up_formula = ~ 0 + sex + temp_c:sex,
-                                 k_formula = ~ 0 + sex + temp_c:sex, threshold = "absolute"),
+fit_abs <- brm(proto_4pl_formula(ctmax = ~ 0 + sex, z = ~ 0 + sex,
+                                 low = ~ 0 + sex + temp_c:sex, up = ~ 0 + sex + temp_c:sex,
+                                 k = ~ 0 + sex + temp_c:sex, threshold = "absolute"),
                data = dat_d, prior = proto_priors(cells = c("sexF", "sexM")),
                chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
                control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,

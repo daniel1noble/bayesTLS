@@ -50,31 +50,93 @@ read straight off the coefficients (no slope step) for the relative threshold.
 
 ## Proposed API (layered)
 
+Argument names drop the `_formula` suffix (2026-06-22, Daniel) — they take
+formulas, made explicit in the docs/examples. To avoid `low`/`up` colliding with
+the asymptote *bound* args `lower`/`upper`, the two bounds collapse into a single
+`bounds = c(0, 1)`.
+
 ```r
 fit_4pl(
   data,
-  # --- existing shape-parameter layer (unchanged) ---
-  temp_effects   = c("low","up","k","mid"),   # 'mid' meaning kept for midpoint param
-  random_effects = NULL,                        # still attach to the backbone
-  lower = 0, upper = 1, family = NULL, prior = NULL, ...,
-  # --- NEW: direct CTmax/z layer ---
-  parameterization = c("midpoint","direct"),   # default midpoint (back-compat)
-  ctmax_formula    = NULL,                       # e.g. ~ life_stage + (1|Date)
-  z_formula        = NULL,                       # e.g. ~ life_stage
-  threshold        = c("relative","absolute"),   # meaning of CTmax/z when direct
-  t_ref            = NULL                         # reference exposure (model units); default = 1 time-unit
+  # --- direct CTmax/z layer (these formulas ARE the trigger; no `parameterization` arg) ---
+  ctmax = NULL,                       # formula, e.g. ~ life_stage + (1|Date)
+  z     = NULL,                       # formula, e.g. ~ life_stage  (omit -> logz ~ 1, pooled z)
+  up    = NULL,                       # formula; omitted -> inherited from ctmax/z (resolution rules)
+  low   = NULL,                       # formula
+  k     = NULL,                       # formula
+  threshold = c("relative","absolute"),   # which backbone is fitted; default relative
+  t_ref     = NULL,                        # reference exposure (model units); default = 1 time-unit
+  # --- shared ---
+  bounds = c(0, 1),                   # disjoint-bounds asymptote range (was lower/upper)
+  random_effects = NULL,              # midpoint-mode RE (when no ctmax/z given)
+  temp_effects   = c("low","up","k","mid"),  # midpoint-mode shape toggle
+  family = NULL, prior = NULL, ...
 )
 ```
 
-**Trigger / layering.** Supplying `ctmax_formula` or `z_formula` ⇒
-`parameterization = "direct"` (or set it explicitly). In direct mode:
+`mid` is intentionally not an argument — it is derived (see rule 5). The
+midpoint-mode args (`random_effects`, `temp_effects`) apply only when no `ctmax`/
+`z` formula is supplied.
+
+**Trigger / layering.** Supplying `ctmax_formula` or `z_formula` switches on
+direct mode — the formulas *are* the trigger; there is **no `parameterization`
+argument** (dropped 2026-06-22, per Daniel — don't overcomplicate). In direct mode:
 - `CTmaxdev ~ <ctmax_formula>` and `logz ~ <z_formula>` carry the fixed +
   random structure for tolerance and sensitivity (this *replaces* the role
   `mid ~ ...` played; `random_effects`/group moderators now live here).
-- `low/up/k` keep the **existing** `temp_effects` mechanism (and could later take
-  their own formulas too) — that is the "keep effects on the 4PL parameters" half.
+- `low/up/k` take their own formulas, or are resolved by inheritance from
+  CTmax/z (see *Formula resolution & inheritance rules* below) — that is the
+  "keep effects on the 4PL parameters" half.
 - `threshold` selects whether the linear backbone (and hence CTmax/z) is the
   relative midpoint or the absolute p-survival LT.
+
+## Formula resolution & inheritance rules (finalised 2026-06-22)
+
+When the user omits `up_formula`/`low_formula`/`k_formula`, they are resolved
+from the `ctmax_formula`/`z_formula` structure. The rules:
+
+1. **Temperature is always on the shape parameters.** If nothing is inherited,
+   the default is `~ temp_c`. This is non-negotiable: the absolute correction
+   `C(T) = (1/k)·log((up−p)/(p−low))` can only bend with temperature if up/low/k
+   carry it.
+2. **Fixed effects are inherited and *interacted with temperature*.** If
+   `ctmax`/`z` carry a grouping fixed effect (e.g. `0 + life_stage`), the shape
+   parameters inherit it **crossed with `temp_c`** — `0 + life_stage +
+   temp_c:life_stage` (cell-means) or `group * temp_c` (treatment). Not just a
+   shared `+ temp_c` main effect. *Why the interaction:* the absolute correction
+   is group-specific, so per-group absolute CTmax/z require per-group shape *and*
+   per-group temperature slopes on the shape; a shared slope would average the
+   correction across groups and bias the per-level absolute quantities.
+3. **Random effects are NOT inherited onto the shape.** If `ctmax`/`z` carry an
+   RE (e.g. `(1 | Date)`), it stays on CTmax/z (and therefore on `mid`, by
+   derivation) and is **not** placed on up/low/k. Putting the RE on all five
+   nlpars over-parameterises (5 variance components from a handful of batches) and
+   destabilises the otherwise weakly-identified asymptotes.
+4. **Fully specified** → each formula is used verbatim.
+5. **`mid` is never user-specified.** It is the `nlf`-derived reconstruction from
+   CTmaxdev/logz (plus up/low/k under `threshold = "absolute"`), so it mimics the
+   CTmax/z structure automatically — the constraint that `mid` must match CTmax/z
+   is satisfied by construction.
+
+Resolution sketch (RE stripped from the inherited RHS, FE crossed with `temp_c`):
+
+```r
+build_shape <- function(shape_f, inherit_rhs) {            # inherit_rhs = ctmax (or z) RHS
+  if (!is.null(shape_f)) return(rhs(shape_f, "temp_c"))    # explicit wins
+  fe <- drop_RE_terms(inherit_rhs)                          # remove (x | g)
+  if (fe %in% c("", "1")) return("temp_c")
+  if (cell_means(fe)) paste0("0 + ", core(fe), " + temp_c:(", core(fe), ")")
+  else                paste0("(", fe, ") * temp_c")
+}
+```
+
+**Validation (already in hand, no new fit needed).** The resolved default for
+`ctmax/z ~ 0 + life_stage + (1 | Date)` is `shape ~ 0 + life_stage +
+temp_c:life_stage` with the RE on CTmax/z only — which is *exactly* the
+`proto_zf_direct_rel` fit in the prototype note: **0 divergences**, matches the
+midpoint reference. The rejected "inherit RE onto everything" variant
+(`proto_zf_inherit`) gave **4 divergences** and no better estimates. So rules 2–3
+land on the structure that already sampled cleanest.
 
 ## Function-by-function change list
 
