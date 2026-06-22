@@ -172,7 +172,9 @@ The supplement is broken into two parts. The first, introducing readers to the `
 
 # **Introduction to `bayesTLS` R Package**
 
-We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty. It predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel. It also contains all the data used throughout the manuscript and supplement.
+We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty. It can also fit, direct models for $z$ and $CT_{max_{1hr}}$, which means one can model differences in groups or estimate random effects for $z$ and $CT_{max_{1hr}}$ directly, making interpretation and inference quite easy. **`bayesTLS`** also uses these models to predict heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel [@arnoldi2025]. It also contains all the data used throughout the manuscript and supplement.
+
+The **`bayesTLS`** package is also complimented by the **`freqTLS`** package, which uses frequentist approaches to fit the same models. It has advantages of being faster which can help with large datasets, but generally yields similar results without the need for priors. For the purpose of this tutorial, we demonstrate **`bayesTLS`**.
 
 To access the `bayesTLS` R package, install it once from GitHub. Installing
 `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
@@ -228,7 +230,7 @@ The functions in `bayesTLS` chain together as a single pipeline with the followi
 
 Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to brown shrimp, zebrafish, and snow gum leaf PSII and *Drosophila* datasets.
 
-## *What each function does* {#sec-function-tour}
+## *Description of Functions* {#sec-function-tour}
 
 #### *Core functions*
 
