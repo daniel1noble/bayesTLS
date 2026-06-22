@@ -19,6 +19,10 @@
 ^scripts$
 ^Rdata$
 ^fig$
+^comments$
+^pdf$
+^pics$
+^index\.html$
 
 # Project conventions / agent memory not relevant to the package distribution.
 ^CLAUDE\.md$
