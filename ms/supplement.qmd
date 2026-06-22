@@ -164,7 +164,15 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 # **Introduction**
 
-This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty. It predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel. It also contains all the data used throughout the manuscript and supplement.
+This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. To cite the approach and the associated R package please use:
+
+Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (in preparation). A flexible modelling framework for estimating thermal tolerance and sensitivity.
+
+The supplement is broken into two parts. The first, introducing readers to the `bayesTLS` R package and showing how it can be used. We apply the package to simulated data and also a series of case studies. The second part, shows extended simulation results associated with the main manuscript and provides the code to reproduce the figures in the main manuscript. 
+
+# **Introduction to `bayesTLS` R Package**
+
+We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty. It predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel. It also contains all the data used throughout the manuscript and supplement.
 
 To access the `bayesTLS` R package, install it once from GitHub. Installing
 `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
@@ -1582,570 +1590,6 @@ tinytable::tt(val_table, digits = 2, escape = TRUE)
 ```
 
 The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval.
-
-# **Extended Simulation Results** {#sec-extendsims}
-
-This section provides more detail on the simulation results from the
-various scenarios we explored to understand bias and coverage of *z*
-and $CT_{max}$. The main manuscript figures summarize the two
-shape-perturbing scenarios (drifting upper asymptote `up`, varying slope
-`k`) and the bias results from the two partial-mortality sweeps.
-
-Here we document the remaining scenarios we explored: the strict-equivalence
-baseline, likelihood misspecification alone, symmetric asymptote
-compression, and the design-impact — plus the coverage panels
-for the two sweeps reported as bias-only in the main text.
-
-For each scenario we also tabulate the root-mean-square error (RMSE, in °C) of
-*z* and $CT_{max,1h}$ — the typical magnitude of the estimation error, combining
-bias and variance in a single number on the parameter's own scale — for the four
-distinct point estimators. Because RMSE depends only on the point estimates, the
-Normal- and *t*-quantile two-stage CI variants share a value and are reported
-once each.
-
-```{r sim-supp-setup}
-#| label: sim-supp-setup
-#| echo: false
-#| warning: false
-#| message: false
-
-# This chunk loads and summarises the full simulation sweep outputs.
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(here)
-library(patchwork)
-
-.method_levels <- c("two_stage_bin", "two_stage_bin_t",
-                    "two_stage_bb",  "two_stage_bb_t",
-                    "joint_4pl",     "joint_4pl_abs")
-.method_labels <- c("Two-stage bin (Normal CI)", "Two-stage bin (t CI)",
-                    "Two-stage BB (Normal CI)",  "Two-stage BB (t CI)",
-                    "Joint 4PL (relative)",      "Joint 4PL (absolute)")
-.method_cols <- setNames(c("#54278f","#cbc9e2","#a63603","#fdae6b",
-                           "#006d2c","#a1d99b"), .method_labels)
-
-# The simulated midpoint is linear in centred temperature with T_bar = 34.
-# Add 34 after inversion so CTmax_1hr is on the original temperature scale.
-.TRUTH_REL <- c(z = -1 / -0.15,
-                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
-
-.quantity_labeller <- as_labeller(c(
-  z          = "z (°C)",
-  CTmax_1hr  = "CT[max,1h] (°C)"
-))
-
-.theme_proj <- theme_classic(base_size = 11) +
-  theme(strip.background = element_blank(),
-        strip.text       = element_text(face = "bold"),
-        legend.position  = "bottom",
-        legend.title     = element_blank(),
-        legend.text      = element_text(size = 9),
-        panel.spacing    = unit(0.8, "lines"))
-
-.load_screened <- function(prefix) {
-  files <- list.files(
-    here::here("output", "sim_twostage"),
-    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
-    full.names = TRUE)
-  ps <- dplyr::bind_rows(lapply(files, readRDS))
-  bad <- ps |>
-    dplyr::filter(method == "two_stage_bb",
-                  (quantity == "z"         & abs(bias) > 20) |
-                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
-    dplyr::distinct(scenario, sim_id) |>
-    dplyr::mutate(bb_path = TRUE)
-  ps |>
-    dplyr::left_join(bad, by = c("scenario","sim_id")) |>
-    dplyr::filter(is.na(bb_path) |
-                  !(method %in% c("two_stage_bb","two_stage_bb_t"))) |>
-    dplyr::select(-bb_path) |>
-    dplyr::mutate(
-      truth_use = ifelse(method == "joint_4pl",
-                         .TRUTH_REL[as.character(quantity)],
-                         truth),
-      bias    = estimate - truth_use,
-      covered = is.finite(lower) & is.finite(upper) &
-                lower <= truth_use & truth_use <= upper
-    ) |>
-    dplyr::filter(success) |>
-    dplyr::group_by(scenario, method, quantity) |>
-    dplyr::summarise(
-      n         = dplyr::n(),
-      mean_bias = mean(bias, na.rm = TRUE),
-      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
-      rmse      = sqrt(mean(bias^2, na.rm = TRUE)),
-      coverage  = mean(covered, na.rm = TRUE),
-      mcse_cov  = sqrt(mean(covered, na.rm = TRUE) *
-                       (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
-      .groups   = "drop"
-    ) |>
-    dplyr::mutate(
-      method_code = as.character(method),
-      method   = factor(method,   levels = .method_levels,
-                                  labels = .method_labels),
-      quantity = factor(quantity, levels = c("CTmax_1hr","z")),
-      bias_lo  = mean_bias - 1.96 * mcse_bias,
-      bias_hi  = mean_bias + 1.96 * mcse_bias,
-      cov_lo   = coverage  - 1.96 * mcse_cov,
-      cov_hi   = coverage  + 1.96 * mcse_cov
-    )
-}
-
-# Per-scenario count of simulations where a method failed to produce a usable
-# estimate: the fit errored, OR a derived quantity is extreme (|z bias| > 20 °C
-# or |CTmax bias| > 10 °C — far outside any plausible value). Returns a
-# ready-to-embed phrase for one method across the prefix's cells: "0",
-# "29 (2.9%)", or "2–7 (0.2–0.7%)". Memoised per prefix so each scenario's
-# per_sim files are read once.
-.sim_fail_cache <- new.env(parent = emptyenv())
-.sim_fail <- function(prefix, m) {
-  if (is.null(.sim_fail_cache[[prefix]])) {
-    files <- list.files(
-      here::here("output", "sim_twostage"),
-      pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"), full.names = TRUE)
-    .sim_fail_cache[[prefix]] <- dplyr::bind_rows(lapply(files, readRDS)) |>
-      dplyr::group_by(scenario, method, sim_id) |>
-      dplyr::summarise(bad = any(!success) |
-                             any(quantity == "z"         & abs(bias) > 20) |
-                             any(quantity == "CTmax_1hr" & abs(bias) > 10),
-                       .groups = "drop") |>
-      dplyr::group_by(scenario, method) |>
-      dplyr::summarise(n = dplyr::n(), n_bad = sum(bad),
-                       pct = 100 * mean(bad), .groups = "drop")
-  }
-  x <- dplyr::filter(.sim_fail_cache[[prefix]], method == m)
-  if (nrow(x) == 0 || max(x$n_bad) == 0) return("0")
-  lo <- min(x$n_bad); hi <- max(x$n_bad)
-  plo <- min(x$pct);  phi <- max(x$pct)
-  if (lo == hi) sprintf("%d (%.1f%%)", hi, phi)
-  else sprintf("%d–%d (%.1f–%.1f%%)", lo, hi, plo, phi)
-}
-
-# Forest plot for cell-based scenarios (Scen 1, 2, 4, 8).
-# `panel_var` is the column name to facet rows on (e.g. "panel_n" or "cell").
-.plot_forest <- function(d, panel_var = "panel_n") {
-  p_bias <- ggplot(d, aes(x = mean_bias, y = method, colour = method)) +
-    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-    geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi), height = 0.25) +
-    geom_point(size = 2.4) +
-    facet_grid(reformulate("quantity", panel_var), scales = "free_x",
-               labeller = labeller(quantity = .quantity_labeller)) +
-    scale_colour_manual(values = .method_cols) +
-    labs(x = "Mean bias (estimate - truth)", y = NULL,
-         title = "a) Bias") +
-    .theme_proj + theme(legend.position = "none")
-  p_cov <- ggplot(d, aes(x = coverage, y = method, colour = method)) +
-    geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
-    geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi), height = 0.25) +
-    geom_point(size = 2.4) +
-    facet_grid(reformulate("quantity", panel_var), scales = "free_x",
-               labeller = labeller(quantity = .quantity_labeller)) +
-    scale_colour_manual(values = .method_cols) +
-    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
-    labs(x = "95% CI coverage", y = NULL,
-         title = "b) Coverage") +
-    .theme_proj + theme(legend.position = "none")
-  p_bias / p_cov + plot_layout(heights = c(1, 1))
-}
-
-# Sweep coverage plot for Scen 6 / Scen 7.
-.plot_sweep_cov <- function(d, sweep_x, x_label, x_breaks = waiver()) {
-  ggplot(d, aes(x = .data[[sweep_x]], y = coverage, colour = method)) +
-    geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
-    geom_errorbar(aes(ymin = cov_lo, ymax = cov_hi), width = 0) +
-    geom_point(size = 2.4) +
-    geom_line() +
-    facet_wrap(~ quantity, nrow = 1,
-               labeller = labeller(quantity = .quantity_labeller)) +
-    scale_colour_manual(values = .method_cols) +
-    scale_x_continuous(breaks = x_breaks) +
-    scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
-    labs(x = x_label, y = "95% CI coverage") +
-    .theme_proj
-}
-
-# RMSE table (absolute °C) of z and CTmax for the four distinct point
-# estimators. RMSE is a point-estimate property, so the Normal- and t-quantile
-# CI variants share values and are collapsed to one row each. Expects a `Cell`
-# column on the input (the within-section replication / design / sweep level).
-.rmse_table <- function(d, cell_name = "Cell") {
-  pe <- c(two_stage_bin = "Two-stage (binomial)",
-          two_stage_bb  = "Two-stage (beta-binomial)",
-          joint_4pl     = "Joint 4PL (relative)",
-          joint_4pl_abs = "Joint 4PL (absolute)")
-  out <- d |>
-    dplyr::filter(method_code %in% names(pe)) |>
-    dplyr::transmute(Cell, Method = factor(pe[method_code], levels = pe),
-                     quantity = as.character(quantity), rmse = round(rmse, 2)) |>
-    tidyr::pivot_wider(names_from = quantity, values_from = rmse) |>
-    dplyr::arrange(Cell, Method) |>
-    dplyr::select(Cell, Method, `z (°C)` = z, `CTmax (°C)` = CTmax_1hr)
-  names(out)[1] <- cell_name
-  # escape = TRUE so LaTeX special chars in headers/cells (e.g. the
-  # underscore in "n_reps", "up_0", "beta_up") render literally in PDF
-  # rather than being parsed as math subscripts.
-  tinytable::tt(out) |> tinytable::format_tt(escape = TRUE)
-}
-```
-
-## *Strict equivalence baseline*
-
-This scenario is the strict-equivalence baseline. The data-generating curve spans the full survival range ($\text{up} = 0.999$, $\text{low} = 0.001$), has a shared slope ($k = 8$), and has a midpoint that declines linearly with temperature (slope $-0.15$) under a binomial likelihood with no overdispersion. We crossed this scenario with two replicate designs, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
-
-We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles did not have nominal coverage, whereas the *t*-quantile delta-method intervals were close to the nominal 95% coverage. Again, it is important to recognise that we have ensured error from the two-stage is correctly propagated for comparison but often this is ignored.
-
-Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias — here and throughout, $|z|$ bias above 20 °C or $|CT_{max,1h}|$ bias above 10 °C, far outside any plausible value — for `r .sim_fail("scen1", "two_stage_bin")` binomial and `r .sim_fail("scen1", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen1", "joint_4pl")` for the joint 4PL, across the simulations. The overdispersion-corrected two-stage thus fails to converge on a sensible estimate even in this most benign scenario, whereas the joint 4PL does not.
-
-
-```{r}
-#| label: fig-sim-supp-scen1
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 8
-#| fig-height: 8
-#| fig-cap: "Bias and coverage at the strict-equivalence baseline (binomial DGP, asymptotes near 0/1, single slope $k$). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom). Columns: $z$ (left) and $CT_{max,1h}$ (right). Dashed reference lines at zero bias and nominal 0.95 coverage."
-
-# This chunk plots bias and coverage for simulation scenario 1.
-.d <- .load_screened("scen1") |>
-  dplyr::mutate(panel_n = paste0("n[reps] = ",
-                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
-.plot_forest(.d, panel_var = "panel_n")
-```
-
-```{r}
-#| label: tbl-sim-supp-scen1-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ at the strict-equivalence baseline, by point estimator and replication budget ($N_{sim}=1000$ per cell). Lower is better; RMSE combines bias and precision on the parameter's own scale."
-#| warning: false
-#| message: false
-# This chunk formats the RMSE table for simulation scenario 1.
-.load_screened("scen1") |>
-  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
-                              levels = c("3", "5"))) |>
-  .rmse_table(cell_name = "n_reps")
-```
-
-## *Likelihood misspecification alone*
-
-This scenario keeps the same mean dose-response shape as the strict-equivalence baseline, but generates counts from a beta-binomial likelihood with overdispersion $\phi = 5$. We again used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
-
-We included this scenario to isolate the cost of likelihood misspecification: the mean structure is correct for all estimators, but the binomial two-stage variant ignores overdispersion at Stage 1. Point estimates remained largely unbiased, showing that overdispersion alone did not shift the target estimands. The effect was on uncertainty rather than location, and it was modest here: overdispersion alone barely separated the binomial and beta-binomial two-stage fits, in either point estimates or calibration. Both produced Normal-quantile intervals that under-covered and were brought close to nominal by the *t*-quantile correction, while the joint 4PL was well calibrated throughout.
-
-Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen2", "two_stage_bin")` binomial and `r .sim_fail("scen2", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen2", "joint_4pl")` for the joint 4PL, across the simulations.
-
-```{r}
-#| label: fig-sim-supp-scen2
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 8
-#| fig-height: 8
-#| fig-cap: "Bias and coverage with likelihood misspecification only (beta-binomial DGP with $\\phi=5$; curve shape as in the strict-equivalence baseline). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
-
-# This chunk plots bias and coverage for simulation scenario 2.
-.d <- .load_screened("scen2") |>
-  dplyr::mutate(panel_n = paste0("n[reps] = ",
-                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
-.plot_forest(.d, panel_var = "panel_n")
-```
-
-```{r}
-#| label: tbl-sim-supp-scen2-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ under likelihood misspecification only (beta-binomial DGP, $\\phi=5$; curve shape as in the baseline), by point estimator and replication budget."
-#| warning: false
-#| message: false
-# This chunk formats the RMSE table for simulation scenario 2.
-.load_screened("scen2") |>
-  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
-                              levels = c("3", "5"))) |>
-  .rmse_table(cell_name = "n_reps")
-```
-
-## *Asymptotes compress symmetrically*
-
-In this scenario, both asymptotes move toward each other as temperature increases: `up` declines by 0.01 per °C from 0.92, while $\text{low}$ increases by 0.01 per °C from 0.05. This preserves the approximate logit-difference but compresses the response range. Although this symmetric compression is not biologically realistic, it is useful as a diagnostic test: it changes the dose-response range while largely preserving the midpoint-temperature relationship. We used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
-
-The two-stage fits showed clear bias here — negative in $CT_{max,1h}$ and positive in $z$ — together with under-coverage, because the classical model cannot represent changing asymptotes directly. The joint 4PL remained close to unbiased with near-nominal coverage.
-
-Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen4", "two_stage_bin")` binomial and `r .sim_fail("scen4", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen4", "joint_4pl")` for the joint 4PL, across the simulations.
-
-```{r}
-#| label: fig-sim-supp-scen4
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 8
-#| fig-height: 8
-#| fig-cap: "Bias and coverage when both asymptotes compress symmetrically with temperature. Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
-
-# This chunk plots bias and coverage for simulation scenario 4.
-.d <- .load_screened("scen4") |>
-  dplyr::mutate(panel_n = paste0("n[reps] = ",
-                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
-.plot_forest(.d, panel_var = "panel_n")
-```
-
-```{r}
-#| label: tbl-sim-supp-scen4-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ when both asymptotes compress symmetrically with temperature, by point estimator and replication budget."
-#| warning: false
-#| message: false
-# This chunk formats the RMSE table for simulation scenario 4.
-.load_screened("scen4") |>
-  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
-                              levels = c("3", "5"))) |>
-  .rmse_table(cell_name = "n_reps")
-```
-
-## *Coverage for drifting `up` across temperatures ($\beta_{up}$)*
-
-This complements the main-text $\beta_{up}$ bias sweep with the matching
-coverage panels.
-
-Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen6", "two_stage_bin")` binomial and `r .sim_fail("scen6", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen6", "joint_4pl")` for the joint 4PL, across the simulations.
-
-```{r}
-#| label: fig-sim-supp-scen6cov
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 8
-#| fig-height: 4.5
-#| fig-cap: "95% CI coverage across the $\\beta_{up}$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as the main-text $\\beta_{up}$ bias sweep, with coverage shown for all six methods. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
-
-# This chunk plots coverage for simulation scenario 6.
-.d <- .load_screened("scen6") |>
-  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
-.plot_sweep_cov(.d, "sweep_x",
-                expression(beta[up]~"(percentage points / °C, drift of "*plain(up)*" with T)"),
-                x_breaks = c(-0.019, -0.015, -0.010, -0.005))
-```
-
-```{r}
-#| label: tbl-sim-supp-scen6-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\beta_{up}$ drift sweep (Scen 6), by point estimator. $\\beta_{up}$ is the per-°C drift of the upper asymptote (percentage points per °C)."
-#| warning: false
-#| message: false
-# This chunk formats the RMSE table for simulation scenario 6.
-.load_screened("scen6") |>
-  dplyr::mutate(bu   = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
-                Cell = factor(sprintf("%.3f", bu),
-                              levels = sprintf("%.3f", sort(unique(bu))))) |>
-  .rmse_table(cell_name = "beta_up (pp/°C)")
-```
-
-## *Coverage for constant-but-reduced `up` ($\text{up}_0$)*
-
-This complements the main-text $\text{up}_0$ bias sweep. With a low $\text{up}_0$, the
-two-stage Stage-1 GLMs miscalibrate per temperature, the Stage-2 OLS
-inherits that bias, and CI coverage on $CT_{max,1h}$ collapses well
-below nominal even after the t-quantile small-sample correction.
-
-Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen7", "two_stage_bin")` binomial and `r .sim_fail("scen7", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen7", "joint_4pl")` for the joint 4PL, across the simulations.
-
-```{r}
-#| label: fig-sim-supp-scen7cov
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 8
-#| fig-height: 4.5
-#| fig-cap: "95% CI coverage across the $\\text{up}_0$ sweep (Scen 7). Same DGP and method set as the main-text $\\text{up}_0$ bias sweep. Two-stage CTmax coverage collapses as $\\text{up}_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
-
-# This chunk plots coverage for simulation scenario 7.
-.d <- .load_screened("scen7") |>
-  dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100)
-.plot_sweep_cov(.d, "sweep_x",
-                expression(up[0]~"(constant upper asymptote, all T)"),
-                x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99))
-```
-
-```{r}
-#| label: tbl-sim-supp-scen7-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\text{up}_0$ sweep (Scen 7), by point estimator. $\\text{up}_0$ is the constant upper asymptote held across all temperatures."
-#| warning: false
-#| message: false
-# This chunk formats the RMSE table for simulation scenario 7.
-.load_screened("scen7") |>
-  dplyr::mutate(u0   = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
-                Cell = factor(sprintf("%.2f", u0),
-                              levels = sprintf("%.2f", sort(unique(u0))))) |>
-  .rmse_table(cell_name = "up_0")
-```
-
-## *Experimental Design Impacts*
-
-#### *Different temperature time duration levels*
-This scenario varies experimental design while holding the data-generating process fixed. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration cell; each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The DGP used the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$); the sparsest design had only 12 'cups' total.
-
-We included this scenario to test how much information each estimator needs before the two-stage reduction becomes unstable. Performance improved with denser designs and more replication, but the sparse one-replicate design was especially problematic for the two-stage pipeline. The joint 4PL was more stable across the design gradient because it shares information across temperatures and durations rather than estimating each temperature-specific curve separately.
-
-Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen8", "two_stage_bin")` binomial and `r .sim_fail("scen8", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen8", "joint_4pl")` for the joint 4PL, across the simulations.
-
-```{r}
-#| label: fig-sim-supp-scen8
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 11.5
-#| fig-height: 9.6
-#| fig-dpi: 300
-#| fig-cap: "Bias and coverage across six design × replication cells (Scen 8). Two-stage at sparse × 1 produces large, unstable estimates with implausibly wide t-corrected CIs; joint 4PL returns coherent intervals of appropriate width across all six cells."
-
-# This chunk plots bias and coverage for simulation scenario 8.
-.d <- .load_screened("scen8") |>
-  dplyr::mutate(
-    design = ifelse(grepl("full", scenario), "full", "sparse"),
-    n_reps = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
-    cell   = factor(sprintf("%s × %d", design, n_reps),
-                    levels = c("sparse × 1", "full × 1",
-                               "sparse × 3", "full × 3",
-                               "sparse × 5", "full × 5"))
-  )
-
-p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi),
-                 height = 0.25, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
-  facet_wrap(~ quantity, scales = "free_x",
-             labeller = labeller(quantity = .quantity_labeller)) +
-  scale_colour_manual(values = .method_cols) +
-  labs(x = "Mean bias (estimate - truth)", y = NULL,
-       title = "a) Bias") +
-  .theme_proj
-
-p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
-  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
-  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi),
-                 height = 0.25, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
-  facet_wrap(~ quantity, scales = "free_x",
-             labeller = labeller(quantity = .quantity_labeller)) +
-  scale_colour_manual(values = .method_cols) +
-  scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
-  labs(x = "95% CI coverage", y = NULL,
-       title = "b) Coverage") +
-  .theme_proj
-
-p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
-  theme(legend.position = "bottom")
-```
-
-```{r}
-#| label: tbl-sim-supp-scen8-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the six design × replication cells (Scen 8), by point estimator. The sparse, single-replicate design is the most demanding for the two-stage reduction."
-#| warning: false
-#| message: false
-# This chunk formats the RMSE table for simulation scenario 8.
-.load_screened("scen8") |>
-  dplyr::mutate(design = ifelse(grepl("full", scenario), "full", "sparse"),
-                n_reps = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
-                Cell   = factor(sprintf("%s x %d", design, n_reps),
-                                levels = c("sparse x 1", "full x 1",
-                                           "sparse x 3", "full x 3",
-                                           "sparse x 5", "full x 5"))) |>
-  .rmse_table(cell_name = "Design x reps")
-```
-
-#### *Performance when estimating under short timeframes*
-
-Thermal-tolerance assays are often limited by how long they can run. Long exposures at cooler assay temperatures are costly, so experiments may stop before those treatments reach their LT50. This scenario isolates that cost. We held the data-generating process fixed at the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low}=0.05$, $k=8$, midpoint linear in $T$, $\phi=5$), used the full five-temperature design (30–38 °C) with $n_{\text{reps}} = 5$, and varied only the maximum exposure duration. Each design used six log-spaced durations capped at 60, 120, 240, or 405 min; the 405-min cap reproduces the full grid. Because the truth is identical across caps, changes in bias, coverage, and RMSE reflect only how well each design recovers the same $z$ and $CT_{max_{1hr}}$.
-
-Shorter windows remove the long-duration observations that anchor the cooler-temperature LT50s. At the shortest caps, the coolest temperatures may never reach 50% mortality, so the LT50 must be extrapolated rather than observed. This scenario therefore tests whether each estimator degrades gracefully as duration information is withdrawn, and whether the joint 4PL retains calibration better than the two-stage reduction by borrowing strength across temperatures.
-
-Across the 1,000 datasets per cap, the two-stage Stage-1 fits failed or produced extreme bias for `r .sim_fail("scen9", "two_stage_bin")` binomial and `r .sim_fail("scen9", "two_stage_bb")` beta-binomial (glmmTMB) fits, compared with `r .sim_fail("scen9", "joint_4pl")` for the joint 4PL.
-
-```{r}
-#| label: fig-sim-supp-scen9
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 11.5
-#| fig-height: 8.2
-#| fig-dpi: 300
-#| fig-cap: "Effect of maximum exposure duration on estimator performance (Scen 9). Rows show mean bias (a; estimate minus truth) and 95% interval coverage (b) for $z$ and $CT_{max_{1hr}}$. The 405-min cap is the full design; shorter caps progressively remove the long-duration observations that anchor LT50 at cooler assay temperatures."
-
-# This chunk plots bias and coverage for simulation scenario 9. The scenario
-# name encodes the maximum exposure duration, which we parse into an ordered
-# factor so the y-axis runs from the shortest to longest assay window.
-.d <- .load_screened("scen9") |>
-  dplyr::mutate(
-    tmax = as.integer(sub(".*_tmax_([0-9]+)$", "\\1", scenario)),
-    cell = factor(sprintf("%d min", tmax),
-                  levels = c("60 min", "120 min", "240 min", "405 min"))
-  )
-
-# Use shorter legend labels locally; the colour values are still taken from the
-# shared simulation palette defined in the setup chunk.
-.method_short <- c(
-  "Two-stage bin (Normal CI)" = "2-stage bin, normal",
-  "Two-stage bin (t CI)"      = "2-stage bin, t",
-  "Two-stage BB (Normal CI)"  = "2-stage BB, normal",
-  "Two-stage BB (t CI)"       = "2-stage BB, t",
-  "Joint 4PL (relative)"      = "Joint 4PL, relative",
-  "Joint 4PL (absolute)"      = "Joint 4PL, absolute"
-)
-
-# Panel (a): Monte Carlo mean bias with 95% Monte Carlo SE intervals.
-p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi),
-                 height = 0.25, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
-  facet_wrap(~ quantity, scales = "free_x",
-             labeller = labeller(quantity = .quantity_labeller)) +
-  scale_colour_manual(name = "Estimator",
-                      values = .method_cols,
-                      breaks = names(.method_short),
-                      labels = unname(.method_short)) +
-  guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
-  labs(x = "Mean bias (estimate - truth)", y = "Maximum exposure",
-       title = "a) Bias") +
-  .theme_proj
-
-# Panel (b): empirical coverage; the dashed line marks the nominal 95% target.
-p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
-  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
-  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi),
-                 height = 0.25, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
-  facet_wrap(~ quantity, scales = "free_x",
-             labeller = labeller(quantity = .quantity_labeller)) +
-  scale_colour_manual(name = "Estimator",
-                      values = .method_cols,
-                      breaks = names(.method_short),
-                      labels = unname(.method_short)) +
-  scale_x_continuous(limits = c(0, 1),
-                     breaks = c(0, 0.5, 0.95),
-                     labels = c("0", "0.50", "0.95 target")) +
-  guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
-  labs(x = "Empirical coverage", y = "Maximum exposure",
-       title = "b) Coverage") +
-  .theme_proj
-
-# Stack the panels and collect one shared, readable estimator legend.
-p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
-  theme(legend.position = "bottom",
-        legend.title = element_text(face = "bold"))
-```
-
-```{r}
-#| label: tbl-sim-supp-scen9-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ by maximum exposure duration (Scen 9). Lower RMSE indicates more accurate point estimates. The 60-min cap is the most demanding because the coolest assay temperatures may not reach 50% mortality within the observation window."
-#| warning: false
-#| message: false
-# This chunk formats the RMSE table for simulation scenario 9. It uses the same
-# ordered maximum-exposure factor as the figure, then delegates table formatting
-# to the shared `.rmse_table()` helper.
-.load_screened("scen9") |>
-  dplyr::mutate(tmax = as.integer(sub(".*_tmax_([0-9]+)$", "\\1", scenario)),
-                Cell = factor(sprintf("%d min", tmax),
-                              levels = c("60 min", "120 min",
-                                         "240 min", "405 min"))) |>
-  .rmse_table(cell_name = "Max exposure")
-```
 
 # **Case Study 1: Shrimp data** {#sec-shrimp}
 
@@ -6163,6 +5607,572 @@ tinytable::tt(prod_mag_tbl, escape = TRUE)
 Among flies that reproduce, clutch size is essentially unaffected by exposure at 34 °C ($b \approx 0$; $P(\text{decline}) = `r round(mean(mag_b_F[,1] < 0), 2)`$ for females), but declines increasingly steeply at higher temperatures, reaching $b \approx `r round(stats::median(mag_b_F[,5]), 2)`$ at 38 °C.
 
 The hurdle model reveals two effects that a single fecundity curve combines. Heat reduces the probability of reproducing at every tested temperature, giving a clear incidence-based $z \approx 3$ °C. Among flies that still reproduce, however, heat reduces clutch size mainly at higher temperatures ($\gtrsim 36$ °C). Reporting the two components separately makes this biological split visible and provides a more nuanced understanding of temperature/time effects on reproduction.
+
+
+# **Extended Simulation Results** {#sec-extendsims}
+
+This section provides more detail on the simulation results from the
+various scenarios we explored to understand bias and coverage of *z*
+and $CT_{max}$. The main manuscript figures summarize the two
+shape-perturbing scenarios (drifting upper asymptote `up`, varying slope
+`k`) and the bias results from the two partial-mortality sweeps.
+
+Here we document the remaining scenarios we explored: the strict-equivalence
+baseline, likelihood misspecification alone, symmetric asymptote
+compression, and the design-impact — plus the coverage panels
+for the two sweeps reported as bias-only in the main text.
+
+For each scenario we also tabulate the root-mean-square error (RMSE, in °C) of
+*z* and $CT_{max,1h}$ — the typical magnitude of the estimation error, combining
+bias and variance in a single number on the parameter's own scale — for the four
+distinct point estimators. Because RMSE depends only on the point estimates, the
+Normal- and *t*-quantile two-stage CI variants share a value and are reported
+once each.
+
+```{r sim-supp-setup}
+#| label: sim-supp-setup
+#| echo: false
+#| warning: false
+#| message: false
+
+# This chunk loads and summarises the full simulation sweep outputs.
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(patchwork)
+
+.method_levels <- c("two_stage_bin", "two_stage_bin_t",
+                    "two_stage_bb",  "two_stage_bb_t",
+                    "joint_4pl",     "joint_4pl_abs")
+.method_labels <- c("Two-stage bin (Normal CI)", "Two-stage bin (t CI)",
+                    "Two-stage BB (Normal CI)",  "Two-stage BB (t CI)",
+                    "Joint 4PL (relative)",      "Joint 4PL (absolute)")
+.method_cols <- setNames(c("#54278f","#cbc9e2","#a63603","#fdae6b",
+                           "#006d2c","#a1d99b"), .method_labels)
+
+# The simulated midpoint is linear in centred temperature with T_bar = 34.
+# Add 34 after inversion so CTmax_1hr is on the original temperature scale.
+.TRUTH_REL <- c(z = -1 / -0.15,
+                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+.quantity_labeller <- as_labeller(c(
+  z          = "z (°C)",
+  CTmax_1hr  = "CT[max,1h] (°C)"
+))
+
+.theme_proj <- theme_classic(base_size = 11) +
+  theme(strip.background = element_blank(),
+        strip.text       = element_text(face = "bold"),
+        legend.position  = "bottom",
+        legend.title     = element_blank(),
+        legend.text      = element_text(size = 9),
+        panel.spacing    = unit(0.8, "lines"))
+
+.load_screened <- function(prefix) {
+  files <- list.files(
+    here::here("output", "sim_twostage"),
+    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+    full.names = TRUE)
+  ps <- dplyr::bind_rows(lapply(files, readRDS))
+  bad <- ps |>
+    dplyr::filter(method == "two_stage_bb",
+                  (quantity == "z"         & abs(bias) > 20) |
+                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+    dplyr::distinct(scenario, sim_id) |>
+    dplyr::mutate(bb_path = TRUE)
+  ps |>
+    dplyr::left_join(bad, by = c("scenario","sim_id")) |>
+    dplyr::filter(is.na(bb_path) |
+                  !(method %in% c("two_stage_bb","two_stage_bb_t"))) |>
+    dplyr::select(-bb_path) |>
+    dplyr::mutate(
+      truth_use = ifelse(method == "joint_4pl",
+                         .TRUTH_REL[as.character(quantity)],
+                         truth),
+      bias    = estimate - truth_use,
+      covered = is.finite(lower) & is.finite(upper) &
+                lower <= truth_use & truth_use <= upper
+    ) |>
+    dplyr::filter(success) |>
+    dplyr::group_by(scenario, method, quantity) |>
+    dplyr::summarise(
+      n         = dplyr::n(),
+      mean_bias = mean(bias, na.rm = TRUE),
+      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+      rmse      = sqrt(mean(bias^2, na.rm = TRUE)),
+      coverage  = mean(covered, na.rm = TRUE),
+      mcse_cov  = sqrt(mean(covered, na.rm = TRUE) *
+                       (1 - mean(covered, na.rm = TRUE)) / dplyr::n()),
+      .groups   = "drop"
+    ) |>
+    dplyr::mutate(
+      method_code = as.character(method),
+      method   = factor(method,   levels = .method_levels,
+                                  labels = .method_labels),
+      quantity = factor(quantity, levels = c("CTmax_1hr","z")),
+      bias_lo  = mean_bias - 1.96 * mcse_bias,
+      bias_hi  = mean_bias + 1.96 * mcse_bias,
+      cov_lo   = coverage  - 1.96 * mcse_cov,
+      cov_hi   = coverage  + 1.96 * mcse_cov
+    )
+}
+
+# Per-scenario count of simulations where a method failed to produce a usable
+# estimate: the fit errored, OR a derived quantity is extreme (|z bias| > 20 °C
+# or |CTmax bias| > 10 °C — far outside any plausible value). Returns a
+# ready-to-embed phrase for one method across the prefix's cells: "0",
+# "29 (2.9%)", or "2–7 (0.2–0.7%)". Memoised per prefix so each scenario's
+# per_sim files are read once.
+.sim_fail_cache <- new.env(parent = emptyenv())
+.sim_fail <- function(prefix, m) {
+  if (is.null(.sim_fail_cache[[prefix]])) {
+    files <- list.files(
+      here::here("output", "sim_twostage"),
+      pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"), full.names = TRUE)
+    .sim_fail_cache[[prefix]] <- dplyr::bind_rows(lapply(files, readRDS)) |>
+      dplyr::group_by(scenario, method, sim_id) |>
+      dplyr::summarise(bad = any(!success) |
+                             any(quantity == "z"         & abs(bias) > 20) |
+                             any(quantity == "CTmax_1hr" & abs(bias) > 10),
+                       .groups = "drop") |>
+      dplyr::group_by(scenario, method) |>
+      dplyr::summarise(n = dplyr::n(), n_bad = sum(bad),
+                       pct = 100 * mean(bad), .groups = "drop")
+  }
+  x <- dplyr::filter(.sim_fail_cache[[prefix]], method == m)
+  if (nrow(x) == 0 || max(x$n_bad) == 0) return("0")
+  lo <- min(x$n_bad); hi <- max(x$n_bad)
+  plo <- min(x$pct);  phi <- max(x$pct)
+  if (lo == hi) sprintf("%d (%.1f%%)", hi, phi)
+  else sprintf("%d–%d (%.1f–%.1f%%)", lo, hi, plo, phi)
+}
+
+# Forest plot for cell-based scenarios (Scen 1, 2, 4, 8).
+# `panel_var` is the column name to facet rows on (e.g. "panel_n" or "cell").
+.plot_forest <- function(d, panel_var = "panel_n") {
+  p_bias <- ggplot(d, aes(x = mean_bias, y = method, colour = method)) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi), height = 0.25) +
+    geom_point(size = 2.4) +
+    facet_grid(reformulate("quantity", panel_var), scales = "free_x",
+               labeller = labeller(quantity = .quantity_labeller)) +
+    scale_colour_manual(values = .method_cols) +
+    labs(x = "Mean bias (estimate - truth)", y = NULL,
+         title = "a) Bias") +
+    .theme_proj + theme(legend.position = "none")
+  p_cov <- ggplot(d, aes(x = coverage, y = method, colour = method)) +
+    geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+    geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi), height = 0.25) +
+    geom_point(size = 2.4) +
+    facet_grid(reformulate("quantity", panel_var), scales = "free_x",
+               labeller = labeller(quantity = .quantity_labeller)) +
+    scale_colour_manual(values = .method_cols) +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+    labs(x = "95% CI coverage", y = NULL,
+         title = "b) Coverage") +
+    .theme_proj + theme(legend.position = "none")
+  p_bias / p_cov + plot_layout(heights = c(1, 1))
+}
+
+# Sweep coverage plot for Scen 6 / Scen 7.
+.plot_sweep_cov <- function(d, sweep_x, x_label, x_breaks = waiver()) {
+  ggplot(d, aes(x = .data[[sweep_x]], y = coverage, colour = method)) +
+    geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(aes(ymin = cov_lo, ymax = cov_hi), width = 0) +
+    geom_point(size = 2.4) +
+    geom_line() +
+    facet_wrap(~ quantity, nrow = 1,
+               labeller = labeller(quantity = .quantity_labeller)) +
+    scale_colour_manual(values = .method_cols) +
+    scale_x_continuous(breaks = x_breaks) +
+    scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+    labs(x = x_label, y = "95% CI coverage") +
+    .theme_proj
+}
+
+# RMSE table (absolute °C) of z and CTmax for the four distinct point
+# estimators. RMSE is a point-estimate property, so the Normal- and t-quantile
+# CI variants share values and are collapsed to one row each. Expects a `Cell`
+# column on the input (the within-section replication / design / sweep level).
+.rmse_table <- function(d, cell_name = "Cell") {
+  pe <- c(two_stage_bin = "Two-stage (binomial)",
+          two_stage_bb  = "Two-stage (beta-binomial)",
+          joint_4pl     = "Joint 4PL (relative)",
+          joint_4pl_abs = "Joint 4PL (absolute)")
+  out <- d |>
+    dplyr::filter(method_code %in% names(pe)) |>
+    dplyr::transmute(Cell, Method = factor(pe[method_code], levels = pe),
+                     quantity = as.character(quantity), rmse = round(rmse, 2)) |>
+    tidyr::pivot_wider(names_from = quantity, values_from = rmse) |>
+    dplyr::arrange(Cell, Method) |>
+    dplyr::select(Cell, Method, `z (°C)` = z, `CTmax (°C)` = CTmax_1hr)
+  names(out)[1] <- cell_name
+  # escape = TRUE so LaTeX special chars in headers/cells (e.g. the
+  # underscore in "n_reps", "up_0", "beta_up") render literally in PDF
+  # rather than being parsed as math subscripts.
+  tinytable::tt(out) |> tinytable::format_tt(escape = TRUE)
+}
+```
+
+## *Strict equivalence baseline*
+
+This scenario is the strict-equivalence baseline. The data-generating curve spans the full survival range ($\text{up} = 0.999$, $\text{low} = 0.001$), has a shared slope ($k = 8$), and has a midpoint that declines linearly with temperature (slope $-0.15$) under a binomial likelihood with no overdispersion. We crossed this scenario with two replicate designs, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
+
+We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles did not have nominal coverage, whereas the *t*-quantile delta-method intervals were close to the nominal 95% coverage. Again, it is important to recognise that we have ensured error from the two-stage is correctly propagated for comparison but often this is ignored.
+
+Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias — here and throughout, $|z|$ bias above 20 °C or $|CT_{max,1h}|$ bias above 10 °C, far outside any plausible value — for `r .sim_fail("scen1", "two_stage_bin")` binomial and `r .sim_fail("scen1", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen1", "joint_4pl")` for the joint 4PL, across the simulations. The overdispersion-corrected two-stage thus fails to converge on a sensible estimate even in this most benign scenario, whereas the joint 4PL does not.
+
+
+```{r}
+#| label: fig-sim-supp-scen1
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Bias and coverage at the strict-equivalence baseline (binomial DGP, asymptotes near 0/1, single slope $k$). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom). Columns: $z$ (left) and $CT_{max,1h}$ (right). Dashed reference lines at zero bias and nominal 0.95 coverage."
+
+# This chunk plots bias and coverage for simulation scenario 1.
+.d <- .load_screened("scen1") |>
+  dplyr::mutate(panel_n = paste0("n[reps] = ",
+                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
+.plot_forest(.d, panel_var = "panel_n")
+```
+
+```{r}
+#| label: tbl-sim-supp-scen1-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ at the strict-equivalence baseline, by point estimator and replication budget ($N_{sim}=1000$ per cell). Lower is better; RMSE combines bias and precision on the parameter's own scale."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 1.
+.load_screened("scen1") |>
+  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
+                              levels = c("3", "5"))) |>
+  .rmse_table(cell_name = "n_reps")
+```
+
+## *Likelihood misspecification alone*
+
+This scenario keeps the same mean dose-response shape as the strict-equivalence baseline, but generates counts from a beta-binomial likelihood with overdispersion $\phi = 5$. We again used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
+
+We included this scenario to isolate the cost of likelihood misspecification: the mean structure is correct for all estimators, but the binomial two-stage variant ignores overdispersion at Stage 1. Point estimates remained largely unbiased, showing that overdispersion alone did not shift the target estimands. The effect was on uncertainty rather than location, and it was modest here: overdispersion alone barely separated the binomial and beta-binomial two-stage fits, in either point estimates or calibration. Both produced Normal-quantile intervals that under-covered and were brought close to nominal by the *t*-quantile correction, while the joint 4PL was well calibrated throughout.
+
+Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen2", "two_stage_bin")` binomial and `r .sim_fail("scen2", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen2", "joint_4pl")` for the joint 4PL, across the simulations.
+
+```{r}
+#| label: fig-sim-supp-scen2
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Bias and coverage with likelihood misspecification only (beta-binomial DGP with $\\phi=5$; curve shape as in the strict-equivalence baseline). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
+
+# This chunk plots bias and coverage for simulation scenario 2.
+.d <- .load_screened("scen2") |>
+  dplyr::mutate(panel_n = paste0("n[reps] = ",
+                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
+.plot_forest(.d, panel_var = "panel_n")
+```
+
+```{r}
+#| label: tbl-sim-supp-scen2-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ under likelihood misspecification only (beta-binomial DGP, $\\phi=5$; curve shape as in the baseline), by point estimator and replication budget."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 2.
+.load_screened("scen2") |>
+  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
+                              levels = c("3", "5"))) |>
+  .rmse_table(cell_name = "n_reps")
+```
+
+## *Asymptotes compress symmetrically*
+
+In this scenario, both asymptotes move toward each other as temperature increases: `up` declines by 0.01 per °C from 0.92, while $\text{low}$ increases by 0.01 per °C from 0.05. This preserves the approximate logit-difference but compresses the response range. Although this symmetric compression is not biologically realistic, it is useful as a diagnostic test: it changes the dose-response range while largely preserving the midpoint-temperature relationship. We used two replicate budgets, $n_{\text{reps}} \in \{3, 5\}$, with $N_{\text{sim}} = 1000$ datasets per cell.
+
+The two-stage fits showed clear bias here — negative in $CT_{max,1h}$ and positive in $z$ — together with under-coverage, because the classical model cannot represent changing asymptotes directly. The joint 4PL remained close to unbiased with near-nominal coverage.
+
+Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen4", "two_stage_bin")` binomial and `r .sim_fail("scen4", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen4", "joint_4pl")` for the joint 4PL, across the simulations.
+
+```{r}
+#| label: fig-sim-supp-scen4
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Bias and coverage when both asymptotes compress symmetrically with temperature. Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
+
+# This chunk plots bias and coverage for simulation scenario 4.
+.d <- .load_screened("scen4") |>
+  dplyr::mutate(panel_n = paste0("n[reps] = ",
+                                  sub(".*_n([0-9]+)$", "\\1", scenario)))
+.plot_forest(.d, panel_var = "panel_n")
+```
+
+```{r}
+#| label: tbl-sim-supp-scen4-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ when both asymptotes compress symmetrically with temperature, by point estimator and replication budget."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 4.
+.load_screened("scen4") |>
+  dplyr::mutate(Cell = factor(sub(".*_n([0-9]+)$", "\\1", scenario),
+                              levels = c("3", "5"))) |>
+  .rmse_table(cell_name = "n_reps")
+```
+
+## *Coverage for drifting `up` across temperatures ($\beta_{up}$)*
+
+This complements the main-text $\beta_{up}$ bias sweep with the matching
+coverage panels.
+
+Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen6", "two_stage_bin")` binomial and `r .sim_fail("scen6", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen6", "joint_4pl")` for the joint 4PL, across the simulations.
+
+```{r}
+#| label: fig-sim-supp-scen6cov
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+#| fig-cap: "95% CI coverage across the $\\beta_{up}$ sweep (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same DGP and method set as the main-text $\\beta_{up}$ bias sweep, with coverage shown for all six methods. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
+
+# This chunk plots coverage for simulation scenario 6.
+.d <- .load_screened("scen6") |>
+  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
+.plot_sweep_cov(.d, "sweep_x",
+                expression(beta[up]~"(percentage points / °C, drift of "*plain(up)*" with T)"),
+                x_breaks = c(-0.019, -0.015, -0.010, -0.005))
+```
+
+```{r}
+#| label: tbl-sim-supp-scen6-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\beta_{up}$ drift sweep (Scen 6), by point estimator. $\\beta_{up}$ is the per-°C drift of the upper asymptote (percentage points per °C)."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 6.
+.load_screened("scen6") |>
+  dplyr::mutate(bu   = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
+                Cell = factor(sprintf("%.3f", bu),
+                              levels = sprintf("%.3f", sort(unique(bu))))) |>
+  .rmse_table(cell_name = "beta_up (pp/°C)")
+```
+
+## *Coverage for constant-but-reduced `up` ($\text{up}_0$)*
+
+This complements the main-text $\text{up}_0$ bias sweep. With a low $\text{up}_0$, the
+two-stage Stage-1 GLMs miscalibrate per temperature, the Stage-2 OLS
+inherits that bias, and CI coverage on $CT_{max,1h}$ collapses well
+below nominal even after the t-quantile small-sample correction.
+
+Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen7", "two_stage_bin")` binomial and `r .sim_fail("scen7", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen7", "joint_4pl")` for the joint 4PL, across the simulations.
+
+```{r}
+#| label: fig-sim-supp-scen7cov
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+#| fig-cap: "95% CI coverage across the $\\text{up}_0$ sweep (Scen 7). Same DGP and method set as the main-text $\\text{up}_0$ bias sweep. Two-stage CTmax coverage collapses as $\\text{up}_0$ falls; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
+
+# This chunk plots coverage for simulation scenario 7.
+.d <- .load_screened("scen7") |>
+  dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100)
+.plot_sweep_cov(.d, "sweep_x",
+                expression(up[0]~"(constant upper asymptote, all T)"),
+                x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99))
+```
+
+```{r}
+#| label: tbl-sim-supp-scen7-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\text{up}_0$ sweep (Scen 7), by point estimator. $\\text{up}_0$ is the constant upper asymptote held across all temperatures."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 7.
+.load_screened("scen7") |>
+  dplyr::mutate(u0   = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
+                Cell = factor(sprintf("%.2f", u0),
+                              levels = sprintf("%.2f", sort(unique(u0))))) |>
+  .rmse_table(cell_name = "up_0")
+```
+
+## *Experimental Design Impacts*
+
+#### *Different temperature time duration levels*
+This scenario varies experimental design while holding the data-generating process fixed. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration cell; each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The DGP used the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$); the sparsest design had only 12 'cups' total.
+
+We included this scenario to test how much information each estimator needs before the two-stage reduction becomes unstable. Performance improved with denser designs and more replication, but the sparse one-replicate design was especially problematic for the two-stage pipeline. The joint 4PL was more stable across the design gradient because it shares information across temperatures and durations rather than estimating each temperature-specific curve separately.
+
+Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen8", "two_stage_bin")` binomial and `r .sim_fail("scen8", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen8", "joint_4pl")` for the joint 4PL, across the simulations.
+
+```{r}
+#| label: fig-sim-supp-scen8
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 11.5
+#| fig-height: 9.6
+#| fig-dpi: 300
+#| fig-cap: "Bias and coverage across six design × replication cells (Scen 8). Two-stage at sparse × 1 produces large, unstable estimates with implausibly wide t-corrected CIs; joint 4PL returns coherent intervals of appropriate width across all six cells."
+
+# This chunk plots bias and coverage for simulation scenario 8.
+.d <- .load_screened("scen8") |>
+  dplyr::mutate(
+    design = ifelse(grepl("full", scenario), "full", "sparse"),
+    n_reps = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
+    cell   = factor(sprintf("%s × %d", design, n_reps),
+                    levels = c("sparse × 1", "full × 1",
+                               "sparse × 3", "full × 3",
+                               "sparse × 5", "full × 5"))
+  )
+
+p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(values = .method_cols) +
+  labs(x = "Mean bias (estimate - truth)", y = NULL,
+       title = "a) Bias") +
+  .theme_proj
+
+p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(values = .method_cols) +
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 0.95)) +
+  labs(x = "95% CI coverage", y = NULL,
+       title = "b) Coverage") +
+  .theme_proj
+
+p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom")
+```
+
+```{r}
+#| label: tbl-sim-supp-scen8-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the six design × replication cells (Scen 8), by point estimator. The sparse, single-replicate design is the most demanding for the two-stage reduction."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 8.
+.load_screened("scen8") |>
+  dplyr::mutate(design = ifelse(grepl("full", scenario), "full", "sparse"),
+                n_reps = as.integer(sub(".*_n([0-9]+)$", "\\1", scenario)),
+                Cell   = factor(sprintf("%s x %d", design, n_reps),
+                                levels = c("sparse x 1", "full x 1",
+                                           "sparse x 3", "full x 3",
+                                           "sparse x 5", "full x 5"))) |>
+  .rmse_table(cell_name = "Design x reps")
+```
+
+#### *Performance when estimating under short timeframes*
+
+Thermal-tolerance assays are often limited by how long they can run. Long exposures at cooler assay temperatures are costly, so experiments may stop before those treatments reach their LT50. This scenario isolates that cost. We held the data-generating process fixed at the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low}=0.05$, $k=8$, midpoint linear in $T$, $\phi=5$), used the full five-temperature design (30–38 °C) with $n_{\text{reps}} = 5$, and varied only the maximum exposure duration. Each design used six log-spaced durations capped at 60, 120, 240, or 405 min; the 405-min cap reproduces the full grid. Because the truth is identical across caps, changes in bias, coverage, and RMSE reflect only how well each design recovers the same $z$ and $CT_{max_{1hr}}$.
+
+Shorter windows remove the long-duration observations that anchor the cooler-temperature LT50s. At the shortest caps, the coolest temperatures may never reach 50% mortality, so the LT50 must be extrapolated rather than observed. This scenario therefore tests whether each estimator degrades gracefully as duration information is withdrawn, and whether the joint 4PL retains calibration better than the two-stage reduction by borrowing strength across temperatures.
+
+Across the 1,000 datasets per cap, the two-stage Stage-1 fits failed or produced extreme bias for `r .sim_fail("scen9", "two_stage_bin")` binomial and `r .sim_fail("scen9", "two_stage_bb")` beta-binomial (glmmTMB) fits, compared with `r .sim_fail("scen9", "joint_4pl")` for the joint 4PL.
+
+```{r}
+#| label: fig-sim-supp-scen9
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 11.5
+#| fig-height: 8.2
+#| fig-dpi: 300
+#| fig-cap: "Effect of maximum exposure duration on estimator performance (Scen 9). Rows show mean bias (a; estimate minus truth) and 95% interval coverage (b) for $z$ and $CT_{max_{1hr}}$. The 405-min cap is the full design; shorter caps progressively remove the long-duration observations that anchor LT50 at cooler assay temperatures."
+
+# This chunk plots bias and coverage for simulation scenario 9. The scenario
+# name encodes the maximum exposure duration, which we parse into an ordered
+# factor so the y-axis runs from the shortest to longest assay window.
+.d <- .load_screened("scen9") |>
+  dplyr::mutate(
+    tmax = as.integer(sub(".*_tmax_([0-9]+)$", "\\1", scenario)),
+    cell = factor(sprintf("%d min", tmax),
+                  levels = c("60 min", "120 min", "240 min", "405 min"))
+  )
+
+# Use shorter legend labels locally; the colour values are still taken from the
+# shared simulation palette defined in the setup chunk.
+.method_short <- c(
+  "Two-stage bin (Normal CI)" = "2-stage bin, normal",
+  "Two-stage bin (t CI)"      = "2-stage bin, t",
+  "Two-stage BB (Normal CI)"  = "2-stage BB, normal",
+  "Two-stage BB (t CI)"       = "2-stage BB, t",
+  "Joint 4PL (relative)"      = "Joint 4PL, relative",
+  "Joint 4PL (absolute)"      = "Joint 4PL, absolute"
+)
+
+# Panel (a): Monte Carlo mean bias with 95% Monte Carlo SE intervals.
+p_bias <- ggplot(.d, aes(x = mean_bias, y = cell, colour = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = bias_lo, xmax = bias_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(name = "Estimator",
+                      values = .method_cols,
+                      breaks = names(.method_short),
+                      labels = unname(.method_short)) +
+  guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Mean bias (estimate - truth)", y = "Maximum exposure",
+       title = "a) Bias") +
+  .theme_proj
+
+# Panel (b): empirical coverage; the dashed line marks the nominal 95% target.
+p_cov <- ggplot(.d, aes(x = coverage, y = cell, colour = method)) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(aes(xmin = cov_lo, xmax = cov_hi),
+                 height = 0.25, position = position_dodge(width = 0.6)) +
+  geom_point(size = 2.2, position = position_dodge(width = 0.6)) +
+  facet_wrap(~ quantity, scales = "free_x",
+             labeller = labeller(quantity = .quantity_labeller)) +
+  scale_colour_manual(name = "Estimator",
+                      values = .method_cols,
+                      breaks = names(.method_short),
+                      labels = unname(.method_short)) +
+  scale_x_continuous(limits = c(0, 1),
+                     breaks = c(0, 0.5, 0.95),
+                     labels = c("0", "0.50", "0.95 target")) +
+  guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Empirical coverage", y = "Maximum exposure",
+       title = "b) Coverage") +
+  .theme_proj
+
+# Stack the panels and collect one shared, readable estimator legend.
+p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom",
+        legend.title = element_text(face = "bold"))
+```
+
+```{r}
+#| label: tbl-sim-supp-scen9-rmse
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ by maximum exposure duration (Scen 9). Lower RMSE indicates more accurate point estimates. The 60-min cap is the most demanding because the coolest assay temperatures may not reach 50% mortality within the observation window."
+#| warning: false
+#| message: false
+# This chunk formats the RMSE table for simulation scenario 9. It uses the same
+# ordered maximum-exposure factor as the figure, then delegates table formatting
+# to the shared `.rmse_table()` helper.
+.load_screened("scen9") |>
+  dplyr::mutate(tmax = as.integer(sub(".*_tmax_([0-9]+)$", "\\1", scenario)),
+                Cell = factor(sprintf("%d min", tmax),
+                              levels = c("60 min", "120 min",
+                                         "240 min", "405 min"))) |>
+  .rmse_table(cell_name = "Max exposure")
+```
+
 
 # **Manuscript Figure 5: cross-case-study summary** {#sec-ms-fig4}
 
