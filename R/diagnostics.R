@@ -16,11 +16,11 @@
 #'   \item BFMI > 0.3 per chain
 #' }
 #'
-#' The `treedepth_max_attempted` field is the model's `max_treedepth` setting
-#' (passed to `brms::brm()`); a saturation is a post-warmup transition where
-#' the sampler hit that ceiling. Per-chain BFMI is computed from the energy
-#' diagnostic in `brms::nuts_params(.)` following the standard Stan
-#' definition (Var(ΔE)/Var(E)).
+#' The `treedepth_max` field is the model's `max_treedepth` setting (the ceiling
+#' passed to `brms::brm()`, default 10); a saturation is a post-warmup transition
+#' that hit that ceiling. A fit that merely tops out *below* the ceiling has zero
+#' saturations. Per-chain BFMI is computed from the energy diagnostic in
+#' `brms::nuts_params(.)` following the standard Stan definition (Var(ΔE)/Var(E)).
 #'
 #' @param workflow A fitted `bayes_tls`.
 #' @return A tibble with one row of diagnostic statistics.
@@ -37,9 +37,12 @@ diagnose_tdt_fit <- function(workflow) {
   np  <- brms::nuts_params(fit)
 
   divs    <- sum(subset(np, Parameter == "divergent__")$Value)
-  td_vals <- subset(np, Parameter == "treedepth__")$Value
-  td_max  <- if (length(td_vals)) max(td_vals, na.rm = TRUE) else NA_integer_
-  treed   <- if (is.finite(td_max)) sum(td_vals >= td_max) else 0L
+  td_vals    <- subset(np, Parameter == "treedepth__")$Value
+  td_ceiling <- tdt_max_treedepth(fit)
+  # A saturation hits the configured CEILING. An iteration merely sitting at the
+  # run's observed maximum (when that maximum is below the ceiling) is NOT a
+  # saturation -- the previous `sum(td_vals >= max(td_vals))` flagged healthy fits.
+  treed      <- if (length(td_vals)) sum(td_vals >= td_ceiling, na.rm = TRUE) else 0L
 
   rh           <- brms::rhat(fit)
   rhat_max     <- max(rh, na.rm = TRUE)
@@ -77,6 +80,7 @@ diagnose_tdt_fit <- function(workflow) {
     ess_bulk_min    = round(ess_bulk_min),
     ess_tail_min    = round(ess_tail_min),
     divergences     = as.integer(divs),
+    treedepth_max   = as.integer(td_ceiling),
     treedepth_hits  = as.integer(treed),
     bfmi_min        = round(bfmi_min, 4),
     rhat_pass       = rhat_pass,
@@ -86,6 +90,27 @@ diagnose_tdt_fit <- function(workflow) {
     bfmi_pass       = bfmi_pass,
     all_pass        = all_pass
   )
+}
+
+# Configured max_treedepth ceiling for a fitted brms model, across backends.
+# cmdstanr exposes it in the run metadata; rstan stores it in the per-chain
+# stan_args control list; if neither is reachable we fall back to Stan's default
+# of 10. Returns a single numeric (the ceiling, max across chains if they differ).
+tdt_max_treedepth <- function(fit) {
+  bf <- fit$fit
+  md <- tryCatch(bf$metadata(), error = function(e) NULL)            # cmdstanr
+  if (!is.null(md) && !is.null(md$max_treedepth)) {
+    mt <- suppressWarnings(as.numeric(md$max_treedepth))
+    mt <- mt[is.finite(mt)]
+    if (length(mt)) return(max(mt))
+  }
+  sa <- tryCatch(methods::slot(bf, "stan_args"), error = function(e) NULL)  # rstan
+  if (!is.null(sa)) {
+    mt <- suppressWarnings(as.numeric(unlist(lapply(sa, function(a) a$control$max_treedepth))))
+    mt <- mt[is.finite(mt)]
+    if (length(mt)) return(max(mt))
+  }
+  10
 }
 
 #' Posterior parameter table on the natural scale

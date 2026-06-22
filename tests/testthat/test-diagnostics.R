@@ -17,8 +17,8 @@ test_that("diagnose_tdt_fit returns one internally-consistent diagnostic row", {
   expect_s3_class(d, "tbl_df")
   expect_equal(nrow(d), 1L)
   expect_true(all(c("rhat_max", "ess_bulk_min", "ess_tail_min", "divergences",
-                    "treedepth_hits", "bfmi_min", "rhat_pass", "ess_pass",
-                    "divergence_pass", "treedepth_pass", "bfmi_pass",
+                    "treedepth_max", "treedepth_hits", "bfmi_min", "rhat_pass",
+                    "ess_pass", "divergence_pass", "treedepth_pass", "bfmi_pass",
                     "all_pass") %in% names(d)))
 
   # Statistic ranges that must hold for any valid fit.
@@ -27,6 +27,12 @@ test_that("diagnose_tdt_fit returns one internally-consistent diagnostic row", {
   expect_gt(d$ess_tail_min, 0)
   expect_gte(d$divergences, 0L)
   expect_gte(d$treedepth_hits, 0L)
+  # treedepth_max is the CONFIGURED ceiling read from the fit; saturations are
+  # counted against it. A healthy fixture that never reaches the ceiling reports
+  # zero hits -- regression guard for the old `sum(td_vals >= max(td_vals))`,
+  # which always flagged >= 1 (the observed max is always attained).
+  expect_gte(d$treedepth_max, 1L)
+  expect_equal(d$treedepth_hits, 0L)
 
   # Pass flags are logical scalars and encode their stated thresholds.
   for (f in c("rhat_pass", "ess_pass", "divergence_pass",

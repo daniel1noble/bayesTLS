@@ -68,12 +68,27 @@ test_that("pooled z: omitting z gives logz ~ 1 while ctmax keeps its structure",
 
 test_that("threshold='absolute' adds the C(T) correction to mid; relative omits it", {
   fr <- make_4pl_formula(ctmax = ~ 1, threshold = "relative")
-  fa <- make_4pl_formula(ctmax = ~ 1, threshold = "absolute")
+  fa <- make_4pl_formula(ctmax = ~ 1, threshold = "absolute")   # p = 0.5, bounds (0,1) ok
   expect_false(grepl("log\\(\\(up", rhs_of(fr, "mid")))
   expect_match(rhs_of(fa, "mid"), "log\\(\\(up - 0.5\\)/\\(0.5 - low\\)\\)")
-  # non-default p flows into the correction
-  fp <- make_4pl_formula(ctmax = ~ 1, threshold = "absolute", p = 0.9)
+  # non-default p flows into the correction. Bounds chosen so p is achievable:
+  # an absolute target must lie within (low_max, up_min) ~ the bounds midpoint.
+  fp <- make_4pl_formula(ctmax = ~ 1, threshold = "absolute", p = 0.9,
+                         bounds = c(0.8, 1.0))
   expect_match(rhs_of(fp, "mid"), "log\\(\\(up - 0.9\\)/\\(0.9 - low\\)\\)")
+})
+
+test_that("absolute threshold is rejected when p is outside the achievable range", {
+  # Sub-unit (PSII-style) bounds never reach 0.5 -> log() of a negative number.
+  expect_error(make_4pl_formula(ctmax = ~ 1, threshold = "absolute", p = 0.5,
+                                bounds = c(0.85, 1)), "not achievable")
+  # Even full bounds can't take an absolute target far from the midpoint, because
+  # the disjoint asymptote reparam lets up dip to ~0.5.
+  expect_error(make_4pl_formula(ctmax = ~ 1, threshold = "absolute", p = 0.3,
+                                bounds = c(0, 1)), "not achievable")
+  # Relative is well defined for any bounds.
+  expect_no_error(make_4pl_formula(ctmax = ~ 1, threshold = "relative",
+                                   bounds = c(0.85, 1)))
 })
 
 test_that("resolve_shape() truth table (named internal helper, D-T3)", {

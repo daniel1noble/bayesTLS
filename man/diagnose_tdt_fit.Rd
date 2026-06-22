@@ -26,11 +26,11 @@ criterion plus a combined \code{all_pass}. Healthy values:
 }
 }
 \details{
-The \code{treedepth_max_attempted} field is the model's \code{max_treedepth} setting
-(passed to \code{brms::brm()}); a saturation is a post-warmup transition where
-the sampler hit that ceiling. Per-chain BFMI is computed from the energy
-diagnostic in \code{brms::nuts_params(.)} following the standard Stan
-definition (Var(ΔE)/Var(E)).
+The \code{treedepth_max} field is the model's \code{max_treedepth} setting (the ceiling
+passed to \code{brms::brm()}, default 10); a saturation is a post-warmup transition
+that hit that ceiling. A fit that merely tops out \emph{below} the ceiling has zero
+saturations. Per-chain BFMI is computed from the energy diagnostic in
+\code{brms::nuts_params(.)} following the standard Stan definition (Var(ΔE)/Var(E)).
 }
 \examples{
 \dontrun{

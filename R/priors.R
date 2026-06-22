@@ -33,9 +33,14 @@
 #'                        priors (matching [make_4pl_formula()]). Supplying
 #'                        `ctmax`/`z` switches to direct-mode priors: the same
 #'                        centred asymptote priors (per factor level for
-#'                        cell-means terms), weakly-informative `CTmaxdev`/`logz`
-#'                        priors, and random-effect SD priors on `CTmaxdev`/`logz`
-#'                        only (never on the shape sub-parameters). `up`/`low`/`k`
+#'                        cell-means terms), coding-aware weakly-informative
+#'                        `CTmaxdev`/`logz` priors (the level prior lands on the
+#'                        Intercept or each factor level, while between-group
+#'                        contrasts and temperature slopes are centred on zero, so
+#'                        per-group z/CTmax are invariant to cell-means vs
+#'                        treatment coding), and random-effect SD priors on
+#'                        `CTmaxdev`/`logz` only (never on the shape
+#'                        sub-parameters). `up`/`low`/`k`
 #'                        follow the same inheritance resolution as the formula.
 #' @return A `brmsprior` object ready to pass to [fit_4pl()].
 #' @examples
@@ -110,25 +115,32 @@ make_4pl_priors <- function(data,
                     upraw  = resolve_shape(up,  inherit),
                     logk   = resolve_shape(k,   inherit))
 
-  asy <- function(centre, nlpar, slope_sd) {
-    cells <- cell_means_coefs(shape_rhs[[nlpar]], data)
+  # One builder for every direct sub-parameter. The centred prior lands on the
+  # Intercept (treatment coding) or on each factor level (cell-means coding); a
+  # separate, MEAN-ZERO prior covers everything else — temperature slopes AND
+  # between-group contrasts. Centring the *contrast* prior on zero (not on
+  # `centre`) is what makes CTmaxdev/logz coding-invariant: under treatment
+  # coding the logz contrast must not be shrunk toward log(3), or the
+  # between-group z ratio is biased toward 3x (the asymptotes already did this
+  # via `asy`; CTmaxdev/logz previously used a single blanket prior and did not).
+  direct_par <- function(rhs, nlpar, centre, level_sd, slope_sd) {
+    cells <- cell_means_coefs(rhs, data)
     centred <- if (is.null(cells))
-      list(brms::set_prior(sprintf("normal(%.6f, 1)", centre),
+      list(brms::set_prior(sprintf("normal(%.6f, %s)", centre, level_sd),
                            class = "b", nlpar = nlpar, coef = "Intercept"))
     else lapply(cells, function(cf)
-      brms::set_prior(sprintf("normal(%.6f, 1)", centre),
+      brms::set_prior(sprintf("normal(%.6f, %s)", centre, level_sd),
                       class = "b", nlpar = nlpar, coef = cf))
     c(do.call(c, centred),
       brms::set_prior(sprintf("normal(0, %s)", slope_sd), class = "b", nlpar = nlpar))
   }
 
   priors <- c(
-    asy(lowraw_mean, "lowraw", "0.5"),
-    asy(upraw_mean,  "upraw",  "0.5"),
-    asy(logk_mean,   "logk",   "0.3"),
-    brms::set_prior("normal(0, 10)", class = "b", nlpar = "CTmaxdev"),
-    brms::set_prior(sprintf("normal(%.6f, 0.7)", log(3)),
-                    class = "b", nlpar = "logz")
+    direct_par(shape_rhs$lowraw, "lowraw",   lowraw_mean, "1",   "0.5"),
+    direct_par(shape_rhs$upraw,  "upraw",    upraw_mean,  "1",   "0.5"),
+    direct_par(shape_rhs$logk,   "logk",     logk_mean,   "1",   "0.3"),
+    direct_par(ctmax_rhs,        "CTmaxdev", 0,           "10",  "10"),
+    direct_par(z_rhs,            "logz",     log(3),      "0.7", "0.7")
   )
   if (!is.null(prior_phi))
     priors <- c(priors, brms::set_prior(prior_phi, class = "phi"))

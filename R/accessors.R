@@ -203,8 +203,15 @@ get_surv_draws <- function(x) {
       stop("x$draws is NULL. ",
            "Re-run predict_heat_injury() with `save_draws = TRUE`.",
            call. = FALSE)
+    # Carry any moderator column(s) for a grouped fit so per-group survival draws
+    # are not collapsed onto colliding (.draw, time) keys. integrate_pars()
+    # prepends the `by` column(s); anything beyond the standard heat-injury draw
+    # columns is a moderator. For a single-condition fit `gcols` is empty and the
+    # output is unchanged.
+    gcols <- setdiff(names(x$draws),
+                     c(".draw", "time", "temp", "dose", "hi", "survival", "mortality"))
     return(tibble::as_tibble(
-      x$draws[, c(".draw", "time", "temp", "survival")]
+      x$draws[, c(gcols, ".draw", "time", "temp", "survival"), drop = FALSE]
     ))
   }
   stop("Could not recognize input as a predict_survival_curves() or ",

@@ -50,15 +50,15 @@ test_that("per-group z is invariant to cell-means (~ 0 + grp) vs treatment (~ gr
                                     "sim_fit_grouped_trt_small"), refresh = 0)
   z_cm <- extract_tdt(wf_cm, ndraws = NULL)$z$summary
   z_tr <- extract_tdt(wf_tr, ndraws = NULL)$z$summary
-  # The two codings share the LIKELIHOOD but not the prior parameterisation
-  # (cell-means: one prior per level; treatment: prior on the reference + on each
-  # contrast, so group B gets a wider prior), so on small fits per-group z differs
-  # by a few tenths from prior parameterisation + MCMC noise across two fresh fits.
-  # The real failure this guards is the treatment-coding reference-level bug, which
-  # would report group B's z AS group A's -> a |z_A - z_B| ~ 2.2 gap; tol = 1.0
-  # tolerates the benign difference while still catching that.
+  # The two codings share the LIKELIHOOD and, since make_4pl_priors() routes
+  # CTmaxdev/logz through a coding-aware builder (contrasts centred on ZERO, not
+  # log(3)), they also share the effective prior on every per-group z. Per-group z
+  # must therefore agree up to MCMC noise across two fresh fits. Validated: |diff|
+  # = 0.006 (A) / 0.144 (B) post-fix. Before the coding-aware prior fix this was
+  # ~2.5 (group-B z 6.7 cell-means vs 9.2 treatment); tol = 0.3 catches any
+  # regression of that bug.
   for (gg in c("A", "B")) {
-    expect_lt(abs(z_cm$z_median[z_cm$grp == gg] - z_tr$z_median[z_tr$grp == gg]), 1.0)
+    expect_lt(abs(z_cm$z_median[z_cm$grp == gg] - z_tr$z_median[z_tr$grp == gg]), 0.3)
   }
 })
 

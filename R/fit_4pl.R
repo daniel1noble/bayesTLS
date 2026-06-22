@@ -143,6 +143,21 @@ make_4pl_formula <- function(random_effects = NULL,
   ctmax_rhs <- formula_rhs(ctmax, "1")
   z_rhs     <- formula_rhs(z,     "1")
   inherit   <- if (!is.null(ctmax)) ctmax_rhs else z_rhs
+  # Absolute threshold builds log((up - p)/(p - low)); the disjoint asymptote
+  # reparameterisation keeps low <= low_max and up >= up_min, so this is finite
+  # for every draw iff low_max < p < up_min. With sub-unit response bounds (e.g.
+  # PSII in [0.85, 1]) the achievable range never reaches p = 0.5, which would
+  # give log() of a negative number (an opaque Stan failure). Catch it early with
+  # an actionable message; relative thresholds are well defined for any bounds.
+  if (identical(threshold, "absolute") && !(b$low_max < p && p < b$up_min))
+    stop(sprintf(
+      paste0("threshold = \"absolute\" with target p = %g is not achievable for ",
+             "response bounds [%g, %g]: the survival curve only spans roughly ",
+             "(%.3f, %.3f), so an absolute %g%% threshold lies outside it. Use ",
+             "threshold = \"relative\" (the per-draw midpoint, defined for any ",
+             "bounds), or an absolute target near the bounds midpoint %.3f."),
+      p, bounds[1], bounds[2], b$low_max, b$up_min, 100 * p, b$midpoint),
+      call. = FALSE)
   mid_rel   <- sprintf("(%g - (temp_c - CTmaxdev) / exp(logz))", log10_tref)
   mid_expr  <- if (identical(threshold, "relative")) mid_rel else
     sprintf("(%s - (1/exp(logk)) * log((up - %g)/(%g - low)))", mid_rel, p, p)

@@ -30,8 +30,30 @@ test_that("supplying ctmax/z switches to direct priors (CTmaxdev + logz, no mid)
   nl <- as.data.frame(p)$nlpar
   expect_true(all(c("CTmaxdev", "logz") %in% nl))
   expect_false("mid" %in% nl)
-  expect_equal(ps(p, "CTmaxdev"), "normal(0, 10)")
-  expect_equal(ps(p, "logz"),     "normal(1.098612, 0.7)")
+  # The level prior lands on the Intercept; a separate mean-zero prior covers
+  # contrasts/slopes (so per-group z/CTmax are coding-invariant).
+  expect_equal(ps(p, "CTmaxdev", "Intercept"), "normal(0.000000, 10)")
+  expect_equal(ps(p, "CTmaxdev"),              "normal(0, 10)")
+  expect_equal(ps(p, "logz", "Intercept"),     "normal(1.098612, 0.7)")
+  expect_equal(ps(p, "logz"),                  "normal(0, 0.7)")
+})
+
+test_that("CTmaxdev/logz contrast prior is mean-zero -> coding-invariant", {
+  # Treatment coding (~ G): Intercept carries the level centre; the between-group
+  # contrast must be centred on ZERO, not on log(3) (the bug that biased the
+  # between-group z ratio toward 3x).
+  p_trt <- make_4pl_priors(dd, ctmax = ~ life_stage, z = ~ life_stage)
+  expect_equal(ps(p_trt, "logz", "Intercept"),     "normal(1.098612, 0.7)")
+  expect_equal(ps(p_trt, "logz"),                  "normal(0, 0.7)")  # -> contrasts
+  expect_equal(ps(p_trt, "CTmaxdev", "Intercept"), "normal(0.000000, 10)")
+  expect_equal(ps(p_trt, "CTmaxdev"),              "normal(0, 10)")
+
+  # Cell-means coding (~ 0 + G): every level carries the same centre, so there is
+  # no reference group to bias.
+  d  <- as.data.frame(make_4pl_priors(dd, ctmax = ~ 0 + life_stage,
+                                      z = ~ 0 + life_stage))
+  lz <- d$prior[d$nlpar == "logz" & d$coef != ""]
+  expect_true(length(lz) == 3L && all(lz == "normal(1.098612, 0.7)"))
 })
 
 test_that("centred asymptote priors are byte-identical between midpoint and direct", {

@@ -47,9 +47,14 @@ supersedes \code{lower}/\code{upper} when supplied.}
 priors (matching \code{\link[=make_4pl_formula]{make_4pl_formula()}}). Supplying
 \code{ctmax}/\code{z} switches to direct-mode priors: the same
 centred asymptote priors (per factor level for
-cell-means terms), weakly-informative \code{CTmaxdev}/\code{logz}
-priors, and random-effect SD priors on \code{CTmaxdev}/\code{logz}
-only (never on the shape sub-parameters). \code{up}/\code{low}/\code{k}
+cell-means terms), coding-aware weakly-informative
+\code{CTmaxdev}/\code{logz} priors (the level prior lands on the
+Intercept or each factor level, while between-group
+contrasts and temperature slopes are centred on zero, so
+per-group z/CTmax are invariant to cell-means vs
+treatment coding), and random-effect SD priors on
+\code{CTmaxdev}/\code{logz} only (never on the shape
+sub-parameters). \code{up}/\code{low}/\code{k}
 follow the same inheritance resolution as the formula.}
 }
 \value{

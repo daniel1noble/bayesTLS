@@ -540,6 +540,11 @@ extract_tdt <- function(workflow,
   did  <- tls_draw_ids(fit, ndraws)
   exposure_in_model_units <- t_ref / time_multiplier
   target <- log10(exposure_in_model_units)
+  # The rate-multiplier T_crit is anchored at the 1-HOUR reference regardless of
+  # t_ref (the -2.5z offset is derived from CTmax_1hr), so it needs its own target
+  # at 60 min in model units. Matches tls() (R/tls.R: log10(60 / time_multiplier))
+  # and equals `target` when t_ref = 60, so t_ref = 60 fits are unchanged.
+  target_1hr <- log10(60 / time_multiplier)
   z_temp_grid <- sort(unique(data$temp)); z_temp_grid <- z_temp_grid[is.finite(z_temp_grid)]
   Lz <- length(z_temp_grid); Lc <- length(temp_grid); h <- 1e-3
   p  <- ts$prob %||% 0.5
@@ -600,12 +605,22 @@ extract_tdt <- function(workflow,
 
     tcb <- NULL
     if (isTRUE(lethal)) {
-      paired <- dplyr::inner_join(dplyr::select(z_obj$draws, .draw, z),
-                                  dplyr::select(cd, .draw, CTmax_temp = temp),
+      # Anchor T_crit at the 1-hour CTmax (CTmax_1hr + z * log10(rate)), NOT the
+      # CTmax at t_ref: the rate-multiplier offset is defined against CTmax_1hr,
+      # so T_crit must be invariant to the reporting reference. extract_tdt
+      # previously used CTmax at t_ref -> wrong T_crit for t_ref != 60. ct1 is
+      # computed the same way as the CTmax above, just at the 1 h target.
+      ct1 <- if (mid_rel_closed)
+        Tbar + (target_1hr - sp$logLT[, c_mid0]) / slope
+      else
+        tls_invert_logLT(sp$logLT[, c_ctmax, drop = FALSE], target_1hr, temp_grid)
+      cd1 <- tibble::tibble(.draw = seq_along(ct1), CTmax_1hr = ct1) |>
+        dplyr::filter(is.finite(CTmax_1hr))
+      paired <- dplyr::inner_join(dplyr::select(z_obj$draws, .draw, z), cd1,
                                   by = ".draw")
       paired$log10_rate <- stats::runif(nrow(paired), log10(TC_rate_range[1] / 100),
                                         log10(TC_rate_range[2] / 100))
-      paired$T_crit <- paired$CTmax_temp + paired$z * paired$log10_rate
+      paired$T_crit <- paired$CTmax_1hr + paired$z * paired$log10_rate
       tcd <- tibble::tibble(.draw = paired$.draw, temp = paired$T_crit,
                             log10_rate = paired$log10_rate)
       tq  <- stats::quantile(tcd$temp, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
