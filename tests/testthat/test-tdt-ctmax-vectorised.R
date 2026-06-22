@@ -52,3 +52,14 @@ test_that("rows with < 2 finite values yield NA (no crossing)", {
   expect_true(is.finite(tls_invert_logLT(M, 0, grid)[1]))
   expect_true(all(is.na(tls_invert_logLT(M, 0, grid)[2:3])))
 })
+
+test_that("a flat (degenerate) draw yields NA without aborting the whole call", {
+  # A flat draw has duplicate y; the old approx() fallback errored ("need at
+  # least two non-NA values to interpolate") and took down the entire vectorised
+  # inversion. It must now return NA for that row and finite for the others.
+  M <- rbind(seq(2, -2, length.out = length(grid)),       # normal crossing
+             rep(1.5, length(grid)))                       # flat -> no crossing
+  got <- expect_no_error(tls_invert_logLT(M, target = 0, grid))
+  expect_true(is.finite(got[1]))
+  expect_true(is.na(got[2]))
+})

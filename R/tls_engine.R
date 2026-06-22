@@ -144,10 +144,17 @@ tls_invert_logLT <- function(M, target, temp_grid) {
   bad <- !is.finite(rowSums(M)) | rowSums(dM >= 0, na.rm = TRUE) > 0
   for (i in which(bad)) {
     y <- M[i, ]; fin <- is.finite(y)
-    if (sum(fin) < 2L) { Tc[i] <- NA_real_; next }
+    # A degenerate (flat) draw -- all finite values equal -- has no unique
+    # crossing and would make stats::approx() abort the ENTIRE vectorised call
+    # ("need at least two non-NA values to interpolate"), as would a draw with
+    # < 2 finite points. Return NA for these instead of crashing. Non-flat
+    # fallback draws reproduce the original order() + approx() inverse
+    # interpolation exactly (see test-tdt-ctmax-vectorised.R).
+    if (sum(fin) < 2L || diff(range(y[fin])) == 0) { Tc[i] <- NA_real_; next }
     o <- order(y[fin])
-    Tc[i] <- suppressWarnings(stats::approx(y[fin][o], temp_grid[fin][o],
-                                            xout = target)$y)
+    Tc[i] <- suppressWarnings(tryCatch(
+      stats::approx(y[fin][o], temp_grid[fin][o], xout = target)$y,
+      error = function(e) NA_real_))
   }
   Tc
 }

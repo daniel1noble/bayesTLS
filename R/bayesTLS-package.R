@@ -29,7 +29,7 @@ utils::globalVariables(c(
   "survival", "survival_lower", "survival_median", "survival_upper",
   "survival_mean", "survival_se", "n_units",
   "surv_lower", "surv_median", "surv_upper",
-  "T_at",
+  "T_at", "CTmax_1hr",
   "target_surv", "temp", "temp_c",
   "temp_lower", "temp_median", "temp_upper",
   "time", "value", "model", "quantity",

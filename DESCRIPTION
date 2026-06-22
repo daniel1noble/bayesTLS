@@ -28,6 +28,7 @@ Imports:
     dplyr,
     ggplot2,
     MASS,
+    methods,
     patchwork,
     posterior,
     stats,
@@ -44,6 +45,6 @@ Suggests:
     tidyr
 Additional_repositories: https://stan-dev.r-universe.dev
 Config/testthat/edition: 3
-Depends: 
-    R (>= 3.5)
+Depends:
+    R (>= 4.1.0)
 LazyData: true
