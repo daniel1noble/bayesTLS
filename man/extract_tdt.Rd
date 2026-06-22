@@ -15,7 +15,8 @@ extract_tdt(
   time_multiplier = NULL,
   output_time_unit = "min",
   lethal = FALSE,
-  z_local = FALSE
+  z_local = FALSE,
+  seed = NULL
 )
 }
 \arguments{
@@ -69,6 +70,10 @@ computed, which saves the dominant per-call cost; the
 pooled \code{z} draws and summary are identical either way.
 For a model R\eqn{^2}, call
 \code{brms::bayes_R2(get_brmsfit(workflow))}.}
+
+\item{seed}{Optional integer. When supplied, seeds the RNG so the draw
+subsample and the \code{T_crit} rate draws are reproducible.
+\code{NULL} (default) leaves the RNG untouched.}
 }
 \value{
 A list with elements:

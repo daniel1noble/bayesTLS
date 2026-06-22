@@ -18,6 +18,29 @@ test_that("print.bayes_tls handles a spec-only workflow (no fit)", {
   expect_true(any(grepl("spec only", out)))
 })
 
+test_that("print.bayes_tls reports the parameterisation (midpoint / direct / grouped)", {
+  raw <- data.frame(
+    temperature_C = rep(c(30, 32, 34), each = 4),
+    exposure_h    = rep(c(1, 2, 4, 8), times = 3),
+    n             = 30L,
+    alive         = c(29, 28, 25, 5, 30, 27, 18, 2, 28, 22, 10, 1),
+    life_stage    = factor(rep(c("a", "b", "c"), times = 4))
+  )
+  std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                          n_total = "n", n_surv = "alive")
+
+  mid <- capture.output(print(fit_4pl(std, fit = FALSE)))
+  expect_true(any(grepl("Param:.*midpoint", mid)))
+  expect_false(any(grepl("direct", mid)))
+
+  dir <- capture.output(print(fit_4pl(std, ctmax = ~ 1, z = ~ 1, fit = FALSE)))
+  expect_true(any(grepl("Param:.*direct CTmax/z.*relative threshold", dir)))
+
+  grp <- capture.output(print(fit_4pl(std, ctmax = ~ life_stage, fit = FALSE)))
+  expect_true(any(grepl("Param:.*direct", grp)))
+  expect_true(any(grepl("Groups:.*life_stage", grp)))   # grouped direct fit flagged
+})
+
 test_that("summary.bayes_tls errors when the workflow is not fitted", {
   raw <- data.frame(
     temperature_C = rep(c(30, 32, 34), each = 3),

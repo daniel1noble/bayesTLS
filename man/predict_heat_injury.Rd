@@ -15,7 +15,8 @@ predict_heat_injury(
   repair_pars = NULL,
   repair_scales_with_survival = TRUE,
   irreversible_mortality = TRUE,
-  save_draws = FALSE
+  save_draws = FALSE,
+  seed = NULL
 )
 }
 \arguments{
@@ -64,6 +65,9 @@ even if cumulative dose subsequently decreases.}
 
 \item{save_draws}{Logical. If \code{TRUE}, return the full per-draw
 trajectories. Default \code{FALSE}.}
+
+\item{seed}{Optional integer seeding the posterior-draw subsample for
+reproducibility. \code{NULL} (default) leaves the RNG untouched.}
 }
 \value{
 A list with elements:

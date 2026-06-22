@@ -112,15 +112,14 @@ tdt_parameter_table <- function(workflow) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
+  # Grouped fits (CTmax/z or mid by a moderator) have no single set of
+  # *_Intercept coefficients to summarise; redirect (coding-independent, so both
+  # `~ 0 + G` and `~ 1 + G` are caught rather than silently using the reference).
+  tdt_stop_if_grouped(workflow, "tdt_parameter_table()")
+
   d <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
   b <- workflow$meta$bounds
-
-  # Guard grouped direct fits (no *_Intercept) before touching any Intercept,
-  # so the message is clear rather than a downstream plogis(NULL) error.
   direct <- identical(workflow$meta$parameterization, "direct")
-  if (direct && !all(c("b_CTmaxdev_Intercept", "b_logz_Intercept") %in% names(d)))
-    stop("tdt_parameter_table(): single-group direct fits only; for grouped ",
-         "direct fits use tls().", call. = FALSE)
 
   low <- b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w
   up  <- b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w

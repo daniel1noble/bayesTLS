@@ -6,9 +6,11 @@
 
 #' Compact print method for a `bayes_tls` workflow
 #'
-#' One-screen header: data shape, asymptote/response bounds, random-effect
-#' grouping (if any), and fit status (draws if fitted, "spec only" otherwise).
-#' Call [summary()][summary.bayes_tls()] for parameter posteriors and HMC
+#' One-screen header: data shape, asymptote/response bounds, parameterisation
+#' (midpoint, or direct CTmax/z with its threshold and `t_ref`; for grouped
+#' direct fits, the moderator(s)), random-effect grouping (if any), and fit
+#' status (draws if fitted, "spec only" otherwise). Call
+#' [summary()][summary.bayes_tls()] for parameter posteriors and HMC
 #' diagnostics, [plot()][plot.bayes_tls()] for MCMC trace plots.
 #'
 #' @param x   A `bayes_tls` object returned by [fit_4pl()].
@@ -33,6 +35,15 @@ print.bayes_tls <- function(x, ...) {
     bounds$low_min, bounds$low_max,
     bounds$up_min,  bounds$up_max
   ))
+  if (identical(x$meta$parameterization %||% "midpoint", "direct")) {
+    cat(sprintf("  Param:    direct CTmax/z (%s threshold, t_ref = %g min)\n",
+                x$meta$threshold %||% "relative", x$meta$t_ref %||% 60))
+    if (isTRUE(x$meta$grouped))
+      cat("  Groups:  ", paste(x$meta$group_vars, collapse = ", "),
+          "(per-group z/CTmax via tls(by = ...))\n")
+  } else {
+    cat("  Param:    midpoint\n")
+  }
   if (!is.null(x$meta$random_effects))
     cat("  RE:      ", paste(x$meta$random_effects, collapse = ", "), "\n")
   cat("  Status:  ",

@@ -120,22 +120,96 @@ test_that("tdt_parameter_table reports CTmax/z directly on a direct fit", {
                median(exp(d$b_logz_Intercept)), tolerance = 1e-6)
 })
 
-test_that("single-group helpers error (not silently misread) on a grouped direct fit", {
+test_that("every single-condition helper redirects a grouped direct fit to tls() (finding 5)", {
+  # Treatment-coded grouped direct fit: b_CTmaxdev_Intercept (reference level)
+  # PLUS a group offset. The original guard (does the Intercept exist?) passed
+  # this and silently reported the reference level only; tdt_is_grouped() catches
+  # it coding-independently (>1 CTmaxdev/logz fixed-effect column => grouped).
   set.seed(3); np <- 100
-  df <- data.frame(   # cell-means coefs, no Intercept on CTmaxdev/logz
-    b_lowraw_life_stagea   = rnorm(np, -3.2,    0.05),
-    b_upraw_life_stagea    = rnorm(np,  3.2,    0.05),
-    b_logk_life_stagea     = rnorm(np,  log(5), 0.05),
-    b_CTmaxdev_life_stagea = rnorm(np,  2,      0.05),
-    b_logz_life_stagea     = rnorm(np,  log(3), 0.03)
+  df <- data.frame(
+    b_lowraw_Intercept     = rnorm(np, -3.2,    0.05),
+    b_upraw_Intercept      = rnorm(np,  3.2,    0.05),
+    b_logk_Intercept       = rnorm(np,  log(5), 0.05),
+    b_CTmaxdev_Intercept   = rnorm(np,  2,      0.05),
+    b_CTmaxdev_life_stageB = rnorm(np,  5,      0.05),   # second level => grouped
+    b_logz_Intercept       = rnorm(np,  log(3), 0.03)
   )
-  wf <- structure(list(fit = posterior::as_draws_df(df),
-                       meta = list(temp_mean = 30, bounds = compute_4pl_bounds(0, 1),
+  wf <- structure(list(fit  = posterior::as_draws_df(df),
+                       data = data.frame(temp = c(30, 33, 36)),
+                       meta = list(temp_mean = 33, bounds = compute_4pl_bounds(0, 1),
                                    parameterization = "direct", threshold = "relative",
-                                   log10_tref = 0, duration_unit = "hours")),
+                                   log10_tref = 0, duration_unit = "hours",
+                                   group_vars = "life_stage")),
                   class = "bayes_tls")
-  expect_error(tdt_parameter_table(wf), "single-group")
-  expect_error(extract_4pl_pars(wf),    "single-group")
+  expect_error(tdt_parameter_table(wf),                           "tls")
+  expect_error(extract_4pl_pars(wf),                              "tls")
+  expect_error(derive_z(wf, temp_grid = c(30, 36)),               "tls")
+  expect_error(derive_temperature_for_duration(wf, 1, c(28, 40)), "tls")
+  expect_error(extract_tdt(wf),                                   "tls")
+})
+
+test_that("absolute-FIT direct reconstruction is correct in every threshold cell (findings 1 & 4)", {
+  tbar <- 30; pars <- make_direct_pars(tbar = tbar)
+  bnd  <- compute_4pl_bounds(0, 1)
+  T    <- c(28, 30, 32)
+  dabs <- DIRECT("absolute")           # p_fit defaults to 0.5 inside tdt_loglt
+  # independent oracle: backbone and C(T; p) from the same draws
+  lp  <- function(par) outer(pars[[paste0("b_", par, "_temp_c")]], T - tbar) +
+                       pars[[paste0("b_", par, "_Intercept")]]
+  l <- bnd$low_min + bnd$low_w * plogis(lp("lowraw"))
+  u <- bnd$up_min  + bnd$up_w  * plogis(lp("upraw"))
+  k <- exp(lp("logk"))
+  bb <- 0 - (outer(rep(1, nrow(pars)), T - tbar) - pars$b_CTmaxdev_Intercept) /
+            exp(pars$b_logz_Intercept)
+  Cof <- function(p) log((u - p) / (p - l)) / k
+  # abs-fit + relative request: backbone - C0(0.5), and FINITE (was all-NA: finding 1)
+  rel <- tdt_loglt(pars, tbar, bnd, resolve_target_surv("relative"), T, dabs)
+  expect_true(all(is.finite(rel)))
+  expect_equal(rel, bb - Cof(0.5), tolerance = 1e-9)
+  # abs-fit + absolute@0.5: backbone (the case masked at p = 0.5)
+  expect_equal(tdt_loglt(pars, tbar, bnd, resolve_target_surv("absolute"), T, dabs),
+               bb, tolerance = 1e-9)
+  # abs-fit + custom absolute p = 0.3: backbone - C0(0.5) + C(0.3) (was = bb: finding 4)
+  expect_equal(tdt_loglt(pars, tbar, bnd, resolve_target_surv(0.3), T, dabs),
+               bb - Cof(0.5) + Cof(0.3), tolerance = 1e-9)
+})
+
+test_that("fit_4pl maps non-canonical duration_unit aliases consistently (finding 6)", {
+  base <- data.frame(logd = log10(rep(c(1, 2, 4, 8), 3)),
+                     temp_c = rep(c(-2, 0, 2), each = 4), n_surv = 5L, n_total = 10L)
+  l10 <- function(u) {
+    d <- base; attr(d, "tdt_meta") <- list(temp_mean = 35, duration_unit = u,
+                                           response_type = "count")
+    fit_4pl(d, ctmax = ~ 1, fit = FALSE)$meta$log10_tref
+  }
+  expect_equal(l10("h"),     l10("hours"))     # alias == canonical (was tm=1 fallback)
+  expect_equal(l10("hr"),    l10("hours"))
+  expect_equal(l10("Hours"), l10("hours"))     # case-insensitive
+  expect_equal(l10("min"),   l10("minutes"))
+})
+
+test_that("derive_z is wired for direct fits (finding 2)", {
+  wf <- fake_direct_workflow(tbar = 30)
+  d  <- as.data.frame(posterior::as_draws_df(wf$fit))
+  tg <- seq(26, 38, by = 0.5)
+  zr <- derive_z(wf, temp_grid = tg)                          # relative (default)
+  za <- derive_z(wf, temp_grid = tg, target_surv = "absolute")
+  expect_true(is.finite(zr$summary$z_median))                 # was all-NA
+  expect_equal(zr$summary$z_median, median(exp(d$b_logz_Intercept)), tolerance = 1e-3)
+  expect_true(is.finite(za$summary$z_median))
+})
+
+test_that("derive_temperature_for_duration is wired for direct fits (finding 3)", {
+  wf <- fake_direct_workflow(tbar = 30)
+  d  <- as.data.frame(posterior::as_draws_df(wf$fit))
+  tg <- seq(26, 40, by = 0.05)
+  # relative request crosses the linear backbone at target = log10(1) = 0 = log10_tref,
+  # so CTmax = Tbar + CTmaxdev exactly; was Tbar + target/0 = Inf before the wiring.
+  out <- derive_temperature_for_duration(wf, exposure_duration = 1, temp_grid = tg,
+                                         target_surv = "relative")
+  expect_true(is.finite(out$summary$temp_median))
+  expect_equal(out$summary$temp_median,
+               median(30 + d$b_CTmaxdev_Intercept), tolerance = 0.05)
 })
 
 test_that("predict_heat_injury on a direct fit matches the analytical dose oracle", {
@@ -163,4 +237,25 @@ test_that("predict_heat_injury on a direct fit matches the analytical dose oracl
                             ndraws = 20)$summary
   pl <- planted_dose_from_trace(trace, z = z, CTmax_1hr = tbar, T_c = 25)
   expect_equal(hi$hi_median, pl$hi_cumulative, tolerance = 1e-4)
+})
+
+# --- seed reproducibility (D-T2): same seed -> identical, different seed -> not -
+test_that("seed makes derive_z reproducible across the draw subsample", {
+  wf <- fake_direct_workflow(tbar = 30)          # 200 draws
+  tg <- seq(26, 38, by = 0.5)
+  a <- derive_z(wf, temp_grid = tg, ndraws = 40, seed = 42)$summary$z_median
+  b <- derive_z(wf, temp_grid = tg, ndraws = 40, seed = 42)$summary$z_median
+  cc <- derive_z(wf, temp_grid = tg, ndraws = 40, seed = 7)$summary$z_median
+  expect_identical(a, b)                          # same seed -> identical subsample
+  expect_false(isTRUE(all.equal(a, cc)))          # different seed -> different
+})
+
+test_that("seed makes predict_heat_injury reproducible across the draw subsample", {
+  wf <- fake_direct_workflow(tbar = 30)          # 200 draws, relative threshold
+  tr <- data.frame(time = 0:6, temp = c(26, 28, 30, 32, 30, 28, 26))
+  s1 <- predict_heat_injury(tr, wf, ndraws = 30, seed = 1)$summary$surv_median
+  s2 <- predict_heat_injury(tr, wf, ndraws = 30, seed = 1)$summary$surv_median
+  s3 <- predict_heat_injury(tr, wf, ndraws = 30, seed = 2)$summary$surv_median
+  expect_identical(s1, s2)
+  expect_false(isTRUE(all.equal(s1, s3)))
 })

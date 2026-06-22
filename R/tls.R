@@ -49,6 +49,8 @@
 #' @param newdata Optional explicit moderator x temperature grid; overrides the
 #'   `by`/`temp_grid` construction.
 #' @param probs Summary quantiles (lower, median, upper). Default `c(.025,.5,.975)`.
+#' @param seed Optional integer seeding the draw subsample (`ndraws`) and the
+#'   T_crit rate draws for reproducibility. `NULL` (default) leaves the RNG alone.
 #' @param ... Additional arguments passed on to [tls()] (used by the
 #'   `tls_z()`, `tls_ctmax()` and `tls_tcrit()` convenience wrappers).
 #' @return A `tls` object: `$summary` (per-group, per-quantity median + interval),
@@ -67,7 +69,7 @@ tls <- function(object, by = NULL, params = "all",
                 re_formula = NA, lower = 0, upper = 1,
                 nlpars = c("lowraw", "upraw", "logk", "mid"),
                 ndraws = NULL, newdata = NULL,
-                probs = c(0.025, 0.5, 0.975)) {
+                probs = c(0.025, 0.5, 0.975), seed = NULL) {
   mode <- match.arg(mode)
 
   # Cheap argument validation first (no fit needed).
@@ -125,6 +127,10 @@ tls <- function(object, by = NULL, params = "all",
   }
   newdata$.grp <- if (is.null(by)) "all" else
     do.call(paste, c(newdata[by], sep = " / "))
+
+  # Reproducibility: seed the posterior_linpred draw subsample (when `ndraws` is
+  # set) and the T_crit rate draws below from one stream.
+  if (!is.null(seed)) set.seed(seed)
 
   # --- evaluate sub-parameters at every grid row -----------------------------
   b  <- compute_4pl_bounds(lower, upper)

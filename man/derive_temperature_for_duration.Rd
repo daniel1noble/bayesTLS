@@ -10,7 +10,8 @@ derive_temperature_for_duration(
   temp_grid,
   target_surv = "absolute",
   ndraws = 1000,
-  probs = c(0.025, 0.5, 0.975)
+  probs = c(0.025, 0.5, 0.975),
+  seed = NULL
 )
 }
 \arguments{
@@ -27,6 +28,9 @@ or a numeric in \verb{(0, 1)}.}
 Default 1000.}
 
 \item{probs}{Quantile probabilities. Default \code{c(0.025, 0.5, 0.975)}.}
+
+\item{seed}{Optional integer seeding the draw subsample for
+reproducibility. \code{NULL} (default) leaves the RNG alone.}
 }
 \value{
 A list with \code{draws} (per-draw threshold temperatures; \code{target_surv}

@@ -1,0 +1,200 @@
+---
+title: "Direct CTmax/z parameterisation — Tier-3 scripted validation gate"
+author: "bayesTLS"
+date: 2026-06-22
+format:
+  html:
+    toc: true
+    embed-resources: true
+    code-fold: false
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(bayesTLS)
+library(posterior)
+here <- here::here
+MODELS <- here("output", "models")
+```
+
+## Purpose and scope
+
+This is the **Tier-3 pre-merge gate** for the direct CTmax/z parameterisation
+(test plan: `notes/2026-06-22-test-design-direct-ctmax-z.md`, §5). It holds the
+invariants that genuinely need *real fits* and so cannot live in the fast or
+gated `testthat` tiers:
+
+1. **Grouped ABSOLUTE per-group truth (the inheritance-bias catch).** The only
+   test of the rule-2 rationale — that shape sub-parameters inherit the CTmax/z
+   group structure (`temp_c:G`) by default — so per-group **absolute** CTmax is
+   unbiased when groups differ in curve asymmetry. All relative-threshold checks
+   are provably insensitive to this, so it has no `testthat` analogue.
+2. **Divergence contrast (centred vs flat asymptote priors).** A qualitative
+   reproduction of the funnel that motivated the centred default priors. The
+   *reproducible* guard for this is the byte-identical-prior test
+   (`tests/testthat/test-direct-priors.R`); the sampling contrast here is
+   indicative (its magnitude is sim-/platform-/Stan-version-dependent).
+
+Each assertion is a hard `stopifnot()`, so the **render fails** if an invariant
+drifts. Fits are cached to `output/models/gate_*.rds` (delete to force a refit).
+
+**Scoped out (deliberate):** case-study golden numbers (e.g. the embryo/sex
+studies) are *not* asserted here while the case studies are being restructured
+(`ms/case_studies_new.qmd`) — pinning `z`/CTmax to studies in flux would be
+throwaway. Direct↔midpoint equivalence meanwhile is covered by the gated fixture
+(`tests/testthat/test-direct-fixture.R`) and the prototype-validation note
+(`notes/2026-06-22-direct-ctmax-z-prototype-validation.qmd`). Re-point a
+case-study golden section here once the new studies settle.
+
+```{r helpers}
+# Grouped + per-group-asymmetry simulator. Dose axis matches simulate_tdt():
+# logd = log10(t_hours * 60); standardise with duration_unit = "hours".
+simulate_grouped <- function(truth, temps = c(30, 33, 36, 39),
+                             durations_hours = c(0.1, 0.5, 2, 10),
+                             n_rep = 6, n_per_rep = 30, phi = 8, T_bar = 34,
+                             sparse_hot = FALSE, seed = 1) {
+  set.seed(seed)
+  g <- expand.grid(grp = names(truth), T = temps, t_hours = durations_hours,
+                   rep = seq_len(n_rep), stringsAsFactors = FALSE)
+  if (sparse_hot) g <- g[!(g$T == max(temps) & g$rep > 1), ]   # weakly identified hot asymptote
+  g$ld <- log10(g$t_hours * 60)
+  g$p  <- vapply(seq_len(nrow(g)), function(i) {
+    tt <- truth[[g$grp[i]]]; mid <- tt$a0 - (1 / tt$z) * (g$T[i] - T_bar)
+    tt$ell + (tt$u - tt$ell) / (1 + exp(tt$k * (g$ld[i] - mid)))
+  }, numeric(1))
+  g$n_trials <- n_per_rep
+  g$y_alive  <- rbinom(nrow(g), g$n_trials, rbeta(nrow(g), g$p * phi, (1 - g$p) * phi))
+  g$grp <- factor(g$grp)
+  attr(g, "T_bar") <- T_bar
+  g
+}
+
+# Per-group analytic truth (relative z and absolute p=0.5 CTmax at 1 h), the
+# per-group form of tests/testthat truth_summary().
+group_truth <- function(truth, T_bar = 34) {
+  do.call(rbind, lapply(names(truth), function(g) {
+    tt <- truth[[g]]
+    alpha  <- tt$a0 + (1 / tt$k) * log((tt$u - 0.5) / (0.5 - tt$ell)) - (-1 / tt$z) * T_bar
+    data.frame(grp = g, z = tt$z, CTmax_abs_1h = (log10(60) - alpha) / (-1 / tt$z))
+  }))
+}
+
+divergences <- function(wf)
+  sum(brms::nuts_params(get_brmsfit(wf), pars = "divergent__")$Value)
+
+CTRL <- list(adapt_delta = 0.95, max_treedepth = 12)
+```
+
+## 1. Grouped absolute per-group truth — the inheritance-bias catch
+
+Two groups with **deliberately different asymmetry**: `A` near-symmetric, `B`
+strongly asymmetric (high lower asymptote, low upper asymptote). Their curve
+asymmetry correction `C(T)` differs, so their **absolute** (p = 0.5) CTmax differ
+from their relative midpoints by different amounts. A fit whose shape inherits
+the group structure can represent both; a fit forced to share one shape across
+groups cannot.
+
+```{r inherit-sim}
+truth_inh <- list(
+  A = list(ell = 0.03, u = 0.97, k = 6, z = 3.0, a0 = 1.4),   # near-symmetric
+  B = list(ell = 0.25, u = 0.78, k = 3, z = 2.0, a0 = 1.1)    # strongly asymmetric
+)
+raw_inh <- simulate_grouped(truth_inh, seed = 20260622)
+T_bar   <- attr(raw_inh, "T_bar")
+std_inh <- standardize_data(raw_inh, temp = "T", duration = "t_hours",
+                            n_total = "n_trials", n_surv = "y_alive",
+                            duration_unit = "hours")
+gt <- group_truth(truth_inh, T_bar)
+gt
+```
+
+```{r inherit-fits}
+# INHERITED (default): shape inherits 0 + grp + temp_c:grp -> per-group asymmetry.
+fit_inh <- fit_4pl(std_inh, ctmax = ~ 0 + grp, z = ~ 0 + grp, threshold = "absolute",
+                   chains = 2, iter = 1200, warmup = 600, cores = 2, seed = 1,
+                   control = CTRL, refresh = 0,
+                   file = file.path(MODELS, "gate_inherit_inh"))
+# SHARED: force one pooled shape for both groups.
+fit_shr <- fit_4pl(std_inh, ctmax = ~ 0 + grp, z = ~ 0 + grp,
+                   up = ~ temp_c, low = ~ temp_c, k = ~ temp_c, threshold = "absolute",
+                   chains = 2, iter = 1200, warmup = 600, cores = 2, seed = 1,
+                   control = CTRL, refresh = 0,
+                   file = file.path(MODELS, "gate_inherit_shr"))
+```
+
+```{r inherit-check}
+ti <- tls(fit_inh, by = "grp", mode = "absolute", params = "ctmax",
+          temp_mean = T_bar, seed = 1)$summary
+ts <- tls(fit_shr, by = "grp", mode = "absolute", params = "ctmax",
+          temp_mean = T_bar, seed = 1)$summary
+
+cmp <- merge(merge(gt, ti[, c("grp", "median")], by = "grp"),
+             ts[, c("grp", "median")], by = "grp", suffixes = c(".inh", ".shr"))
+cmp$err_inh    <- cmp$median.inh - cmp$CTmax_abs_1h
+cmp$err_shr    <- cmp$median.shr - cmp$CTmax_abs_1h
+cmp$inh_vs_shr <- cmp$median.inh - cmp$median.shr
+knitr::kable(cmp, digits = 3,
+             caption = "Per-group absolute CTmax (1 h): inherited recovers truth; shared is biased for the asymmetric group.")
+
+B <- cmp[cmp$grp == "B", ]
+stopifnot(
+  # (a) inherited recovers per-group truth within the ~1 C small-fit tolerance
+  all(abs(cmp$err_inh) < 1.0),
+  # (b) for the strongly asymmetric group, the shared-shape fit is materially biased,
+  #     and inherited differs from shared (the inheritance default matters)
+  abs(B$inh_vs_shr) > 0.5,
+  abs(B$err_shr) > abs(B$err_inh)
+)
+cat("PASS §1: inherited recovers per-group absolute CTmax;",
+    sprintf("shared biases group B by %.2f °C (inherited err %.2f).\n",
+            B$err_shr, B$err_inh))
+```
+
+## 2. Divergence contrast — centred vs flat asymptote priors
+
+A funnel-prone grouped sim (sparse data at the hottest temperature, so the upper
+asymptote is weakly identified there). With **flat** asymptote priors the raw
+asymptote parameters wander (the funnel) and the sampler diverges; the **centred**
+default priors tame it. Magnitude is indicative only — the reproducible guard is
+the byte-identical-prior test in `test-direct-priors.R`.
+
+```{r diverge}
+truth_fun <- list(A = list(ell = 0.03, u = 0.97, k = 6, z = 3.0, a0 = 1.4),
+                  B = list(ell = 0.05, u = 0.95, k = 5, z = 2.3, a0 = 1.2))
+std_fun <- standardize_data(
+  simulate_grouped(truth_fun, sparse_hot = TRUE, seed = 20260622),
+  temp = "T", duration = "t_hours", n_total = "n_trials", n_surv = "y_alive",
+  duration_unit = "hours")
+
+fit_centred <- fit_4pl(std_fun, ctmax = ~ 0 + grp, z = ~ 0 + grp,
+                       chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+                       control = list(adapt_delta = 0.9, max_treedepth = 11),
+                       refresh = 0, file = file.path(MODELS, "gate_funnel_centred"))
+
+pr_flat <- make_4pl_priors(std_fun, ctmax = ~ 0 + grp, z = ~ 0 + grp)
+pr_flat$prior[pr_flat$nlpar %in% c("lowraw", "upraw") & pr_flat$class == "b"] <-
+  "normal(0, 10)"
+fit_flat <- fit_4pl(std_fun, ctmax = ~ 0 + grp, z = ~ 0 + grp, prior = pr_flat,
+                    chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+                    control = list(adapt_delta = 0.9, max_treedepth = 11),
+                    refresh = 0, file = file.path(MODELS, "gate_funnel_flat"))
+
+dv_c <- divergences(fit_centred); dv_f <- divergences(fit_flat)
+cat(sprintf("divergent transitions: centred = %d, flat = %d\n", dv_c, dv_f))
+stopifnot(dv_f > dv_c)   # qualitative: flat asymptote priors induce more funnel divergences
+cat("PASS §2: flat asymptote priors induce more divergences than the centred default.\n")
+```
+
+## 3. Where the rest of the validation lives
+
+| Invariant | Where |
+|---|---|
+| Silent-NA / C(T)-oracle / threshold cells / unit aliases / seed determinism / print | fast `testthat` (`test-direct-extract.R`, `test-direct-priors.R`, `test-bayes_tls_methods.R`) — every CI run |
+| Truth-recovery, direct↔midpoint equivalence, grouped-redirect guards, `derive_*`/`predict_heat_injury` wiring | gated `testthat` (`test-direct-fixture.R`, `RUN_BRMS_TESTS=true`) |
+| Centred-prior funnel guard (reproducible) | `test-direct-priors.R` byte-identical asymptote-prior snapshot |
+| Grouped absolute per-group truth; divergence contrast (real fits) | **this gate** |
+
+Run before merge with `quarto render notes/2026-06-22-direct-ctmax-z-validation-gate.qmd`;
+a non-zero exit (failed `stopifnot`) blocks the merge.

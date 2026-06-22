@@ -283,9 +283,12 @@ fit_4pl <- function(data,
 
   # Reference exposure for CTmax (direct mode): t_ref is in minutes; place it on
   # the model's log10-time scale. log10_tref = log10(t_ref / minutes-per-unit).
+  # Use the SAME alias-aware unit mapping as extract_tdt()/derive_*(); a bespoke
+  # switch() here silently fell back to tm = 1 for any non-canonical label
+  # ("h", "hr", "Hours", ...), desynchronising log10_tref from the extractors.
+  # The NULL-unit sentinel "model_units" keeps tm = 1 (no real time unit given).
   unit       <- meta$duration_unit %||% "model_units"
-  tm         <- switch(unit, seconds = 1 / 60, minutes = 1, hours = 60,
-                       days = 1440, 1)
+  tm         <- if (identical(unit, "model_units")) 1 else tdt_unit_to_minutes(unit)
   log10_tref <- log10(t_ref / tm)
 
   formula <- make_4pl_formula(random_effects = random_effects,
@@ -320,6 +323,13 @@ fit_4pl <- function(data,
                              k              = k)
   }
 
+  # Fixed-effect moderators (e.g. species, life_stage) carried by the direct
+  # parameterisation. `grouped` is coding-independent, so the single-condition
+  # helpers can detect a grouped fit under BOTH `~ 0 + G` and `~ 1 + G` and
+  # redirect to tls()/the group-aware paths instead of silently returning the
+  # reference level.
+  group_vars <- if (direct) direct_group_vars(ctmax, z, up, low, k) else character(0)
+
   meta_full <- utils::modifyList(meta, list(
     random_effects   = random_effects,
     temp_effects     = match.arg(temp_effects, c("low", "up", "k", "mid"),
@@ -333,7 +343,9 @@ fit_4pl <- function(data,
     parameterization = if (direct) "direct" else "midpoint",
     threshold        = threshold,
     t_ref            = t_ref,
-    log10_tref       = log10_tref
+    log10_tref       = log10_tref,
+    group_vars       = group_vars,
+    grouped          = length(group_vars) > 0
   ))
 
   workflow <- structure(
@@ -403,6 +415,22 @@ get_brmsfit <- function(workflow) {
 # --- internal: formula-resolution helpers for the direct CTmax/z mode -------
 # (Unexported. Kept after the documented functions so the roxygen @export blocks
 # above attach to make_4pl_formula()/fit_4pl(), not to these helpers.)
+
+# Fixed-effect moderator variable names across the direct-mode formulas
+# (ctmax/z/up/low/k), excluding `temp_c` and random-effect grouping factors.
+# Empty character vector => single-group fit. Coding-independent: both
+# `~ 0 + species` (cell-means) and `~ species` (treatment) yield "species".
+direct_group_vars <- function(ctmax, z, up, low, k) {
+  fixed_vars <- function(f) {
+    if (is.null(f) || !inherits(f, "formula")) return(character(0))
+    rhs <- formula_rhs(f, "1")
+    rhs <- gsub("\\([^|]*\\|[^)]*\\)", "", rhs)        # drop (x | g) random terms
+    rhs <- trimws(gsub("\\+\\s*$|^\\s*\\+", "", rhs))
+    if (rhs %in% c("", "1", "0")) return(character(0))
+    setdiff(all.vars(stats::as.formula(paste("~", rhs))), "temp_c")
+  }
+  unique(unlist(lapply(list(ctmax, z, up, low, k), fixed_vars)))
+}
 
 # RHS of a one-sided (or two-sided) formula as a string; `default` when NULL.
 formula_rhs <- function(f, default) {

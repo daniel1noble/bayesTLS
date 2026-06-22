@@ -67,6 +67,46 @@ test_that("tdt_parameter_table on a direct fit is consistent with extract_tdt", 
   expect_lt(abs(z_tab - out$z$summary$z_median), 0.6)
 })
 
+test_that("seed makes extract_tdt and tls reproducible on a direct fit (D-T2)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_direct()
+
+  # extract_tdt: ndraws < fixture draws -> subsample + T_crit runif both seeded.
+  a  <- suppressMessages(extract_tdt(wf, ndraws = 300, lethal = TRUE, seed = 5))
+  b  <- suppressMessages(extract_tdt(wf, ndraws = 300, lethal = TRUE, seed = 5))
+  cc <- suppressMessages(extract_tdt(wf, ndraws = 300, lethal = TRUE, seed = 6))
+  expect_identical(a$z$summary$z_median,          b$z$summary$z_median)
+  expect_identical(a$T_crit$summary$temp_median,  b$T_crit$summary$temp_median)
+  expect_false(isTRUE(all.equal(a$T_crit$summary$temp_median,
+                                cc$T_crit$summary$temp_median)))
+
+  # tls(): posterior_linpred subsample + T_crit runif both seeded.
+  t1 <- tls(wf, lethal = TRUE, ndraws = 300, seed = 5)$summary
+  t2 <- tls(wf, lethal = TRUE, ndraws = 300, seed = 5)$summary
+  expect_identical(t1$median, t2$median)
+})
+
+test_that("derive_z and derive_temperature_for_duration are wired for direct fits", {
+  skip_unless_brms()
+
+  wf  <- load_fixture_workflow_direct()
+  ts  <- truth_summary()
+  out <- extract_tdt(wf, t_ref = 60, ndraws = 1500)
+
+  # derive_z(): direct fit -> finite z recovering exp(logz); agrees with extract_tdt.
+  zr <- derive_z(wf)
+  expect_true(is.finite(zr$summary$z_median))
+  expect_lt(abs(zr$summary$z_median - ts$z), 1.5)
+  expect_lt(abs(zr$summary$z_median - out$z$summary$z_median), 0.3)
+
+  # derive_temperature_for_duration(): finite CTmax at the 1 h reference.
+  tg <- seq(min(wf$data$temp) - 2, max(wf$data$temp) + 2, by = 0.05)
+  dd <- derive_temperature_for_duration(wf, exposure_duration = 1, temp_grid = tg,
+                                        target_surv = "relative")
+  expect_true(is.finite(dd$summary$temp_median))
+  expect_lt(abs(dd$summary$temp_median - out$CTmax$summary$temp_median), 1.0)
+})
+
 test_that("predict_heat_injury runs on a direct fit and agrees with midpoint", {
   skip_unless_brms()
 

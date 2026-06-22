@@ -32,17 +32,15 @@ extract_4pl_pars <- function(workflow) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
+  # Single-condition coefficient reader. Grouped fits (CTmax/z by a moderator)
+  # have no single *_Intercept set; redirect (coding-independent — catches both
+  # `~ 0 + G` and `~ 1 + G`, so a grouped treatment-coded fit can't silently
+  # return the reference level). Per-group heat injury: predict_heat_injury(by=).
+  tdt_stop_if_grouped(workflow, "extract_4pl_pars()")
+
   d  <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
   b  <- workflow$meta$bounds
-
-  # Direct fits carry CTmaxdev/logz, not b_mid_*; a grouped direct fit has no
-  # *_Intercept coefficients at all. Guard before touching any Intercept so the
-  # message is clear rather than a downstream plogis(NULL) error.
   direct <- identical(workflow$meta$parameterization, "direct")
-  if (direct && !all(c("b_CTmaxdev_Intercept", "b_logz_Intercept") %in% names(d)))
-    stop("extract_4pl_pars(): single-group direct fits only; for grouped ",
-         "direct fits use tls() / posterior_linpred-based helpers.",
-         call. = FALSE)
 
   low <- b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w
   up  <- b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w
@@ -190,6 +188,8 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'                     even if cumulative dose subsequently decreases.
 #' @param save_draws   Logical. If `TRUE`, return the full per-draw
 #'                     trajectories. Default `FALSE`.
+#' @param seed         Optional integer seeding the posterior-draw subsample for
+#'                     reproducibility. `NULL` (default) leaves the RNG untouched.
 #' @return A list with elements:
 #'   - `summary`: tibble with `time`, `temp`, and posterior median + 95%
 #'     CrI for `hi`, `survival`, and `mortality` at each time step.
@@ -211,7 +211,8 @@ predict_heat_injury <- function(trace, workflow,
                                 repair_pars = NULL,
                                 repair_scales_with_survival = TRUE,
                                 irreversible_mortality      = TRUE,
-                                save_draws                  = FALSE) {
+                                save_draws                  = FALSE,
+                                seed                        = NULL) {
 
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
@@ -245,6 +246,7 @@ predict_heat_injury <- function(trace, workflow,
   dt     <- (if (n >= 2L) diff(trace$time)[1] else 1) * to_hours(trace_unit)  # trace -> hours
 
   pars <- extract_4pl_pars(workflow)
+  if (!is.null(seed)) set.seed(seed)   # reproducible posterior-draw subsample
   pars <- dplyr::slice_sample(pars, n = min(ndraws, nrow(pars)))
 
   pred_list <- vector("list", nrow(pars))

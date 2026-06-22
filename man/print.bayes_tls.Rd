@@ -15,9 +15,11 @@
 The object, invisibly.
 }
 \description{
-One-screen header: data shape, asymptote/response bounds, random-effect
-grouping (if any), and fit status (draws if fitted, "spec only" otherwise).
-Call \link[=summary.bayes_tls]{summary()} for parameter posteriors and HMC
+One-screen header: data shape, asymptote/response bounds, parameterisation
+(midpoint, or direct CTmax/z with its threshold and \code{t_ref}; for grouped
+direct fits, the moderator(s)), random-effect grouping (if any), and fit
+status (draws if fitted, "spec only" otherwise). Call
+\link[=summary.bayes_tls]{summary()} for parameter posteriors and HMC
 diagnostics, \link[=plot.bayes_tls]{plot()} for MCMC trace plots.
 }
 \examples{

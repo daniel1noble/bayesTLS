@@ -171,3 +171,27 @@ These cannot live in the fixture regime (case-study magnitudes need the heavy
 
 1. **D-T1–D-T5**: all approved (see §1).
 2. **grouped `predict_heat_injury`**: still to settle during implementation — either add a group selector (full feature) or scope to single-group with an explicit `expect_error` on grouped input. Decide when that function is rewired; flag to Daniel at that point.
+
+## 8. Implementation status (2026-06-22)
+
+- **Tier 1 (fast)**: `test-direct-formula.R`, `test-direct-priors.R`,
+  `test-direct-extract.R` — formula/prior structure, C(T) oracle, silent-NA
+  guards, all four absolute-fit threshold cells, unit aliases, seed determinism,
+  print parameterisation. Run every CI pass.
+- **Tier 2 (gated)**: consolidated fixture `load_fixture_workflow_direct()` is a
+  **single-condition** relative fit (not the 2-group originally sketched in §4):
+  `extract_tdt` is single-condition by design, so per-group reads are validated
+  via `tls()` in the Tier-3 gate instead. `test-direct-fixture.R` covers
+  truth-recovery, direct↔midpoint equivalence, the integration silent-NA guard,
+  grouped-redirect for every single-condition helper, and seed reproducibility.
+- **Tier 3 (scripted gate)**: `notes/2026-06-22-direct-ctmax-z-validation-gate.qmd`
+  — grouped ABSOLUTE per-group truth (inheritance-bias, hard `stopifnot`) and the
+  divergence contrast (centred vs flat, qualitative). **Case-study golden numbers
+  are deliberately deferred** while the case studies are being restructured
+  (`ms/case_studies_new.qmd`); re-point a case-study section into the gate once
+  the new studies settle. Equivalence is covered meanwhile by the Tier-2 fixture
+  and `notes/2026-06-22-direct-ctmax-z-prototype-validation.qmd`.
+- **Adversarial review (2026-06-22)** of the rewire confirmed and fixed: the
+  `tdt_loglt` C0/C_p conflation, `derive_z` / `derive_temperature_for_duration`
+  direct wiring, the treatment-coded grouped guard (`tdt_is_grouped`), and the
+  `fit_4pl` unit-alias desync — all with regression tests.

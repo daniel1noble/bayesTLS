@@ -26,7 +26,8 @@ tls(
   nlpars = c("lowraw", "upraw", "logk", "mid"),
   ndraws = NULL,
   newdata = NULL,
-  probs = c(0.025, 0.5, 0.975)
+  probs = c(0.025, 0.5, 0.975),
+  seed = NULL
 )
 
 tls_z(object, ...)
@@ -86,6 +87,9 @@ evaluated for the slope/crossing. Default: 11 points over the observed range.}
 \code{by}/\code{temp_grid} construction.}
 
 \item{probs}{Summary quantiles (lower, median, upper). Default \code{c(.025,.5,.975)}.}
+
+\item{seed}{Optional integer seeding the draw subsample (\code{ndraws}) and the
+T_crit rate draws for reproducibility. \code{NULL} (default) leaves the RNG alone.}
 
 \item{...}{Additional arguments passed on to \code{\link[=tls]{tls()}} (used by the
 \code{tls_z()}, \code{tls_ctmax()} and \code{tls_tcrit()} convenience wrappers).}

@@ -10,7 +10,8 @@ derive_z(
   temp_grid = NULL,
   ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
-  h = 0.001
+  h = 0.001,
+  seed = NULL
 )
 }
 \arguments{
@@ -30,6 +31,10 @@ to pool. Default: the observed (unique) assay temperatures
 
 \item{h}{Temperature step (°C) for the central finite difference
 used in absolute mode. Default \code{1e-3}.}
+
+\item{seed}{Optional integer seeding the draw subsample (relevant only
+when \code{ndraws} is set) for reproducibility. \code{NULL} (default)
+leaves the RNG untouched.}
 }
 \value{
 A list with:
