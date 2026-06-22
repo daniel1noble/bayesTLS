@@ -10,7 +10,13 @@ make_4pl_priors(
   upper = 1,
   random_effects = NULL,
   prior_random_sd = "exponential(2)",
-  prior_phi = "gamma(2, 0.1)"
+  prior_phi = "gamma(2, 0.1)",
+  bounds = NULL,
+  ctmax = NULL,
+  z = NULL,
+  up = NULL,
+  low = NULL,
+  k = NULL
 )
 }
 \arguments{
@@ -33,6 +39,18 @@ random intercepts on \code{mid}. Adds one
 parameter \code{phi}. Default \code{"gamma(2, 0.1)"}. Pass
 \code{NULL} to omit the \code{phi} prior — needed when fitting
 with \code{family = binomial()} (no overdispersion).}
+
+\item{bounds}{Length-2 \code{c(lower, upper)} asymptote interval;
+supersedes \code{lower}/\code{upper} when supplied.}
+
+\item{ctmax, z, up, low, k}{One-sided formulas selecting the \strong{direct} CTmax/z
+priors (matching \code{\link[=make_4pl_formula]{make_4pl_formula()}}). Supplying
+\code{ctmax}/\code{z} switches to direct-mode priors: the same
+centred asymptote priors (per factor level for
+cell-means terms), weakly-informative \code{CTmaxdev}/\code{logz}
+priors, and random-effect SD priors on \code{CTmaxdev}/\code{logz}
+only (never on the shape sub-parameters). \code{up}/\code{low}/\code{k}
+follow the same inheritance resolution as the formula.}
 }
 \value{
 A \code{brmsprior} object ready to pass to \code{\link[=fit_4pl]{fit_4pl()}}.

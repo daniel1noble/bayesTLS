@@ -60,22 +60,43 @@ tdt_extract_pars <- function(workflow, ndraws = NULL) {
 # coefficient draws. Relative threshold: log10 LT = mid(T). Absolute p:
 # mid(T) + log((u - p)/(p - low))/k. A missing temp_c column (a dropped
 # temp_effects slope) counts as zero slope — population level, no random effects.
-tdt_loglt <- function(pars, Tbar, bnd, ts, T) {
+tdt_loglt <- function(pars, Tbar, bnd, ts, T, direct = NULL) {
   np  <- nrow(pars)
   col <- function(nm) if (nm %in% names(pars)) pars[[nm]] else rep(0, np)
   lp  <- function(nlpar, Tv)
     outer(col(paste0("b_", nlpar, "_temp_c")), Tv - Tbar) +
       col(paste0("b_", nlpar, "_Intercept"))
-  mid <- lp("mid", T)
-  if (ts$mode == "relative") return(mid)
   p   <- ts$prob
-  l   <- bnd$low_min + bnd$low_w * stats::plogis(lp("lowraw", T))
-  u   <- bnd$up_min  + bnd$up_w  * stats::plogis(lp("upraw",  T))
-  k   <- exp(lp("logk", T))
-  arg <- (u - p) / (p - l)
-  out <- mid + log(arg) / k
-  out[!is.finite(arg) | arg <= 0] <- NA_real_
-  out
+
+  # C(T) = log((u - p)/(p - l))/k is needed when the requested threshold is
+  # absolute, OR (direct mode) when the model was FIT on the absolute backbone
+  # (so the curve midpoint is mid = backbone - C(T)).
+  fit_abs <- !is.null(direct) && identical(direct$fit_threshold, "absolute")
+  Cmat <- NULL
+  if (ts$mode != "relative" || fit_abs) {
+    l    <- bnd$low_min + bnd$low_w * stats::plogis(lp("lowraw", T))
+    u    <- bnd$up_min  + bnd$up_w  * stats::plogis(lp("upraw",  T))
+    k    <- exp(lp("logk", T))
+    arg  <- (u - p) / (p - l)
+    Cmat <- log(arg) / k
+    Cmat[!is.finite(arg) | arg <= 0] <- NA_real_
+  }
+
+  # Curve midpoint mid(T). Midpoint parameterisation: the `mid` nlpar. Direct
+  # parameterisation: reconstruct the linear backbone from CTmaxdev/logz
+  # (= log10_tref - ((T - Tbar) - CTmaxdev)/exp(logz)); for an absolute fit the
+  # midpoint is that backbone minus C(T).
+  if (is.null(direct)) {
+    mid <- lp("mid", T)
+  } else {
+    cd  <- col(direct$ctmaxdev)
+    lz  <- col(direct$logz)
+    mid <- direct$log10_tref - (outer(rep(1, np), T - Tbar) - cd) / exp(lz)
+    if (fit_abs) mid <- mid - Cmat
+  }
+
+  if (ts$mode == "relative") return(mid)
+  mid + Cmat
 }
 
 # z per draw from coefficient draws. See derive_z() for the documented maths.
@@ -83,17 +104,19 @@ tdt_loglt <- function(pars, Tbar, bnd, ts, T) {
 # local_summary); only the pooled z is needed unless the caller requests it.
 tdt_z_from_pars <- function(pars, Tbar, bnd, ts, temp_grid,
                             probs = c(0.025, 0.5, 0.975), h = 1e-3,
-                            local = TRUE) {
+                            local = TRUE, direct = NULL) {
   np <- nrow(pars)
-  if (ts$mode == "relative") {
-    # log10 LT_rel(T) = mid(T) is linear, so z = -1 / b_mid_temp_c at every T.
+  if (ts$mode == "relative" && is.null(direct)) {
+    # Midpoint param: log10 LT_rel(T) = mid(T) is linear, z = -1 / b_mid_temp_c.
     zvec <- -1 / (if ("b_mid_temp_c" %in% names(pars)) pars$b_mid_temp_c
                   else rep(0, np))
     zloc <- matrix(zvec, nrow = np, ncol = length(temp_grid))
   } else {
-    # Local slope of the bent log10 LT_p(T) by central finite difference.
-    slope <- (tdt_loglt(pars, Tbar, bnd, ts, temp_grid + h) -
-              tdt_loglt(pars, Tbar, bnd, ts, temp_grid - h)) / (2 * h)
+    # Local slope of the (possibly bent / direct-reconstructed) log10 LT(T) by
+    # central finite difference. Direct relative recovers z = exp(logz); direct
+    # absolute / either-mode absolute reflects the curve's local slope.
+    slope <- (tdt_loglt(pars, Tbar, bnd, ts, temp_grid + h, direct) -
+              tdt_loglt(pars, Tbar, bnd, ts, temp_grid - h, direct)) / (2 * h)
     zloc  <- -1 / slope
     zloc[!is.finite(zloc)] <- NA_real_
   }
@@ -138,10 +161,11 @@ tdt_z_from_pars <- function(pars, Tbar, bnd, ts, temp_grid,
 # the closed-form LT curve over temp_grid by a vectorised inverse interpolation
 # across draws, with an exact per-row fallback for non-monotone/non-finite curves.
 tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
-                                probs = c(0.025, 0.5, 0.975)) {
+                                probs = c(0.025, 0.5, 0.975), direct = NULL) {
   np     <- nrow(pars)
   target <- log10(exposure_model)
-  if (ts$mode == "relative") {
+  if (ts$mode == "relative" && is.null(direct)) {
+    # Midpoint param: closed-form inverse of the linear mid(T).
     col <- function(nm) if (nm %in% names(pars)) pars[[nm]] else rep(0, np)
     Tc  <- Tbar + (target - col("b_mid_Intercept")) / col("b_mid_temp_c")
   } else {
@@ -151,7 +175,7 @@ tdt_ctmax_from_pars <- function(pars, Tbar, bnd, ts, exposure_model, temp_grid,
     # the last grid point still above target, and we interpolate within the
     # [j, j+1] interval. This replaces a per-draw stats::approx() loop and is
     # identical to it (verified to machine precision) for monotone curves.
-    M  <- tdt_loglt(pars, Tbar, bnd, ts, temp_grid)   # [np x nT]
+    M  <- tdt_loglt(pars, Tbar, bnd, ts, temp_grid, direct)   # [np x nT]
     nT <- length(temp_grid)
     Tc <- rep(NA_real_, np)
     j  <- rowSums(M > target, na.rm = TRUE)
@@ -599,17 +623,33 @@ extract_tdt <- function(workflow,
   pars        <- tdt_extract_pars(workflow, ndraws)
   Tbar        <- workflow$meta$temp_mean
   bnd         <- workflow$meta$bounds
+
+  # Direct CTmax/z parameterisation: there is no `mid` coefficient, so mid(T) is
+  # reconstructed from the CTmaxdev/logz coefficient draws. Single-group only;
+  # grouped direct fits (CTmax/z varying by a moderator) use tls().
+  direct <- NULL
+  if (identical(workflow$meta$parameterization, "direct")) {
+    if (!all(c("b_CTmaxdev_Intercept", "b_logz_Intercept") %in% names(pars)))
+      stop("extract_tdt() supports single-group direct fits; for grouped ",
+           "direct fits (CTmax/z varying by a moderator) use tls().",
+           call. = FALSE)
+    direct <- list(ctmaxdev      = "b_CTmaxdev_Intercept",
+                   logz          = "b_logz_Intercept",
+                   fit_threshold = workflow$meta$threshold %||% "relative",
+                   log10_tref    = workflow$meta$log10_tref %||% 0)
+  }
+
   z_temp_grid <- sort(unique(data$temp))
   z_temp_grid <- z_temp_grid[is.finite(z_temp_grid)]
 
   z_obj <- tdt_z_from_pars(pars, Tbar, bnd, ts, z_temp_grid,
-                           local = isTRUE(z_local))
+                           local = isTRUE(z_local), direct = direct)
 
   # Express the t_ref reference duration back in model time units so the
   # inverse-4PL lookup uses the same scale as the fitted model.
   exposure_in_model_units <- t_ref / time_multiplier
   ctmax <- tdt_ctmax_from_pars(pars, Tbar, bnd, ts, exposure_in_model_units,
-                               temp_grid)
+                               temp_grid, direct = direct)
 
   # LT_x curve retained as descriptive output (plotting / inspection); it is no
   # longer used to compute z or CTmax. The threshold is set by target_surv;

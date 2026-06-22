@@ -1,0 +1,149 @@
+---
+title: "New case studies (draft): zebrafish and cereal aphids"
+subtitle: "A single-condition TDT, and a multi-group comparison fit with the direct CTmax/z parameterisation"
+date: 2026-06-22
+format:
+  html:
+    toc: true
+    code-fold: show
+---
+
+<!-- DRAFT. Data-loading and fitting chunks are `eval: false` until the public
+archives are downloaded and their raw columns inspected (see end). Two studies
+with public data: zebrafish (Saruhashi 2026, Zenodo 10.5281/zenodo.20075355)
+and aphids (Li 2023, Dryad 10.5061/dryad.mcvdnck4j). Snail (Truebano 2018)
+deferred — no public deposit. -->
+
+```{r setup}
+#| message: false
+library(bayesTLS)
+library(dplyr)
+library(ggplot2)
+library(here)
+set.seed(123)
+models_dir <- here::here("output", "models")
+raw_dir    <- here::here("data-raw", "new_case_studies")
+```
+
+Two examples show the same package workflow at two levels of ambition. The
+**zebrafish** study is the simplest possible case — a single experimental
+condition, fit and summarised in three calls. The **aphid** study shows the
+payoff of the joint model: rather than fitting a separate curve per group and
+comparing point estimates afterwards, we let critical temperature ($CT_{max}$)
+and thermal sensitivity ($z$) depend on species **inside one model**, so the
+species comparison comes with full posterior uncertainty. In both cases we
+cross-check our estimates against the values reported in the original papers —
+they need not match exactly, since the joint 4PL fits the whole response surface
+rather than reading points off per-temperature regressions.
+
+# 1. Zebrafish larvae (normoxia) — a single-condition TDT
+
+@saruhashi2026 scored survival of zebrafish (*Danio rerio*) larvae across assay
+temperatures (38–40 °C) and exposure durations (7.5–240 min). Here we take the
+simplest slice — diploid larvae under normoxia — and estimate $z$, $CT_{max}$
+and $T_{crit}$, exactly as for a standard lethal-TDT assay.
+
+```{r zf-fit}
+#| eval: false
+zf <- readr::read_csv(file.path(raw_dir, "saruhashi2026_survival.csv")) |>
+  filter(ploidy == "diploid", oxygen == "normoxia") |>
+  count(temp, duration, name = "n_total", wt = NULL) |>   # TODO: real counts
+  # -> need n_total and n_surv per (temp, duration); reshape from raw alive/dead
+  identity()
+
+std_zf <- standardize_data(zf, temp = "temp", duration = "duration",
+                           n_total = "n_total", n_surv = "n_surv",
+                           duration_unit = "minutes")
+
+# Direct parameterisation: estimate CTmax and z themselves (single condition).
+wf_zf <- fit_4pl(std_zf, ctmax = ~ 1, z = ~ 1, t_ref = 60,
+                 file = file.path(models_dir, "zf_normoxia"),
+                 file_refit = "on_change")
+
+summary(wf_zf)   # brms population-level coefficients + HMC diagnostics
+```
+
+```{r zf-tdt}
+#| eval: false
+extract_tdt(wf_zf, lethal = TRUE)        # z, CTmax(1h), T_crit with 95% CrIs
+plot_survival_curves(wf_zf)              # fitted surface over the observed data
+```
+
+We then compare our $CT_{max}$ to the value Saruhashi et al. report for this
+condition. No field temperature series accompanies this (lab) study, so a
+heat-injury projection would require a sourced trace — omitted here.
+
+# 2. Cereal aphids — comparing species with the direct parameterisation
+
+@li2023 measured survival of three cereal-aphid species (*Metopolophium
+dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*) across temperatures and
+durations. We compare the **species** at a single age (6 days). Instead of three
+separate fits, we model $CT_{max}$ and $z$ as functions of species in one joint
+model — the species contrasts then fall straight out of the posterior.
+
+```{r aphid-fit}
+#| eval: false
+aphids <- readr::read_csv(file.path(raw_dir, "li2023_aphid_survival.csv")) |>
+  filter(age == 6, temp >= 30) |>                # 6-day larvae, heat branch
+  # -> one row per (species, temp, duration) with n_total and n_surv
+  identity()
+
+std_aphid <- standardize_data(aphids, temp = "temp", duration = "duration",
+                              n_total = "n_total", n_surv = "n_surv",
+                              duration_unit = "minutes")  # keeps `species`
+
+# CTmax and z each depend on species (cell-means coding); up/low/k inherit it.
+wf_aphid <- fit_4pl(std_aphid, ctmax = ~ 0 + species, z = ~ 0 + species,
+                    t_ref = 60,
+                    file = file.path(models_dir, "aphid_species"),
+                    file_refit = "on_change")
+
+summary(wf_aphid)   # per-species CTmaxdev / logz coefficients + diagnostics
+```
+
+```{r aphid-species}
+#| eval: false
+# Per-species z, CTmax and T_crit, straight from the joint fit.
+sp <- tls(wf_aphid, by = "species", lethal = TRUE)
+sp$summary
+
+# Species contrasts: difference the per-species posterior draws (e.g. R. padi
+# minus M. dirhodum for CTmax) and summarise with pMCMC, as in the manuscript.
+```
+
+The estimates are then checked two ways: (i) against the $z$ (≈3.2–4.7 °C) and
+$CT_{max,1h}$ (≈35–37 °C) Li et al. report, and (ii) against three independent
+per-species `fit_4pl()` fits — **only to confirm** the joint model recovers the
+same picture; the joint model is what we use for inference.
+
+```{r aphid-confirm}
+#| eval: false
+# Confirmation only: separate fits should agree with the joint model above.
+by_species <- split(std_aphid, std_aphid$species) |>
+  lapply(\(d) extract_tdt(fit_4pl(d, ctmax = ~ 1, z = ~ 1, t_ref = 60),
+                          lethal = TRUE))
+```
+
+Li et al. supply hourly temperature for three China wheat sites; with that trace
+we project heat-injury accumulation per species, reproducing their Fig. 2 within
+our posterior framework:
+
+```{r aphid-hi}
+#| eval: false
+# trace = tibble(time, temp) from the Dryad archive (one site/season)
+hi <- predict_heat_injury(trace, wf_aphid, target_surv = "relative",
+                          trace_unit = "hours")
+plot_heat_injury(hi)
+```
+
+# Data acquisition / open items
+
+- **Download:** aphids → Dryad `10.5061/dryad.mcvdnck4j`; zebrafish → Zenodo
+  `10.5281/zenodo.20075355` (+ code). Inspect each raw schema and reshape to
+  `(temp, duration, n_total, n_surv)` cells (plus `species` for aphids); then
+  set the chunks above to `eval: true`.
+- **Aphid trace:** extract the hourly 3-site series from the Dryad archive and
+  archive it under `inst/extdata` (mirroring the existing trace builders).
+- **Cold branch (aphids)** and the **ploidy × oxygen** zebrafish comparison are
+  natural extensions once the single examples are working.
+- **Snail (Truebano 2018):** deferred pending author data request.

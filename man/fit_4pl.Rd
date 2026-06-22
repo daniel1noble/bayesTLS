@@ -23,6 +23,14 @@ fit_4pl(
   file = NULL,
   file_refit = "on_change",
   fit = TRUE,
+  bounds = NULL,
+  ctmax = NULL,
+  z = NULL,
+  up = NULL,
+  low = NULL,
+  k = NULL,
+  threshold = c("relative", "absolute"),
+  t_ref = 60,
   ...
 )
 }
@@ -73,6 +81,21 @@ every unconstrained parameter at zero.}
 
 \item{fit}{Logical. If \code{FALSE}, returns the workflow spec without
 fitting — useful for inspecting the formula and priors.}
+
+\item{bounds}{Length-2 \code{c(lower, upper)} asymptote interval;
+supersedes \code{lower}/\code{upper} when supplied.}
+
+\item{ctmax, z, up, low, k}{One-sided formulas selecting the \strong{direct} CTmax/z
+parameterisation (see \code{\link[=make_4pl_formula]{make_4pl_formula()}}). Supplying
+\code{ctmax} and/or \code{z} fits CTmax and z directly; \code{up}/\code{low}/\code{k}
+are inherited from them when omitted.}
+
+\item{threshold}{\code{"relative"} (default) or \code{"absolute"}; the threshold the
+fitted CTmax/z refer to (direct mode only).}
+
+\item{t_ref}{Reference exposure for CTmax, in \strong{minutes} (default 60,
+i.e. one hour). Converted to the model's log10-time scale
+via the data's \code{duration_unit}.}
 
 \item{...}{Further arguments passed to \code{\link[brms:brm]{brms::brm()}}.}
 }

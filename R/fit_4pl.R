@@ -46,6 +46,36 @@
 #'                       *constant-shape* TDT model (asymptotes and slope shared
 #'                       across temperature), which is the right choice for sparse
 #'                       designs where the richer all-four model over-fits.
+#'                       Ignored in the direct CTmax/z parameterisation.
+#' @param bounds         Length-2 numeric `c(lower, upper)` giving the
+#'                       response-scale asymptote interval. Defaults to
+#'                       `c(lower, upper)`. Preferred over the separate
+#'                       `lower`/`upper` (which it supersedes — see those).
+#' @param ctmax,z        One-sided formulas for the **direct** parameterisation.
+#'                       Supplying either switches `make_4pl_formula()` to fit
+#'                       `CTmax` (as `CTmaxdev = CTmax - mean(temp)`) and `z`
+#'                       (as `logz`) directly as nonlinear parameters, with `mid`
+#'                       reconstructed from them. Carry the fixed and random
+#'                       effects for tolerance and sensitivity, e.g.
+#'                       `~ life_stage + (1 | Date)`. Omit `z` for a single
+#'                       pooled `z` (`logz ~ 1`).
+#' @param up,low,k       Optional one-sided formulas for the asymptote and
+#'                       steepness sub-parameters in direct mode. When omitted
+#'                       they inherit the `ctmax`/`z` **fixed** effects crossed
+#'                       with `temp_c` (random effects are not inherited);
+#'                       intercept-only `ctmax`/`z` gives `~ temp_c`. An explicit
+#'                       formula overrides inheritance.
+#' @param threshold      `"relative"` (default) fits the midpoint backbone so
+#'                       `CTmax`/`z` are the relative-threshold quantities;
+#'                       `"absolute"` bakes the asymmetry correction
+#'                       \eqn{C(T) = (1/k)\log((up-p)/(p-low))} into `mid` so
+#'                       they are the absolute (`p`-survival) quantities.
+#' @param p              Survival fraction defining the absolute threshold.
+#'                       Default `0.5`.
+#' @param log10_tref     `log10` of the reference exposure (in the model's time
+#'                       unit) at which `CTmax` is defined. Default `0` (one time
+#'                       unit). [fit_4pl()] derives this from `t_ref` and the
+#'                       data's duration unit.
 #' @return A `brmsformula` object.
 #' @examples
 #' make_4pl_formula()
@@ -53,57 +83,82 @@
 #' make_4pl_formula(temp_effects = "mid")            # constant-shape TDT
 #' make_4pl_formula(family = brms::Beta(link = "identity"),
 #'                  response_var = "survival")
+#' make_4pl_formula(ctmax = ~ life_stage, z = ~ life_stage)  # direct CTmax/z
 #' @export
 make_4pl_formula <- function(random_effects = NULL,
-                             lower          = 0,
-                             upper          = 1,
+                             bounds         = NULL,
                              family         = brms::beta_binomial(
                                link = "identity"),
                              response_var   = "survival",
-                             temp_effects   = c("low", "up", "k", "mid")) {
+                             temp_effects   = c("low", "up", "k", "mid"),
+                             ctmax          = NULL,
+                             z              = NULL,
+                             up             = NULL,
+                             low            = NULL,
+                             k              = NULL,
+                             threshold      = c("relative", "absolute"),
+                             p              = 0.5,
+                             log10_tref     = 0,
+                             lower          = 0,
+                             upper          = 1) {
 
-  temp_effects <- match.arg(temp_effects, c("low", "up", "k", "mid"),
-                            several.ok = TRUE)
-  if (!"mid" %in% temp_effects)
-    stop("`mid` must always carry temp_c (its slope is -1/z, the core TDT ",
-         "quantity); include \"mid\" in `temp_effects`.", call. = FALSE)
-
-  b <- compute_4pl_bounds(lower, upper)
+  if (is.null(bounds)) bounds <- c(lower, upper)
+  threshold <- match.arg(threshold)
+  b <- compute_4pl_bounds(bounds[1], bounds[2])
 
   low_expr <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
   up_expr  <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min,  b$up_w)
 
-  main_rhs <- sprintf(
-    "%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))",
-    low_expr, up_expr, low_expr
-  )
+  # Response LHS + optional logit() wrap, shared across parameterisations.
+  is_beta  <- identical(family$family, "beta")
+  resp_lhs <- if (is_beta) response_var else "n_surv | trials(n_total)"
+  wrap     <- function(rhs) if (is_beta && identical(family$link, "logit"))
+                              sprintf("logit(%s)", rhs) else rhs
 
-  # Each sub-parameter is "~ temp_c" if selected, else "~ 1" (constant in
-  # temperature). Random intercepts always attach to mid.
-  par_rhs   <- function(par) if (par %in% temp_effects) "temp_c" else "1"
-  mid_terms <- c(par_rhs("mid"), tdt_format_random_effects(random_effects))
-  mid_rhs   <- paste(mid_terms, collapse = " + ")
-
-  family_name <- family$family
-  if (identical(family_name, "beta")) {
-    # Continuous proportion: no trials() term. Wrap in logit() only when the
-    # family link is logit, so the mean is the 4PL value under either link.
-    resp_rhs <- if (identical(family$link, "logit"))
-                  sprintf("logit(%s)", main_rhs) else main_rhs
-    response_formula <- sprintf("%s ~ %s", response_var, resp_rhs)
-  } else {
-    response_formula <- sprintf("n_surv | trials(n_total) ~ %s", main_rhs)
+  if (is.null(ctmax) && is.null(z)) {
+    ## ---- midpoint parameterisation (unchanged) ----
+    temp_effects <- match.arg(temp_effects, c("low", "up", "k", "mid"),
+                              several.ok = TRUE)
+    if (!"mid" %in% temp_effects)
+      stop("`mid` must always carry temp_c (its slope is -1/z, the core TDT ",
+           "quantity); include \"mid\" in `temp_effects`.", call. = FALSE)
+    main_rhs  <- sprintf(
+      "%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))",
+      low_expr, up_expr, low_expr)
+    par_rhs   <- function(par) if (par %in% temp_effects) "temp_c" else "1"
+    mid_terms <- c(par_rhs("mid"), tdt_format_random_effects(random_effects))
+    mid_rhs   <- paste(mid_terms, collapse = " + ")
+    return(brms::bf(
+      stats::as.formula(sprintf("%s ~ %s", resp_lhs, wrap(main_rhs))),
+      stats::as.formula(paste("lowraw ~", par_rhs("low"))),
+      stats::as.formula(paste("upraw  ~", par_rhs("up"))),
+      stats::as.formula(paste("logk   ~", par_rhs("k"))),
+      stats::as.formula(paste("mid    ~", mid_rhs)),
+      nl = TRUE, family = family))
   }
 
+  ## ---- direct CTmax/z parameterisation ----
+  # CTmaxdev and logz are estimated; low/up/k and mid are nlf-derived. mid is the
+  # relative backbone, minus C(T) under threshold = "absolute".
+  ctmax_rhs <- formula_rhs(ctmax, "1")
+  z_rhs     <- formula_rhs(z,     "1")
+  inherit   <- if (!is.null(ctmax)) ctmax_rhs else z_rhs
+  mid_rel   <- sprintf("(%g - (temp_c - CTmaxdev) / exp(logz))", log10_tref)
+  mid_expr  <- if (identical(threshold, "relative")) mid_rel else
+    sprintf("(%s - (1/exp(logk)) * log((up - %g)/(%g - low)))", mid_rel, p, p)
+  main_rhs  <- "low + (up - low) / (1 + exp(exp(logk) * (logd - mid)))"
+
   brms::bf(
-    stats::as.formula(response_formula),
-    stats::as.formula(paste("lowraw ~", par_rhs("low"))),
-    stats::as.formula(paste("upraw  ~", par_rhs("up"))),
-    stats::as.formula(paste("logk   ~", par_rhs("k"))),
-    stats::as.formula(paste("mid    ~", mid_rhs)),
-    nl = TRUE,
-    family = family
-  )
+    stats::as.formula(sprintf("%s ~ %s", resp_lhs, wrap(main_rhs))),
+    brms::nlf(stats::as.formula(paste("low ~", low_expr))),
+    brms::nlf(stats::as.formula(paste("up  ~", up_expr))),
+    brms::nlf(stats::as.formula(paste("mid ~", mid_expr))),
+    stats::as.formula(paste("lowraw   ~", resolve_shape(low, inherit))),
+    stats::as.formula(paste("upraw    ~", resolve_shape(up,  inherit))),
+    stats::as.formula(paste("logk     ~", resolve_shape(k,   inherit))),
+    stats::as.formula(paste("CTmaxdev ~", ctmax_rhs)),
+    stats::as.formula(paste("logz     ~", z_rhs)),
+    nl = TRUE, family = family)
 }
 
 #' Fit the joint Bayesian 4PL to standardised TDT data
@@ -152,6 +207,17 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param file_refit     Passed to [brms::brm()]. Default `"on_change"`.
 #' @param fit            Logical. If `FALSE`, returns the workflow spec without
 #'                       fitting — useful for inspecting the formula and priors.
+#' @param bounds         Length-2 `c(lower, upper)` asymptote interval;
+#'                       supersedes `lower`/`upper` when supplied.
+#' @param ctmax,z,up,low,k One-sided formulas selecting the **direct** CTmax/z
+#'                       parameterisation (see [make_4pl_formula()]). Supplying
+#'                       `ctmax` and/or `z` fits CTmax and z directly; `up`/`low`/`k`
+#'                       are inherited from them when omitted.
+#' @param threshold      `"relative"` (default) or `"absolute"`; the threshold the
+#'                       fitted CTmax/z refer to (direct mode only).
+#' @param t_ref          Reference exposure for CTmax, in **minutes** (default 60,
+#'                       i.e. one hour). Converted to the model's log10-time scale
+#'                       via the data's `duration_unit`.
 #' @param ...            Further arguments passed to [brms::brm()].
 #' @return A list of class `"bayes_tls"` with elements `fit`, `data`,
 #'         `formula`, `prior`, `meta`. See [print.bayes_tls()],
@@ -184,7 +250,19 @@ fit_4pl <- function(data,
                     file           = NULL,
                     file_refit     = "on_change",
                     fit            = TRUE,
+                    bounds         = NULL,
+                    ctmax          = NULL,
+                    z              = NULL,
+                    up             = NULL,
+                    low            = NULL,
+                    k              = NULL,
+                    threshold      = c("relative", "absolute"),
+                    t_ref          = 60,
                     ...) {
+
+  threshold <- match.arg(threshold)
+  if (!is.null(bounds)) { lower <- bounds[1]; upper <- bounds[2] }
+  direct <- !is.null(ctmax) || !is.null(z)
 
   meta <- attr(data, "tdt_meta") %||%
     list(temp_mean      = mean(data$temp, na.rm = TRUE),
@@ -203,12 +281,26 @@ fit_4pl <- function(data,
                 brms::beta_binomial(link = "identity")
   }
 
+  # Reference exposure for CTmax (direct mode): t_ref is in minutes; place it on
+  # the model's log10-time scale. log10_tref = log10(t_ref / minutes-per-unit).
+  unit       <- meta$duration_unit %||% "model_units"
+  tm         <- switch(unit, seconds = 1 / 60, minutes = 1, hours = 60,
+                       days = 1440, 1)
+  log10_tref <- log10(t_ref / tm)
+
   formula <- make_4pl_formula(random_effects = random_effects,
                               lower          = lower,
                               upper          = upper,
                               family         = family,
                               response_var   = response_var,
-                              temp_effects   = temp_effects)
+                              temp_effects   = temp_effects,
+                              ctmax          = ctmax,
+                              z              = z,
+                              up             = up,
+                              low            = low,
+                              k              = k,
+                              threshold      = threshold,
+                              log10_tref     = log10_tref)
 
   if (is.null(prior)) {
     # Set the phi prior only for families that carry a precision parameter
@@ -220,19 +312,28 @@ fit_4pl <- function(data,
                              lower          = lower,
                              upper          = upper,
                              random_effects = random_effects,
-                             prior_phi      = prior_phi)
+                             prior_phi      = prior_phi,
+                             ctmax          = ctmax,
+                             z              = z,
+                             up             = up,
+                             low            = low,
+                             k              = k)
   }
 
   meta_full <- utils::modifyList(meta, list(
-    random_effects = random_effects,
-    temp_effects   = match.arg(temp_effects, c("low", "up", "k", "mid"),
-                               several.ok = TRUE),
-    lower          = lower,
-    upper          = upper,
-    bounds         = compute_4pl_bounds(lower, upper),
-    response_type  = response_type,
-    family         = family$family,
-    link           = family$link
+    random_effects   = random_effects,
+    temp_effects     = match.arg(temp_effects, c("low", "up", "k", "mid"),
+                                 several.ok = TRUE),
+    lower            = lower,
+    upper            = upper,
+    bounds           = compute_4pl_bounds(lower, upper),
+    response_type    = response_type,
+    family           = family$family,
+    link             = family$link,
+    parameterization = if (direct) "direct" else "midpoint",
+    threshold        = threshold,
+    t_ref            = t_ref,
+    log10_tref       = log10_tref
   ))
 
   workflow <- structure(
@@ -297,4 +398,35 @@ get_brmsfit <- function(workflow) {
   if (!has_fit(workflow))
     stop("workflow has no fit; call fit_4pl() first.", call. = FALSE)
   workflow$fit
+}
+
+# --- internal: formula-resolution helpers for the direct CTmax/z mode -------
+# (Unexported. Kept after the documented functions so the roxygen @export blocks
+# above attach to make_4pl_formula()/fit_4pl(), not to these helpers.)
+
+# RHS of a one-sided (or two-sided) formula as a string; `default` when NULL.
+formula_rhs <- function(f, default) {
+  if (is.null(f)) return(default)
+  if (!inherits(f, "formula"))
+    stop("formula arguments (ctmax, z, up, low, k) must be one-sided formulas ",
+         "or NULL, e.g. `~ life_stage + (1 | Date)`.", call. = FALSE)
+  paste(deparse(f[[length(f)]]), collapse = " ")
+}
+
+# Resolve a shape sub-parameter (up/low/k) RHS. An explicit formula wins.
+# Otherwise inherit the CTmax/z FIXED effects crossed with temp_c (so the
+# absolute correction can differ per group); RANDOM effects are NOT inherited
+# (they stay on CTmax/z); intercept-only CTmax/z gives `temp_c`.
+resolve_shape <- function(shape_f, inherit_rhs) {
+  if (!is.null(shape_f)) return(formula_rhs(shape_f, "temp_c"))
+  fe <- trimws(gsub("\\+?\\s*\\([^|]*\\|[^)]*\\)", "", inherit_rhs))  # drop (x | g)
+  fe <- trimws(gsub("\\+\\s*$|^\\s*\\+\\s*", "", fe))
+  if (fe %in% c("", "1")) return("temp_c")
+  if (grepl("^0\\s*\\+", fe)) {                                       # cell-means 0 + G
+    core <- trimws(sub("^0\\s*\\+\\s*", "", fe))
+    if (grepl("\\+", core)) paste0("0 + ", core, " + temp_c:(", core, ")")
+    else                    paste0("0 + ", core, " + temp_c:", core)
+  } else {
+    paste0("(", fe, ") * temp_c")                                    # treatment G * temp_c
+  }
 }

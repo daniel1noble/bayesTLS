@@ -27,6 +27,7 @@ Useful links:
 Authors:
 \itemize{
   \item Pieter A. Arnold
+  \item Shinichi Nakagawa
   \item Patrice Pottier \email{patrice.pottier@bioenv.gu.se}
 }
 

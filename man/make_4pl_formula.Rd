@@ -6,20 +6,30 @@
 \usage{
 make_4pl_formula(
   random_effects = NULL,
-  lower = 0,
-  upper = 1,
+  bounds = NULL,
   family = brms::beta_binomial(link = "identity"),
   response_var = "survival",
-  temp_effects = c("low", "up", "k", "mid")
+  temp_effects = c("low", "up", "k", "mid"),
+  ctmax = NULL,
+  z = NULL,
+  up = NULL,
+  low = NULL,
+  k = NULL,
+  threshold = c("relative", "absolute"),
+  p = 0.5,
+  log10_tref = 0,
+  lower = 0,
+  upper = 1
 )
 }
 \arguments{
 \item{random_effects}{Optional character vector of grouping variables for
 random intercepts on \code{mid}.}
 
-\item{lower, upper}{Response-scale bounds for the asymptotes. Default
-\verb{0, 1} for proportion data; set narrower for sublethal
-data whose response sits well above \code{0}.}
+\item{bounds}{Length-2 numeric \code{c(lower, upper)} giving the
+response-scale asymptote interval. Defaults to
+\code{c(lower, upper)}. Preferred over the separate
+\code{lower}/\code{upper} (which it supersedes — see those).}
 
 \item{family}{brms family. Default \code{beta_binomial(link = "identity")}.
 Pass \code{binomial(link = "identity")} for the simpler
@@ -38,7 +48,42 @@ always be present (its slope is \eqn{-1/z}, the core TDT
 quantity). Restricting to \code{"mid"} gives the classical
 \emph{constant-shape} TDT model (asymptotes and slope shared
 across temperature), which is the right choice for sparse
-designs where the richer all-four model over-fits.}
+designs where the richer all-four model over-fits.
+Ignored in the direct CTmax/z parameterisation.}
+
+\item{ctmax, z}{One-sided formulas for the \strong{direct} parameterisation.
+Supplying either switches \code{make_4pl_formula()} to fit
+\code{CTmax} (as \code{CTmaxdev = CTmax - mean(temp)}) and \code{z}
+(as \code{logz}) directly as nonlinear parameters, with \code{mid}
+reconstructed from them. Carry the fixed and random
+effects for tolerance and sensitivity, e.g.
+\code{~ life_stage + (1 | Date)}. Omit \code{z} for a single
+pooled \code{z} (\code{logz ~ 1}).}
+
+\item{up, low, k}{Optional one-sided formulas for the asymptote and
+steepness sub-parameters in direct mode. When omitted
+they inherit the \code{ctmax}/\code{z} \strong{fixed} effects crossed
+with \code{temp_c} (random effects are not inherited);
+intercept-only \code{ctmax}/\code{z} gives \code{~ temp_c}. An explicit
+formula overrides inheritance.}
+
+\item{threshold}{\code{"relative"} (default) fits the midpoint backbone so
+\code{CTmax}/\code{z} are the relative-threshold quantities;
+\code{"absolute"} bakes the asymmetry correction
+\eqn{C(T) = (1/k)\log((up-p)/(p-low))} into \code{mid} so
+they are the absolute (\code{p}-survival) quantities.}
+
+\item{p}{Survival fraction defining the absolute threshold.
+Default \code{0.5}.}
+
+\item{log10_tref}{\code{log10} of the reference exposure (in the model's time
+unit) at which \code{CTmax} is defined. Default \code{0} (one time
+unit). \code{\link[=fit_4pl]{fit_4pl()}} derives this from \code{t_ref} and the
+data's duration unit.}
+
+\item{lower, upper}{Response-scale bounds for the asymptotes. Default
+\verb{0, 1} for proportion data; set narrower for sublethal
+data whose response sits well above \code{0}.}
 }
 \value{
 A \code{brmsformula} object.
@@ -71,4 +116,5 @@ make_4pl_formula(family = binomial(link = "identity"))
 make_4pl_formula(temp_effects = "mid")            # constant-shape TDT
 make_4pl_formula(family = brms::Beta(link = "identity"),
                  response_var = "survival")
+make_4pl_formula(ctmax = ~ life_stage, z = ~ life_stage)  # direct CTmax/z
 }

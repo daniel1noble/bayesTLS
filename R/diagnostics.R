@@ -90,11 +90,16 @@ diagnose_tdt_fit <- function(workflow) {
 
 #' Posterior parameter table on the natural scale
 #'
-#' Pulls the population-level posterior of the four reparameterised 4PL
-#' parameters (`low`, `up`, `k`, `mid` intercept) and the `mid` temperature
-#' slope, transformed back to the natural scale via the model's bounds. Also
-#' includes `z = -1 / mid_temp`. Returns a one-row-per-parameter tibble with
-#' median + 95% CrI.
+#' Pulls the population-level posterior of the reparameterised 4PL parameters,
+#' transformed back to the natural scale via the model's bounds, as a
+#' one-row-per-parameter tibble with median + 95% CrI.
+#'
+#' For the **midpoint** parameterisation the rows are `low`, `up`, `k`, the
+#' `mid` intercept and temperature slope, and `z = -1 / mid_temp`. For the
+#' **direct** CTmax/z parameterisation there is no `mid` coefficient, so the
+#' rows are `low`, `up`, `k`, `CTmax = temp_mean + CTmaxdev` (at the model's
+#' reference dose) and `z = exp(logz)`, read directly from the fitted
+#' coefficients. Single-group fits only.
 #'
 #' @param workflow A fitted `bayes_tls`.
 #' @return A tibble with columns `parameter`, `median`, `lower`, `upper`.
@@ -110,14 +115,16 @@ tdt_parameter_table <- function(workflow) {
   d <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
   b <- workflow$meta$bounds
 
-  draws <- tibble::tibble(
-    low      = b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w,
-    up       = b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w,
-    k        = exp(d$b_logk_Intercept),
-    mid_int  = d$b_mid_Intercept,
-    mid_temp = d$b_mid_temp_c,
-    z        = -1 / d$b_mid_temp_c
-  )
+  # Guard grouped direct fits (no *_Intercept) before touching any Intercept,
+  # so the message is clear rather than a downstream plogis(NULL) error.
+  direct <- identical(workflow$meta$parameterization, "direct")
+  if (direct && !all(c("b_CTmaxdev_Intercept", "b_logz_Intercept") %in% names(d)))
+    stop("tdt_parameter_table(): single-group direct fits only; for grouped ",
+         "direct fits use tls().", call. = FALSE)
+
+  low <- b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w
+  up  <- b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w
+  k   <- exp(d$b_logk_Intercept)
 
   summary_row <- function(x, name) {
     q <- stats::quantile(x, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
@@ -125,12 +132,24 @@ tdt_parameter_table <- function(workflow) {
                    median = q[2], lower = q[1], upper = q[3])
   }
 
+  if (direct) {
+    ctmax <- (workflow$meta$temp_mean %||% 0) + d$b_CTmaxdev_Intercept
+    z     <- exp(d$b_logz_Intercept)
+    return(dplyr::bind_rows(
+      summary_row(low,   "low (lower asymptote)"),
+      summary_row(up,    "up (upper asymptote)"),
+      summary_row(k,     "k (slope)"),
+      summary_row(ctmax, "CTmax (\u00b0C, at reference dose)"),
+      summary_row(z,     "z (\u00b0C)")
+    ))
+  }
+
   dplyr::bind_rows(
-    summary_row(draws$low,      "low (lower asymptote)"),
-    summary_row(draws$up,       "up (upper asymptote)"),
-    summary_row(draws$k,        "k (slope)"),
-    summary_row(draws$mid_int,  "mid intercept (at T_bar)"),
-    summary_row(draws$mid_temp, "mid temp_c slope"),
-    summary_row(draws$z,        "z (\u00b0C)")
+    summary_row(low,             "low (lower asymptote)"),
+    summary_row(up,              "up (upper asymptote)"),
+    summary_row(k,               "k (slope)"),
+    summary_row(d$b_mid_Intercept, "mid intercept (at T_bar)"),
+    summary_row(d$b_mid_temp_c,  "mid temp_c slope"),
+    summary_row(-1 / d$b_mid_temp_c, "z (\u00b0C)")
   )
 }

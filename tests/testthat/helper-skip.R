@@ -32,6 +32,30 @@ load_fixture_workflow <- function() {
           refresh = 0)
 }
 
+# Direct CTmax/z fixture: the SAME simulate_tdt() data and design as
+# load_fixture_workflow(), but fit with the direct parameterisation
+# (ctmax = ~ 1, z = ~ 1, pooled single-group). Used to check that the direct
+# helpers recover the planted z/CTmax and agree with the midpoint fixture.
+# Cached at tests/testthat/fixtures/sim_fit_direct_small.rds.
+load_fixture_workflow_direct <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  fit_path  <- file.path(fixture_dir, "sim_fit_direct_small")  # brms appends .rds
+
+  raw <- simulate_tdt(seed = 20260512)
+  std <- standardize_data(raw,
+                          temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours")
+
+  fit_4pl(std,
+          ctmax   = ~ 1, z = ~ 1,
+          chains  = 2, iter = 1500, warmup = 750, cores = 2, seed = 1,
+          control = list(adapt_delta = 0.95, max_treedepth = 12),
+          file    = fit_path,
+          refresh = 0)
+}
+
 # Beta (continuous-proportion) fixture: standardize_data(proportion =) ->
 # fit_4pl(family = Beta(link = "identity")). Cached at
 # tests/testthat/fixtures/sim_fit_beta_small.rds.

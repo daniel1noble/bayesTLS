@@ -35,13 +35,46 @@ extract_4pl_pars <- function(workflow) {
   d  <- posterior::as_draws_df(workflow$fit) |> as.data.frame()
   b  <- workflow$meta$bounds
 
+  # Direct fits carry CTmaxdev/logz, not b_mid_*; a grouped direct fit has no
+  # *_Intercept coefficients at all. Guard before touching any Intercept so the
+  # message is clear rather than a downstream plogis(NULL) error.
+  direct <- identical(workflow$meta$parameterization, "direct")
+  if (direct && !all(c("b_CTmaxdev_Intercept", "b_logz_Intercept") %in% names(d)))
+    stop("extract_4pl_pars(): single-group direct fits only; for grouped ",
+         "direct fits use tls() / posterior_linpred-based helpers.",
+         call. = FALSE)
+
+  low <- b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w
+  up  <- b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w
+  k   <- exp(d$b_logk_Intercept)
+
+  # Linear midpoint coefficients (mid = mid_int + mid_temp * temp_c). Midpoint
+  # parameterisation reads them directly. Direct parameterisation has no `mid`
+  # coefficient, so reconstruct the *relative* midpoint backbone from
+  # CTmaxdev/logz: mid(T) = log10_tref - (temp_c - CTmaxdev)/exp(logz), giving
+  # slope -1/exp(logz) and intercept log10_tref + CTmaxdev/exp(logz). Under the
+  # heat-injury constant-shape assumption (low/up/k read at the Intercept), an
+  # absolute fit's relative midpoint is that backbone shifted by a constant
+  # C = log((up - 0.5)/(0.5 - low))/k, so it stays linear here.
+  if (direct) {
+    z        <- exp(d$b_logz_Intercept)
+    l10      <- workflow$meta$log10_tref %||% 0
+    mid_temp <- -1 / z
+    mid_int  <- l10 + d$b_CTmaxdev_Intercept / z
+    if (identical(workflow$meta$threshold %||% "relative", "absolute"))
+      mid_int <- mid_int - log((up - 0.5) / (0.5 - low)) / k
+  } else {
+    mid_int  <- d$b_mid_Intercept
+    mid_temp <- d$b_mid_temp_c
+  }
+
   out <- tibble::tibble(
     .draw    = seq_len(nrow(d)),
-    low      = b$low_min + stats::plogis(d$b_lowraw_Intercept) * b$low_w,
-    up       = b$up_min  + stats::plogis(d$b_upraw_Intercept)  * b$up_w,
-    k        = exp(d$b_logk_Intercept),
-    mid_int  = d$b_mid_Intercept,
-    mid_temp = d$b_mid_temp_c
+    low      = low,
+    up       = up,
+    k        = k,
+    mid_int  = mid_int,
+    mid_temp = mid_temp
   )
 
   dplyr::filter(out,
