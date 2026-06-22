@@ -28,7 +28,7 @@ For the \strong{midpoint} parameterisation the rows are \code{low}, \code{up}, \
 \strong{direct} CTmax/z parameterisation the rows are \code{low}, \code{up}, \code{k},
 \code{CTmax} (at the model's reference dose) and \code{z}. All quantities are read by
 evaluating \code{brms::posterior_linpred(nlpar=)} at \code{temp_c = 0} and \code{temp_c = 1}
-(so the result is parameterisation- and coding-agnostic \u2014 no coefficient-name
+(so the result is parameterisation- and coding-agnostic -- no coefficient-name
 parsing). For a fit whose CTmax/z vary by a moderator the table is returned
 per group, with the moderator column(s) prepended.
 }

@@ -99,7 +99,7 @@ diagnose_tdt_fit <- function(workflow) {
 #' **direct** CTmax/z parameterisation the rows are `low`, `up`, `k`,
 #' `CTmax` (at the model's reference dose) and `z`. All quantities are read by
 #' evaluating `brms::posterior_linpred(nlpar=)` at `temp_c = 0` and `temp_c = 1`
-#' (so the result is parameterisation- and coding-agnostic \u2014 no coefficient-name
+#' (so the result is parameterisation- and coding-agnostic -- no coefficient-name
 #' parsing). For a fit whose CTmax/z vary by a moderator the table is returned
 #' per group, with the moderator column(s) prepended.
 #'
