@@ -13,11 +13,17 @@ tdt_parameter_table(workflow)
 A tibble with columns \code{parameter}, \code{median}, \code{lower}, \code{upper}.
 }
 \description{
-Pulls the population-level posterior of the four reparameterised 4PL
-parameters (\code{low}, \code{up}, \code{k}, \code{mid} intercept) and the \code{mid} temperature
-slope, transformed back to the natural scale via the model's bounds. Also
-includes \code{z = -1 / mid_temp}. Returns a one-row-per-parameter tibble with
-median + 95\% CrI.
+Pulls the population-level posterior of the reparameterised 4PL parameters,
+transformed back to the natural scale via the model's bounds, as a
+one-row-per-parameter tibble with median + 95\% CrI.
+}
+\details{
+For the \strong{midpoint} parameterisation the rows are \code{low}, \code{up}, \code{k}, the
+\code{mid} intercept and temperature slope, and \code{z = -1 / mid_temp}. For the
+\strong{direct} CTmax/z parameterisation there is no \code{mid} coefficient, so the
+rows are \code{low}, \code{up}, \code{k}, \code{CTmax = temp_mean + CTmaxdev} (at the model's
+reference dose) and \code{z = exp(logz)}, read directly from the fitted
+coefficients. Single-group fits only.
 }
 \examples{
 \dontrun{
