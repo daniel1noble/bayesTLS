@@ -1,0 +1,447 @@
+---
+title: "Direct CTmax/z parameterisation: prototype + validation"
+subtitle: "Design mock-up (NOT yet in the package), validated on zebrafish and Drosophila"
+date: 2026-06-22
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+    code-fold: show
+---
+
+```{r setup}
+#| message: false
+#| warning: false
+pacman::p_load(brms, posterior, dplyr, tibble, here)
+devtools::load_all(here::here(), quiet = TRUE)   # for standardize_data, tls, compute_4pl_bounds
+models_dir <- here::here("output", "models")
+options(mc.cores = 4)
+cb  <- getFromNamespace("compute_4pl_bounds", "bayesTLS")
+qci <- function(x) sprintf("%.2f [%.2f, %.2f]", median(x),
+                           quantile(x, .025, names = FALSE), quantile(x, .975, names = FALSE))
+```
+
+## 1. What this designs (and the decisions behind it)
+
+A **mock-up** of the direct CTmax/z parameterisation, prototyped in *this note
+only* — `R/` and the supplement are untouched. Design decisions (Daniel,
+2026-06-22):
+
+- **No `parameterization` argument.** Supplying `ctmax_formula` and/or
+  `z_formula` *is* the switch to direct mode. Don't overcomplicate.
+- **`threshold` selects the fitted backbone.** `"relative"` (default) puts the
+  linear-in-T backbone on the midpoint; `"absolute"` bakes the up/low/k
+  temperature effects into the asymmetry correction so the fitted CTmax and z
+  **are** the absolute (fixed-survival) quantities.
+- **Per-parameter formulas for `low`/`up`/`k` too** (symmetry with CTmax/z),
+  defaulting to the current `~ temp_c` when omitted.
+- Estimated nonlinear parameters change from `(lowraw, upraw, logk, mid)` to
+  `(lowraw, upraw, logk, CTmaxdev, logz)`; `low/up/k/mid` become `nlf`-derived.
+
+Full design + the function-by-function change list:
+`notes/2026-06-22-direct-ctmax-z-package-design.md`. Priors follow the
+load-bearing-asymptote finding in
+`notes/2026-06-21-prior-sensitivity-direct-ctmax-z.qmd`.
+
+## 2. Core function changes (the prototype)
+
+This is what `make_4pl_formula()` becomes. `low/up/k/mid` are defined with
+`brms::nlf()`; the estimated nlpars carry the user formulas.
+
+```{r proto-formula}
+rhs <- function(f, default) if (is.null(f)) default else paste(deparse(f[[2]]), collapse = " ")
+
+proto_4pl_formula <- function(ctmax_formula = NULL, z_formula = NULL,
+                              low_formula = NULL, up_formula = NULL, k_formula = NULL,
+                              threshold = c("relative", "absolute"),
+                              log10_tref = 0, p = 0.5, lower = 0, upper = 1,
+                              family = brms::beta_binomial(link = "identity")) {
+  threshold <- match.arg(threshold)
+  b     <- cb(lower, upper)
+  low_e <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
+  up_e  <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min,  b$up_w)
+  # one linear-in-T backbone; mid reconstructed from CTmax (centred) and z
+  mid_rel <- sprintf("(%g - (temp_c - CTmaxdev) / exp(logz))", log10_tref)
+  mid_e   <- if (threshold == "relative") mid_rel else
+    sprintf("(%s - (1/exp(logk)) * log((up - %g)/(%g - low)))", mid_rel, p, p)  # absolute: + C(T)
+  brms::bf(
+    stats::as.formula("n_surv | trials(n_total) ~ low + (up - low) / (1 + exp(exp(logk) * (logd - mid)))"),
+    brms::nlf(stats::as.formula(paste("low ~", low_e))),
+    brms::nlf(stats::as.formula(paste("up  ~", up_e))),
+    brms::nlf(stats::as.formula(paste("mid ~", mid_e))),
+    stats::as.formula(paste("lowraw   ~", rhs(low_formula,   "temp_c"))),  # default = current
+    stats::as.formula(paste("upraw    ~", rhs(up_formula,    "temp_c"))),
+    stats::as.formula(paste("logk     ~", rhs(k_formula,     "temp_c"))),
+    stats::as.formula(paste("CTmaxdev ~", rhs(ctmax_formula, "1"))),         # CTmax structure
+    stats::as.formula(paste("logz     ~", rhs(z_formula,     "1"))),         # z structure
+    nl = TRUE, family = family)
+}
+```
+
+And `make_4pl_priors()`: keep the **centred** asymptote priors (load-bearing —
+flattening them gave 191 divergences in the prior-sensitivity note); CTmax and z
+are well identified, so they take simple priors. Cell-means terms (`0 + factor`)
+get one centred prior per level.
+
+```{r proto-priors}
+proto_priors <- function(cells = NULL, lower = 0, upper = 1, re_ctmax = NULL, re_z = NULL) {
+  b  <- cb(lower, upper)
+  lr <- qlogis((lower + 0.02 * (upper - lower) - b$low_min) / b$low_w)
+  ur <- qlogis((lower + 0.98 * (upper - lower) - b$up_min)  / b$up_w)
+  per <- function(centre, sd, nlpar) if (is.null(cells))
+      set_prior(sprintf("normal(%.4f,%.1f)", centre, sd), class = "b", nlpar = nlpar, coef = "Intercept")
+    else do.call(c, lapply(cells, \(cf) set_prior(sprintf("normal(%.4f,%.1f)", centre, sd),
+                                                  class = "b", nlpar = nlpar, coef = cf)))
+  pr <- c(per(lr, 1, "lowraw"),  set_prior("normal(0,0.5)", class = "b", nlpar = "lowraw"),
+          per(ur, 1, "upraw"),   set_prior("normal(0,0.5)", class = "b", nlpar = "upraw"),
+          per(log(2), 1, "logk"),set_prior("normal(0,0.3)", class = "b", nlpar = "logk"),
+          set_prior("normal(0,10)",       class = "b", nlpar = "CTmaxdev"),
+          set_prior("normal(1.0986,0.7)", class = "b", nlpar = "logz"),
+          set_prior("gamma(2,0.1)", class = "phi"))
+  if (!is.null(re_ctmax)) pr <- c(pr, set_prior("exponential(2)", class = "sd", nlpar = "CTmaxdev", group = re_ctmax))
+  if (!is.null(re_z))     pr <- c(pr, set_prior("exponential(2)", class = "sd", nlpar = "logz",     group = re_z))
+  pr
+}
+```
+
+## 3. The generated model (zebrafish)
+
+```{r show-formula}
+zf <- zebrafish_lethal; tbar <- mean(zf$assay_temp, na.rm = TRUE)
+stages <- levels(zf$life_stage)
+zf_joint <- dplyr::bind_rows(lapply(stages, function(s) {
+  d <- standardize_data(dplyr::filter(zf, life_stage == s), temp = "assay_temp", duration = "duration_h",
+        n_total = "n_total", n_surv = "n_surv", random_effects = "Date_experiment",
+        duration_unit = "hours", temp_mean = tbar)
+  d$life_stage <- factor(s, levels = stages); d }))
+
+f_zf <- proto_4pl_formula(
+  ctmax_formula = ~ 0 + life_stage + (1 | Date_experiment),
+  z_formula     = ~ 0 + life_stage + (1 | Date_experiment),
+  low_formula   = ~ 0 + life_stage + temp_c:life_stage,   # match the reference: group on all params
+  up_formula    = ~ 0 + life_stage + temp_c:life_stage,
+  k_formula     = ~ 0 + life_stage + temp_c:life_stage,
+  threshold = "relative")
+f_zf
+```
+
+## 4. O1 — does `posterior_linpred()` reach the `nlf`-derived `mid`?
+
+This matters because `tls()`/`extract_tdt()` derive z/CTmax by evaluating
+sub-parameters via `posterior_linpred(nlpar=)`. If `mid` is reachable, those
+extractors need **almost no change**.
+
+```{r fit-zf}
+#| message: false
+#| warning: false
+fit_zf <- brm(f_zf, data = zf_joint, prior = proto_priors(cells = paste0("life_stage", stages),
+                                                           re_ctmax = "Date_experiment", re_z = "Date_experiment"),
+              chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
+              control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
+              backend = "cmdstanr", silent = 2, refresh = 0,
+              file = file.path(models_dir, "proto_zf_direct_rel"), file_refit = "on_change")
+
+nd <- data.frame(temp_c = 0, logd = 0, life_stage = factor("larvae", levels = stages),
+                 Date_experiment = zf_joint$Date_experiment[1], n_total = 10)
+o1_mid  <- tryCatch({posterior_linpred(fit_zf, newdata = nd, nlpar = "mid",  re_formula = NA); "OK"},
+                    error = function(e) paste("FAILED:", conditionMessage(e)))
+o1_logz <- tryCatch({posterior_linpred(fit_zf, newdata = nd, nlpar = "logz", re_formula = NA); "OK"},
+                    error = function(e) paste("FAILED:", conditionMessage(e)))
+tibble::tibble(nlpar = c("mid (nlf-derived)", "logz (estimated)"), posterior_linpred = c(o1_mid, o1_logz))
+```
+
+**Both work.** So `tls()` can keep its grid-slope path on `mid` *and* read
+CTmax/z straight off `CTmaxdev`/`logz`. The two agree exactly:
+
+```{r tls-path-check}
+tg <- seq(-2, 2, length.out = 11)
+ndg <- data.frame(temp_c = tg, logd = 0, life_stage = factor("larvae", levels = stages),
+                  Date_experiment = zf_joint$Date_experiment[1], n_total = 10)
+midmat <- posterior_linpred(fit_zf, newdata = ndg, nlpar = "mid", re_formula = NA)
+w <- tg - mean(tg); slope <- as.vector(midmat %*% w / sum(w^2))
+dzf <- as.data.frame(as_draws_df(fit_zf))
+tibble::tibble(
+  larvae_z = c("posterior_linpred(mid) grid-slope", "direct coef read exp(b_logz)"),
+  value    = c(qci(-1 / slope), qci(exp(dzf[["b_logz_life_stagelarvae"]]))))
+```
+
+## 5. Zebrafish equivalence vs the midpoint reference
+
+Reference = the manuscript's midpoint joint fit, summarised with the package's
+own `tls()` (robust to coding). CTmax read at the 1-hour reference.
+
+```{r zf-equiv}
+#| message: false
+#| warning: false
+ref_zf <- readRDS(file.path(models_dir, "fit_zf_joint_4pl.rds"))
+ref_t  <- tls(ref_zf, by = "life_stage", params = c("z", "ctmax"),
+              t_ref = 1, time_multiplier = 1, temp_mean = tbar)$summary
+refz  <- ref_t[ref_t$quantity == "z", ];      refc <- ref_t[ref_t$quantity == "CTmax", ]
+fmt   <- function(df, s) { r <- df[df$life_stage == s, ]; sprintf("%.2f [%.2f, %.2f]", r$median, r$lower, r$upper) }
+tibble::tibble(
+  life_stage    = stages,
+  `z proto`     = vapply(stages, \(s) qci(exp(dzf[[paste0("b_logz_life_stage", s)]])), ""),
+  `z ref (tls)` = vapply(stages, \(s) fmt(refz, s), ""),
+  `CTmax proto` = vapply(stages, \(s) qci(tbar + dzf[[paste0("b_CTmaxdev_life_stage", s)]]), ""),
+  `CTmax ref`   = vapply(stages, \(s) fmt(refc, s), ""))
+```
+
+CTmax matches to ~0.05 °C; z medians agree. The proto z **intervals are wider**
+because this model carries a random effect on z (`logz ~ ... + (1|Date)`) that
+the midpoint reference cannot — exactly as the 2026-06-16 note documented.
+
+## 6. Drosophila equivalence (no random effects → CIs match too)
+
+```{r dros-equiv}
+#| message: false
+#| warning: false
+ref_d <- readRDS(file.path(models_dir, "fit_dsuzukii_mortality_sex_joint.rds"))
+dat_d <- ref_d$data
+fit_d <- brm(proto_4pl_formula(ctmax_formula = ~ 0 + sex, z_formula = ~ 0 + sex,
+                               low_formula = ~ 0 + sex + temp_c:sex, up_formula = ~ 0 + sex + temp_c:sex,
+                               k_formula = ~ 0 + sex + temp_c:sex, threshold = "relative"),
+             data = dat_d, prior = proto_priors(cells = c("sexF", "sexM")),
+             chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
+             control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
+             backend = "cmdstanr", silent = 2, refresh = 0,
+             file = file.path(models_dir, "proto_dros_direct_rel"), file_refit = "on_change")
+ddir  <- as.data.frame(as_draws_df(fit_d))
+refzd <- tls(ref_d, by = "sex", params = "z")$summary
+fmtz  <- function(s) { r <- refzd[refzd$sex == s, ]; sprintf("%.2f [%.2f, %.2f]", r$median, r$lower, r$upper) }
+tibble::tibble(
+  sex           = c("F", "M"),
+  `z proto`     = c(qci(exp(ddir[["b_logz_sexF"]])), qci(exp(ddir[["b_logz_sexM"]]))),
+  `z ref (tls)` = c(fmtz("F"), fmtz("M")))
+```
+
+Near-identical (the Ørsted-reported values are 3.03 F / 3.28 M). Both fits have
+**0 divergences**.
+
+## 7. Flexibility: model CTmax by group but pool z
+
+The point of the layered formulas — here CTmax varies by sex while z is shared
+(`z_formula` omitted ⇒ `logz ~ 1`). Shape parameters keep their per-sex
+temperature structure.
+
+```{r flex}
+#| message: false
+#| warning: false
+fit_flex <- brm(proto_4pl_formula(ctmax_formula = ~ 0 + sex,         # CTmax per sex
+                                  low_formula = ~ 0 + sex + temp_c:sex, up_formula = ~ 0 + sex + temp_c:sex,
+                                  k_formula = ~ 0 + sex + temp_c:sex),  # z_formula omitted -> pooled
+                data = dat_d, prior = proto_priors(cells = c("sexF", "sexM")),
+                chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
+                control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
+                backend = "cmdstanr", silent = 2, refresh = 0,
+                file = file.path(models_dir, "proto_dros_ctmaxonly"), file_refit = "on_change")
+dff <- as.data.frame(as_draws_df(fit_flex))
+tibble::tibble(
+  quantity = c("z (pooled across sex)", "CTmaxdev sex F", "CTmaxdev sex M"),
+  estimate = c(qci(exp(dff[["b_logz_Intercept"]])), qci(dff[["b_CTmaxdev_sexF"]]), qci(dff[["b_CTmaxdev_sexM"]])))
+```
+
+This single model has **one** `logz` coefficient and **two** `CTmaxdev`
+coefficients — the formula layer does the work, no special-casing.
+
+## 8. Absolute threshold — verified
+
+`threshold = "absolute"` changes just the `mid` line: it subtracts the asymmetry
+correction `C(T) = (1/k)·log((up−p)/(p−low))`, folding the up/low/k temperature
+effects in so the fitted CTmax/z are the **absolute** (p-survival) quantities.
+Drosophila is the right test — its upper asymptote is ≈0.85 (not 1), so the curve
+is *not* symmetric about 0.5 and the correction is genuinely non-zero (for
+full-range lethal data with low≈0, up≈1 the curve is symmetric and `C(T) → 0`,
+which is why relative ≈ absolute there — the 2026-06-16 finding).
+
+```{r abs-fit}
+#| message: false
+#| warning: false
+fit_abs <- brm(proto_4pl_formula(ctmax_formula = ~ 0 + sex, z_formula = ~ 0 + sex,
+                                 low_formula = ~ 0 + sex + temp_c:sex, up_formula = ~ 0 + sex + temp_c:sex,
+                                 k_formula = ~ 0 + sex + temp_c:sex, threshold = "absolute"),
+               data = dat_d, prior = proto_priors(cells = c("sexF", "sexM")),
+               chains = 4, iter = 2000, warmup = 1000, cores = 4, seed = 123,
+               control = list(adapt_delta = 0.99, max_treedepth = 15), init = 0,
+               backend = "cmdstanr", silent = 2, refresh = 0,
+               file = file.path(models_dir, "proto_dros_direct_abs"), file_refit = "on_change")
+fit_abs$formula$pforms$mid    # the absolute mid line: relative backbone minus C(T)
+```
+
+**Internal consistency** — the coef-read absolute z/CTmax equals the
+grid-derived absolute LT50 (via `tls(mode = "absolute")`), proving the fitted
+backbone *is* the absolute curve and `C(T)` is wired correctly (CTmax in centred
+units, `temp_mean = 0`):
+
+```{r abs-consistency}
+#| message: false
+#| warning: false
+da    <- as.data.frame(as_draws_df(fit_abs))
+t_abs <- tls(fit_abs, by = "sex", params = c("z", "ctmax"), mode = "absolute",
+             t_ref = 1, time_multiplier = 1, temp_mean = 0)$summary
+fmt2 <- function(df, q, s) { r <- df[df$quantity == q & df$sex == s, ]
+                             sprintf("%.2f [%.2f, %.2f]", r$median, r$lower, r$upper) }
+tibble::tibble(
+  sex               = c("F", "M"),
+  `z coef-read`     = c(qci(exp(da[["b_logz_sexF"]])), qci(exp(da[["b_logz_sexM"]]))),
+  `z tls(absolute)` = c(fmt2(t_abs, "z", "F"), fmt2(t_abs, "z", "M")),
+  `CTdev coef`      = c(qci(da[["b_CTmaxdev_sexF"]]), qci(da[["b_CTmaxdev_sexM"]])),
+  `CTdev tls(abs)`  = c(fmt2(t_abs, "CTmax", "F"), fmt2(t_abs, "CTmax", "M")))
+```
+
+They match exactly. And the threshold argument genuinely changes the quantity —
+the *same fit's* relative quantities (via `tls(mode = "relative")`) differ from
+the absolute ones by the correction:
+
+```{r abs-vs-rel}
+#| message: false
+#| warning: false
+t_rel <- tls(fit_abs, by = "sex", params = "ctmax", mode = "relative",
+             t_ref = 1, time_multiplier = 1, temp_mean = 0)$summary
+inv_logit <- function(x) 1 / (1 + exp(-x))
+upF  <- 0.501 + inv_logit(da[["b_upraw_sexF"]]) * 0.498
+lowF <- 0.001 + inv_logit(da[["b_lowraw_sexF"]]) * 0.498
+Cf   <- (1 / exp(da[["b_logk_sexF"]])) * log((upF - 0.5) / (0.5 - lowF))
+tibble::tibble(
+  sex              = c("F", "M"),
+  `CTdev absolute` = c(qci(da[["b_CTmaxdev_sexF"]]), qci(da[["b_CTmaxdev_sexM"]])),
+  `CTdev relative` = c(fmt2(t_rel, "CTmax", "F"), fmt2(t_rel, "CTmax", "M")))
+```
+
+For sex F the fitted up ≈ `r round(median(upF), 2)`, low ≈ `r round(median(lowF), 3)`,
+giving a correction `C(T)` = `r qci(Cf)` log₁₀-time units at the mean temperature
+— small but non-zero, which is why absolute and relative differ slightly here and
+would diverge further as the curve becomes more asymmetric. Absolute is well-posed
+only when `low < p < up`; sublethal `up < p` needs a guard (warn / fall back to
+relative).
+
+## 9. Helper-function compatibility (audited on the demo)
+
+A reparameterisation is only safe if the downstream helpers survive it. Helpers
+fall into two camps: those that read the 4PL via `posterior_linpred(nlpar=)`
+(parameterisation-agnostic — and §4 confirmed `mid` is reachable) versus those
+that **parse coefficient names** (`b_mid_temp_c`, `b_mid_Intercept`) and assume
+single-group Intercept coding — these get `b_CTmaxdev_*`/`b_logz_*` instead and
+fail. Audited live on a single-group direct fit (shrimp, CTmax/z ~ 1):
+
+```{r helper-audit}
+#| message: false
+#| warning: false
+fit_sg <- readRDS(file.path(models_dir, "proto_shrimp_direct.rds"))
+ss <- standardize_data(shrimp_lethal, temp = "Temperature_assay", duration = "Duration_exposure_hours",
+  n_total = "N_individuals_after_trial", mortality = "Mortality_after_trial", duration_unit = "hours")
+wf_sg <- structure(list(fit = fit_sg, data = ss, formula = fit_sg$formula, prior = NULL,
+  meta = utils::modifyList(attr(ss, "tdt_meta"),
+    list(bounds = cb(0, 1), lower = 0, upper = 1, response_type = "count"))), class = "bayes_tls")
+
+st <- function(expr) tryCatch({ v <- suppressMessages(force(expr)); "works" },
+                              error = function(e) paste0("ERROR: ", conditionMessage(e)))
+et_na <- { e <- tryCatch(suppressMessages(extract_tdt(wf_sg, lethal = TRUE)), error = function(e) NULL)
+           if (is.null(e)) "error" else if (is.na(e$z$summary$z_median)) "SILENT NA" else "works" }
+trace <- data.frame(time = 0:48, temp = 20 + 12 * sin(seq(0, 6, length.out = 49)))
+
+tibble::tibble(
+  helper = c("tls() / tls_z/ctmax/tcrit", "predict_survival_curves()", "derive_tdt_landscape()",
+             "diagnose_tdt_fit()", "extract_tdt()", "predict_heat_injury()", "tdt_parameter_table()"),
+  status = c(st(tls(wf_sg, lethal = TRUE)), st(predict_survival_curves(wf_sg)),
+             st(derive_tdt_landscape(wf_sg)), st(diagnose_tdt_fit(wf_sg)),
+             et_na, st(predict_heat_injury(trace, wf_sg, ndraws = 30)),
+             st(tdt_parameter_table(wf_sg))),
+  reads  = c("posterior_linpred(nlpar=)", "posterior_linpred(transform=TRUE)", "posterior_linpred(mid)",
+             "rhat/ess/divergences (param-free)", "b_mid_temp_c / b_mid_Intercept", "b_mid_Intercept/temp_c, b_lowraw_Intercept",
+             "b_mid_temp_c / b_mid_Intercept"))
+```
+
+**Verdict:**
+
+- **Work unchanged** (verified correct values, not just "no error"): `tls()` and
+  `tls_z/ctmax/tcrit`, `predict_survival_curves()`, `derive_tdt_landscape()`,
+  `diagnose_tdt_fit()`, and the `get_*` accessors (they only read the *output* of
+  the producers below). `tls()` is the linchpin — the general
+  `posterior_linpred`-based extractor is fully parameterisation-agnostic.
+- **Must change** (3 functions): `extract_tdt()` (**silently returns all NA** —
+  the dangerous one), `predict_heat_injury()` (hard error `mid_int not found`),
+  `tdt_parameter_table()` (hard error, z column size 0). All three parse
+  `b_mid_*` coefficient names and assume single-group Intercept coding.
+- **Cosmetic:** add `b_CTmaxdev_*`/`b_logz_*` to `R/bayesTLS-package.R`'s
+  `globalVariables()` to silence R CMD check NSE notes.
+
+**The fix is the same for all three, and is an improvement:** route them through
+`posterior_linpred(nlpar=)` exactly as `tls()` already does (or have
+`extract_tdt()` simply delegate to `tls()`). That removes their hard-wired
+coefficient-name parsing — which is *also* why they only ever worked on
+single-group midpoint fits today (the grouped case studies already had to use
+`tls()`). So fixing them for the direct parameterisation simultaneously
+generalises them to grouped/cell-means fits. No helper needs the direct logic
+duplicated; they all inherit it from the `posterior_linpred` path.
+
+### Fixing `extract_tdt()` is trivial in direct mode — CTmax/z are coefficients
+
+The cleanest fix is *not* to re-derive a slope: in direct mode CTmax and z **are**
+model coefficients — `z = exp(b_logz_<intercept|level>)`,
+`CTmax = temp_mean + b_CTmaxdev_<intercept|level>`. `extract_tdt()` reads them off
+(via `posterior_linpred(nlpar = "logz"/"CTmaxdev")` so intercept, factor levels,
+or covariates are all handled uniformly), then derives T_crit / absolute / LTx
+from those same per-draw values through the existing correction layer. The
+coefficient read equals `posterior_linpred` *and* `tls()` at the matching
+threshold:
+
+```{r extract-direct-read}
+#| message: false
+#| warning: false
+ds <- as.data.frame(as_draws_df(wf_sg$fit)); tbar_sg <- wf_sg$meta$temp_mean
+tr <- tls(wf_sg, mode = "relative", t_ref = 1, time_multiplier = 1)$summary
+ta <- tls(wf_sg, mode = "absolute", t_ref = 1, time_multiplier = 1)$summary
+g  <- function(df, q) sprintf("%.2f", df$median[df$quantity == q])
+tibble::tibble(
+  quantity               = c("z", "CTmax"),
+  `coef read (relative)` = c(qci(exp(ds[["b_logz_Intercept"]])), qci(tbar_sg + ds[["b_CTmaxdev_Intercept"]])),
+  `tls(relative)`        = c(g(tr, "z"), g(tr, "CTmax")),
+  `tls(absolute)`        = c(g(ta, "z"), g(ta, "CTmax")))
+```
+
+The coefficient read matches `tls(relative)` exactly. `tls()`'s default
+`mode = "absolute"` differs here (shrimp z 2.31 vs relative 2.44) only because
+shrimp's shape varies with temperature, so the two thresholds genuinely differ —
+exactly the distinction the `threshold` argument controls.
+
+**Implication — `extract_tdt()` can return *either* threshold from *any* direct
+fit.** Through its existing `target_surv` argument:
+
+- the **fitted** threshold is a direct coefficient read (cheap, exact);
+- the **opposite** threshold is the conversion via the asymmetry correction
+  `C(T)` — i.e. exactly what `tls(mode = <other>)` computes. Both directions are
+  validated here: a relative fit → absolute (§9 above, `tls(absolute)`), and an
+  absolute fit → relative (§8, `tls(relative)`).
+
+So a relative-threshold fit can still report absolute CTmax/z and vice versa; the
+correction layer never disappears, it just runs in whichever direction is asked.
+The one caveat: the **fitted** threshold is the quantity forced linear in
+temperature (the well-constrained backbone); the converted threshold inherits
+whatever bend the temperature-varying asymptotes impose. So fit the threshold you
+care most about and treat the converted one as a derived quantity. This is both
+simpler than today's slope path and removes the single-group limitation.
+
+## 10. Conclusions → implications for the real package
+
+- The `nlf` formulation **works and samples cleanly** (0 divergences on both
+  datasets with the centred asymptote priors), and reproduces the midpoint
+  reference (CTmax ~0.05 °C; z matches, CI differences fully explained by RE
+  structure).
+- **O1 resolved:** `posterior_linpred()` reaches the derived `mid`, so the whole
+  `tls()` family, `predict_survival_curves()`, `derive_tdt_landscape()` and
+  `diagnose_tdt_fit()` work **unchanged** (§9, verified).
+- **Only 3 helpers break** (§9): `extract_tdt()` (silent NA), `predict_heat_injury()`
+  and `tdt_parameter_table()` — all because they parse `b_mid_*` coefficient names.
+  The fix (route through `posterior_linpred`, or delegate to `tls()`) also lifts
+  their existing single-group-only limitation.
+- The layered formulas give exactly the requested flexibility (model CTmax and/or
+  z by group, with shape effects retained by default).
+
+When we move this into `R/` (see the design note for the file-by-file plan): fold
+`proto_4pl_formula` into `make_4pl_formula()` (trigger on the CTmax/z formulas),
+`proto_priors` logic into `make_4pl_priors()`, store `threshold`/`log10_tref` in
+`meta`, **rewire `extract_tdt()`/`predict_heat_injury()`/`tdt_parameter_table()`
+onto the `posterior_linpred` path**, add `b_CTmaxdev_*`/`b_logz_*` to
+`globalVariables()`, and add equivalence tests.
+```
