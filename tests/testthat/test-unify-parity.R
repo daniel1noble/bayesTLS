@@ -40,7 +40,7 @@ parity_workflows <- function() {
 test_that("unification did not move z / CTmax / T_crit (extract_tdt) on any fixture or case study", {
   skip_unless_brms()
   gp <- here::here("tests", "testthat", "fixtures", "golden_preunify.rds")
-  if (!file.exists(gp)) skip("golden_preunify.rds absent; rebuild the Step-0 snapshot.")
+  if (!file.exists(gp)) skip("local-only no-drift gate: golden_preunify.rds is gitignored and present only where the Step-0 snapshot was built (it pins the exact cached fits); skipped in CI / fresh checkouts.")
   g <- readRDS(gp); wfs <- parity_workflows()
 
   for (nm in names(wfs)) {
@@ -57,7 +57,7 @@ test_that("unification did not move z / CTmax / T_crit (extract_tdt) on any fixt
 test_that("unification did not move tdt_parameter_table / derive_z / predict_heat_injury / predict_survival_curves", {
   skip_unless_brms()
   gp <- here::here("tests", "testthat", "fixtures", "golden_preunify.rds")
-  if (!file.exists(gp)) skip("golden_preunify.rds absent; rebuild the Step-0 snapshot.")
+  if (!file.exists(gp)) skip("local-only no-drift gate: golden_preunify.rds is gitignored and present only where the Step-0 snapshot was built (it pins the exact cached fits); skipped in CI / fresh checkouts.")
   g <- readRDS(gp); wfs <- parity_workflows()
 
   for (nm in names(wfs)) {
@@ -76,7 +76,7 @@ test_that("unification did not move the grouped tls() case study (zebrafish per-
   skip_unless_brms()
   gp <- here::here("tests", "testthat", "fixtures", "golden_preunify.rds")
   zfp <- file.path(here::here("output", "models"), "fit_zf_joint_4pl.rds")
-  if (!file.exists(gp) || !file.exists(zfp)) skip("golden / zf fit absent.")
+  if (!file.exists(gp) || !file.exists(zfp)) skip("local-only no-drift gate: golden snapshot or cached zf fit absent (gitignored); skipped in CI.")
   g <- readRDS(gp)
   if (!is.data.frame(g$zf_tls)) skip("golden zf_tls not captured.")
   zs <- standardize_data(zebrafish_lethal, temp = "assay_temp", duration = "duration_h",
