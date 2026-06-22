@@ -94,9 +94,11 @@ format:
         \AtBeginDocument{%
           \OldAuthor[1]{Daniel W.A. Noble\thanks{Corresponding author: \texttt{daniel.noble@anu.edu.au}}}%
           \OldAuthor[1]{Pieter A. Arnold}%
-          \OldAuthor[2]{Patrice Pottier\thanks{Corresponding author: \texttt{patrice.pottier@bioenv.gu.se}}}%
+          \OldAuthor[2]{Shinichi Nakagawa}%
+          \OldAuthor[3]{Patrice Pottier\thanks{Corresponding author: \texttt{patrice.pottier@bioenv.gu.se}}}%
           \affil[1]{Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia}%
-          \affil[2]{Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden}%
+          \affil[2]{Department of Biological Sciences, University of Alberta, Edmonton, Canada}%
+          \affil[3]{Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden}%
         }
 bibliography: ../bib/tdt_problems.bib
 csl: ../bib/ecology-letters.csl
@@ -111,10 +113,11 @@ execute:
 ---
 
 ::: {.content-visible when-format="docx"}
-**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Patrice Pottier**^2,\*^
+**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Shinichi Nakagawa**^2^, **Patrice Pottier**^3,\*^
 
 ^1^Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia.
-^2^Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden.
+^2^Department of Biological Sciences, University of Alberta, Edmonton, Canada.
+^3^Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden.
 ^\*^Corresponding authors: daniel.noble@anu.edu.au; patrice.pottier@bioenv.gu.se
 :::
 
