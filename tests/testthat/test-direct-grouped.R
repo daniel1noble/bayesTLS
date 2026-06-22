@@ -62,6 +62,34 @@ test_that("per-group z is invariant to cell-means (~ 0 + grp) vs treatment (~ gr
   }
 })
 
+test_that("plot helpers facet grouped output instead of pooling across groups", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_grouped()
+  sc <- predict_survival_curves(wf, temps = c(33, 36), durations = c(1, 8), ndraws = 100)
+  p_sc <- plot_survival_curves(sc)
+  expect_s3_class(p_sc, "ggplot")
+  expect_s3_class(p_sc$facet, "FacetWrap")                 # per-group panels
+  td <- plot_temperature_density(extract_tdt(wf, ndraws = 200, seed = 1)$CTmax)
+  expect_s3_class(td$facet, "FacetWrap")
+})
+
+test_that("accessors carry the group column on grouped output (no .draw key collision)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_grouped()
+  et <- extract_tdt(wf, ndraws = 300, lethal = TRUE, seed = 1)
+  zc <- get_ctmax_draws(et)
+  tc <- get_tcrit_draws(et)
+  expect_true("grp" %in% names(zc)); expect_setequal(unique(zc$grp), c("A", "B"))
+  expect_true("grp" %in% names(tc)); expect_setequal(unique(tc$grp), c("A", "B"))
+  # (grp, .draw) keys are unique -> groups not collapsed onto colliding .draw
+  expect_equal(nrow(dplyr::distinct(zc, grp, .draw)), nrow(zc))
+
+  sd <- get_surv_draws(predict_survival_curves(wf, temps = c(33, 36),
+                                               durations = c(1, 8), ndraws = 100))
+  expect_true("grp" %in% names(sd))
+  expect_equal(nrow(dplyr::distinct(sd, grp, temp, duration, .draw)), nrow(sd))
+})
+
 test_that("predict_survival_curves(by=) and predict_heat_injury(by=) return per-group output", {
   skip_unless_brms()
   wf <- load_fixture_workflow_grouped()

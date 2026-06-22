@@ -10,7 +10,8 @@ get_ctmax_draws(et)
 \item{et}{The list returned by \code{\link[=extract_tdt]{extract_tdt()}}.}
 }
 \value{
-A tibble with columns \code{.draw} and \code{CTmax}.
+A tibble with columns \code{.draw} and \code{CTmax} (plus the moderator
+column(s) for a grouped fit).
 }
 \description{
 Pulls the per-draw CTmax temperature: the temperature at which the

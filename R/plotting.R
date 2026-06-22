@@ -85,7 +85,16 @@ plot_survival_curves <- function(pred, observed = NULL,
       inherit.aes = FALSE
     )
   }
-  p
+  # Grouped fit (per-group curves): facet so groups are not threaded into one line.
+  tdt_facet_by_group(p, df, c("temp", "duration",
+                              "survival_lower", "survival_median", "survival_upper"))
+}
+
+# Facet a TDT plot by its grouping moderator column(s) when the data carries them
+# (a grouped predict_*/extract_* output); a no-op for single-condition data.
+tdt_facet_by_group <- function(p, df, standard) {
+  gcols <- setdiff(names(df), standard)
+  if (length(gcols)) p + ggplot2::facet_wrap(stats::reformulate(gcols)) else p
 }
 
 #' Plot a posterior LT_x curve
@@ -287,7 +296,8 @@ plot_temperature_density <- function(temp_post, truth = NULL,
     p <- p + ggplot2::geom_vline(xintercept = truth,
                                   linetype = "dashed", colour = "grey40")
   }
-  p
+  # Grouped fit: facet so each group's posterior gets its own density, not a pool.
+  tdt_facet_by_group(p, draws, c(".draw", "temp"))
 }
 
 #' Plot the three reference temperature scenarios
@@ -363,6 +373,13 @@ plot_heat_injury <- function(hi, lt50_threshold = 100) {
     ggplot2::scale_y_continuous(limits = c(0, 1)) +
     ggplot2::labs(x = "Time (hours)", y = "Predicted survival") +
     theme_tdt()
+
+  # Grouped fit (per-group trajectories): facet so groups are not threaded together.
+  hi_std <- c("time", "temp", "hi_median", "hi_lower", "hi_upper",
+              "surv_median", "surv_lower", "surv_upper",
+              "mort_median", "mort_lower", "mort_upper")
+  p_hi   <- tdt_facet_by_group(p_hi,   df, hi_std)
+  p_surv <- tdt_facet_by_group(p_surv, df, hi_std)
 
   if (requireNamespace("patchwork", quietly = TRUE)) {
     patchwork::wrap_plots(p_hi, p_surv, ncol = 1)

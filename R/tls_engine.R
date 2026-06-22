@@ -37,10 +37,20 @@ tls_build_grid <- function(mdata, by = NULL, temp = "temp_c", temp_grid = NULL,
 # Resolve the grouping columns for a group-aware reader: an explicit `by` wins;
 # otherwise use the fit's moderators (`meta$group_vars`); a single-condition fit
 # has none -> NULL -> one group "all" -> the reader's single-condition output.
+# Safety net: a fit that LOOKS grouped (multi-level CTmax/z or mid coefficients)
+# but records no moderators (e.g. a hand-wrapped brmsfit) must not be silently
+# extracted at its reference level (tls_build_grid would fill the moderator from
+# row 1) — require the caller to name the moderator(s).
 tdt_resolve_by <- function(workflow, by) {
   if (!is.null(by)) return(by)
   gv <- workflow$meta$group_vars
-  if (length(gv)) gv else NULL
+  if (length(gv)) return(gv)
+  if (tdt_is_grouped(workflow))
+    stop("This fit appears to vary CTmax/z (or mid) by a moderator, but its ",
+         "moderator column(s) are not recorded in meta$group_vars. Pass ",
+         "`by = <column(s)>` to extract per group (or use tls(object, by = ...)).",
+         call. = FALSE)
+  NULL
 }
 
 # Subsample draw indices reproducibly, matching the retired tdt_extract_pars()

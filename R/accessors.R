@@ -55,7 +55,8 @@ get_z_summary <- function(et) {
 #' `target_surv = "absolute"`.
 #'
 #' @param et The list returned by [extract_tdt()].
-#' @return A tibble with columns `.draw` and `CTmax`.
+#' @return A tibble with columns `.draw` and `CTmax` (plus the moderator
+#'         column(s) for a grouped fit).
 #' @seealso [get_ctmax_summary()] for the median + 95% credible-interval summary.
 #' @examples
 #' \dontrun{
@@ -64,8 +65,11 @@ get_z_summary <- function(et) {
 #' @export
 get_ctmax_draws <- function(et) {
   stop_if_not_extract_tdt(et)
-  d <- et$CTmax$draws
-  tibble::tibble(.draw = d$.draw, CTmax = d$temp)
+  d     <- et$CTmax$draws
+  gcols <- setdiff(names(d), c(".draw", "temp"))   # moderator column(s) for a grouped fit
+  out   <- tibble::tibble(.draw = d$.draw, CTmax = d$temp)
+  if (length(gcols)) out <- tibble::as_tibble(cbind(d[gcols], out))
+  out
 }
 
 #' Posterior summary of CTmax at the reference duration
@@ -95,7 +99,8 @@ get_ctmax_summary <- function(et) {
 #'
 #' @param et The list returned by `extract_tdt(..., lethal = TRUE)`.
 #' @return A tibble with columns `.draw`, `T_crit`, and `log10_rate` (the
-#'         sampled log10 rate-multiplier for that posterior draw).
+#'         sampled log10 rate-multiplier for that posterior draw); plus the
+#'         moderator column(s) for a grouped fit.
 #' @seealso [get_tcrit_summary()] for the median + 95% credible-interval summary.
 #' @examples
 #' \dontrun{
@@ -107,8 +112,11 @@ get_tcrit_draws <- function(et) {
   if (is.null(et$T_crit))
     stop("This extract_tdt() result has no T_crit. ",
          "Refit with `lethal = TRUE`.", call. = FALSE)
-  d <- et$T_crit$draws
-  tibble::tibble(.draw = d$.draw, T_crit = d$temp, log10_rate = d$log10_rate)
+  d     <- et$T_crit$draws
+  gcols <- setdiff(names(d), c(".draw", "temp", "log10_rate"))   # moderator(s) for a grouped fit
+  out   <- tibble::tibble(.draw = d$.draw, T_crit = d$temp, log10_rate = d$log10_rate)
+  if (length(gcols)) out <- tibble::as_tibble(cbind(d[gcols], out))
+  out
 }
 
 #' Posterior summary of T_crit (rate-multiplier definition)
@@ -173,7 +181,8 @@ get_hi_draws <- function(hi) {
 #'          [predict_heat_injury()].
 #' @return A long-format tibble. For [predict_survival_curves()]: `.draw`,
 #'         `temp`, `duration`, `survival`. For [predict_heat_injury()]:
-#'         `.draw`, `time`, `temp`, `survival`.
+#'         `.draw`, `time`, `temp`, `survival`. For a grouped fit the moderator
+#'         column(s) are also carried (so per-group draws are not collapsed).
 #' @examples
 #' \dontrun{
 #' psc <- predict_survival_curves(wf, temps = c(32, 34),
@@ -202,18 +211,26 @@ get_surv_draws <- function(x) {
        "predict_heat_injury() result.", call. = FALSE)
 }
 
-# Internal: predict_survival_curves draws_matrix [ndraws x ngrid] → long.
+# Internal: predict_survival_curves draws_matrix [ndraws x ngrid] → long. Carries
+# the moderator column(s) (those in $summary beyond temp/duration/survival_*) for
+# a grouped fit, so per-group draws are not collapsed onto colliding (temp,
+# duration) keys; for a single-condition fit there are none and the output is
+# unchanged.
 surv_grid_to_long <- function(psc) {
   mat  <- psc$draws_matrix
   grid <- psc$grid
   if (ncol(mat) != nrow(grid))
     stop("draws_matrix and grid dimensions disagree.", call. = FALSE)
+  gcols <- setdiff(names(psc$summary),
+                   c("temp", "duration", "survival_lower", "survival_median", "survival_upper"))
   ndraws <- nrow(mat)
   tibble::as_tibble(do.call(rbind, lapply(seq_len(ncol(mat)), function(j) {
-    data.frame(.draw    = seq_len(ndraws),
-               temp     = grid$temp[j],
-               duration = grid$duration[j],
-               survival = mat[, j])
+    base <- data.frame(.draw    = seq_len(ndraws),
+                       temp     = grid$temp[j],
+                       duration = grid$duration[j],
+                       survival = mat[, j])
+    if (length(gcols)) base <- cbind(grid[j, gcols, drop = FALSE], base, row.names = NULL)
+    base
   })))
 }
 

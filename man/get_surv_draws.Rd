@@ -13,7 +13,8 @@ get_surv_draws(x)
 \value{
 A long-format tibble. For \code{\link[=predict_survival_curves]{predict_survival_curves()}}: \code{.draw},
 \code{temp}, \code{duration}, \code{survival}. For \code{\link[=predict_heat_injury]{predict_heat_injury()}}:
-\code{.draw}, \code{time}, \code{temp}, \code{survival}.
+\code{.draw}, \code{time}, \code{temp}, \code{survival}. For a grouped fit the moderator
+column(s) are also carried (so per-group draws are not collapsed).
 }
 \description{
 Accepts either a \code{\link[=predict_survival_curves]{predict_survival_curves()}} result (static survival on a

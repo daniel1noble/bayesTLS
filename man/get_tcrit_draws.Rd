@@ -11,7 +11,8 @@ get_tcrit_draws(et)
 }
 \value{
 A tibble with columns \code{.draw}, \code{T_crit}, and \code{log10_rate} (the
-sampled log10 rate-multiplier for that posterior draw).
+sampled log10 rate-multiplier for that posterior draw); plus the
+moderator column(s) for a grouped fit.
 }
 \description{
 Pulls the per-draw T_crit values from an \code{\link[=extract_tdt]{extract_tdt()}} result. Errors if

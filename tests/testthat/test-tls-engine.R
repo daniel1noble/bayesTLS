@@ -30,3 +30,13 @@ test_that("tdt_resolve_by: explicit wins; NULL uses meta$group_vars; single-cond
   expect_equal(tdt_resolve_by(wf_g, by = "clone"), "clone")  # explicit overrides
   expect_null(tdt_resolve_by(wf_s, by = NULL))               # single-condition
 })
+
+test_that("tdt_resolve_by safety net: grouped-looking fit with no recorded moderators errors", {
+  set.seed(1); np <- 30
+  df <- data.frame(b_CTmaxdev_Intercept = rnorm(np), b_CTmaxdev_grpB = rnorm(np),
+                   b_logz_Intercept = rnorm(np))
+  wf <- structure(list(fit = posterior::as_draws_df(df), meta = list()),  # no group_vars
+                  class = "bayes_tls")
+  expect_error(tdt_resolve_by(wf, by = NULL), "by =")        # don't silently use the reference level
+  expect_equal(tdt_resolve_by(wf, by = "grp"), "grp")        # explicit by still works
+})

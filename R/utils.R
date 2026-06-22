@@ -194,11 +194,13 @@ tdt_resolve_time_multiplier <- function(time_multiplier, meta,
   mins_model / mins_output
 }
 
-# --- grouped-fit detection for the single-condition helpers -----------------
+# --- grouped-fit detection ---------------------------------------------------
 # A direct/midpoint fit is "grouped" when CTmax/z (or mid) vary by a fixed
 # moderator. fit_4pl() records this coding-independently in meta$grouped, so
 # `~ 0 + G` (cell-means) and `~ 1 + G` (treatment) are both detected. The
 # coefficient-count fallback covers hand-wrapped brmsfits lacking that metadata.
+# Used by tdt_resolve_by() as a safety net: a fit that looks grouped but has no
+# recorded moderators must not be silently extracted at its reference level.
 tdt_is_grouped <- function(workflow) {
   g <- workflow$meta$grouped
   if (!is.null(g)) return(isTRUE(g))
@@ -207,14 +209,4 @@ tdt_is_grouped <- function(workflow) {
   ndirect <- max(sum(grepl("^b_CTmaxdev_", nms)), sum(grepl("^b_logz_", nms)))
   if (ndirect > 0) return(ndirect > 1)
   any(grepl("^b_mid_", nms) & !grepl("_(Intercept|temp_c)$", nms))
-}
-
-# Clear error redirecting grouped fits to the group-aware paths.
-tdt_stop_if_grouped <- function(workflow, what) {
-  if (!tdt_is_grouped(workflow)) return(invisible())
-  gv <- workflow$meta$group_vars
-  stop(what, " is for single-condition fits; this fit lets CTmax/z vary by a ",
-       "moderator (", if (length(gv)) paste(gv, collapse = ", ") else "grouped",
-       "). Use tls(object, by = ...) for per-group z / CTmax / T_crit, or the ",
-       "group-aware predict_*(by = ...) helpers.", call. = FALSE)
 }
