@@ -159,11 +159,13 @@ make_temperature_scenarios <- function(baseline    = 20,
 #' [predict_heat_injury()] should recover when fed the same trace and a model
 #' fit whose posterior is consistent with `(z, CTmax_1hr, T_c)`.
 #'
-#' At each time step, contribution is
+#' Integrated by forward Euler from zero: the interval ending at point \eqn{i}
+#' accrues the rate at its start (point \eqn{i-1}) times that interval's width,
 #'
-#' \deqn{\Delta HI_i = 100 \cdot 10^{(T_i - CT_{max,1hr}) / z} \cdot \Delta t}
+#' \deqn{\Delta HI_i = 100 \cdot 10^{(T_{i-1} - CT_{max,1hr}) / z} \cdot (t_i - t_{i-1})}
 #'
-#' when `T_i > T_c`, and zero otherwise. Cumulative HI is the running sum.
+#' when `T_{i-1} > T_c`, and zero otherwise (and `hi_inc[1] = 0`). Cumulative HI
+#' is the running sum. This matches [predict_heat_injury()]'s integrator.
 #'
 #' @param trace      Tibble with columns `time` and `temp`, output of
 #'                   [make_temperature_scenarios()].
@@ -178,12 +180,19 @@ make_temperature_scenarios <- function(baseline    = 20,
 #' planted_dose_from_trace(scens$single_spike, z = 5, CTmax_1hr = 32, T_c = 25)
 #' @export
 planted_dose_from_trace <- function(trace, z, CTmax_1hr, T_c) {
-  dt <- if (nrow(trace) >= 2L) {
-    diff(trace$time)[1]
-  } else 1
-  inc <- ifelse(trace$temp > T_c,
-                100 * 10 ^ ((trace$temp - CTmax_1hr) / z) * dt,
-                0)
+  if (anyNA(trace$time) || anyNA(trace$temp))
+    stop("trace has NA in `time` or `temp`; interpolate or drop missing rows ",
+         "before computing the planted dose.", call. = FALSE)
+  n <- nrow(trace)
+  # Instantaneous damage rate (%/hour) at each point; zero below the threshold.
+  rate <- ifelse(trace$temp > T_c, 100 * 10 ^ ((trace$temp - CTmax_1hr) / z), 0)
+  # Forward-Euler with per-interval widths, matching predict_heat_injury(): the
+  # interval ending at point j accrues the rate at its START (point j-1) times
+  # that interval's width; point 1 has accrued nothing yet. (The previous version
+  # reused diff(time)[1] for every step and credited a step at t = 0, over-counting
+  # by one step and mishandling irregular traces.)
+  inc <- numeric(n)
+  if (n >= 2L) inc[-1] <- rate[-n] * diff(trace$time)
   trace$hi_inc        <- inc
   trace$hi_cumulative <- cumsum(inc)
   trace

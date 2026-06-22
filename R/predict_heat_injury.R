@@ -6,7 +6,8 @@
 #   2. At each time step, compute LT_target(T) analytically from the 4PL,
 #      giving damage rate = 1 / LT_target.
 #   3. Optionally add a temperature-dependent repair rate (Sharpe-Schoolfield).
-#   4. Trapezoidally integrate (damage - repair) across the trace.
+#   4. Forward-Euler integrate (damage - repair) across the trace, using each
+#      interval's own width (dose starts at zero at the first time point).
 #   5. Map cumulative dose back to predicted survival via the 4PL.
 
 #' Per-draw 4PL parameters from a fitted workflow
@@ -209,6 +210,12 @@ predict_heat_injury <- function(trace, workflow,
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
   if (nrow(trace) < 2L)
     stop("trace must have at least 2 rows.", call. = FALSE)
+  if (!all(c("time", "temp") %in% names(trace)))
+    stop("trace must have `time` and `temp` columns.", call. = FALSE)
+  if (anyNA(trace$time) || anyNA(trace$temp))
+    stop("trace has NA in `time` or `temp`. Interpolate or drop missing rows ",
+         "first -- an NA temperature would otherwise be silently counted as zero ",
+         "heat injury, under-counting the dose.", call. = FALSE)
   if (repair && is.null(repair_pars))
     stop("Supply repair_pars when repair = TRUE.", call. = FALSE)
 
@@ -234,7 +241,10 @@ predict_heat_injury <- function(trace, workflow,
                      "predict_heat_injury(): unsupported time unit '%s'; expected one of seconds/minutes/hours/days.",
                      u), call. = FALSE))
   unit_h <- to_hours(workflow$meta$duration_unit %||% "hours")               # model -> hours
-  dt     <- (if (n >= 2L) diff(trace$time)[1] else 1) * to_hours(trace_unit)  # trace -> hours
+  # Per-interval widths (hours). Using diff() rather than reusing a single first
+  # step is what makes irregular / gappy traces integrate correctly; dt_vec[j-1]
+  # is the width of the interval ending at point j.
+  dt_vec <- diff(trace$time) * to_hours(trace_unit)                          # trace -> hours
 
   by       <- tdt_resolve_by(workflow, by)
   pars_all <- extract_4pl_pars(workflow, by = by)
@@ -265,22 +275,27 @@ predict_heat_injury <- function(trace, workflow,
         rep(0, n)
       }
 
-      # Euler integration matching planted_dose_from_trace() and supplement
-      # Equation 7: rate at point j applies for dt forward; cumulative dose at
-      # point i is the sum of (rate × dt) for j = 1..i.
+      # Forward-Euler dose ODE: d(dose)/dt = damage(T) - repair(T) * scale. The
+      # dose at the first time point is zero (no exposure has elapsed); each later
+      # point adds the rate at the START of its interval times that interval's
+      # width. (The previous loop credited a full step at t = 0 and reused the
+      # first dt for every interval -- over-counting by one step and corrupting
+      # irregular traces.) Kept consistent with planted_dose_from_trace().
       dose <- numeric(n); survival <- numeric(n)
-      prev_dose <- 0; prev_surv <- pars$up[i]
-      for (j in seq_len(n)) {
-        rep_j <- rep_rate[j] * dt
-        if (repair_scales_with_survival) rep_j <- rep_j * prev_surv / pars$up[i]
-        new_dose <- max(0, prev_dose + dmg[j] * dt - rep_j)
+      dose[1]     <- 0
+      survival[1] <- survival_from_dose(0, low = pars$low[i], up = pars$up[i],
+                                        k = pars$k[i], target_surv = ts_arg)
+      for (j in seq_len(n)[-1]) {
+        w     <- dt_vec[j - 1]
+        rep_j <- rep_rate[j - 1] * w
+        if (repair_scales_with_survival) rep_j <- rep_j * survival[j - 1] / pars$up[i]
+        new_dose <- max(0, dose[j - 1] + dmg[j - 1] * w - rep_j)
         surv_raw <- survival_from_dose(
           new_dose, low = pars$low[i], up = pars$up[i], k = pars$k[i],
           target_surv = ts_arg
         )
-        surv_new <- if (irreversible_mortality) min(prev_surv, surv_raw) else surv_raw
-        dose[j] <- new_dose; survival[j] <- surv_new
-        prev_dose <- new_dose; prev_surv <- surv_new
+        survival[j] <- if (irreversible_mortality) min(survival[j - 1], surv_raw) else surv_raw
+        dose[j]     <- new_dose
       }
       pred_list[[i]] <- data.frame(
         .draw = pars$.draw[i], time = trace$time, temp = trace$temp,
