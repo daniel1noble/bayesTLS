@@ -72,7 +72,7 @@ Full reference: `?fit_4pl`, `?extract_tdt`, `?predict_heat_injury`, etc.
 
 ## `bayesTLS` Data
 
-Five datasets are included with the `bayesTLS` package to make it easier to reproduce analyses and results in the paper and for testing purposes. These datasets are:
+Seven datasets are included with the `bayesTLS` package to make it easier to reproduce analyses and results in the paper and for testing purposes. These datasets are:
 
 | Dataset | Help | Endpoint |
 |---|---|---|
@@ -81,6 +81,8 @@ Five datasets are included with the `bayesTLS` package to make it easier to repr
 | `zebrafish_lethal` | `?zebrafish_lethal` | Zebrafish lethal TDT across life stages |
 | `snowgum_psii` | `?snowgum_psii` | Snowgum leaf PSII (continuous proportion) |
 | `dsuzukii` | `?dsuzukii` | *Drosophila suzukii* multi-trait TDT (lethal, knockdown, fertility; per individual) |
+| `zebrafish_o2` | `?zebrafish_o2` | Zebrafish lethal TDT across an oxygen gradient (survival counts) |
+| `aphid_tdt` | `?aphid_tdt` | Cereal-aphid lethal TDT — three species × ages, heat + cold branches (survival counts) |
 
 Each dataset can be loaded easily using `data(shrimp_lethal)` (as an example of loading the `shrimp_lethal` dataset). If you want other datasets loaded then simply replace `shrimp_lethal`. If you want to learn more about a dataset you can explore it's helpful `?shrimp_lethal`. 
 
@@ -92,7 +94,11 @@ this repository, render the Quarto documents through the `Makefile`, and use the
 tests to verify the package functions used by the manuscript and supplement. All
 code chunks are provided in `ms/ms.qmd` and `ms/supplement.qmd`; use `make supp`
 to render the supplement and `scripts/simulations/run_simulations.R` to rerun the
-full two-stage-bias simulation suite. Run all scenarios with
+full two-stage-bias simulation suite. The large cached artifacts the renders read
+(simulation outputs and `brms` model fits) are not stored in the repository;
+`make data` downloads them from the project's public OSF deposit (see
+[Fetching cached outputs](#fetching-cached-outputs-from-osf) below) so you need
+not re-fit or re-simulate. Run all scenarios with
 `Rscript scripts/simulations/run_simulations.R`, or a subset by passing scenario
 labels, e.g. `Rscript scripts/simulations/run_simulations.R scen9_tmax_060`. Each
 scenario and the per-simulation pipeline are visible in that one script; the
@@ -136,7 +142,18 @@ Use this map to find the files and outputs involved in reproduction:
    devtools::install()
    ```
 
-2. Render the manuscript, supplement, or both from the repository root:
+2. Fetch the cached artifacts the renders read (simulation outputs and `brms`
+   model fits), which are not stored in the repository:
+
+   ```sh
+   make data        # results + model fits (~85 MB) -- enough to render the paper
+   make data-full   # ALSO the 2.6 GB raw/draws tier (only to re-aggregate sims)
+   ```
+
+   `make data` is safe to re-run: a tier already present locally is skipped. No
+   credentials are needed (the OSF deposit is public).
+
+3. Render the manuscript, supplement, or both from the repository root:
 
    ```sh
    make all      # manuscript and supplement, all formats
@@ -151,9 +168,27 @@ Use this map to find the files and outputs involved in reproduction:
    cached models. Subsequent renders reuse the `.rds` files in `output/models/`
    and should be much faster.
 
-3. Inspect the rendered files in `_output/`. Use `make clean` to remove only
+4. Inspect the rendered files in `_output/`. Use `make clean` to remove only
    `_output/`, or `make build-clean` to also remove the out-of-tree Quarto build
    cache at `~/Library/Caches/tls-render/`.
+
+### Fetching cached outputs from OSF
+
+The simulation outputs and `brms` model fits the manuscript reads are large and
+are **not** committed to the repository. They live in the project's public OSF
+deposit ([node `c6dxy`](https://osf.io/c6dxy/)) as tiered zip archives, fetched
+with `make data`:
+
+| Command | Downloads | Size | Use |
+|---|---|---|---|
+| `make data` | `results.zip` + `models.zip` | ~85 MB | render the paper (default) |
+| `make data-full` | the above **plus** `sim_full.zip` | +2.6 GB | re-aggregate the raw simulation |
+
+`make data` is idempotent — a tier already present under `output/` is skipped
+(pass `TIER=--force` to re-download), each download is md5-verified against
+`data-raw/osf_manifest.json`, and the archives unpack straight into `output/`.
+No credentials are required. Maintainers refresh the deposit with `make osf-push`
+(needs an `OSF_PAT` token); see `scripts/osf_publish.R`.
 
 4. Run the package tests if you want to verify the analysis functions separately
    from the manuscript render:
