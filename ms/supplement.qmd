@@ -214,7 +214,7 @@ The functions in `bayesTLS` chain together as a single pipeline with the followi
 4. **Predict** survival and heat-injury accumulation under fluctuating field temperature traces, with optional repair.
 5. **Plot** each step with shared theming so figures across the workflow read consistently.
 
-Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to brown shrimp, zebrafish, and snow gum leaf PSII and *Drosophila* datasets.
+Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to the snow gum leaf PSII and *Drosophila* datasets.
 
 ## *Description of Functions* {#sec-function-tour}
 
@@ -619,7 +619,7 @@ make_4pl_formula()
 
 ::: {.callout-important}
 
-The default model puts a `temp_c` slope on all four 4PL sub-parameters and includes no random effects. Random intercepts on `mid` can be added by passing `random_effects = c("Date", "Tank", ...)` to `fit_4pl()`. The simulation here has no batch structure so we leave it off; the shrimp case study below uses `random_effects = c("Date", "Tank")`.
+The default model puts a `temp_c` slope on all four 4PL sub-parameters and includes no random effects. Random intercepts on `mid` can be added by passing `random_effects = c("Date", "Tank", ...)` to `fit_4pl()`. The simulation here has no batch structure so we leave it off; the snow gum leaf case study below uses `random_effects = c("Day", "G_Room")`.
 
 :::
 
@@ -2746,7 +2746,7 @@ The two `tls()` calls reproduce the by-hand calculations: the relative-threshold
 #### Analysing sublethal measures
 The *Drosophila* dataset also includes two sublethal endpoints: heat-coma time and reproductive output.
 
-Heat-coma time can be analysed in two equivalent ways (see the brown-shrimp sublethal analysis, @sec-shrimp-sublethal). The classical route fits a Bayesian hierarchical regression of $\log_{10}(\text{time to coma})$ on temperature and derives $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$ from the fitted coefficients. The joint route reformulates the same observations as proportion-awake counts and fits the 4PL, recovering the same quantities from the posterior. Below, we fit both models with `sex` as a moderator so one model estimates female- and male-specific parameters.
+Heat-coma time can be analysed in two equivalent ways. The classical route fits a Bayesian hierarchical regression of $\log_{10}(\text{time to coma})$ on temperature and derives $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$ from the fitted coefficients. The joint route reformulates the same observations as proportion-awake counts and fits the 4PL, recovering the same quantities from the posterior. Below, we fit both models with `sex` as a moderator so one model estimates female- and male-specific parameters.
 
 ##### Knockdown: time to coma {#sec-dros-coma}
 
@@ -2775,7 +2775,7 @@ coma_dat <- dsuzukii |>
   )
 ```
 
-The classical sublethal TDT model follows the hierarchical log-time regression used for brown shrimp (@sec-shrimp-sub-linear), with a censoring term and a `sex` interaction so females and males have separate slopes ($z$) and intercepts ($CT_{max}$). The `(1 | block)` random intercept absorbs variation shared by the flies assayed together in one temperature × exposure-level × sex block, to control for non-independence within a block:
+The classical sublethal TDT model is a hierarchical log-time regression, with a censoring term and a `sex` interaction so females and males have separate slopes ($z$) and intercepts ($CT_{max}$). The `(1 | block)` random intercept absorbs variation shared by the flies assayed together in one temperature × exposure-level × sex block, to control for non-independence within a block:
 
 ```{r}
 #| label: dros-coma-linear-fit
