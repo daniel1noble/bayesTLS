@@ -34,7 +34,8 @@ BUILD_MS  := $(BUILDROOT)/ms
         ms-html ms-docx ms-pdf \
         supp-html supp-docx supp-pdf \
         sync-sources \
-        osf-push osf-status
+        osf-push osf-status \
+        data data-full
 
 all: ms supp
 
@@ -152,6 +153,23 @@ endef
 define STRIP_SUPP_NBSP_DOCX
 	@python3 scripts/strip-docx-nbsp.py $(1)
 endef
+
+# ---- OSF artifact fetching (reproduction) ---------------------------------
+
+# Download the cached artifacts from the project's OSF deposit (node c6dxy) and
+# unpack them into output/, so a fresh clone can `make ms` / `make supp` without
+# refitting models or re-running the simulation. Check-then-download: a tier
+# already present locally is skipped. No token needed (c6dxy is public).
+#
+#   make data         # default: results + models (~85 MB) -- enough to render
+#   make data-full    # ALSO the 2.6 GB raw/draws re-derivation tier
+#   make data TIER=results          # one tier
+#   make data TIER=--force          # re-download even if present
+data:
+	@Rscript scripts/fetch_artifacts.R $(TIER)
+
+data-full:
+	@Rscript scripts/fetch_artifacts.R full
 
 # ---- OSF artifact publishing ----------------------------------------------
 
