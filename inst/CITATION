@@ -1,5 +1,8 @@
-citHeader("To cite the bayesTLS package in publications, please use:")
+citHeader(
+  "bayesTLS fits its models with brms and Stan. To cite bayesTLS in publications, please cite the package (below) together with the brms and Stan (RStan) references it relies on:"
+)
 
+## --- bayesTLS (the package) ---------------------------------------------
 bibentry(
   bibtype = "Unpublished",
   title   = "A flexible modelling framework for estimating thermal tolerance and sensitivity",
@@ -17,4 +20,46 @@ bibentry(
     "A flexible modelling framework for estimating thermal tolerance and sensitivity.",
     "Manuscript in preparation. https://github.com/daniel1noble/bayesTLS"
   )
+)
+
+## --- brms (the modelling engine) ----------------------------------------
+bibentry(
+  bibtype = "Article",
+  title   = "{brms}: An {R} Package for {Bayesian} Multilevel Models Using {Stan}",
+  author  = person("Paul-Christian", "Bürkner"),
+  journal = "Journal of Statistical Software",
+  year    = "2017",
+  volume  = "80",
+  number  = "1",
+  pages   = "1--28",
+  doi     = "10.18637/jss.v080.i01",
+  textVersion = paste(
+    "Bürkner P-C (2017).",
+    "brms: An R Package for Bayesian Multilevel Models Using Stan.",
+    "Journal of Statistical Software, 80(1), 1-28. doi:10.18637/jss.v080.i01."
+  )
+)
+
+## --- RStan (the R interface to Stan) ------------------------------------
+## The version is read from the installed package when available so the
+## citation reflects the RStan actually used for the fits.
+rstan_ver  <- tryCatch(as.character(utils::packageVersion("rstan")),
+                       error = function(e) NA_character_)
+rstan_note <- if (!is.na(rstan_ver)) paste("R package version", rstan_ver) else "R package"
+
+bibentry(
+  bibtype = "Manual",
+  title   = "{RStan}: the {R} Interface to {Stan}",
+  author  = person("Stan Development Team"),
+  year    = "2024",
+  note    = rstan_note,
+  url     = "https://mc-stan.org/",
+  textVersion = paste0(
+    "Stan Development Team (2024). RStan: the R Interface to Stan. ",
+    rstan_note, ". https://mc-stan.org/."
+  )
+)
+
+citFooter(
+  "The default sampling backend is cmdstanr; if you fit with cmdstanr rather than RStan, please cite it instead (run citation(\"cmdstanr\"))."
 )
