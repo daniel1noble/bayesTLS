@@ -1,0 +1,81 @@
+---
+title: "Why an out-of-range `target_surv` gives a falsely precise, selection-biased estimate"
+date: 2026-06-23
+format: html
+---
+
+**Question (DN).** What is the "out-of-range `target_surv`" problem flagged in
+the adversarial audit?
+
+## The mechanism
+
+A 4PL survival curve runs from the **upper asymptote `up`** (survival at the
+shortest exposures) down to the **lower asymptote `low`** (at the longest). An
+*absolute* threshold `target_surv = p` asks "at what duration does survival
+equal `p`?" — the LTp. That has a solution only if the curve passes through `p`,
+i.e. **`low < p < up`**.
+
+In a Bayesian fit `up` and `low` are estimated, so **each posterior draw** has
+its own `up`/`low`. For a `p` near an asymptote, some draws reach `p` (LTp
+defined) and others do not (LTp = `NA`). `extract_tdt()`/`tls()` drop the `NA`
+draws and summarise the rest — but the dropped draws are **not random**: they
+are systematically the draws with a low `up` (for a high `p`). The survivors are
+the optimistic tail of the posterior, so:
+
+- the reported CTmax / z is averaged over a **skewed sub-sample**, and
+- its credible interval is **artificially tight** (few, similar draws),
+- while a console warning fires, the returned `$summary` looks like a normal,
+  confident estimate and records nothing about the thinning — so a **script**
+  that captures `$summary` (e.g. a manuscript table) silently reports a
+  falsely precise, biased number.
+
+The **defaults are safe**: the relative threshold and absolute LT50 sit well
+inside `[low, up]` for typical lethal data. It only bites for absolute LTx near
+or beyond an asymptote (LT95/LT98 when max survival ≈ 0.95; LT01 etc.), which is
+more reachable for sublethal endpoints whose asymptotes are well inside (0, 1).
+
+## Minimal illustration (no model fit needed)
+
+Simulate posterior draws of the 4PL parameters with an upper asymptote estimated
+around 0.95, then read off LT50 (safe) vs LT98 (near the asymptote):
+
+```{r}
+set.seed(1)
+n   <- 2000
+up  <- plogis(rnorm(n, qlogis(0.95), 0.5))   # max survival ~0.95, with spread
+low <- plogis(rnorm(n, qlogis(0.05), 0.5))
+k   <- exp(rnorm(n, log(8), 0.2))
+mid <- rnorm(n, 1.5, 0.2)                     # log10 LT50 per draw
+
+# Duration at which survival == p, per draw (NA where the curve never reaches p)
+ltp <- function(p) {
+  arg <- (up - p) / (p - low)
+  ifelse(arg > 0, 10 ^ (mid + log10(arg) / k), NA_real_)
+}
+
+t50 <- ltp(0.50)   # comfortably inside (low, up)
+t98 <- ltp(0.98)   # near / above the upper asymptote
+
+# (1) how many draws are dropped?
+c(LT50_frac_NA = mean(is.na(t50)),
+  LT98_frac_NA = mean(is.na(t98)))
+
+# (2) the surviving LT98 draws are a biased slice: higher `up` than the posterior
+c(up_posterior_mean      = mean(up),
+  up_among_LT98_survivors = mean(up[!is.na(t98)]))
+
+# (3) the LT98 summary is computed from only the survivors
+c(n_used_LT98 = sum(!is.na(t98)), n_total = n)
+```
+
+Expected: LT50 drops ~no draws; LT98 drops a large fraction, and the survivors'
+mean `up` is pushed well above the posterior mean — so any CTmax/z derived at
+p = 0.98 is averaged over that optimistic minority, with a deceptively narrow CI.
+
+## Recommended fix
+
+When the surviving fraction of draws falls below a threshold (e.g. < 50%):
+either **error**, or **stamp `n_used` / `frac_dropped` onto the `$summary`
+tibble** so a non-interactive caller sees the thinning rather than relying on the
+console warning. (Left as a careful follow-up because it adds a column to the
+return contract; see the fix plan.)
