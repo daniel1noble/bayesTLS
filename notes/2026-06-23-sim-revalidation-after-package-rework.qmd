@@ -1,0 +1,90 @@
+---
+title: "Re-validating the two-stage-bias simulation after the bayesTLS rework"
+subtitle: "Did the reworked functions change any simulation result?"
+date: 2026-06-23
+format: html
+---
+
+## Question
+
+The bayesTLS package was substantially reworked (engine unification:
+`extract_tdt`/`tls` now derive every quantity from `posterior_linpred(nlpar=)`
+instead of parsing brms coefficient names; coding-aware `direct_par` priors;
+T_crit anchored at 1 h; argument unification to `target_surv`). The two-stage-
+bias simulation is the statistical backbone of the manuscript's equivalence
+argument. **Does the reworked package change any simulation result, and if so,
+why?**
+
+## Method (no tuning — the new code runs as written)
+
+1. **Snapshot** the pre-rework outputs: `output/sim_twostage_snapshot_2026-06-23/`
+   (the 232 aggregated `per_sim_/summary_/draws_/diffs_` objects; the 29k raw
+   files stay on OSF).
+2. **Reinstall** bayesTLS from the reworked source (the sims load the *installed*
+   package, not `load_all`).
+3. **Re-run** the first N = 16 simulations of four structurally distinct
+   scenarios with `scripts/simulations/check_against_snapshot.R`, into a scratch
+   dir, and diff against the snapshot. The harness re-uses each sim's seed
+   (`MASTER_SEED + 1000*index + sim_id`), so the simulated *data* is identical and
+   the only variable is the package code.
+
+**Two-layer comparison.**
+
+- `two_stage_*` are pure `glm`/`glmmTMB`, independent of bayesTLS. Same data in →
+  identical GLMs out, so they must match the snapshot **exactly**. They are a
+  built-in **control**: any drift means the reconstruction is wrong (e.g. a bad
+  seed), not the package.
+- `joint_4pl*` route through `fit_4pl` + `extract_tdt` — the entire change
+  surface. Compared on per-sim point-estimate drift, coverage, and (for one sim)
+  the full per-draw posterior.
+
+Scenarios chosen to span the design: **scen1** (baseline / binomial / full,
+boundary asymptotes), **scen3** (asym_u drift / beta-binomial), **scen5**
+(varying-k curve shape / beta-binomial), **scen8_sparse** (sparse design grid).
+
+## Result
+
+| scenario | two_stage `max_abs_d_est` (control) | joint `max_abs_d_est` | coverage old vs new |
+|---|---|---|---|
+| scen1_strict_eq_n3 | 0.000e+00 | ~1e-12 | identical |
+| scen3_heat_lowers_u_n3 | 0.000e+00 | ~1e-12 | identical |
+| scen5_sharpen_n3 | 0.000e+00 | ~1e-12 | identical |
+| scen8_sparse_n3 | 0.000e+00 | ~1e-12 | identical |
+
+Draw-level check (scen1, sim 1): all 1000 posterior draws of z and CTmax match
+old vs new to **< 5e-12**. The Stan fit is bit-identical (same default model +
+same seed → same draws); the ~1e-12 lives only in `extract_tdt`.
+
+## Why the ~1e-12 (the "change", investigated)
+
+It is **not** a behavioural change. The fit draws are identical, so the model and
+priors for the default (midpoint) `fit_4pl` path are unchanged. The only
+difference is that `extract_tdt` now evaluates `posterior_linpred(nlpar=)` on a
+grid instead of parsing coefficient names; the two routes compute the same
+quantity in a different floating-point order, agreeing to ~1e-12 rather than
+exactly 0. This is exactly what the golden parity test `test-unify-parity.R`
+bounds (it asserts < 1e-4; observed 1e-12). `two_stage_*` is *exactly* 0 because
+it never touches the refactored extractor.
+
+## Incident: the control caught a reconstruction error
+
+The first scen8_sparse run used `index = 23` (off by one — that row is
+`scen8_sparse_n1`); the correct row is 24. The wrong seed produced different
+data, so the **two_stage control drifted by up to 8.3** — impossible from a
+package change (two-stage never calls bayesTLS), which immediately localised it
+to a bad seed. Fixed to index 24 → two_stage back to exactly 0, joint ~1e-12. The
+harness now **derives each scenario's index from `run_simulations.R`'s order and
+errors if a hand-typed index disagrees**, so this can't recur.
+
+## Conclusion
+
+The rework preserved the simulation results to **machine precision (~1e-12)**
+across both likelihood families (binomial, beta-binomial), three DGP types
+(baseline, asym_u drift, varying-k), and both designs (full, sparse). Coverage is
+identical. **A full 29k re-run is not required for correctness** — it would
+reproduce the published numbers to ~1e-12, and the manuscript reads z/CTmax to a
+few significant figures. The published OSF results stand.
+
+Open (provenance only, not correctness): whether to do a full regenerate-under-
+final-package re-run purely for a clean single-version stamp. The numbers will
+not move.

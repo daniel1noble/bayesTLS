@@ -4,6 +4,7 @@ date: 2026-05-17
 author: "Daniel Noble (with Claude assistance)"
 format:
   html:
+    embed-resources: true
     toc: false
     code-fold: true
     fig-cap-location: bottom

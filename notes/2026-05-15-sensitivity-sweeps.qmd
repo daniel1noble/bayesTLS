@@ -5,6 +5,7 @@ date-modified: 2026-05-16
 author: "Daniel Noble (with Claude assistance)"
 format:
   html:
+    embed-resources: true
     toc: true
     number-sections: true
     fig-width: 8

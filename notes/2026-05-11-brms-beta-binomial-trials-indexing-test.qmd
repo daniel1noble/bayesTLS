@@ -3,6 +3,7 @@ title: "Test: does brms::beta_binomial() + trials() work in a nonlinear model?"
 date: 2026-05-11
 format:
   html:
+    embed-resources: true
     toc: true
     code-fold: false
 execute:

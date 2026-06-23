@@ -4,6 +4,7 @@ date: 2026-05-30
 author: "Daniel W.A. Noble (clarification dialogue with Claude)"
 format:
   html:
+    embed-resources: true
     toc: true
     toc-depth: 3
     code-fold: false
