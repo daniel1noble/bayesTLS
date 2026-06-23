@@ -288,6 +288,45 @@ by_species <- split(std_aphid, std_aphid$species) |>
                           lethal = TRUE))
 ```
 
+## Projecting field heat injury
+
+With the per-species TDT surface in hand, `predict_heat_injury()` accumulates
+damage along an hourly field temperature trace. We use hourly 2 m air
+temperature for Li et al.'s three wheat sites — Wuhan, Xinxiang and Beijing —
+over summer 2016, re-sourced from the **Open-Meteo historical archive** (ERA5
+reanalysis; ships in `inst/extdata`, built by
+`data-raw/fetch_aphid_temp_trace.R`). Li et al. drew their trace from the
+VisualCrossing API, which is not deposited on Dryad; ERA5 is a different
+reanalysis of the same weather, and our projection uses our own joint-fit TDT
+parameters — so this is a demonstration **comparable to** their Fig. 2 within our
+posterior framework, not a bit-for-bit reproduction.
+
+```{r aphid-hi}
+#| eval: false
+# Hourly trace ships with the package: one (time, temp) series per city.
+trace_all <- readr::read_csv(
+  system.file("extdata", "data_temp_trace_aphid_summer2016.csv", package = "bayesTLS"),
+  show_col_types = FALSE)
+
+# Focal site: Wuhan (the hottest of the three -> most heat injury). `by = "species"`
+# projects each species' damage accumulation and survival decline along the season.
+trace_wuhan <- trace_all |> filter(city == "Wuhan") |>
+  transmute(time = time_h, temp = temp_c)        # time in hours, temp in degrees C
+
+hi <- predict_heat_injury(trace_wuhan, wf_aphid, target_surv = "relative",
+                          trace_unit = "hours", by = "species")
+plot_heat_injury(hi)        # accumulated injury + survival over the season, per species
+
+# End-of-season survival per species (tail of the trace):
+hi$summary |> dplyr::group_by(species) |> dplyr::slice_tail(n = 1) |>
+  dplyr::select(species, surv_median, surv_lower, surv_upper)
+```
+
+Looping the same call over all three cities traces the south-to-north climate
+gradient (Wuhan hottest, Beijing coolest) onto a corresponding gradient in
+projected end-of-season survival, the link Li et al. draw between thermal
+tolerance and field abundance.
+
 # 3. Snow-gum leaf PSII — a continuous-proportion sublethal endpoint
 
 Retained photosystem-II function — post-exposure $F_v/F_m$ divided by its
@@ -374,6 +413,52 @@ because the relative midpoint extrapolates to 1 h for this sublethal plateau).
 The by-hand $z$ and $CT_{max}$ reproduce `extract_tdt()` exactly, confirming the
 Beta path feeds the same posterior-midpoint machinery as the count families.
 
+We can also target the **absolute** LT50 (the literal 0.5 survival crossing)
+instead of the relative midpoint. The threshold time is then no longer just
+`mid(T)`: it adds the 4PL asymmetry correction
+$\log_{10}\mathrm{LT}_{50}(T) = \mathrm{mid}(T) + \log\!\big(\tfrac{u - 0.5}{0.5 - \ell}\big)/k$.
+
+```{r psii-extract-absolute}
+#| eval: false
+# ABSOLUTE pathway. NB: absolute mode does a duration-grid search (relative is
+# closed-form), so it is slower; pass ndraws = to subsample for a quick look.
+et_leaf_abs <- extract_tdt(wf_leaf, target_surv = "absolute", t_ref = 60, lethal = FALSE, ndraws = 1000)
+et_leaf_abs$z$summary
+et_leaf_abs$CTmax$summary
+
+# HAND CHECK (absolute). `tc` is the model's CENTRED temperature: tc = T - Tbar
+# (the `temp_c` predictor the fit uses internally), in degrees C. So tc = 0 is the
+# mean assay temperature Tbar, tc = 0.5 is 0.5 degC above it, and a real
+# temperature is recovered as T = Tbar + tc. Reconstruct the four sub-parameters
+# at centred temp tc (disjoint-bounds reparameterisation, bounds [0, 1]), build
+# log10 LT50(tc) with the asymmetry correction, then z = -1/slope and invert for
+# CTmax (adding Tbar back to return to the degrees-C scale). Because
+# low/up/k carry temp_c slopes here, the LT50 curve is slightly BENT, so this is
+# an approximation: we read the slope over a 1 degC step about the mean, whereas
+# extract_tdt() averages the local slope across the assay temperatures. The two
+# therefore agree CLOSELY (to the curve's small bend), not to machine precision --
+# unlike the relative case, where log10 LT = mid is exactly linear and they match.
+pd   <- brms::as_draws_df(get_brmsfit(wf_leaf))
+Tbar <- wf_leaf$meta$temp_mean
+lt50_abs <- function(tc) {
+  low <- 0.001 + plogis(pd$b_lowraw_Intercept + pd$b_lowraw_temp_c * tc) * 0.498
+  up  <- 0.501 + plogis(pd$b_upraw_Intercept  + pd$b_upraw_temp_c  * tc) * 0.498
+  k   <- exp(pd$b_logk_Intercept + pd$b_logk_temp_c * tc)
+  mid <- pd$b_mid_Intercept + pd$b_mid_temp_c * tc
+  mid + log((up - 0.5) / (0.5 - low)) / k         # natural log; log10 LT50(tc)
+}
+slope     <- lt50_abs(0.5) - lt50_abs(-0.5)        # 1 degC step: tc = +/-0.5 (T = Tbar +/- 0.5 degC)
+z_abs     <- -1 / slope
+ctmax_abs <- Tbar + (log10(60) - lt50_abs(0)) / slope  # lt50 at tc = 0 (= Tbar); + Tbar -> degC
+round(quantile(z_abs,     c(0.025, 0.5, 0.975)), 2)  # ~ et_leaf_abs$z$summary
+round(quantile(ctmax_abs, c(0.025, 0.5, 0.975)), 2)  # ~ et_leaf_abs$CTmax$summary
+```
+
+Here the absolute and relative answers are similar ($z_{\text{abs}} \approx 4.9$ °C,
+$CT_{max,\text{abs}} \approx 39.3$ °C) because the fitted upper plateau is well
+above 0.5; the hand-calc lands within ~0.5% of `extract_tdt()`, the residual being
+the LT50 curve's bend.
+
 # 4. Vinegar fly (*Drosophila suzukii*) — comparing sexes on the midpoint
 
 @orsted_suzukii_2024 measured mortality (plus sublethal knockdown and fertility)
@@ -451,11 +536,11 @@ target_surv = "absolute", t_ref = 60 * 4)`.
 - **Aphid cold branch and ages:** `aphid_tdt` carries the cold branch
   (−11 to −3 °C) and ages 2 / 12 alongside the heat / age-6 slice used here;
   the same workflow fits a cold-tolerance ($z$, $CT_{min}$) comparison.
-- **Aphid heat-injury projection:** Li et al. project injury under hourly field
-  temperatures for three China wheat sites (Wuhan / Xinxiang / Beijing). Those
-  series are **not** in the Dryad deposit (only `surv.txt`); sourcing them (the
-  authors used the VisualCrossing weather API) would let `predict_heat_injury()`
-  reproduce their Fig. 2 within our posterior framework.
+- **Aphid winter / cold-branch injury:** the heat-injury projection above uses
+  the summer trace; the cold branch (−11 to −3 °C) together with a winter
+  2016-17 trace (same Open-Meteo source — extend the date range in
+  `data-raw/fetch_aphid_temp_trace.R`) would carry the same workflow into cold
+  injury across the three sites.
 - **Drosophila sublethal endpoints:** `dsuzukii` also carries time-to-coma
   (`t_coma`, right-censored knockdown) and fertility (`prod`). The knockdown
   endpoint needs a censored-likelihood fit (flies still awake at the end of an
