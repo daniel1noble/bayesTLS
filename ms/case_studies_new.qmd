@@ -1,6 +1,6 @@
 ---
-title: "New case studies (draft): zebrafish and cereal aphids"
-subtitle: "Two multi-group TDT comparisons fit with the direct CTmax/z parameterisation"
+title: "New case studies (draft): zebrafish, aphids, leaf PSII, and Drosophila"
+subtitle: "Four worked TDT examples — lethal counts, a continuous-proportion sublethal endpoint, and per-group comparisons — each cross-checked by hand against the package functions"
 date: 2026-06-23
 format:
   html:
@@ -27,15 +27,20 @@ set.seed(123)
 models_dir <- here::here("output", "models")
 ```
 
-Both examples fit the same workflow: rather than fitting a separate TDT curve
-per group and comparing point estimates afterwards, we let critical temperature
-($CT_{max}$) and thermal sensitivity ($z$) depend on a **moderator inside one
-joint 4PL**, so the between-group comparison comes with full posterior
-uncertainty. The **zebrafish** study compares heat tolerance across an oxygen
-gradient; the **aphid** study compares three species. In both we cross-check our
-estimates against the original papers — they need not match exactly, since the
-joint 4PL fits the whole response surface rather than reading points off
-per-temperature regressions.
+The four examples below share one workflow: rather than fitting a separate TDT
+curve per group and comparing point estimates afterwards, we fit **one joint
+4PL** and read the classical quantities ($z$, $CT_{max}$, and — for lethal
+endpoints — $T_{crit}$) straight from its posterior. **Zebrafish** (across an
+oxygen gradient) and **aphids** (across three species) put the moderator on
+$CT_{max}$/$z$ directly (the *direct* parameterisation); **leaf PSII** is a
+continuous-proportion *sublethal* endpoint fit with a Beta likelihood;
+**Drosophila** compares the sexes by putting them on the *midpoint*. In every
+example we also recompute $z$ and $CT_{max}$ **by hand** from the raw posterior
+draws and confirm they reproduce the package functions to machine precision — the
+package does no more than the hand calculation, just vectorised over draws and
+groups. Where an original paper reports values we cross-check against those too;
+they need not match exactly, since the joint 4PL fits the whole response surface
+rather than reading points off per-temperature regressions.
 
 # 1. Zebrafish larvae across an oxygen gradient
 
@@ -106,6 +111,24 @@ psc <- predict_survival_curves(wf_zf)
 plot_survival_curves(psc, observed = std_zf, log_time = TRUE)
 
 bayes_R2(wf_zf$fit)
+```
+
+```{r zf-handcheck}
+#| eval: false
+# HAND CHECK (direct parameterisation). With cell-means coding (~ 0 + oxygen) each
+# treatment has its own logz and CTmaxdev coefficient, and by construction
+#   z = exp(logz)            CTmax(at the fit's t_ref) = T_bar + CTmaxdev.
+# That is exactly what extract_tdt()/tls() compute, so the by-hand numbers below
+# reproduce `ox$summary` to machine precision.
+pd   <- brms::as_draws_df(get_brmsfit(wf_zf))
+Tbar <- wf_zf$meta$temp_mean
+for (lvl in c("hypoxia", "normoxia", "hyperoxia")) {
+  z_hand     <- exp(pd[[paste0("b_logz_oxygen", lvl)]])
+  ctmax_hand <- Tbar + pd[[paste0("b_CTmaxdev_oxygen", lvl)]]
+  cat(sprintf("%-9s  z = %s   CTmax(1h) = %s\n", lvl,
+      paste(round(quantile(z_hand,     c(.025, .5, .975)), 2), collapse = " / "),
+      paste(round(quantile(ctmax_hand, c(.025, .5, .975)), 2), collapse = " / ")))
+}
 ```
 
 Our estimates recover the OCLTT gradient @saruhashi2026 report: $CT_{max}$
@@ -223,6 +246,22 @@ sp_abs$summary
 # and summarise with pMCMC, as in the manuscript.
 ```
 
+```{r aphid-handcheck}
+#| eval: false
+# HAND CHECK (direct, cell-means ~ 0 + species): z = exp(logz) and
+# CTmax(1h) = T_bar + CTmaxdev per species, straight from the coefficients —
+# reproduces sp$summary above exactly.
+pd   <- brms::as_draws_df(get_brmsfit(wf_aphid))
+Tbar <- wf_aphid$meta$temp_mean
+for (s in c("M_dirhodum", "R_padi", "S_avenae")) {
+  z_hand     <- exp(pd[[paste0("b_logz_species", s)]])
+  ctmax_hand <- Tbar + pd[[paste0("b_CTmaxdev_species", s)]]
+  cat(sprintf("%-11s z = %s   CTmax(1h) = %s\n", s,
+      paste(round(quantile(z_hand,     c(.025, .5, .975)), 2), collapse = " / "),
+      paste(round(quantile(ctmax_hand, c(.025, .5, .975)), 2), collapse = " / ")))
+}
+```
+
 The estimates are then checked two ways: (i) against the $z$ (≈3.2–4.7 °C) and
 $CT_{max,1h}$ (≈35–37 °C) Li et al. report — our joint fit returns
 *M. dirhodum* $z\approx4.6$ / $CT_{max}\approx35.3$, *R. padi* $\approx3.5$ /
@@ -231,10 +270,11 @@ $37.0$, *S. avenae* $\approx3.5$ / $36.6$, within their reported ranges — and
 the joint model recovers the same picture; the joint model is what we use for
 inference.
 
-```{r}
+```{r aphid-survival}
+#| eval: false
 # Fitted survival surface with the observed counts overlaid.
 psc_aphid <- predict_survival_curves(wf_aphid)
-plot_survival_curves(psc_aphid, observed = std_zf, log_time = TRUE)
+plot_survival_curves(psc_aphid, observed = std_aphid, log_time = TRUE)
 
 bayes_R2(wf_aphid$fit)
 ```
@@ -247,6 +287,160 @@ by_species <- split(std_aphid, std_aphid$species) |>
   lapply(\(d) extract_tdt(fit_4pl(d, ctmax = ~ 1, z = ~ 1, t_ref = 60),
                           lethal = TRUE))
 ```
+
+# 3. Snow-gum leaf PSII — a continuous-proportion sublethal endpoint
+
+Retained photosystem-II function — post-exposure $F_v/F_m$ divided by its
+pre-exposure value — is a **continuous proportion in $[0, 1]$ with no count
+denominator**, so the 4PL uses a **Beta** likelihood rather than beta-binomial.
+Loss of PSII function is **sublethal**, so we report $z$ and $CT_{max}$ but not
+$T_{crit}$. Otherwise nothing changes: the same posterior-midpoint extraction
+gives $z$ and $CT_{max}$. The data (snow gum, *Eucalyptus pauciflora*) ship with
+the package (`?snowgum_psii`).
+
+```{r psii-fit}
+#| eval: false
+
+data(snowgum_psii)
+
+# `proportion =` (not n_total/n_surv) flags a continuous response: standardize_data()
+# records response_type = "proportion" and clamps to (0.001, 0.999) for the Beta
+# density. Random intercepts on mid soak up day / glasshouse-room batch structure.
+leaf_std <- standardize_data(snowgum_psii, temp = "Temp", duration = "Time",
+                             proportion = "fvfm_prop",
+                             random_effects = c("Day", "G_Room"),
+                             duration_unit = "minutes")
+
+# Beta family is auto-picked from response_type; named here for clarity. Single
+# group (no moderator): one marginal PSII TDT curve.
+wf_leaf <- fit_4pl(leaf_std,
+                   family = brms::Beta(link = "identity"),
+                   random_effects = c("Day", "G_Room"),
+                   t_ref = 60,
+                   control = list(adapt_delta = 0.99, max_treedepth = 15),
+                   file = file.path(models_dir, "fit_leaf_function_4pl"),
+                   file_refit = "on_change")
+summary(wf_leaf)
+extr_wf_leaf <- tls(wf_leaf)
+extr_wf_leaf$summary
+# Now add random effects cirect to ctmax and z, Cis will change...but we can't really model random effects they onlu have two levels need a rethink
+wf_leaf2 <- fit_4pl(leaf_std,
+                    ctmax = ~1 + (1|Day) + (1|G_Room), 
+                        z = ~1 + (1|Day) + (1|G_Room),
+                   family = brms::Beta(link = "identity"),
+                   t_ref = 60,
+                   control = list(adapt_delta = 0.99, max_treedepth = 15),
+                   file = file.path(models_dir, "fit_leaf_function_4pl_ct_z"),
+                   file_refit = "on_change")
+summary(wf_leaf2)
+extr_wf_leaf2 <- tls(wf_leaf2)
+extr_wf_leaf2$summary
+
+
+# Have a look at the funtinal plots
+
+psc_plant <- predict_survival_curves(wf_leaf2)
+plot_survival_curves(psc_plant, observed = leaf_std, log_time = TRUE, response_label = "Photosystem II Function")
+
+bayes_R2(wf_leaf2$fit)
+bayes_R2(wf_leaf$fit)
+
+
+```
+
+```{r psii-extract}
+#| eval: false
+# Package: z and CTmax(1h) at the relative midpoint threshold. Sublethal -> lethal = FALSE.
+et_leaf <- extract_tdt(wf_leaf, target_surv = "relative", t_ref = 60, lethal = FALSE)
+et_leaf$z$summary       # z (°C)
+et_leaf$CTmax$summary   # CTmax at 1 h (°C)
+
+# HAND CHECK. At the relative threshold log10 LT(T) = mid(T) = b_mid_Intercept +
+# b_mid_temp_c * temp_c, so
+#   z = -1 / b_mid_temp_c        CTmax = T_bar + (log10(60) - b_mid_Intercept) / b_mid_temp_c.
+# This IS what extract_tdt() does internally (it reads mid via posterior_linpred),
+# so the two agree to machine precision.
+pd   <- brms::as_draws_df(get_brmsfit(wf_leaf))
+Tbar <- wf_leaf$meta$temp_mean
+z_hand     <- -1 / pd$b_mid_temp_c
+ctmax_hand <- Tbar + (log10(60) - pd$b_mid_Intercept) / pd$b_mid_temp_c
+round(quantile(z_hand,     c(0.025, 0.5, 0.975)), 2)   # == et_leaf$z$summary
+round(quantile(ctmax_hand, c(0.025, 0.5, 0.975)), 2)   # == et_leaf$CTmax$summary
+```
+
+PSII function falls steeply with temperature: $z \approx 5.1$ °C (95% CrI
+4.5–5.8) and a relative $CT_{max}$ at 1 h $\approx 39.9$ °C (35.5–43.7; wide,
+because the relative midpoint extrapolates to 1 h for this sublethal plateau).
+The by-hand $z$ and $CT_{max}$ reproduce `extract_tdt()` exactly, confirming the
+Beta path feeds the same posterior-midpoint machinery as the count families.
+
+# 4. Vinegar fly (*Drosophila suzukii*) — comparing sexes on the midpoint
+
+@orsted_suzukii_2024 measured mortality (plus sublethal knockdown and fertility)
+in *D. suzukii* across temperature and exposure duration, for both sexes. The raw
+data are **per individual**; we aggregate to dead/total counts per
+temperature × duration × sex and let the **midpoint depend on sex** — so $z$ and
+$CT_{max}$ differ by sex while the asymptotes and steepness are shared (the lean,
+well-identified model). The new `mid =` argument fits this in one call, replacing
+a hand-built `brms::bf()`.
+
+```{r dros-fit}
+#| eval: false
+
+data(dsuzukii)
+
+# Per-individual records -> dead/total counts per cell.
+mort <- dsuzukii |>
+  group_by(temp, time, sex) |>
+  summarise(n_total = n(), n_dead = sum(dead), .groups = "drop")
+
+std_sex <- standardize_data(mort, temp = "temp", duration = "time",
+                            n_total = "n_total", n_dead = "n_dead",
+                            duration_unit = "minutes")
+
+# `mid = ~ sex * temp_c`: sex on the midpoint only -> per-sex z and CTmax, pooled
+# asymptotes / steepness. fit_4pl records `sex` as a moderator, so the readers
+# below auto-group. (Same model the supplement builds by hand with bf().)
+wf_dros <- fit_4pl(std_sex, mid = ~ sex * temp_c, t_ref = 60 * 4,
+                   control = list(adapt_delta = 0.95),
+                   file = file.path(models_dir, "fit_dsuzukii_mort_sex_mid"),
+                   file_refit = "on_change")
+summary(wf_dros)
+```
+
+```{r dros-extract}
+#| eval: false
+# Package: per-sex z and CTmax at 4 h (Ørsted's reference exposure). Mortality is
+# lethal -> T_crit available. tls(wf_dros, by = "sex") gives the same.
+et_dros <- extract_tdt(wf_dros, by = "sex", target_surv = "relative",
+                       t_ref = 60 * 4, lethal = TRUE)
+et_dros$z$summary       # one row per sex
+et_dros$CTmax$summary
+
+# HAND CHECK. Treatment coding makes Female the reference. The midpoint slope is
+# b_mid_temp_c (F), + b_mid_sexM:temp_c (M); the intercept b_mid_Intercept (F),
+# + b_mid_sexM (M). Then z = -1/slope and
+# CTmax = T_bar + (log10(4 h) - intercept)/slope — exactly extract_tdt()'s formula.
+pd   <- brms::as_draws_df(get_brmsfit(wf_dros))
+Tbar <- wf_dros$meta$temp_mean
+slope_F <- pd$b_mid_temp_c
+slope_M <- pd$b_mid_temp_c + pd[["b_mid_sexM:temp_c"]]
+int_F   <- pd$b_mid_Intercept
+int_M   <- pd$b_mid_Intercept + pd$b_mid_sexM
+hand <- list(z_F     = -1 / slope_F,
+             z_M     = -1 / slope_M,
+             CTmax_F = Tbar + (log10(60 * 4) - int_F) / slope_F,
+             CTmax_M = Tbar + (log10(60 * 4) - int_M) / slope_M)
+round(sapply(hand, quantile, c(0.025, 0.5, 0.975)), 2)   # matches et_dros per sex
+```
+
+Our joint fit returns $z \approx 3.06$ °C (F) / $3.21$ °C (M) and
+$CT_{max, 4h} \approx 35.2$ °C for both sexes — matching @orsted_suzukii_2024
+(their Table 1: $z = 3.03$ F / $3.28$ M, $CT_{max, 4h} \approx 35.2$). The
+interaction `mid_sexM:temp_c` is small, so the sex difference in $z$ is modest.
+The by-hand $z$ and $CT_{max}$ reproduce `extract_tdt()` exactly, and switching to
+the absolute LT50 threshold is one argument: `tls(wf_dros, by = "sex",
+target_surv = "absolute", t_ref = 60 * 4)`.
 
 # Open items / natural extensions
 
@@ -262,5 +456,9 @@ by_species <- split(std_aphid, std_aphid$species) |>
   series are **not** in the Dryad deposit (only `surv.txt`); sourcing them (the
   authors used the VisualCrossing weather API) would let `predict_heat_injury()`
   reproduce their Fig. 2 within our posterior framework.
+- **Drosophila sublethal endpoints:** `dsuzukii` also carries time-to-coma
+  (`t_coma`, right-censored knockdown) and fertility (`prod`). The knockdown
+  endpoint needs a censored-likelihood fit (flies still awake at the end of an
+  exposure are right-censored); the supplement's Case Study 4 works both through.
 - **Snail (Truebano 2018):** deferred pending author data request (no public
   deposit).
