@@ -8,7 +8,8 @@ plot_survival_curves(
   pred,
   observed = NULL,
   log_time = FALSE,
-  palette = "viridis"
+  palette = "viridis",
+  response_label = "Survival probability"
 )
 }
 \arguments{
@@ -23,6 +24,11 @@ Default \code{FALSE} (linear).}
 \item{palette}{Character. Viridis option for the temperature colour scale.
 Default \code{"viridis"}; pass \code{NULL} to keep ggplot's default
 hue scale.}
+
+\item{response_label}{Character. y-axis label for the modelled response.
+Default \code{"Survival probability"}; set to e.g.
+\code{"Retained PSII function"} for a continuous-proportion (Beta)
+endpoint where the response is not survival.}
 }
 \value{
 A ggplot object.

@@ -42,6 +42,10 @@ theme_tdt <- function(base_size = 13) {
 #' @param palette   Character. Viridis option for the temperature colour scale.
 #'                  Default `"viridis"`; pass `NULL` to keep ggplot's default
 #'                  hue scale.
+#' @param response_label Character. y-axis label for the modelled response.
+#'                  Default `"Survival probability"`; set to e.g.
+#'                  `"Retained PSII function"` for a continuous-proportion (Beta)
+#'                  endpoint where the response is not survival.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -52,7 +56,8 @@ theme_tdt <- function(base_size = 13) {
 #' @export
 plot_survival_curves <- function(pred, observed = NULL,
                                  log_time = FALSE,
-                                 palette  = "viridis") {
+                                 palette  = "viridis",
+                                 response_label = "Survival probability") {
   df <- pred$summary
   p <- ggplot2::ggplot(df, ggplot2::aes(x = duration, y = survival_median,
                                         colour = factor(temp),
@@ -62,7 +67,7 @@ plot_survival_curves <- function(pred, observed = NULL,
                          alpha = 0.18, colour = NA) +
     ggplot2::geom_line(linewidth = 0.9) +
     ggplot2::scale_y_continuous(limits = c(0, 1)) +
-    ggplot2::labs(x = "Exposure duration", y = "Survival probability",
+    ggplot2::labs(x = "Exposure duration", y = response_label,
                   colour = "Temperature (\u00b0C)",
                   fill   = "Temperature (\u00b0C)") +
     theme_tdt()

@@ -109,3 +109,19 @@ test_that("get_surv_draws round-trips with predict_survival_curves", {
   expect_named(sd, c(".draw", "temp", "duration", "survival"))
   expect_equal(nrow(sd), nrow(psc$grid) * 100)
 })
+
+test_that("grouped extract_tdt accessors preserve the moderator column (key on grp,.draw)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_grouped()
+  et <- extract_tdt(wf, t_ref = 60, lethal = TRUE, ndraws = NULL)
+  for (acc in list(get_z_draws, get_ctmax_draws, get_tcrit_draws)) {
+    d <- acc(et)
+    expect_true("grp" %in% names(d))                 # group column carried, not dropped
+    expect_setequal(unique(d$grp), c("A", "B"))
+    expect_gt(sum(duplicated(d$.draw)), 0L)           # .draw repeats across groups
+  }
+  # The headline use case: a per-group z-vs-CTmax contrast keyed on (grp, .draw)
+  # must be 1:1 (the bug produced a many-to-many join that scrambled groups).
+  zj <- merge(get_z_draws(et), get_ctmax_draws(et), by = c("grp", ".draw"))
+  expect_equal(nrow(zj), nrow(get_z_draws(et)))
+})

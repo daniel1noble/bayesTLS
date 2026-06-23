@@ -106,7 +106,12 @@ posterior_linpred_tdt <- function(workflow,
 
   args <- list(object = workflow$fit, newdata = newdata,
                re_formula = re_formula, transform = TRUE)
-  if (!is.null(ndraws)) args$ndraws <- ndraws
+  if (!is.null(ndraws)) {
+    # Clamp to the posterior size: brms::posterior_linpred() errors if ndraws
+    # exceeds the number of available draws.
+    total <- tryCatch(brms::ndraws(workflow$fit), error = function(e) NA_integer_)
+    args$ndraws <- if (is.finite(total)) min(ndraws, total) else ndraws
+  }
 
   do.call(brms::posterior_linpred, args)
 }
