@@ -1547,6 +1547,181 @@ tinytable::tt(val_table, digits = 2, escape = TRUE)
 
 The flat trace stays below $T_c$ for its entire duration and so accrues zero HI, matching the analytical truth exactly. The single- and multi-spike traces deliver known doses analytically; `predict_heat_injury()` recovers each with the truth lying inside its credible interval.
 
+# **Case Study 1: Zebrafish heat tolerance across an oxygen gradient** {#sec-zebrafish-o2}
+
+@saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (38–40 °C) and exposure durations (7.5–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The dual purpose here is methodological *and* a validation: if the joint model is doing its job it should recover the OCLTT prediction the authors report — that added oxygen raises heat tolerance.
+
+## Data and standardisation {#sec-zf-o2-data}
+
+```{r zfo2-load}
+#| label: zfo2-load
+#| echo: true
+#| code-fold: show
+
+# Bundled Saruhashi et al. (2026) survival data; diploid larvae, normoxia vs
+# hyperoxia (we drop hypoxia, whose z is weakly identified by these durations).
+data(zebrafish_o2)
+zf_raw <- zebrafish_o2 |>
+  dplyr::filter(ploidy == "diploid", oxygen %in% c("normoxia", "hyperoxia")) |>
+  dplyr::mutate(oxygen = droplevels(oxygen))
+
+# Counts -> the bayesTLS modelling schema. `oxygen` is carried through as the moderator.
+zf_std <- standardize_data(zf_raw, temp = "temp", duration = "duration_min",
+                           n_total = "n_total", n_surv = "n_surv",
+                           duration_unit = "minutes")
+str(zf_std)
+```
+
+## Joint 4PL with oxygen on $CT_{max}$ and $z$ {#sec-zf-o2-fit}
+
+We fit $CT_{max}$ and $z$ directly as functions of `oxygen` using cell-means coding (`~ 0 + oxygen`), so each treatment gets its own coefficient and the asymptotes and steepness are shared. The `CTmax`/`z` priors are coding-aware, so this returns the same per-group estimates as treatment coding (`~ oxygen`) — cell-means simply reads most directly.
+
+```{r zfo2-fit}
+#| label: zfo2-fit
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+wf_zf <- fit_4pl(zf_std, ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen, t_ref = 60,
+                 control    = list(adapt_delta = 0.95),
+                 file_refit = "on_change",
+                 file       = file.path(models_dir, "zf_oxygen_normhyper"))
+summary(wf_zf)
+```
+
+## Per-treatment thermal limits and OCLTT check {#sec-zf-o2-extract}
+
+`tls(by = "oxygen")` derives $z$, $CT_{max_{1hr}}$ and $T_{crit}$ per treatment from the shared posterior, so each quantity carries full uncertainty and $T_{crit}$ pairs $CT_{max}$ and $z$ per draw.
+
+```{r zfo2-tls}
+#| label: zfo2-tls
+#| echo: true
+
+zf_tls <- tls(wf_zf, by = "oxygen", lethal = TRUE)
+zf_tls$summary
+```
+
+```{r zfo2-facts}
+#| echo: false
+.zg <- function(ox, q) zf_tls$summary$median[zf_tls$summary$oxygen == ox &
+                                              zf_tls$summary$quantity == q]
+zf_ctmax_norm  <- .zg("normoxia",  "CTmax");  zf_ctmax_hyper <- .zg("hyperoxia", "CTmax")
+zf_tcrit_norm  <- .zg("normoxia",  "Tcrit");  zf_tcrit_hyper <- .zg("hyperoxia", "Tcrit")
+```
+
+The joint fit recovers the OCLTT direction @saruhashi2026 report: hyperoxia raises $CT_{max_{1hr}}$ to `r round(zf_ctmax_hyper, 1)` °C, above the normoxic `r round(zf_ctmax_norm, 1)` °C, and lifts $T_{crit}$ markedly (`r round(zf_tcrit_hyper, 1)` °C vs `r round(zf_tcrit_norm, 1)` °C) — added oxygen buys heat tolerance. Saruhashi et al. report this ordering qualitatively rather than as tabulated $z$/$CT_{max}$, so the validation here is the recovered *direction*, not a number-for-number match. (Normoxia's $z$ is wide — survival saturates over the tested durations — while hyperoxia's is tight; the $CT_{max}$/$T_{crit}$ ordering is the well-identified signal.)
+
+```{r zfo2-survival}
+#| label: fig-zfo2-survival
+#| fig-cap: "Zebrafish survival surface. Fitted joint-4PL survival probability against exposure duration for normoxia and hyperoxia (posterior median and 95% credible band), with the observed cell proportions overlaid."
+#| echo: true
+#| code-fold: show
+
+psc_zf <- predict_survival_curves(wf_zf)
+plot_survival_curves(psc_zf, observed = zf_std)
+```
+
+# **Case Study 2: Cereal aphids — comparing three species** {#sec-aphids}
+
+@li2023 measured survival of three cereal-aphid species — *Metopolophium dirhodum*, *Sitobion avenae* and *Rhopalosiphum padi* — across temperatures and exposure durations, and linked their thermal tolerance landscapes to field abundance. We compare the three species on the heat branch at a single age (6 days), modelling $CT_{max}$ and $z$ as functions of species in one joint 4PL so the species contrasts fall straight out of the posterior. This case study does double duty: it shows a **three-group** comparison, validates the fit against Li et al.'s published estimates, and (below) demonstrates `predict_heat_injury()` across multiple groups under a real field temperature trace.
+
+## Data and standardisation {#sec-aphid-data}
+
+```{r aphid-load}
+#| label: aphid-load
+#| echo: true
+#| code-fold: show
+
+# Bundled Li et al. (2023) survival data; heat branch, 6-day-old aphids.
+data(aphid_tdt)
+aphid_raw <- aphid_tdt |>
+  dplyr::filter(branch == "heat", age == "6") |>
+  dplyr::mutate(species = droplevels(species))
+
+aphid_std <- standardize_data(aphid_raw, temp = "temp", duration = "duration_min",
+                              n_total = "n_total", n_surv = "n_surv",
+                              duration_unit = "minutes")   # keeps `species`
+str(aphid_std)
+```
+
+## Joint 4PL with species on $CT_{max}$ and $z$ {#sec-aphid-fit}
+
+```{r aphid-fit}
+#| label: aphid-fit
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+wf_aphid <- fit_4pl(aphid_std, ctmax = ~ 0 + species, z = ~ 0 + species, t_ref = 60,
+                    file_refit = "on_change",
+                    file       = file.path(models_dir, "aphid_species"))
+summary(wf_aphid)
+```
+
+## Per-species thermal limits and validation against Li et al. {#sec-aphid-extract}
+
+```{r aphid-tls}
+#| label: aphid-tls
+#| echo: true
+
+aphid_tls <- tls(wf_aphid, by = "species", lethal = TRUE)
+aphid_tls$summary
+```
+
+```{r aphid-facts}
+#| echo: false
+.ag <- function(sp, q) aphid_tls$summary$median[aphid_tls$summary$species == sp &
+                                                aphid_tls$summary$quantity == q]
+z_rng     <- range(aphid_tls$summary$median[aphid_tls$summary$quantity == "z"])
+ctmax_rng <- range(aphid_tls$summary$median[aphid_tls$summary$quantity == "CTmax"])
+md_z   <- .ag("M_dirhodum", "z");  rp_ctmax <- .ag("R_padi", "CTmax")
+```
+
+Our per-species estimates fall inside the ranges Li et al. report (their Table 1: $z$ ≈ 3.2–4.7 °C, $CT_{max_{1hr}}$ ≈ 35.2–37.3 °C): here $z$ spans `r round(z_rng[1], 1)`–`r round(z_rng[2], 1)` °C and $CT_{max_{1hr}}$ spans `r round(ctmax_rng[1], 1)`–`r round(ctmax_rng[2], 1)` °C. The joint fit also reproduces their species *ordering* — *M. dirhodum* is the least heat-sensitive (highest $z$, `r round(md_z, 1)` °C) and *R. padi* the most heat-tolerant (highest $CT_{max_{1hr}}$, `r round(rp_ctmax, 1)` °C) — so the model recovers both the magnitudes and the ranking from a single posterior, without per-temperature regressions.
+
+```{r aphid-survival}
+#| label: fig-aphid-survival
+#| fig-cap: "Aphid survival surfaces. Fitted joint-4PL survival probability against exposure duration for the three species (posterior median and 95% credible band), with the observed cell proportions overlaid."
+#| echo: true
+#| code-fold: show
+
+psc_aphid <- predict_survival_curves(wf_aphid)
+plot_survival_curves(psc_aphid, observed = aphid_std)
+```
+
+## Heat injury across species under a field temperature trace {#sec-aphid-hi}
+
+With the per-species TDT surface in hand, `predict_heat_injury()` accumulates damage along an hourly field temperature trace and converts it to predicted survival. We use hourly 2 m air temperature for Wuhan (the hottest of Li et al.'s three Chinese wheat sites) over summer 2016, re-sourced from the Open-Meteo ERA5 archive and shipped with the package (built by `data-raw/fetch_aphid_temp_trace.R`). The trace is used **unmodified** — no warming offset — and `by = "species"` projects all three species at once, demonstrating multi-group heat injury. Li et al. drew their trace from a different weather product and used their own TDT parameters, so this reproduces the *shape* of their Fig. 2 within our posterior framework rather than its exact values.
+
+```{r aphid-hi}
+#| label: fig-aphid-hi
+#| fig-cap: "Multi-group heat-injury projection. Cumulative heat injury (100% = one LT50 dose) and predicted survival for the three aphid species under the unmodified Wuhan summer-2016 hourly temperature trace, from a single `predict_heat_injury(by = \"species\")` call."
+#| echo: true
+#| code-fold: show
+
+# Hourly (time, temp) trace per city ships in inst/extdata; take Wuhan.
+aphid_trace <- readr::read_csv(
+  here::here("inst", "extdata", "data_temp_trace_aphid_summer2016.csv"),
+  show_col_types = FALSE) |>
+  dplyr::filter(city == "Wuhan") |>
+  dplyr::transmute(time = time_h, temp = temp_c)        # hours, degrees C
+
+aphid_hi <- predict_heat_injury(aphid_trace, wf_aphid, target_surv = "relative",
+                                trace_unit = "hours", by = "species")
+plot_heat_injury(aphid_hi)
+```
+
+```{r aphid-hi-facts}
+#| echo: false
+# End-of-season predicted survival per species (tail of the trace).
+.aphid_surv_end <- aphid_hi$summary |>
+  dplyr::group_by(species) |>
+  dplyr::slice_tail(n = 1) |>
+  dplyr::select(species, surv_median, surv_lower, surv_upper)
+```
+
+The accumulated injury and end-of-season survival differ across species in line with their thermal limits, and the same single call would map the south-to-north climate gradient (Wuhan hottest, Beijing coolest) onto a corresponding gradient in projected survival — the link Li et al. draw between thermal tolerance and field abundance.
+
 # **Case Study 3: Leaf PSII data** {#sec-leaves}
 
 We apply `standardize_data()` → `fit_4pl()` → `extract_tdt()` to photosystem II (PSII) heat-response data from snow gum leaves (*Eucalyptus pauciflora* var. *pauciflora*). Chlorophyll fluorescence measurements of maximum potential quantum efficiency ($F_v/F_m$) were obtained from excised leaf segments of 11 glasshouse-grown trees before heat exposure and again after exposure. The response is retained PSII function, defined as post-exposure $F_v/F_m$ divided by its pre-exposure value and bounded between 0 and 1.
