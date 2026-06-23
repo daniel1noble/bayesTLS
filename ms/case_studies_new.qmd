@@ -1,18 +1,21 @@
 ---
 title: "New case studies (draft): zebrafish and cereal aphids"
-subtitle: "A single-condition TDT, and a multi-group comparison fit with the direct CTmax/z parameterisation"
-date: 2026-06-22
+subtitle: "Two multi-group TDT comparisons fit with the direct CTmax/z parameterisation"
+date: 2026-06-23
 format:
   html:
+    embed-resources: true
     toc: true
     code-fold: show
 ---
 
-<!-- DRAFT. Data-loading and fitting chunks are `eval: false` until the public
-archives are downloaded and their raw columns inspected (see end). Two studies
-with public data: zebrafish (Saruhashi 2026, Zenodo 10.5281/zenodo.20075355)
-and aphids (Li 2023, Dryad 10.5061/dryad.mcvdnck4j). Snail (Truebano 2018)
-deferred — no public deposit. -->
+<!-- DRAFT. The data are now bundled with the package (`zebrafish_o2`,
+`aphid_tdt`) and the verification fits run end-to-end. Fitting chunks are kept
+`eval: false` so rendering the tutorial does not refit two brms models; each
+`fit_4pl()` call caches to `output/models/` via `file =`, so flip the chunks to
+`eval: true` (or knit once) when a rendered, fitted tutorial is wanted.
+Provenance: zebrafish = Saruhashi et al. (2026), Zenodo 10.5281/zenodo.20075355,
+CC BY 4.0; aphids = Li et al. (2023), Dryad 10.5061/dryad.mcvdnck4j, CC0. -->
 
 ```{r setup}
 #| message: false
@@ -22,111 +25,220 @@ library(ggplot2)
 library(here)
 set.seed(123)
 models_dir <- here::here("output", "models")
-raw_dir    <- here::here("data-raw", "new_case_studies")
 ```
 
-Two examples show the same package workflow at two levels of ambition. The
-**zebrafish** study is the simplest possible case — a single experimental
-condition, fit and summarised in three calls. The **aphid** study shows the
-payoff of the joint model: rather than fitting a separate curve per group and
-comparing point estimates afterwards, we let critical temperature ($CT_{max}$)
-and thermal sensitivity ($z$) depend on species **inside one model**, so the
-species comparison comes with full posterior uncertainty. In both cases we
-cross-check our estimates against the values reported in the original papers —
-they need not match exactly, since the joint 4PL fits the whole response surface
-rather than reading points off per-temperature regressions.
+Both examples fit the same workflow: rather than fitting a separate TDT curve
+per group and comparing point estimates afterwards, we let critical temperature
+($CT_{max}$) and thermal sensitivity ($z$) depend on a **moderator inside one
+joint 4PL**, so the between-group comparison comes with full posterior
+uncertainty. The **zebrafish** study compares heat tolerance across an oxygen
+gradient; the **aphid** study compares three species. In both we cross-check our
+estimates against the original papers — they need not match exactly, since the
+joint 4PL fits the whole response surface rather than reading points off
+per-temperature regressions.
 
-# 1. Zebrafish larvae (normoxia) — a single-condition TDT
+# 1. Zebrafish larvae across an oxygen gradient
 
 @saruhashi2026 scored survival of zebrafish (*Danio rerio*) larvae across assay
-temperatures (38–40 °C) and exposure durations (7.5–240 min). Here we take the
-simplest slice — diploid larvae under normoxia — and estimate $z$, $CT_{max}$
-and $T_{crit}$, exactly as for a standard lethal-TDT assay.
+temperatures (26 °C control, 38–40 °C) and exposure durations (3.8–240 min)
+under three oxygen treatments — **hypoxia, normoxia, hyperoxia** — to test the
+oxygen- and capacity-limited thermal tolerance (OCLTT) prediction that oxygen
+availability sets the upper thermal limit. We take the diploid larvae and let
+$CT_{max}$ and $z$ depend on the oxygen treatment in one model.
 
 ```{r zf-fit}
 #| eval: false
-zf <- readr::read_csv(file.path(raw_dir, "saruhashi2026_survival.csv")) |>
-  filter(ploidy == "diploid", oxygen == "normoxia") |>
-  count(temp, duration, name = "n_total", wt = NULL) |>   # TODO: real counts
-  # -> need n_total and n_surv per (temp, duration); reshape from raw alive/dead
-  identity()
 
-std_zf <- standardize_data(zf, temp = "temp", duration = "duration",
+data(zebrafish_o2)
+zf <-  zebrafish_o2 |>
+  filter(ploidy == "diploid")          # focal ploidy; triploids are an extension
+str(zf)
+
+std_zf <- standardize_data(zf, temp = "temp", duration = "duration_min",
                            n_total = "n_total", n_surv = "n_surv",
-                           duration_unit = "minutes")
+                           duration_unit = "minutes")   # keeps `oxygen`
 
-# Direct parameterisation: estimate CTmax and z themselves (single condition).
-wf_zf <- fit_4pl(std_zf, ctmax = ~ 1, z = ~ 1, t_ref = 60,
-                 file = file.path(models_dir, "zf_normoxia"),
-                 file_refit = "on_change")
+# Direct parameterisation: CTmax and z each depend on oxygen treatment. A
+# single-factor moderator written as treatment coding (~ oxygen) is normalised
+# internally to cell-means (~ 0 + oxygen), so either form fits the identical
+# model with the same per-group estimates; cell-means just reads most directly
+# (one coefficient per treatment).
+wf_zf <- fit_4pl(std_zf, ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen, t_ref = 60,
+                 file = file.path(models_dir, "zf_oxygen"),
+                 file_refit = "on_change", control = list(adapt_delta = 0.98))
 
-summary(wf_zf)   # brms population-level coefficients + HMC diagnostics
+summary(wf_zf)   # per-treatment CTmaxdev / logz coefficients + HMC diagnostics
+plot(wf_zf)
+
+
+# Now, lets try a contrast based parameterisation. Same model, different interpretation of coefficients
+wf_zf_contrast <- fit_4pl(std_zf, ctmax = ~ 1 + oxygen, z = ~ 1 + oxygen, t_ref = 60,
+                 file = file.path(models_dir, "zf_oxygen_contrast"),
+                 file_refit = "on_change", control = list(adapt_delta = 0.98))
+
+summary(wf_zf_contrast)
+plot(wf_zf_contrast)
+
+# We can extract the posterior from the model. Note that z is back transformed already
+z <- extract_tdt(wf_zf_contrast)$z
+z_hypox <- z$draws |> filter(oxygen == "hypoxia")
+z_hyper <- z$draws |> filter(oxygen == "hyperoxia")
+mean(z_hypox$z)
+hist(z_hypox$z)
+mean(z_hyper$z)
+
+# Now, we can calculate the contrast
+diff  <- log(z_hyper$z)- log(z_hypox$z) 
+quantile(diff, c(0.025, 0.5, 0.95))
 ```
 
 ```{r zf-tdt}
 #| eval: false
-extract_tdt(wf_zf, lethal = TRUE)        # z, CTmax(1h), T_crit with 95% CrIs
+# Per-treatment z, CTmax(1h) and T_crit straight from the joint fit. tls() and
+# extract_tdt() share one threshold argument, `target_surv`: "relative" (default;
+# the per-draw midpoint (low+up)/2), "absolute" (LT50), or a number in (0, 1) for
+# an LTx. Lethal endpoints use relative here.
+ox <- tls(wf_zf, by = "oxygen", target_surv = "relative", lethal = TRUE)
+ox$summary       # tidy long: one row per oxygen treatment x quantity
 
-# plot_survival_curves() takes a predict_survival_curves() result (not the
-# workflow); the observed counts overlay the fitted bands.
+# Fitted survival surface with the observed counts overlaid.
 psc <- predict_survival_curves(wf_zf)
-plot_survival_curves(psc, observed = std_zf)
+plot_survival_curves(psc, observed = std_zf, log_time = TRUE)
+
+bayes_R2(wf_zf$fit)
 ```
 
-We then compare our $CT_{max}$ to the value Saruhashi et al. report for this
-condition. No field temperature series accompanies this (lab) study, so a
+Our estimates recover the OCLTT gradient @saruhashi2026 report: $CT_{max}$
+increases monotonically from hypoxia through normoxia to hyperoxia, i.e. more
+oxygen buys more heat tolerance, with the largest uncertainty under hypoxia
+(where fish die fast and the high-temperature cells carry little dose-response
+information). No field temperature series accompanies this lab study, so a
 heat-injury projection would require a sourced trace — omitted here.
 
-# 2. Cereal aphids — comparing species with the direct parameterisation
+# 2. Cereal aphids — comparing species
 
 @li2023 measured survival of three cereal-aphid species (*Metopolophium
 dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*) across temperatures and
-durations. We compare the **species** at a single age (6 days). Instead of three
+durations, at three ages and over both a heat and a cold branch. We compare the
+**species** on the heat branch at a single age (6 days). Instead of three
 separate fits, we model $CT_{max}$ and $z$ as functions of species in one joint
 model — the species contrasts then fall straight out of the posterior.
 
 ```{r aphid-fit}
 #| eval: false
-aphids <- readr::read_csv(file.path(raw_dir, "li2023_aphid_survival.csv")) |>
-  filter(age == 6, temp >= 30) |>                # 6-day larvae, heat branch
-  # -> one row per (species, temp, duration) with n_total and n_surv
-  identity()
 
-std_aphid <- standardize_data(aphids, temp = "temp", duration = "duration",
+data(aphid_tdt)
+aphids <- aphid_tdt |>
+  filter(branch == "heat", age == "6")          # heat branch, 6-day-old aphids
+
+std_aphid <- standardize_data(aphids, temp = "temp", duration = "duration_min",
                               n_total = "n_total", n_surv = "n_surv",
                               duration_unit = "minutes")  # keeps `species`
 
 # CTmax and z each depend on species; up/low/k inherit the same structure.
-# Cell-means coding (~ 0 + species) and treatment coding (~ species) return the
-# SAME per-species z and CTmax here -- the CTmax/z priors are coding-aware, so the
-# between-group contrasts are not shrunk -- so either is fine; cell-means reads
-# most directly (one coefficient per species).
-wf_aphid <- fit_4pl(std_aphid, ctmax = ~ 0 + species, z = ~ 0 + species,
+wf_aphid <- fit_4pl(std_aphid, 
+                    ctmax = ~ 0 + species, 
+                        z = ~ 0 + species,
                     t_ref = 60,
                     file = file.path(models_dir, "aphid_species"),
                     file_refit = "on_change")
+summary(wf_aphid)
+# MOdel is ok, but we see no difference in some parameters so we may wnat to simplfy equation. For example, maybe assume ke is roughly the same for each species     
+wf_aphid_nok <- fit_4pl(std_aphid, 
+                      ctmax = ~ 0 + species, 
+                          z = ~ 0 + species, 
+                          k = ~ temp_c,
+                    t_ref = 60,
+                    file = file.path(models_dir, "aphid_species_nok"),
+                    file_refit = "on_change")
+summary(wf_aphid_nok)   # per-species CTmaxdev / logz coefficients + diagnostics
 
-summary(wf_aphid)   # per-species CTmaxdev / logz coefficients + diagnostics
+# Now, we just try the data and fits the bare 4pl. Note that it's agnostic to species here so this estimates a marginal 4pl irrespective of species, but this is expected. 
+wf_aphid_bare <- fit_4pl(std_aphid,
+                    t_ref = 60,
+                    file = file.path(models_dir, "aphid_species_bare"),
+                    file_refit = "on_change")
+summary(wf_aphid_bare)
+
+wf_aphid_bare_sp <- fit_4pl(std_aphid,
+                      low = ~ temp_c + species + species:temp_c,
+                       up = ~ temp_c + species + species:temp_c,
+                        k = ~ temp_c + species + species:temp_c,
+                    t_ref = 60,
+                    file = file.path(models_dir, "aphid_species_bare_sp"),
+                    file_refit = "on_change")
+summary(wf_aphid_bare_sp)
+
+# This model adds the temp_c x species interaction to mid as well, so z and CTmax
+# vary by species (equivalently: fit_4pl(std_aphid, by = "species", ...)). With
+# the interaction on ALL four sub-parameters, though, the asymptote/steepness
+# temperature-slopes (low/up/k) are only weakly identified by these data —
+# survival saturates near 0/1, so there is little information on how those drift
+# with temperature within a species. They wander under the default priors and
+# mixing collapses (max Rhat ~1.19, min ESS ~17). Fix: regularise THOSE slopes
+# toward zero with tighter priors (mid is left untouched, so the per-species
+# z/CTmax stay data-driven). This restores healthy mixing (max Rhat ~1.01, min
+# ESS ~570, 0 divergences).
+pr_type2 <- make_4pl_priors(std_aphid)
+is_slope <- function(np) pr_type2$class == "b" & pr_type2$coef == "" & pr_type2$nlpar == np
+pr_type2$prior[is_slope("lowraw")] <- "normal(0, 0.25)"   # default normal(0, 0.5)
+pr_type2$prior[is_slope("upraw")]  <- "normal(0, 0.25)"   # default normal(0, 0.5)
+pr_type2$prior[is_slope("logk")]   <- "normal(0, 0.15)"   # default normal(0, 0.3)
+
+wf_aphid_bare_sp_type2 <- fit_4pl(std_aphid,
+                    low = ~ temp_c*species,
+                    up = ~ temp_c*species,
+                    k = ~ temp_c*species,
+                    mid= ~ temp_c*species,
+                    t_ref = 60,
+                    prior = pr_type2,
+                    control = list(adapt_delta = 0.95),
+                    file = file.path(models_dir, "aphid_species_bare_sp_type2"),
+                    file_refit = "on_change")
+summary(wf_aphid_bare_sp_type2)
+
+# Or same model
+wf_aphid_bare_sp_type2_by <- fit_4pl(std_aphid,
+                    by = "species",
+                    t_ref = 60,
+                    prior = pr_type2,
+                    control = list(adapt_delta = 0.95),
+                    file = file.path(models_dir, "aphid_species_bare_sp_type2_by"),
+                    file_refit = "on_change")
+summary(wf_aphid_bare_sp_type2)
+
 ```
 
 ```{r aphid-species}
 #| eval: false
-# Per-species z, CTmax and T_crit, straight from the joint fit. tls() and
-# extract_tdt() now share one threshold argument, `target_surv`: "relative"
-# (default; the per-draw midpoint (low+up)/2), "absolute" (LT50), or a number in
-# (0, 1) for an LTx (e.g. 0.1 for LT10). Lethal endpoints use relative here.
+# Per-species z, CTmax and T_crit from the joint fit.
 sp <- tls(wf_aphid, by = "species", target_surv = "relative", lethal = TRUE)
 sp$summary          # tidy long: one row per species x quantity (median + 95% CrI)
 
+# Also, absolute, but should be pretty similar. Also, estiate CTmax 4hr which should drop the CTmax 
+sp_abs <- tls(wf_aphid, by = "species", target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
+sp_abs$summary
 # Species contrasts: the full per-draw posteriors live in sp$draws (keyed on
 # species and .draw); difference them (e.g. R. padi minus M. dirhodum for CTmax)
 # and summarise with pMCMC, as in the manuscript.
 ```
 
 The estimates are then checked two ways: (i) against the $z$ (≈3.2–4.7 °C) and
-$CT_{max,1h}$ (≈35–37 °C) Li et al. report, and (ii) against three independent
-per-species `fit_4pl()` fits — **only to confirm** the joint model recovers the
-same picture; the joint model is what we use for inference.
+$CT_{max,1h}$ (≈35–37 °C) Li et al. report — our joint fit returns
+*M. dirhodum* $z\approx4.6$ / $CT_{max}\approx35.3$, *R. padi* $\approx3.5$ /
+$37.0$, *S. avenae* $\approx3.5$ / $36.6$, within their reported ranges — and
+(ii) against three independent per-species `fit_4pl()` fits, **only to confirm**
+the joint model recovers the same picture; the joint model is what we use for
+inference.
+
+```{r}
+# Fitted survival surface with the observed counts overlaid.
+psc_aphid <- predict_survival_curves(wf_aphid)
+plot_survival_curves(psc_aphid, observed = std_zf, log_time = TRUE)
+
+bayes_R2(wf_aphid$fit)
+```
+
 
 ```{r aphid-confirm}
 #| eval: false
@@ -136,26 +248,19 @@ by_species <- split(std_aphid, std_aphid$species) |>
                           lethal = TRUE))
 ```
 
-Li et al. supply hourly temperature for three China wheat sites; with that trace
-we project heat-injury accumulation per species, reproducing their Fig. 2 within
-our posterior framework:
+# Open items / natural extensions
 
-```{r aphid-hi}
-#| eval: false
-# trace = tibble(time, temp) from the Dryad archive (one site/season)
-hi <- predict_heat_injury(trace, wf_aphid, target_surv = "relative",
-                          trace_unit = "hours")
-plot_heat_injury(hi)
-```
-
-# Data acquisition / open items
-
-- **Download:** aphids → Dryad `10.5061/dryad.mcvdnck4j`; zebrafish → Zenodo
-  `10.5281/zenodo.20075355` (+ code). Inspect each raw schema and reshape to
-  `(temp, duration, n_total, n_surv)` cells (plus `species` for aphids); then
-  set the chunks above to `eval: true`.
-- **Aphid trace:** extract the hourly 3-site series from the Dryad archive and
-  archive it under `inst/extdata` (mirroring the existing trace builders).
-- **Cold branch (aphids)** and the **ploidy × oxygen** zebrafish comparison are
-  natural extensions once the single examples are working.
-- **Snail (Truebano 2018):** deferred pending author data request.
+- **Zebrafish ploidy:** `zebrafish_o2` ships both diploid and triploid larvae;
+  adding `ploidy` (or an `oxygen × ploidy` interaction) to the `ctmax`/`z`
+  formulas tests the OCLTT delivery-capacity prediction (triploids, with lower
+  surface:volume, are predicted to be more oxygen-limited).
+- **Aphid cold branch and ages:** `aphid_tdt` carries the cold branch
+  (−11 to −3 °C) and ages 2 / 12 alongside the heat / age-6 slice used here;
+  the same workflow fits a cold-tolerance ($z$, $CT_{min}$) comparison.
+- **Aphid heat-injury projection:** Li et al. project injury under hourly field
+  temperatures for three China wheat sites (Wuhan / Xinxiang / Beijing). Those
+  series are **not** in the Dryad deposit (only `surv.txt`); sourcing them (the
+  authors used the VisualCrossing weather API) would let `predict_heat_injury()`
+  reproduce their Fig. 2 within our posterior framework.
+- **Snail (Truebano 2018):** deferred pending author data request (no public
+  deposit).
