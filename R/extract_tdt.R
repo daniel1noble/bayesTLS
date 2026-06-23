@@ -590,8 +590,20 @@ extract_tdt <- function(workflow,
   # before the per-group T_crit rate draws, so derive_tdt_curve's posterior_linpred
   # subsample consumes RNG in the same order as the pre-refactor code and T_crit
   # stays reproducible against the existing fixtures.
+  # In ABSOLUTE mode derive_tdt_curve() runs a `length(duration_grid)` (default
+  # 350) survival-grid search at EVERY temperature, so handing it the fine
+  # CTmax-inversion grid (seq(..., by = 0.05) -> hundreds of points) x all draws
+  # makes posterior_linpred allocate tens of GB (a 100 GB blow-up on a 16k-draw
+  # Beta fit). The curve is a descriptive line and only needs a smooth
+  # temperature axis, so cap its resolution; the CTmax POINT estimate still uses
+  # the full `temp_grid` above (via tls_invert_logLT, which needs no duration
+  # grid). Relative mode is closed-form (temps x 1 duration) and unaffected, but
+  # the cap is harmless there too. Capping temperatures (not draws) leaves the
+  # posterior_linpred draw subsample untouched, so seeded T_crit stays reproducible.
+  curve_temp_grid <- if (ts$mode != "relative" && length(temp_grid) > 60L)
+    seq(min(temp_grid), max(temp_grid), length.out = 60L) else temp_grid
   lt50_curve <- if (is.null(by)) derive_tdt_curve(
-    workflow = workflow, temp_grid = temp_grid, duration_grid = duration_grid,
+    workflow = workflow, temp_grid = curve_temp_grid, duration_grid = duration_grid,
     target_surv = target_surv, ndraws = ndraws, time_multiplier = time_multiplier,
     output_time_unit = output_time_unit) else NULL
 

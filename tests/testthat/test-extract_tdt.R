@@ -155,3 +155,29 @@ test_that("extract_tdt clamps ndraws to the posterior size (no crash when ndraws
   expect_no_error(extract_tdt(wf, target_surv = "relative", ndraws = 5000))
   expect_no_error(derive_tdt_curve(wf, temp_grid = c(30, 34, 38), ndraws = 5000))
 })
+
+test_that("absolute extract_tdt caps the lt50_curve temperature grid (memory guard)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow()
+  # Default temp_grid is seq(range-2, range+2, by = 0.05) -> hundreds of temps.
+  # In absolute mode that grid x a 350-pt duration search x all draws once blew
+  # posterior_linpred memory to ~100 GB; the curve grid is now capped at 60.
+  fine <- seq(min(wf$data$temp) - 2, max(wf$data$temp) + 2, by = 0.05)
+  expect_gt(length(fine), 60)                       # default really is fine
+
+  out <- extract_tdt(wf, target_surv = "absolute", t_ref = 60,
+                     ndraws = 200, lethal = FALSE)
+  expect_false(is.null(out$lt50_curve))
+  expect_lte(length(unique(out$lt50_curve$summary$temp)), 60)   # curve coarsened
+  # the CTmax POINT estimate still uses the full fine grid, so it is well resolved
+  expect_true(is.finite(out$CTmax$summary$temp_median))
+})
+
+test_that("relative extract_tdt leaves the lt50_curve temperature grid uncapped", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow()
+  out <- extract_tdt(wf, target_surv = "relative", t_ref = 60, ndraws = 200)
+  # relative mode is closed-form (temps x 1 duration), so no memory risk and the
+  # full fine grid is retained -> many more than 60 curve temperatures.
+  expect_gt(length(unique(out$lt50_curve$summary$temp)), 60)
+})
