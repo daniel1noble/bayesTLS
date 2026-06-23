@@ -64,6 +64,14 @@ book setup (`_quarto.yml`, `_book/`, `index.qmd`, `suppfig-*`/`supptbl-*` custom
 floats) is gone — do not reintroduce it. Each `.qmd` carries its complete YAML so
 renders are fully independent.
 
+**HTML output must be self-contained (NON-NEGOTIABLE).** Every `.qmd` rendering to
+HTML — `ms.qmd`, `supplement.qmd`, case studies, and all `notes/*.qmd` — sets
+`embed-resources: true` as the first option under `format: html:`, so the `.html`
+is a single standalone file (CSS/JS/images/plots base64-embedded, no companion
+`*_files/` folder). It lives in each file's own YAML (no shared
+`_quarto.yml`/`_metadata.yml`). Any new HTML `.qmd` must include it — otherwise a
+recipient who gets only the `.html` sees missing plots/figures.
+
 Two deliverables, each in HTML/DOCX/PDF, via the `Makefile`:
 
 - `make ms`   → `_output/ms.{html,docx,pdf}` (from `ms/ms.qmd`)

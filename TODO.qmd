@@ -4,6 +4,7 @@ subtitle: "Toward the *Ecology Letters* (Methods) submission"
 date: last-modified
 format:
   html:
+    embed-resources: true
     toc: true
     toc-depth: 3
     theme: cosmo

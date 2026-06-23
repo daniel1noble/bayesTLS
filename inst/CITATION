@@ -26,7 +26,7 @@ bibentry(
 bibentry(
   bibtype = "Article",
   title   = "{brms}: An {R} Package for {Bayesian} Multilevel Models Using {Stan}",
-  author  = person("Paul-Christian", "Bürkner"),
+  author  = person("Paul-Christian", "B\u00fcrkner"),
   journal = "Journal of Statistical Software",
   year    = "2017",
   volume  = "80",
@@ -34,7 +34,7 @@ bibentry(
   pages   = "1--28",
   doi     = "10.18637/jss.v080.i01",
   textVersion = paste(
-    "Bürkner P-C (2017).",
+    "B\u00fcrkner P-C (2017).",
     "brms: An R Package for Bayesian Multilevel Models Using Stan.",
     "Journal of Statistical Software, 80(1), 1-28. doi:10.18637/jss.v080.i01."
   )
