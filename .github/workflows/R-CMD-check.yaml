@@ -17,6 +17,9 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      # Skip the "verify current time" check, which NOTEs when R CMD check
+      # cannot reach an external time server (offline runner / API down).
+      _R_CHECK_SYSTEM_CLOCK_: 0
     steps:
       - uses: actions/checkout@v4
 

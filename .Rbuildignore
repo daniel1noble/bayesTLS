@@ -6,6 +6,7 @@
 ^\.luarc\.json$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.nojekyll$
 
 # Manuscript + supplement (rendered separately from the package).
 ^ms$
