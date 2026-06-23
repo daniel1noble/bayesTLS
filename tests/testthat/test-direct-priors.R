@@ -110,6 +110,25 @@ test_that("fit_4pl(fit = FALSE) records the direct parameterisation in meta", {
   expect_true("mid" %in% names(wm$formula$pforms))
 })
 
+test_that("fit_4pl normalises single-factor treatment coding to cell-means", {
+  d <- dd; attr(d, "tdt_meta") <- list(temp_mean = 0, duration_unit = "minutes",
+                                       response_type = "count")
+  wt <- fit_4pl(d, ctmax = ~ life_stage,     z = ~ life_stage,     fit = FALSE)
+  wc <- fit_4pl(d, ctmax = ~ 0 + life_stage, z = ~ 0 + life_stage, fit = FALSE)
+  # treatment (~ G) and cell-means (~ 0 + G) build the identical model ...
+  for (nl in c("CTmaxdev", "logz", "lowraw", "upraw", "logk"))
+    expect_identical(deparse(wt$formula$pforms[[nl]]),
+                     deparse(wc$formula$pforms[[nl]]))
+  # ... with identical priors ...
+  ord <- function(p) { x <- as.data.frame(p); x[order(x$nlpar, x$coef, x$class), ] }
+  expect_equal(ord(wt$prior), ord(wc$prior), ignore_attr = TRUE)
+  # ... and per-level CTmax/z priors (cell-means), not Intercept + contrasts.
+  pr <- as.data.frame(wt$prior)
+  expect_false(any(pr$nlpar == "logz" & pr$coef == "Intercept"))
+  expect_true(all(c("life_stagea", "life_stageb", "life_stagec") %in%
+                  pr$coef[pr$nlpar == "logz"]))
+})
+
 test_that("t_ref -> log10_tref respects the data's time unit", {
   d_h <- dd; attr(d_h, "tdt_meta") <- list(temp_mean = 35, duration_unit = "hours",
                                            response_type = "count")

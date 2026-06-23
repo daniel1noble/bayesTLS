@@ -23,8 +23,14 @@
 #' @param TL  Low-temperature inactivation midpoint, in Kelvin.
 #' @param TH  High-temperature inactivation midpoint, in Kelvin.
 #' @param TREF Reference temperature, in Kelvin.
-#' @param r_ref Repair rate at `TREF`, in the same units the user wants the
-#'              output expressed in.
+#' @param r_ref The Arrhenius (uninhibited) rate scale, in the same units the
+#'              user wants the output expressed in. Note this is NOT exactly the
+#'              realised rate at `TREF`: the inactivation denominator suppresses
+#'              it, so `rate(TREF) = r_ref / (1 + exp(TAL(1/TREF - 1/TL)) +
+#'              exp(TAH(1/TH - 1/TREF)))` (a few % below `r_ref` when `TREF` sits
+#'              well between `TL` and `TH`, more as it approaches either). To set
+#'              the realised rate at `TREF` to a target value, divide your target
+#'              by that denominator.
 #' @return Numeric vector of repair rates at the supplied temperatures, in the
 #'         same units as `r_ref`. Negative or non-finite values are coerced to
 #'         zero.

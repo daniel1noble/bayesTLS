@@ -21,8 +21,13 @@ repair_rate_schoolfield(temp_celsius, TA, TAL, TAH, TL, TH, TREF, r_ref)
 
 \item{TREF}{Reference temperature, in Kelvin.}
 
-\item{r_ref}{Repair rate at \code{TREF}, in the same units the user wants the
-output expressed in.}
+\item{r_ref}{The Arrhenius (uninhibited) rate scale, in the same units the
+user wants the output expressed in. Note this is NOT exactly the
+realised rate at \code{TREF}: the inactivation denominator suppresses
+it, so \code{rate(TREF) = r_ref / (1 + exp(TAL(1/TREF - 1/TL)) + exp(TAH(1/TH - 1/TREF)))} (a few \% below \code{r_ref} when \code{TREF} sits
+well between \code{TL} and \code{TH}, more as it approaches either). To set
+the realised rate at \code{TREF} to a target value, divide your target
+by that denominator.}
 }
 \value{
 Numeric vector of repair rates at the supplied temperatures, in the

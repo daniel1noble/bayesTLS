@@ -152,11 +152,17 @@ make_4pl_formula <- function(random_effects = NULL,
   if (identical(threshold, "absolute") && !(b$low_max < p && p < b$up_min))
     stop(sprintf(
       paste0("threshold = \"absolute\" with target p = %g is not achievable for ",
-             "response bounds [%g, %g]: the survival curve only spans roughly ",
-             "(%.3f, %.3f), so an absolute %g%% threshold lies outside it. Use ",
+             "response bounds [%g, %g]: the disjoint-bounds reparameterisation ",
+             "splits the asymptotes at the midpoint %.3f, so baking an absolute ",
+             "%g%% correction into the fit is only safe for p near %.3f (here the ",
+             "achievable range is roughly (%.3f, %.3f)). Either fit with ",
              "threshold = \"relative\" (the per-draw midpoint, defined for any ",
-             "bounds), or an absolute target near the bounds midpoint %.3f."),
-      p, bounds[1], bounds[2], b$low_max, b$up_min, 100 * p, b$midpoint),
+             "bounds), or -- to get an LT%g (or any LTx) -- fit with the relative ",
+             "threshold and derive it afterwards via ",
+             "extract_tdt()/tls(target_surv = %g), which inverts the fitted ",
+             "surface post hoc and works for any p."),
+      p, bounds[1], bounds[2], b$midpoint, 100 * p, b$midpoint,
+      b$low_max, b$up_min, 100 * p, p),
       call. = FALSE)
   mid_rel   <- sprintf("(%g - (temp_c - CTmaxdev) / exp(logz))", log10_tref)
   mid_expr  <- if (identical(threshold, "relative")) mid_rel else
@@ -288,6 +294,22 @@ fit_4pl <- function(data,
          "`ctmax`/`z` formulas, e.g. ctmax = ~ 0 + grp + (1 | batch). The ",
          "`random_effects` argument is for the midpoint parameterisation and ",
          "would otherwise be silently ignored here.", call. = FALSE)
+
+  # Make group coding irrelevant: a single-factor treatment term (`~ G` or
+  # `~ 1 + G`) spans the same model as cell-means (`~ 0 + G`), but only
+  # cell-means receives per-level CTmax/z priors -- under treatment coding the
+  # mean-zero contrast prior inflates non-reference groups' marginal prior
+  # variance (~sqrt(2)x), so the two codings would NOT give the same posterior.
+  # Normalising single-factor treatment terms to cell-means makes the
+  # parameterisations genuinely equivalent with correct priors. Multi-term,
+  # interaction, and continuous moderators are left untouched.
+  if (direct) {
+    ctmax <- normalize_cellmeans(ctmax, data)
+    z     <- normalize_cellmeans(z,     data)
+    up    <- normalize_cellmeans(up,    data)
+    low   <- normalize_cellmeans(low,   data)
+    k     <- normalize_cellmeans(k,     data)
+  }
 
   meta <- attr(data, "tdt_meta") %||%
     list(temp_mean      = mean(data$temp, na.rm = TRUE),
@@ -456,6 +478,33 @@ direct_group_vars <- function(ctmax, z, up, low, k) {
     setdiff(all.vars(stats::as.formula(paste("~", rhs))), "temp_c")
   }
   unique(unlist(lapply(list(ctmax, z, up, low, k), fixed_vars)))
+}
+
+# Rewrite a single-factor TREATMENT-coded one-sided formula (`~ G` or `~ 1 + G`,
+# optionally carrying random-effect terms) to CELL-MEANS (`~ 0 + G [+ (re)]`).
+# Treatment and cell-means coding span the same model, but only cell-means draws
+# per-level CTmax/z priors; this rewrite makes the two codings fit the identical
+# model with correct priors. Returns `f` unchanged unless the FIXED part is
+# exactly one factor/character variable with an implicit intercept -- continuous
+# moderators, interactions, `I()` terms, multiple fixed terms, and formulas that
+# already drop the intercept (`0 +` / `- 1`) are left as-is.
+normalize_cellmeans <- function(f, data) {
+  if (is.null(f) || !inherits(f, "formula")) return(f)
+  rhs   <- formula_rhs(f, "1")
+  re    <- regmatches(rhs, gregexpr("\\([^)]*\\|[^)]*\\)", rhs))[[1]]  # (x | g) terms
+  fe    <- gsub("\\([^)]*\\|[^)]*\\)", "", rhs)                        # fixed part only
+  terms <- trimws(strsplit(fe, "\\+")[[1]])
+  terms <- terms[nzchar(terms)]
+  if (any(grepl("(^|[^[:alnum:]_.])0([^[:alnum:]_.]|$)|-\\s*1", terms)))
+    return(f)                                       # already no-intercept
+  fixed <- setdiff(terms, "1")                      # drop an explicit intercept
+  if (length(fixed) != 1L) return(f)                # one fixed term only
+  v <- fixed
+  if (!grepl("^[A-Za-z.][A-Za-z0-9._]*$", v)) return(f)   # bare variable only
+  if (is.null(data) || !v %in% names(data)) return(f)
+  if (!(is.factor(data[[v]]) || is.character(data[[v]]))) return(f)  # factors only
+  stats::as.formula(
+    paste("~", paste(c(paste0("0 + ", v), re), collapse = " + ")))
 }
 
 # RHS of a one-sided (or two-sided) formula as a string; `default` when NULL.
