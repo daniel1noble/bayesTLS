@@ -126,3 +126,21 @@ test_that("predict_heat_injury recovers analytical planted dose within CrI", {
                                  T_c = T_c_val, ndraws = 100)
   expect_equal(tail(hi_flat$summary$hi_median, 1), 0)
 })
+
+test_that("an absolute target_surv outside the fitted asymptotes warns clearly", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_grouped()   # survival spans ~[0.04, 0.97]
+  # 0.1 lies below the lower asymptote for some draws -> LT undefined there:
+  # a clear, reasoned warning instead of a bare "NaNs produced".
+  expect_warning(extract_tdt(wf, target_surv = 0.1, ndraws = NULL),
+                 "outside the fitted curve's asymptotes")
+  # an in-range absolute threshold does not raise that warning
+  asymp_warn <- FALSE
+  withCallingHandlers(
+    extract_tdt(wf, target_surv = 0.5, ndraws = NULL),
+    warning = function(w) {
+      if (grepl("asymptotes", conditionMessage(w))) asymp_warn <<- TRUE
+      invokeRestart("muffleWarning")
+    })
+  expect_false(asymp_warn)
+})

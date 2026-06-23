@@ -66,7 +66,11 @@ summary(wf_zf)   # brms population-level coefficients + HMC diagnostics
 ```{r zf-tdt}
 #| eval: false
 extract_tdt(wf_zf, lethal = TRUE)        # z, CTmax(1h), T_crit with 95% CrIs
-plot_survival_curves(wf_zf)              # fitted surface over the observed data
+
+# plot_survival_curves() takes a predict_survival_curves() result (not the
+# workflow); the observed counts overlay the fitted bands.
+psc <- predict_survival_curves(wf_zf)
+plot_survival_curves(psc, observed = std_zf)
 ```
 
 We then compare our $CT_{max}$ to the value Saruhashi et al. report for this
@@ -92,7 +96,11 @@ std_aphid <- standardize_data(aphids, temp = "temp", duration = "duration",
                               n_total = "n_total", n_surv = "n_surv",
                               duration_unit = "minutes")  # keeps `species`
 
-# CTmax and z each depend on species (cell-means coding); up/low/k inherit it.
+# CTmax and z each depend on species; up/low/k inherit the same structure.
+# Cell-means coding (~ 0 + species) and treatment coding (~ species) return the
+# SAME per-species z and CTmax here -- the CTmax/z priors are coding-aware, so the
+# between-group contrasts are not shrunk -- so either is fine; cell-means reads
+# most directly (one coefficient per species).
 wf_aphid <- fit_4pl(std_aphid, ctmax = ~ 0 + species, z = ~ 0 + species,
                     t_ref = 60,
                     file = file.path(models_dir, "aphid_species"),
@@ -103,12 +111,16 @@ summary(wf_aphid)   # per-species CTmaxdev / logz coefficients + diagnostics
 
 ```{r aphid-species}
 #| eval: false
-# Per-species z, CTmax and T_crit, straight from the joint fit.
-sp <- tls(wf_aphid, by = "species", lethal = TRUE)
-sp$summary
+# Per-species z, CTmax and T_crit, straight from the joint fit. tls() and
+# extract_tdt() now share one threshold argument, `target_surv`: "relative"
+# (default; the per-draw midpoint (low+up)/2), "absolute" (LT50), or a number in
+# (0, 1) for an LTx (e.g. 0.1 for LT10). Lethal endpoints use relative here.
+sp <- tls(wf_aphid, by = "species", target_surv = "relative", lethal = TRUE)
+sp$summary          # tidy long: one row per species x quantity (median + 95% CrI)
 
-# Species contrasts: difference the per-species posterior draws (e.g. R. padi
-# minus M. dirhodum for CTmax) and summarise with pMCMC, as in the manuscript.
+# Species contrasts: the full per-draw posteriors live in sp$draws (keyed on
+# species and .draw); difference them (e.g. R. padi minus M. dirhodum for CTmax)
+# and summarise with pMCMC, as in the manuscript.
 ```
 
 The estimates are then checked two ways: (i) against the $z$ (≈3.2–4.7 °C) and

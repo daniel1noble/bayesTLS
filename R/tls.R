@@ -23,9 +23,14 @@
 #'   separately (e.g. `"sex"`). `NULL` (default) pools to a single group.
 #' @param params Quantities to return: `"all"` (z, CTmax, and T_crit when
 #'   `lethal = TRUE`), or a subset of `c("z", "ctmax", "tcrit")`.
-#' @param mode Threshold for the LT curve: `"absolute"` (default; the `p`
-#'   survival LT) or `"relative"` (midpoint between the fitted asymptotes).
-#' @param p Survival threshold for `mode = "absolute"`. Default 0.5.
+#' @param target_surv Survival threshold the LT curve is read at, shared with
+#'   [extract_tdt()]: `"relative"` (default; the per-draw midpoint
+#'   `(low + up)/2`), `"absolute"` (literal LT50), or a numeric `p` in `(0, 1)`
+#'   for an absolute LT`p`. The default is `"relative"` so `tls()` and
+#'   [extract_tdt()] return the same z/CTmax for a given fit.
+#' @param mode,p **Deprecated**, superseded by `target_surv`. If supplied,
+#'   `mode = "relative"` maps to `target_surv = "relative"` and
+#'   `mode = "absolute"` (with `p`) to `target_surv = p`. Kept for back-compat.
 #' @param t_ref Reference exposure duration for `CTmax`, in minutes. Default 60.
 #'   Converted to the model's time scale via `time_multiplier`.
 #' @param time_multiplier Multiplier from the model's time unit to minutes.
@@ -62,15 +67,29 @@
 #' }
 #' @export
 tls <- function(object, by = NULL, params = "all",
-                mode = c("absolute", "relative"), p = 0.5,
+                target_surv = "relative",
                 t_ref = 60, time_multiplier = NULL,
                 lethal = FALSE, TC_rate_range = c(0.1, 1),
                 temp = "temp_c", temp_mean = NULL, temp_grid = NULL,
                 re_formula = NA, lower = 0, upper = 1,
                 nlpars = c("lowraw", "upraw", "logk", "mid"),
                 ndraws = NULL, newdata = NULL,
-                probs = c(0.025, 0.5, 0.975), seed = NULL) {
-  mode <- match.arg(mode)
+                probs = c(0.025, 0.5, 0.975), seed = NULL,
+                mode = NULL, p = NULL) {
+  # `mode`/`p` are superseded by `target_surv` (the same argument extract_tdt()
+  # uses); map them when supplied so existing calls keep working. target_surv
+  # defaults to "relative" to MATCH extract_tdt() -- tls() previously defaulted
+  # to absolute, so the two engines returned different headline z/CTmax for the
+  # same fit (the documented inconsistency this unifies).
+  if (!is.null(mode)) {
+    mode <- match.arg(mode, c("absolute", "relative"))
+    target_surv <- if (identical(mode, "relative")) "relative" else (p %||% 0.5)
+  } else if (!is.null(p)) {
+    target_surv <- p
+  }
+  ts   <- resolve_target_surv(target_surv)
+  mode <- ts$mode
+  p    <- if (is.na(ts$prob)) 0.5 else ts$prob
 
   # Cheap argument validation first (no fit needed).
   if (identical(params, "all")) params <- c("z", "ctmax", if (lethal) "tcrit")

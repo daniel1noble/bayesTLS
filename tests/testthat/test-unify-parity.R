@@ -54,7 +54,7 @@ test_that("unification did not move z / CTmax / T_crit (extract_tdt) on any fixt
   }
 })
 
-test_that("unification did not move tdt_parameter_table / derive_z / predict_heat_injury / predict_survival_curves", {
+test_that("unification did not move tdt_parameter_table / derive_z / predict_survival_curves", {
   skip_unless_brms()
   gp <- here::here("tests", "testthat", "fixtures", "golden_preunify.rds")
   if (!file.exists(gp)) skip("local-only no-drift gate: golden_preunify.rds is gitignored and present only where the Step-0 snapshot was built (it pins the exact cached fits); skipped in CI / fresh checkouts.")
@@ -63,9 +63,10 @@ test_that("unification did not move tdt_parameter_table / derive_z / predict_hea
   for (nm in names(wfs)) {
     expect_lt(max(abs(tdt_parameter_table(wfs[[nm]])$median - g[[nm]]$par_table$median)), 1e-4)
     expect_lt(abs(derive_z(wfs[[nm]], seed = 1)$summary$z_median - g[[nm]]$derive_z$summary$z_median), 1e-4)
-    tr <- data.frame(time = 0:6, temp = seq(min(wfs[[nm]]$data$temp), max(wfs[[nm]]$data$temp), length.out = 7))
-    new_hi <- suppressMessages(predict_heat_injury(tr, wfs[[nm]], ndraws = 1000, seed = 1))$summary
-    expect_lt(max(abs(new_hi$surv_median - g[[nm]]$hi$surv_median)), 1e-4)
+    # predict_heat_injury parity is intentionally NOT checked against this golden:
+    # its dose integral was corrected after the snapshot was captured (per-interval
+    # dt + no endpoint over-count), so it no longer matches the pre-fix values.
+    # HI is covered by test-predict_heat_injury.R.
     new_sc <- predict_survival_curves(wfs[[nm]], temps = head(sort(unique(wfs[[nm]]$data$temp)), 3),
                                       durations = c(0.5, 2, 8), ndraws = NULL)$summary
     expect_lt(max(abs(new_sc$survival_median - g[[nm]]$surv$survival_median)), 1e-6)
@@ -82,7 +83,12 @@ test_that("unification did not move the grouped tls() case study (zebrafish per-
   zs <- standardize_data(zebrafish_lethal, temp = "assay_temp", duration = "duration_h",
           n_total = "n_total", n_surv = "n_surv", duration_unit = "hours")
   zwf <- parity_wrap(readRDS(zfp), zs, du = "hours", group_vars = "life_stage")
-  new <- tls(zwf, by = "life_stage", lethal = TRUE, seed = 1)$summary
+  # Pin the threshold to "absolute": the golden snapshot was captured when tls()
+  # DEFAULTED to absolute. tls() now defaults to "relative" to match extract_tdt()
+  # (an intentional unification fix, not drift), so the no-drift check must
+  # request the same threshold the golden used.
+  new <- tls(zwf, by = "life_stage", lethal = TRUE, target_surv = "absolute",
+             seed = 1)$summary
   m <- merge(new, g$zf_tls, by = c("life_stage", "quantity"), suffixes = c(".new", ".old"))
   expect_lt(max(abs(m$median.new - m$median.old)), 0.05)   # tls() unchanged by the engine factor-out
 })

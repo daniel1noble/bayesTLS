@@ -82,7 +82,31 @@ tls_eval_subpars <- function(fit, newdata, bounds,
   up  <- bounds$up_min  + stats::plogis(lp(nlpars[2])) * bounds$up_w
   k   <- exp(lp(nlpars[3]))
   mid <- lp(nlpars[4])
-  logLT <- if (identical(mode, "absolute")) mid + log((up - p) / (p - low)) / k else mid
+  if (identical(mode, "absolute")) {
+    # An absolute survival threshold p is attainable only where the fitted curve
+    # spans it: low < p < up. Where it does not (p at/below the lower asymptote or
+    # at/above the upper), log((up - p)/(p - low)) is undefined and the LT at p
+    # does not exist for that draw x temperature cell. Mark those cells NA up
+    # front (so there is no bare "NaNs produced") and warn ONCE with the reason.
+    ratio       <- (up - p) / (p - low)
+    bad         <- !is.finite(ratio) | ratio <= 0
+    ratio[bad]  <- NA_real_
+    logLT       <- mid + log(ratio) / k
+    if (any(bad, na.rm = TRUE)) {
+      warning(sprintf(
+        paste0("target_surv = %.3g (absolute) lies outside the fitted curve's ",
+               "asymptotes for %.0f%% of draw-by-temperature cells: survival there ",
+               "spans ~[%.2f, %.2f], so the LT at %.3g survival is undefined and ",
+               "those cells are dropped from the summary. Use a threshold within ",
+               "the asymptote range, or target_surv = \"relative\" (the per-draw ",
+               "midpoint, always defined)."),
+        p, 100 * mean(bad, na.rm = TRUE),
+        stats::median(low, na.rm = TRUE), stats::median(up, na.rm = TRUE), p),
+        call. = FALSE)
+    }
+  } else {
+    logLT <- mid
+  }
   list(low = low, up = up, k = k, mid = mid, logLT = logLT)
 }
 

@@ -11,8 +11,7 @@ tls(
   object,
   by = NULL,
   params = "all",
-  mode = c("absolute", "relative"),
-  p = 0.5,
+  target_surv = "relative",
   t_ref = 60,
   time_multiplier = NULL,
   lethal = FALSE,
@@ -27,7 +26,9 @@ tls(
   ndraws = NULL,
   newdata = NULL,
   probs = c(0.025, 0.5, 0.975),
-  seed = NULL
+  seed = NULL,
+  mode = NULL,
+  p = NULL
 )
 
 tls_z(object, ...)
@@ -47,10 +48,11 @@ separately (e.g. \code{"sex"}). \code{NULL} (default) pools to a single group.}
 \item{params}{Quantities to return: \code{"all"} (z, CTmax, and T_crit when
 \code{lethal = TRUE}), or a subset of \code{c("z", "ctmax", "tcrit")}.}
 
-\item{mode}{Threshold for the LT curve: \code{"absolute"} (default; the \code{p}
-survival LT) or \code{"relative"} (midpoint between the fitted asymptotes).}
-
-\item{p}{Survival threshold for \code{mode = "absolute"}. Default 0.5.}
+\item{target_surv}{Survival threshold the LT curve is read at, shared with
+\code{\link[=extract_tdt]{extract_tdt()}}: \code{"relative"} (default; the per-draw midpoint
+\code{(low + up)/2}), \code{"absolute"} (literal LT50), or a numeric \code{p} in \verb{(0, 1)}
+for an absolute LT\code{p}. The default is \code{"relative"} so \code{tls()} and
+\code{\link[=extract_tdt]{extract_tdt()}} return the same z/CTmax for a given fit.}
 
 \item{t_ref}{Reference exposure duration for \code{CTmax}, in minutes. Default 60.
 Converted to the model's time scale via \code{time_multiplier}.}
@@ -90,6 +92,10 @@ evaluated for the slope/crossing. Default: 11 points over the observed range.}
 
 \item{seed}{Optional integer seeding the draw subsample (\code{ndraws}) and the
 T_crit rate draws for reproducibility. \code{NULL} (default) leaves the RNG alone.}
+
+\item{mode, p}{\strong{Deprecated}, superseded by \code{target_surv}. If supplied,
+\code{mode = "relative"} maps to \code{target_surv = "relative"} and
+\code{mode = "absolute"} (with \code{p}) to \code{target_surv = p}. Kept for back-compat.}
 
 \item{...}{Additional arguments passed on to \code{\link[=tls]{tls()}} (used by the
 \code{tls_z()}, \code{tls_ctmax()} and \code{tls_tcrit()} convenience wrappers).}
