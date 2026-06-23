@@ -2,7 +2,9 @@
 title: "Re-validating the two-stage-bias simulation after the bayesTLS rework"
 subtitle: "Did the reworked functions change any simulation result?"
 date: 2026-06-23
-format: html
+format:
+  html:
+    embed-resources: true
 ---
 
 ## Question
