@@ -147,3 +147,91 @@
 #'                         n_total = "n_total", n_dead = "n_dead",
 #'                         random_effects = "sex", duration_unit = "minutes")
 "dsuzukii"
+
+#' Zebrafish lethal-TDT data across an oxygen gradient
+#'
+#' Survival of zebrafish (\emph{Danio rerio}) larvae assayed for upper thermal
+#' tolerance under three oxygen treatments, the model-ready frame for the
+#' oxygen-gradient case study. Diploid and triploid larvae were held at assay
+#' temperatures of 26 (control), 38, 39 and 40 degrees C for 3.8--240 minutes
+#' under hypoxia, normoxia or hyperoxia, and scored alive/dead. One row per
+#' assay group; \code{oxygen} is the categorical moderator. Fit \code{CTmax} and
+#' \code{z} as functions of \code{oxygen} (optionally \code{ploidy}) in one joint
+#' 4PL to compare thermal tolerance across the gradient with full posterior
+#' uncertainty.
+#'
+#' @format A data frame with 905 rows and 10 variables:
+#' \describe{
+#'   \item{cohort}{Larval cohort identifier.}
+#'   \item{ploidy}{Ploidy, a factor with levels \code{diploid}, \code{triploid}.}
+#'   \item{oxygen}{Oxygen treatment, a factor with levels \code{hypoxia},
+#'         \code{normoxia}, \code{hyperoxia} (the modelling moderator).}
+#'   \item{o2_nominal}{Nominal oxygen target as percent air saturation
+#'         (25 / 100 / 225).}
+#'   \item{o2_measured}{Measured oxygen level (percent air saturation).}
+#'   \item{temp}{Target assay temperature (degrees C).}
+#'   \item{temp_measured}{Measured assay temperature (degrees C).}
+#'   \item{duration_min}{Exposure duration (minutes).}
+#'   \item{n_total}{Number of larvae in the assay group.}
+#'   \item{n_surv}{Number surviving after exposure and recovery.}
+#' }
+#' @source Saruhashi S, Boerrigter JGJ, Hooymans MHL, Sinclair BJ, Verberk WCEP
+#'   (2026). Data and code for: Oxygen availability and oxygen delivery but not
+#'   oxidative stress shape heat tolerance in diploid and triploid zebrafish
+#'   larvae. Zenodo, \doi{10.5281/zenodo.20075355} (distributed under CC BY 4.0).
+#'   Associated article: \emph{Journal of Experimental Biology} 229(10): jeb251548,
+#'   \doi{10.1242/jeb.251548}. Raw file:
+#'   \code{system.file("extdata", "data_lethal_TDT_zebrafish_oxygen.csv", package = "bayesTLS")}.
+#' @examples
+#' \dontrun{
+#' std <- standardize_data(zebrafish_o2, temp = "temp", duration = "duration_min",
+#'                         n_total = "n_total", n_surv = "n_surv",
+#'                         duration_unit = "minutes")
+#' wf <- fit_4pl(std, ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen, t_ref = 60)
+#' tls(wf, by = "oxygen", lethal = TRUE)   # z, CTmax, T_crit per oxygen treatment
+#' }
+"zebrafish_o2"
+
+#' Cereal-aphid lethal-TDT data, three species across three ages
+#'
+#' Survival of three cereal-aphid species across a broad range of stressful high
+#' and low temperatures, the model-ready frame for the multi-species case study.
+#' Aphids of three ages (2, 6, 12 days old) were exposed to a heat branch
+#' (34--40 degrees C) or a cold branch (-11 to -3 degrees C) for a range of
+#' durations and scored alive/dead after recovery. One row per assay group;
+#' \code{branch} flags the heat vs cold series. Subset to one \code{branch} (and
+#' typically one \code{age}) and fit \code{CTmax} and \code{z} as functions of
+#' \code{species} in one joint 4PL to compare species with full posterior
+#' uncertainty.
+#'
+#' @format A data frame with 3041 rows and 7 variables:
+#' \describe{
+#'   \item{species}{Species, a factor with levels \code{M_dirhodum}
+#'         (\emph{Metopolophium dirhodum}), \code{S_avenae}
+#'         (\emph{Sitobion avenae}), \code{R_padi}
+#'         (\emph{Rhopalosiphum padi}).}
+#'   \item{age}{Age in days, a factor with levels \code{2}, \code{6}, \code{12}.}
+#'   \item{branch}{Stress branch, a factor with levels \code{heat}
+#'         (34--40 degrees C), \code{cold} (-11 to -3 degrees C).}
+#'   \item{temp}{Assay temperature (degrees C).}
+#'   \item{duration_min}{Exposure duration (minutes).}
+#'   \item{n_total}{Number of aphids treated.}
+#'   \item{n_surv}{Number surviving after treatment and recovery.}
+#' }
+#' @source Li Y-J, Chen S-Y, \enc{Jørgensen}{Jorgensen} LB, Overgaard J, Renault D,
+#'   Colinet H, Ma C-S (2023). Data for: Interspecific differences in thermal
+#'   tolerance landscape explain aphid community abundance under climate change.
+#'   Dryad, \doi{10.5061/dryad.mcvdnck4j} (Dryad CC0). Associated article:
+#'   \emph{Journal of Thermal Biology} 114: 103583, \doi{10.1016/j.jtherbio.2023.103583}.
+#'   Raw file:
+#'   \code{system.file("extdata", "data_lethal_TDT_aphid.csv", package = "bayesTLS")}.
+#' @examples
+#' \dontrun{
+#' a <- subset(aphid_tdt, branch == "heat" & age == "6")
+#' std <- standardize_data(a, temp = "temp", duration = "duration_min",
+#'                         n_total = "n_total", n_surv = "n_surv",
+#'                         duration_unit = "minutes")
+#' wf <- fit_4pl(std, ctmax = ~ 0 + species, z = ~ 0 + species, t_ref = 60)
+#' tls(wf, by = "species", lethal = TRUE)   # z, CTmax, T_crit per species
+#' }
+"aphid_tdt"
