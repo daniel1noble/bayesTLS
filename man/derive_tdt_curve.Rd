@@ -9,7 +9,7 @@ derive_tdt_curve(
   temp_grid,
   duration_grid = NULL,
   target_surv = "relative",
-  ndraws = 1000,
+  ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
   time_multiplier = NULL,
   output_time_unit = "min"
@@ -28,7 +28,10 @@ data's duration range.}
 \item{target_surv}{Threshold mode. \code{"relative"} (default; = \code{(low + up)/2}),
 \code{"absolute"} (= 0.5), or a numeric in \verb{(0, 1)}.}
 
-\item{ndraws}{Posterior draws to use. Default 1000.}
+\item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the full
+posterior. Subsampling can shift results slightly off
+the model, so the default keeps derived quantities
+consistent with the fit; pass an integer for speed.}
 
 \item{probs}{Quantile probabilities for the summary. Default
 \code{c(0.025, 0.5, 0.975)}.}

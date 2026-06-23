@@ -11,7 +11,7 @@ extract_tdt(
   TC_rate_range = c(0.1, 1),
   temp_grid = NULL,
   duration_grid = NULL,
-  ndraws = 1000,
+  ndraws = NULL,
   time_multiplier = NULL,
   output_time_unit = "min",
   lethal = FALSE,
@@ -44,7 +44,10 @@ extended by ±2 °C.}
 Default: 350 log-spaced values spanning 0.2× to 5× the
 training-data duration range.}
 
-\item{ndraws}{Posterior draws to use. Default 1000.}
+\item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the full
+posterior. Subsampling can shift results slightly off
+the model, so the default keeps derived quantities
+consistent with the fit; pass an integer for speed.}
 
 \item{time_multiplier}{Multiplier from model time units to \code{output_time_unit}.
 \code{NULL} (default) derives it from the workflow's

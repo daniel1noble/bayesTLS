@@ -8,7 +8,7 @@ predict_survival_curves(
   workflow,
   temps = NULL,
   durations = NULL,
-  ndraws = 1000,
+  ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
   by = NULL
 )
@@ -22,7 +22,8 @@ temperatures in the training data.}
 \item{durations}{Numeric vector of durations. Default: 250 log-spaced values
 spanning 0.2× to 5× the observed range.}
 
-\item{ndraws}{Integer number of posterior draws to use. Default 1000.}
+\item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the full
+posterior. Pass an integer to subsample for speed.}
 
 \item{probs}{Numeric length-3 quantile probabilities (lower, median,
 upper). Default \code{c(0.025, 0.5, 0.975)}.}

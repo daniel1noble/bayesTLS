@@ -8,7 +8,7 @@ derive_tdt_landscape(
   workflow,
   temp_grid = NULL,
   duration_grid = NULL,
-  ndraws = 1000,
+  ndraws = NULL,
   probs = c(0.025, 0.5, 0.975)
 )
 }
@@ -21,7 +21,8 @@ equally spaced values across the training-data range.}
 \item{duration_grid}{Numeric vector of durations. Default: 120 log-spaced
 values across the training-data range.}
 
-\item{ndraws}{Posterior draws to use. Default 1000.}
+\item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the full
+posterior. Pass an integer to subsample for speed.}
 
 \item{probs}{Quantile probabilities. Default \code{c(0.025, 0.5, 0.975)}.}
 }

@@ -10,7 +10,7 @@ predict_heat_injury(
   target_surv = "relative",
   T_c = NULL,
   trace_unit = "hours",
-  ndraws = 500,
+  ndraws = NULL,
   repair = FALSE,
   repair_pars = NULL,
   repair_scales_with_survival = TRUE,
@@ -45,7 +45,10 @@ Reconciled internally with the model's fitted
 \code{duration_unit}, so the result is correct for any
 combination of model and trace time units.}
 
-\item{ndraws}{Posterior draws to use. Default 500.}
+\item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the full
+posterior, keeping the integral consistent with the model.
+Pass an integer to subsample -- useful for speed, since the
+full posterior over a long temperature trace can be slow.}
 
 \item{repair}{Logical. If \code{TRUE}, add Sharpe-Schoolfield repair.
 Default \code{FALSE}.}

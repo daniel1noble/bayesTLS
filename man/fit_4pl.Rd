@@ -29,6 +29,8 @@ fit_4pl(
   up = NULL,
   low = NULL,
   k = NULL,
+  mid = NULL,
+  by = NULL,
   threshold = c("relative", "absolute"),
   p = 0.5,
   t_ref = 60,
@@ -89,7 +91,18 @@ supersedes \code{lower}/\code{upper} when supplied.}
 \item{ctmax, z, up, low, k}{One-sided formulas selecting the \strong{direct} CTmax/z
 parameterisation (see \code{\link[=make_4pl_formula]{make_4pl_formula()}}). Supplying
 \code{ctmax} and/or \code{z} fits CTmax and z directly; \code{up}/\code{low}/\code{k}
-are inherited from them when omitted.}
+are inherited from them when omitted. \code{up}/\code{low}/\code{k} also
+take explicit formulas in the \strong{midpoint} parameterisation.}
+
+\item{mid, by}{\strong{Midpoint} parameterisation only (see
+\code{\link[=make_4pl_formula]{make_4pl_formula()}}). \code{mid} is an explicit one-sided
+formula for the midpoint (must carry \code{temp_c}); \code{by} is a
+moderator column-name shortcut applying the moderator to
+all four sub-parameters (\code{low}/\code{up}/\code{k}/\code{mid}) at once, so
+a per-group CTmax/z fit needs only \code{by = "<moderator>"}.
+Either records the moderator in \code{meta$group_vars}, so
+\code{\link[=extract_tdt]{extract_tdt()}} / \code{\link[=tls]{tls()}} auto-derive per-group quantities
+with \verb{by = }. Both error in direct mode.}
 
 \item{threshold}{\code{"relative"} (default) or \code{"absolute"}; the threshold the
 fitted CTmax/z refer to (direct mode only).}

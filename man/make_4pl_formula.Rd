@@ -15,6 +15,8 @@ make_4pl_formula(
   up = NULL,
   low = NULL,
   k = NULL,
+  mid = NULL,
+  by = NULL,
   threshold = c("relative", "absolute"),
   p = 0.5,
   log10_tref = 0,
@@ -61,11 +63,27 @@ effects for tolerance and sensitivity, e.g.
 pooled \code{z} (\code{logz ~ 1}).}
 
 \item{up, low, k}{Optional one-sided formulas for the asymptote and
-steepness sub-parameters in direct mode. When omitted
-they inherit the \code{ctmax}/\code{z} \strong{fixed} effects crossed
-with \code{temp_c} (random effects are not inherited);
-intercept-only \code{ctmax}/\code{z} gives \code{~ temp_c}. An explicit
-formula overrides inheritance.}
+steepness sub-parameters. In \strong{direct} mode, when
+omitted they inherit the \code{ctmax}/\code{z} \strong{fixed} effects
+crossed with \code{temp_c} (random effects are not inherited);
+intercept-only \code{ctmax}/\code{z} gives \code{~ temp_c}. In
+\strong{midpoint} mode they default to the \code{temp_effects}
+structure (or \code{by}, see below); an explicit formula
+always overrides.}
+
+\item{mid}{\strong{Midpoint} mode only. Optional one-sided formula for
+the midpoint sub-parameter (whose \code{temp_c} slope is
+\eqn{-1/z}). Must carry \code{temp_c}. Defaults to the
+\code{temp_effects}/\code{by} structure. Errors in direct mode
+(where \code{mid} is reconstructed from \code{ctmax}/\code{z}).}
+
+\item{by}{\strong{Midpoint} mode only. Optional character vector of
+moderator column(s). A shortcut that applies the
+moderator to all four sub-parameters at once:
+temperature-carrying parameters get \code{~ temp_c * by},
+the rest a per-group intercept (\code{~ by}). Equivalent to
+writing the four formulas by hand. Errors in direct mode
+(group there via \verb{ctmax = ~ 0 + <moderator>}).}
 
 \item{threshold}{\code{"relative"} (default) fits the midpoint backbone so
 \code{CTmax}/\code{z} are the relative-threshold quantities;

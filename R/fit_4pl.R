@@ -60,11 +60,25 @@
 #'                       `~ life_stage + (1 | Date)`. Omit `z` for a single
 #'                       pooled `z` (`logz ~ 1`).
 #' @param up,low,k       Optional one-sided formulas for the asymptote and
-#'                       steepness sub-parameters in direct mode. When omitted
-#'                       they inherit the `ctmax`/`z` **fixed** effects crossed
-#'                       with `temp_c` (random effects are not inherited);
-#'                       intercept-only `ctmax`/`z` gives `~ temp_c`. An explicit
-#'                       formula overrides inheritance.
+#'                       steepness sub-parameters. In **direct** mode, when
+#'                       omitted they inherit the `ctmax`/`z` **fixed** effects
+#'                       crossed with `temp_c` (random effects are not inherited);
+#'                       intercept-only `ctmax`/`z` gives `~ temp_c`. In
+#'                       **midpoint** mode they default to the `temp_effects`
+#'                       structure (or `by`, see below); an explicit formula
+#'                       always overrides.
+#' @param mid            **Midpoint** mode only. Optional one-sided formula for
+#'                       the midpoint sub-parameter (whose `temp_c` slope is
+#'                       \eqn{-1/z}). Must carry `temp_c`. Defaults to the
+#'                       `temp_effects`/`by` structure. Errors in direct mode
+#'                       (where `mid` is reconstructed from `ctmax`/`z`).
+#' @param by             **Midpoint** mode only. Optional character vector of
+#'                       moderator column(s). A shortcut that applies the
+#'                       moderator to all four sub-parameters at once:
+#'                       temperature-carrying parameters get `~ temp_c * by`,
+#'                       the rest a per-group intercept (`~ by`). Equivalent to
+#'                       writing the four formulas by hand. Errors in direct mode
+#'                       (group there via `ctmax = ~ 0 + <moderator>`).
 #' @param threshold      `"relative"` (default) fits the midpoint backbone so
 #'                       `CTmax`/`z` are the relative-threshold quantities;
 #'                       `"absolute"` bakes the asymmetry correction
@@ -96,6 +110,8 @@ make_4pl_formula <- function(random_effects = NULL,
                              up             = NULL,
                              low            = NULL,
                              k              = NULL,
+                             mid            = NULL,
+                             by             = NULL,
                              threshold      = c("relative", "absolute"),
                              p              = 0.5,
                              log10_tref     = 0,
@@ -116,23 +132,58 @@ make_4pl_formula <- function(random_effects = NULL,
                               sprintf("logit(%s)", rhs) else rhs
 
   if (is.null(ctmax) && is.null(z)) {
-    ## ---- midpoint parameterisation (unchanged) ----
+    ## ---- midpoint parameterisation ----
     temp_effects <- match.arg(temp_effects, c("low", "up", "k", "mid"),
                               several.ok = TRUE)
-    if (!"mid" %in% temp_effects)
-      stop("`mid` must always carry temp_c (its slope is -1/z, the core TDT ",
-           "quantity); include \"mid\" in `temp_effects`.", call. = FALSE)
     main_rhs  <- sprintf(
       "%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))",
       low_expr, up_expr, low_expr)
-    par_rhs   <- function(par) if (par %in% temp_effects) "temp_c" else "1"
-    mid_terms <- c(par_rhs("mid"), tdt_format_random_effects(random_effects))
-    mid_rhs   <- paste(mid_terms, collapse = " + ")
+    # Each sub-parameter's RHS. An explicit formula wins. Otherwise, with a `by`
+    # moderator: parameters that carry a temperature slope (those in
+    # `temp_effects`, plus `mid` always) get `temp_c * by` (treatment-coded, so
+    # the reference level keeps the centred Intercept prior and the per-group
+    # offsets are weakly shrunk toward it); parameters without a temp slope get a
+    # per-group intercept offset (`by`). Without `by`, the classic temp_effects
+    # default (`temp_c` or `1`). `mid` MUST carry temp_c (its slope is -1/z, the
+    # core TDT quantity).
+    by_term <- if (!is.null(by)) paste(by, collapse = " * ") else NULL
+    par_rhs <- function(par) {
+      has_temp <- par == "mid" || par %in% temp_effects
+      if (is.null(by_term)) return(if (has_temp) "temp_c" else "1")
+      if (has_temp) paste0("temp_c * ", by_term) else by_term
+    }
+    res <- function(explicit, par) {
+      if (!is.null(explicit)) formula_rhs(explicit, par_rhs(par)) else par_rhs(par)
+    }
+    low_r <- res(low, "low")
+    up_r  <- res(up,  "up")
+    k_r   <- res(k,   "k")
+    mid_r <- res(mid, "mid")
+    if (!grepl("temp_c", mid_r))
+      stop("`mid` must carry temp_c (its slope is -1/z, the core TDT quantity); ",
+           "supply a `mid`/`by` formula that includes temp_c, or keep \"mid\" in ",
+           "`temp_effects`.", call. = FALSE)
+    # Guard the silent-pooling footgun: if low/up/k carry a moderator that mid
+    # does NOT, z is pooled across that moderator even though the asymptotes vary
+    # by it. That is a valid model, but rarely what a user writing
+    # `low = ~ temp_c * species` intends -- point them at `by=` / `mid=`.
+    shape_mods <- setdiff(rhs_fixed_vars(paste(low_r, up_r, k_r, sep = " + ")),
+                          rhs_fixed_vars(mid_r))
+    if (length(shape_mods))
+      warning(sprintf(
+        paste0("low/up/k vary by %s but mid does not, so z (= -1/mid's temp_c ",
+               "slope) is POOLED across %s. Use by = \"%s\" (applies the moderator ",
+               "to all four sub-parameters) or mid = ~ temp_c * %s to let z vary ",
+               "by group."),
+        paste(shape_mods, collapse = ", "), paste(shape_mods, collapse = ", "),
+        shape_mods[1], shape_mods[1]), call. = FALSE)
+    mid_rhs <- paste(c(mid_r, tdt_format_random_effects(random_effects)),
+                     collapse = " + ")
     return(brms::bf(
       stats::as.formula(sprintf("%s ~ %s", resp_lhs, wrap(main_rhs))),
-      stats::as.formula(paste("lowraw ~", par_rhs("low"))),
-      stats::as.formula(paste("upraw  ~", par_rhs("up"))),
-      stats::as.formula(paste("logk   ~", par_rhs("k"))),
+      stats::as.formula(paste("lowraw ~", low_r)),
+      stats::as.formula(paste("upraw  ~", up_r)),
+      stats::as.formula(paste("logk   ~", k_r)),
       stats::as.formula(paste("mid    ~", mid_rhs)),
       nl = TRUE, family = family))
   }
@@ -233,7 +284,17 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param ctmax,z,up,low,k One-sided formulas selecting the **direct** CTmax/z
 #'                       parameterisation (see [make_4pl_formula()]). Supplying
 #'                       `ctmax` and/or `z` fits CTmax and z directly; `up`/`low`/`k`
-#'                       are inherited from them when omitted.
+#'                       are inherited from them when omitted. `up`/`low`/`k` also
+#'                       take explicit formulas in the **midpoint** parameterisation.
+#' @param mid,by         **Midpoint** parameterisation only (see
+#'                       [make_4pl_formula()]). `mid` is an explicit one-sided
+#'                       formula for the midpoint (must carry `temp_c`); `by` is a
+#'                       moderator column-name shortcut applying the moderator to
+#'                       all four sub-parameters (`low`/`up`/`k`/`mid`) at once, so
+#'                       a per-group CTmax/z fit needs only `by = "<moderator>"`.
+#'                       Either records the moderator in `meta$group_vars`, so
+#'                       [extract_tdt()] / [tls()] auto-derive per-group quantities
+#'                       with `by = `. Both error in direct mode.
 #' @param threshold      `"relative"` (default) or `"absolute"`; the threshold the
 #'                       fitted CTmax/z refer to (direct mode only).
 #' @param p              Survival fraction for the `"absolute"` threshold (direct
@@ -281,6 +342,8 @@ fit_4pl <- function(data,
                     up             = NULL,
                     low            = NULL,
                     k              = NULL,
+                    mid            = NULL,
+                    by             = NULL,
                     threshold      = c("relative", "absolute"),
                     p              = 0.5,
                     t_ref          = 60,
@@ -294,6 +357,14 @@ fit_4pl <- function(data,
          "`ctmax`/`z` formulas, e.g. ctmax = ~ 0 + grp + (1 | batch). The ",
          "`random_effects` argument is for the midpoint parameterisation and ",
          "would otherwise be silently ignored here.", call. = FALSE)
+  if (direct && !is.null(mid))
+    stop("`mid` is a midpoint-parameterisation argument; in the direct CTmax/z ",
+         "parameterisation the midpoint is derived from ctmax/z and cannot be ",
+         "set directly.", call. = FALSE)
+  if (direct && !is.null(by))
+    stop("`by` builds the midpoint per-group structure; in the direct CTmax/z ",
+         "parameterisation, group per moderator via ctmax = ~ 0 + <moderator> ",
+         "(z / up / low / k then inherit it).", call. = FALSE)
 
   # Make group coding irrelevant: a single-factor treatment term (`~ G` or
   # `~ 1 + G`) spans the same model as cell-means (`~ 0 + G`), but only
@@ -349,6 +420,8 @@ fit_4pl <- function(data,
                               up             = up,
                               low            = low,
                               k              = k,
+                              mid            = mid,
+                              by             = by,
                               threshold      = threshold,
                               p              = p,
                               log10_tref     = log10_tref)
@@ -371,12 +444,14 @@ fit_4pl <- function(data,
                              k              = k)
   }
 
-  # Fixed-effect moderators (e.g. species, life_stage) carried by the direct
-  # parameterisation. `grouped` is coding-independent, so the single-condition
-  # helpers can detect a grouped fit under BOTH `~ 0 + G` and `~ 1 + G` and
-  # redirect to tls()/the group-aware paths instead of silently returning the
+  # Fixed-effect moderators (e.g. species, life_stage) the fit varies over:
+  # direct mode reads them off ctmax/z/up/low/k; midpoint mode off up/low/k/mid
+  # plus the `by` shortcut. `grouped` is coding-independent, so the group-aware
+  # readers (extract_tdt(by=), tls(by=), ...) auto-derive per-group quantities
+  # under BOTH `~ 0 + G` and `~ 1 + G` instead of silently returning the
   # reference level.
-  group_vars <- if (direct) direct_group_vars(ctmax, z, up, low, k) else character(0)
+  group_vars <- if (direct) direct_group_vars(ctmax, z, up, low, k)
+                else direct_group_vars(NULL, NULL, up, low, k, mid, by)
 
   meta_full <- utils::modifyList(meta, list(
     random_effects   = random_effects,
@@ -478,20 +553,27 @@ get_brmsfit <- function(workflow) {
 # (Unexported. Kept after the documented functions so the roxygen @export blocks
 # above attach to make_4pl_formula()/fit_4pl(), not to these helpers.)
 
-# Fixed-effect moderator variable names across the direct-mode formulas
-# (ctmax/z/up/low/k), excluding `temp_c` and random-effect grouping factors.
-# Empty character vector => single-group fit. Coding-independent: both
-# `~ 0 + species` (cell-means) and `~ species` (treatment) yield "species".
-direct_group_vars <- function(ctmax, z, up, low, k) {
+# Fixed-effect moderator variable names in a formula RHS string, excluding
+# `temp_c` and random-effect grouping factors. Empty character vector => no
+# moderator. Coding-independent: both `0 + species` (cell-means) and `species`
+# (treatment) yield "species".
+rhs_fixed_vars <- function(rhs) {
+  if (is.null(rhs) || !nzchar(rhs)) return(character(0))
+  rhs <- gsub("\\([^|]*\\|[^)]*\\)", "", rhs)          # drop (x | g) random terms
+  rhs <- trimws(gsub("\\+\\s*$|^\\s*\\+", "", rhs))
+  if (rhs %in% c("", "1", "0")) return(character(0))
+  setdiff(all.vars(stats::as.formula(paste("~", rhs))), "temp_c")
+}
+
+# Fixed-effect moderator variable names across the parameterisation's formulas,
+# plus any explicit `by` moderator. Direct mode reads ctmax/z/up/low/k; midpoint
+# mode reads up/low/k/mid (+ by). Empty character vector => single-group fit.
+direct_group_vars <- function(ctmax, z, up, low, k, mid = NULL, by = NULL) {
   fixed_vars <- function(f) {
     if (is.null(f) || !inherits(f, "formula")) return(character(0))
-    rhs <- formula_rhs(f, "1")
-    rhs <- gsub("\\([^|]*\\|[^)]*\\)", "", rhs)        # drop (x | g) random terms
-    rhs <- trimws(gsub("\\+\\s*$|^\\s*\\+", "", rhs))
-    if (rhs %in% c("", "1", "0")) return(character(0))
-    setdiff(all.vars(stats::as.formula(paste("~", rhs))), "temp_c")
+    rhs_fixed_vars(formula_rhs(f, "1"))
   }
-  unique(unlist(lapply(list(ctmax, z, up, low, k), fixed_vars)))
+  unique(c(by, unlist(lapply(list(ctmax, z, up, low, k, mid), fixed_vars))))
 }
 
 # Rewrite a single-factor TREATMENT-coded one-sided formula (`~ G` or `~ 1 + G`,

@@ -9,7 +9,7 @@ derive_temperature_for_duration(
   exposure_duration,
   temp_grid,
   target_surv = "absolute",
-  ndraws = 1000,
+  ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
   seed = NULL,
   by = NULL
@@ -25,7 +25,8 @@ derive_temperature_for_duration(
 \item{target_surv}{Threshold mode. \code{"relative"} (default), \code{"absolute"},
 or a numeric in \verb{(0, 1)}.}
 
-\item{ndraws}{Posterior draws to subsample, or \code{NULL} for all.
+\item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the
+full posterior. Pass an integer to subsample.
 Default 1000.}
 
 \item{probs}{Quantile probabilities. Default \code{c(0.025, 0.5, 0.975)}.}
