@@ -1,0 +1,87 @@
+---
+title: "Reading per-group z/CTmax off a single quick fit vs. truth"
+date: 2026-06-23
+format: html
+---
+
+## Question
+
+In a sanity check of the new midpoint `by=` feature, a fast 2-group fit
+returned per-species $z$ = 5.32 (A) / 3.23 (B) against planted 5.0 / 3.0, and
+$CT_{max}$ = 37.90 / 35.95 against planted 38 / 36. Why the gap on $z$?
+
+## Short answer
+
+They are **not statistically distinguishable from truth** — every planted value
+sits inside the 95% CrI:
+
+| quantity | planted | median | 95% CrI | inside? |
+|---|---|---|---|---|
+| z (A)     | 5.0 | 5.32 | [4.80, 6.13] | yes |
+| z (B)     | 3.0 | 3.23 | [2.79, 3.81] | yes |
+| CTmax (A) | 38  | 37.90 | [37.66, 38.20] | yes |
+| CTmax (B) | 36  | 35.95 | [35.68, 36.14] | yes |
+
+$CT_{max}$ lands within ~0.1 °C. The $z$ medians are ~6–8% high, but the CrIs
+are wide and contain truth — a point-estimate offset within noise, not a bias
+that can be claimed from one fit.
+
+## Why $z$ comes out slightly high (contributors, none ruled out by one run)
+
+1. **Tiny, quick fit.** 2 chains × 750 post-warmup = 1,500 draws on a small grid
+   (5 temps × 5 durations × 4 reps × 25 trials). Posterior medians carry real
+   MC + finite-sample noise at this scale; the CrI width reflects it.
+2. **Mild slope shrinkage → upward $z$, same direction in both groups.** The
+   midpoint's `temp_c` slope has a weakly-informative `normal(0, 0.6)` prior
+   centred at 0. Since $z = -1/\text{slope}$, shrinking $|\text{slope}|$ toward 0
+   *inflates* $z$. Both groups biased the same way is the signature of this.
+3. **Generating recipe ≠ model parameterisation.** The sanity check planted
+   survival with a *fixed* Hill slope and defined $z$ off LT50; the model
+   estimates a *free* $k$ and reads $z$ off the relative midpoint $(\ell+u)/2$.
+   With $\ell\approx0$, $u\approx1$ these coincide in expectation, but at the hot
+   temperatures survival saturates near 0, so the slope is informed by few cells.
+
+## What this is and isn't
+
+This was a single-fit **wiring/sanity check**, not a calibrated assessment. A
+point estimate landing ~6% off planted truth on one small fit tells us the
+plumbing is correct (right group→z mapping, truth inside the CrI), not whether
+the estimator is biased. To quantify bias and coverage, run the project
+simulator across many replicates and check the coverage rate and the
+median bias — reading one fit cannot separate noise from bias.
+
+```{r calibration-sketch}
+#| eval: false
+# Sketch of the right calibration (NOT run here; ~minutes per replicate).
+# For each replicate: simulate -> fit midpoint by="grp" -> extract per-group z
+# -> record (i) whether truth is inside the 95% CrI, (ii) median - truth.
+# Then: coverage should be ~0.95; mean(median - truth) quantifies bias.
+library(bayesTLS)
+reps <- 100
+rows <- lapply(seq_len(reps), function(i) {
+  raw <- simulate_tdt_2group(seed = 20260622 + i)        # test helper
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours")
+  wf  <- fit_4pl(std, by = "grp", t_ref = 60, refresh = 0)
+  tr  <- attr(raw, "truth_2group")
+  z   <- extract_tdt(wf, ndraws = NULL)$z$summary
+  data.frame(
+    rep = i, grp = z$grp, z_med = z$z_median,
+    z_lo = z$z_lower, z_hi = z$z_upper,
+    z_true = c(tr$A$z, tr$B$z)[match(z$grp, c("A", "B"))]
+  )
+})
+res <- do.call(rbind, rows)
+res$covered <- res$z_lo <= res$z_true & res$z_true <= res$z_hi
+aggregate(cbind(bias = z_med - z_true, covered) ~ grp, res, mean)
+```
+
+## Takeaway
+
+The `by=` plumbing recovers per-group truth correctly (right mapping, truth in
+CrI). The small upward $z$ offset on a single quick fit is consistent with MC
+noise + mild slope-prior shrinkage + the recipe/parameterisation mismatch — not
+evidence of estimator bias. The gated `test-midpoint-grouped.R` checks recovery
+with tolerances ($|z - \text{truth}| < 1.5$); a coverage/bias calibration over
+many replicates (sketch above) is the tool for a defensible bias claim.

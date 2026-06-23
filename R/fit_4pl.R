@@ -73,11 +73,14 @@
 #'                       `temp_effects`/`by` structure. Errors in direct mode
 #'                       (where `mid` is reconstructed from `ctmax`/`z`).
 #' @param by             **Midpoint** mode only. Optional character vector of
-#'                       moderator column(s). A shortcut that applies the
-#'                       moderator to all four sub-parameters at once:
-#'                       temperature-carrying parameters get `~ temp_c * by`,
-#'                       the rest a per-group intercept (`~ by`). Equivalent to
-#'                       writing the four formulas by hand. Errors in direct mode
+#'                       moderator column(s). A shortcut that fits `~ temp_c * by`
+#'                       on **all four** sub-parameters (`low`/`up`/`k`/`mid`) at
+#'                       once -- i.e. every aspect of the curve, plus the
+#'                       midpoint's temperature slope (\eqn{-1/z}), varies by
+#'                       group. `by` is the more specific instruction, so it
+#'                       overrides `temp_effects`. Equivalent to writing the four
+#'                       `~ temp_c * by` formulas by hand; use explicit formulas
+#'                       for finer per-parameter control. Errors in direct mode
 #'                       (group there via `ctmax = ~ 0 + <moderator>`).
 #' @param threshold      `"relative"` (default) fits the midpoint backbone so
 #'                       `CTmax`/`z` are the relative-threshold quantities;
@@ -138,19 +141,20 @@ make_4pl_formula <- function(random_effects = NULL,
     main_rhs  <- sprintf(
       "%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))",
       low_expr, up_expr, low_expr)
-    # Each sub-parameter's RHS. An explicit formula wins. Otherwise, with a `by`
-    # moderator: parameters that carry a temperature slope (those in
-    # `temp_effects`, plus `mid` always) get `temp_c * by` (treatment-coded, so
-    # the reference level keeps the centred Intercept prior and the per-group
-    # offsets are weakly shrunk toward it); parameters without a temp slope get a
-    # per-group intercept offset (`by`). Without `by`, the classic temp_effects
-    # default (`temp_c` or `1`). `mid` MUST carry temp_c (its slope is -1/z, the
-    # core TDT quantity).
+    # Each sub-parameter's RHS. An explicit formula always wins. Otherwise:
+    #  * with a `by` moderator -> ALL four get `temp_c * by` (treatment-coded, so
+    #    the reference level keeps the centred Intercept prior and the per-group
+    #    offsets are weakly shrunk toward it). `by` is the more specific
+    #    instruction, so it overrides `temp_effects`.
+    #  * without `by` -> the classic `temp_effects` default: `temp_c` for a
+    #    sub-parameter in `temp_effects`, else `1` (constant in temperature).
+    # Every sub-parameter carries at least `temp_c` in the all-four default; `mid`
+    # MUST carry temp_c (its slope is -1/z, the core TDT quantity) -- enforced
+    # below so e.g. temp_effects = c("low", "up") (mid dropped) errors clearly.
     by_term <- if (!is.null(by)) paste(by, collapse = " * ") else NULL
     par_rhs <- function(par) {
-      has_temp <- par == "mid" || par %in% temp_effects
-      if (is.null(by_term)) return(if (has_temp) "temp_c" else "1")
-      if (has_temp) paste0("temp_c * ", by_term) else by_term
+      if (!is.null(by_term)) return(paste0("temp_c * ", by_term))
+      if (par %in% temp_effects) "temp_c" else "1"
     }
     res <- function(explicit, par) {
       if (!is.null(explicit)) formula_rhs(explicit, par_rhs(par)) else par_rhs(par)
@@ -160,9 +164,9 @@ make_4pl_formula <- function(random_effects = NULL,
     k_r   <- res(k,   "k")
     mid_r <- res(mid, "mid")
     if (!grepl("temp_c", mid_r))
-      stop("`mid` must carry temp_c (its slope is -1/z, the core TDT quantity); ",
-           "supply a `mid`/`by` formula that includes temp_c, or keep \"mid\" in ",
-           "`temp_effects`.", call. = FALSE)
+      stop("`mid` must always carry temp_c (its slope is -1/z, the core TDT ",
+           "quantity); supply a `mid`/`by` formula that includes temp_c, or keep ",
+           "\"mid\" in `temp_effects`.", call. = FALSE)
     # Guard the silent-pooling footgun: if low/up/k carry a moderator that mid
     # does NOT, z is pooled across that moderator even though the asymptotes vary
     # by it. That is a valid model, but rarely what a user writing

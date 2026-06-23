@@ -1,0 +1,211 @@
+---
+title: "Fetching large artifacts from OSF for reproducibility"
+subtitle: "Design note: check-then-download cached models + simulation outputs"
+date: 2026-06-23
+format: html
+---
+
+## Problem
+
+Anyone can clone/fork the repo, but the large derived artifacts are gitignored
+and not in the clone:
+
+| Folder | Size | Files | Read by the manuscript? |
+|---|---|---|---|
+| `output/sim_twostage/raw/` | 1.4 GB | 29,000 `.rds` | **No** — only to re-aggregate |
+| `output/sim_twostage/draws_*.rds` | ~1.2 GB | 232 | **No** |
+| `output/sim_twostage/per_sim_*.rds` | **11 MB** | 29 | **Yes** (`.load_screened()`) |
+| `output/sim_twostage/{summary,diffs,diag}_*.rds` | small | — | partly |
+| `output/data/fig4_summary.rds`, `fig5_hi_data.rds` | tiny | 2 | **Yes** |
+| `output/models/*.rds` | **72 MB** | 38 | **Yes** (case-study fits) |
+
+Dropbox is not a general solution (not everyone has it / has the quota). The
+project already has a public OSF deposit:
+
+- Node **`c6dxy`** — *"A flexible modelling framework for estimating thermal
+  tolerance and sensitivity"* (public).
+- Currently holds one file: **`sim_twostage.zip`, 2.68 GB**
+  (md5 `4b019a10c52ad6c37e967cffd0cca2dc`), which bundles the whole
+  `output/sim_twostage/` tree (raw + draws + aggregates).
+
+## The key recommendation: tier the artifacts
+
+Rendering the manuscript needs **~85 MB** (`per_sim_*` 11 MB + `output/data/`
++ `output/models/` 72 MB). The current single 2.68 GB zip forces every
+figure-reproducer to download **30x** what they use. Split the OSF deposit into
+self-contained zips by *purpose*:
+
+| OSF zip | Contents | Size | Who needs it |
+|---|---|---|---|
+| `results.zip` | `output/sim_twostage/{per_sim,summary,diffs,diag}_*.rds` + `output/data/*.rds` | ~15 MB | **render the paper** (default) |
+| `models.zip` | `output/models/*.rds` | 72 MB | re-render case studies without refitting |
+| `sim_full.zip` | `raw/` (29k) + `draws_*.rds` | 2.6 GB | re-aggregate / re-derive from scratch |
+
+Default `fetch` pulls `results.zip` + `models.zip` (~90 MB). `sim_full.zip` is
+opt-in (`tier = "full"`). This is the single biggest usability win and it costs
+only a re-zip + re-upload on the OSF side.
+
+## Mechanism (no new package dependency)
+
+`osfr` is not installed and not needed. The OSF v2 API exposes a direct download
+link and an md5 per file, and `curl`/`httr`/`jsonlite` are already available:
+
+- Resolve the file's download URL + md5 from
+  `https://api.osf.io/v2/nodes/<node>/files/osfstorage/`.
+- `curl::curl_download()` (resumable, handles multi-GB) to a temp file.
+- Verify md5 against the manifest (reproducibility: you know you got the exact
+  bytes), then `utils::unzip(exdir = <dest>)`.
+
+**Check-then-download (idempotent).** Before downloading, test whether the
+destination is already populated; skip if so (with a `force = TRUE` override).
+Cheap check = "are the expected files present?"; strict check = "do their md5s
+match the manifest?".
+
+```{r fetch-sketch}
+#| eval: false
+# scripts/fetch_artifacts.R  (research-compendium infra; NOT package R/ code --
+# we don't ship a 2.6 GB downloader inside bayesTLS)
+
+# Manifest: one row per OSF zip. md5 pins the exact artifact set.
+manifest <- tibble::tribble(
+  ~zip,           ~node,    ~dest,                         ~tier,      ~md5,
+  "results.zip",  "c6dxy",  here::here("output"),          "results",  "<md5>",
+  "models.zip",   "c6dxy",  here::here("output", "models"),"results",  "<md5>",
+  "sim_full.zip", "c6dxy",  here::here("output"),          "full",     "<md5>",
+)
+
+osf_file <- function(node, name) {
+  j <- jsonlite::fromJSON(sprintf(
+    "https://api.osf.io/v2/nodes/%s/files/osfstorage/", node))
+  i <- which(j$data$attributes$name == name)
+  list(url = j$data$links$download[i],
+       md5 = j$data$attributes$extra$hashes$md5[i])
+}
+
+# A folder counts as "present" if it already holds the expected marker files.
+have_it <- function(dest, marker_glob) length(Sys.glob(file.path(dest, marker_glob))) > 0
+
+fetch_one <- function(row, force = FALSE) {
+  if (!force && have_it(row$dest, row$marker)) {        # <- check-then-download
+    message("skip (present): ", row$zip); return(invisible())
+  }
+  meta <- osf_file(row$node, row$zip)
+  tmp  <- tempfile(fileext = ".zip")
+  curl::curl_download(meta$url, tmp, mode = "wb")        # resumable, multi-GB ok
+  stopifnot(tools::md5sum(tmp) == row$md5)               # integrity gate
+  utils::unzip(tmp, exdir = row$dest)                    # paths in zip are
+  unlink(tmp)                                            #   relative to dest
+}
+
+fetch_artifacts <- function(tier = "results", force = FALSE) {
+  rows <- manifest[manifest$tier %in% if (tier == "full") c("results","full")
+                                      else tier, ]
+  for (i in seq_len(nrow(rows))) fetch_one(rows[i, ], force = force)
+}
+```
+
+**Zip internal layout matters.** Each zip must store paths *relative to its
+`dest`* so `unzip(exdir = dest)` lands files in the right place. E.g.
+`results.zip` should contain `sim_twostage/per_sim_scen3_*.rds`,
+`data/fig4_summary.rds`, …; `models.zip` should contain bare `fit_*.rds`. Verify
+with `unzip -l` after building each zip.
+
+## Integration points
+
+- **`make data`** (default tier) and **`make data-full`** targets calling
+  `Rscript scripts/fetch_artifacts.R [results|full]`.
+- **README** reproduction section: insert `make data` *before* `make ms` /
+  before sourcing the figures.
+- **Manuscript safety net (optional):** a setup chunk can call
+  `fetch_artifacts("results")` so a fresh `quarto render` self-heals if the
+  outputs are missing — but keep it `force = FALSE` so it never re-pulls on a
+  populated tree.
+
+## What needs whom
+
+- **Buildable + testable now (me):** `scripts/fetch_artifacts.R`, the manifest
+  scaffold, README + Makefile wiring. The download path is public, so the
+  mechanism can be tested against the existing deposit (md5/url resolution; a
+  real unzip without pulling all 2.68 GB by testing on the small zips once they
+  exist).
+- **Needs Daniel (OSF auth):** re-zip the deposit into `results.zip` /
+  `models.zip` / `sim_full.zip`, upload, then I pin their md5s into the manifest.
+  Uploading `output/models/` to OSF is new (the current deposit has only the sim
+  tree).
+
+## Decision (DN, 2026-06-23)
+
+**Tiered deposit**, and **build the fetch script after the OSF upload** (so the
+manifest can be pinned to real md5s and the full download path tested end-to-end
+in one pass). Next action is on the OSF side (DN); script build is queued.
+
+### Re-zip recipe (run from the repo root)
+
+All three zips unzip into `output/`, so internal paths start at
+`sim_twostage/…`, `data/…`, `models/…`. Building each zip from *inside*
+`output/` produces exactly those relative paths:
+
+```bash
+cd output
+
+# results.zip  (~15 MB) — everything the manuscript renders from
+zip -r ../results.zip \
+  sim_twostage/per_sim_*.rds \
+  sim_twostage/summary_*.rds \
+  sim_twostage/diffs_*.rds \
+  sim_twostage/diag_*.rds \
+  data/*.rds
+
+# models.zip  (72 MB) — cached case-study brms fits (NEW to OSF)
+zip -r ../models.zip models/*.rds
+
+# sim_full.zip  (~2.6 GB) — raw per-sim files + posterior draws, for re-derivation
+zip -r ../sim_full.zip \
+  sim_twostage/raw \
+  sim_twostage/draws_*.rds \
+  sim_twostage/meta_*.rds
+```
+
+Verify before upload: `unzip -l results.zip | head` should show
+`sim_twostage/per_sim_…` and `data/…` (NOT `output/sim_twostage/…`). Upload all
+three to OSF node `c6dxy`; the existing `sim_twostage.zip` can be deleted (its
+contents are now split across `results.zip` + `sim_full.zip`).
+
+Then I: pin each zip's md5 into the manifest, write `scripts/fetch_artifacts.R`,
+add `make data` / `make data-full`, wire the README, and test the full
+check-then-download path end-to-end.
+
+## Publishing (upload) workflow — built 2026-06-23
+
+Rather than zipping + uploading by hand each time, publishing is automated and
+idempotent so OSF always mirrors the latest local artifacts.
+
+- **`scripts/osf_publish.R`** + **`make osf-push` / `make osf-status`**. For each
+  tier it computes a cheap content signature (sorted `path + size + mtime` over
+  the tier's globs), compares it to `data-raw/osf_manifest.json`, and re-zips +
+  uploads **only the tiers that changed** since the last publish. The full tier's
+  2.6 GB is therefore re-pushed only after an actual sim re-run, not on every
+  build.
+- **Token:** read from `OSF_PAT` (osf.full_write; in `~/.Renviron`). Never
+  printed or written to disk. Missing token → a clear actionable error.
+- **Upload mechanism:** OSF v2 API + waterbutler PUT (create new file, or PUT to
+  an existing file's `links$upload` for a new version). No `osfr`/`osfclient`.
+- **Manifest** (`data-raw/osf_manifest.json`, committed) records per tier:
+  signature, OSF-reported zip md5, file count, size — and is the same file the
+  fetch script will read for integrity checks.
+
+**Verified without a token:** script parses; `make osf-status` reports
+results 11.9 MB / models 72.6 MB / full 2.7 GB; the OSF read path resolves the
+existing `sim_twostage.zip` (→ update branch) and a missing `results.zip`
+(→ create branch); no-token run fails cleanly. **Untested until token present:**
+the PUT itself.
+
+**First-publish sequencing (once `OSF_PAT` is set):**
+1. `make osf-push TIER="results models"` — the ~85 MB that lets the paper render;
+   confirm both upload.
+2. `make osf-push TIER=full` — the 2.6 GB re-derivation tier (one-time).
+3. Delete the legacy `sim_twostage.zip` from OSF (now split into
+   `results.zip` + `sim_full.zip`).
+
+Two staged zips already built for a manual web-UI upload as a fallback:
+`~/osf_c6dxy_upload/{results.zip (md5 e745d0ee…), models.zip (md5 c5ea62df…)}`.

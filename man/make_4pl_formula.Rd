@@ -78,11 +78,14 @@ the midpoint sub-parameter (whose \code{temp_c} slope is
 (where \code{mid} is reconstructed from \code{ctmax}/\code{z}).}
 
 \item{by}{\strong{Midpoint} mode only. Optional character vector of
-moderator column(s). A shortcut that applies the
-moderator to all four sub-parameters at once:
-temperature-carrying parameters get \code{~ temp_c * by},
-the rest a per-group intercept (\code{~ by}). Equivalent to
-writing the four formulas by hand. Errors in direct mode
+moderator column(s). A shortcut that fits \code{~ temp_c * by}
+on \strong{all four} sub-parameters (\code{low}/\code{up}/\code{k}/\code{mid}) at
+once -- i.e. every aspect of the curve, plus the
+midpoint's temperature slope (\eqn{-1/z}), varies by
+group. \code{by} is the more specific instruction, so it
+overrides \code{temp_effects}. Equivalent to writing the four
+\code{~ temp_c * by} formulas by hand; use explicit formulas
+for finer per-parameter control. Errors in direct mode
 (group there via \verb{ctmax = ~ 0 + <moderator>}).}
 
 \item{threshold}{\code{"relative"} (default) fits the midpoint backbone so
