@@ -118,5 +118,54 @@ dsuzukii <- read_csv(ext("data_multitrait_TDT_drosophila_suzukii.csv"),
   ) |>
   as.data.frame()
 
+## 6. Zebrafish larvae — lethal TDT across an oxygen gradient (counts) --------
+# Saruhashi et al. (2026) open data (CC BY 4.0; Zenodo 10.5281/zenodo.20075355),
+# "Upper thermal limit" sheet. Survival of diploid/triploid larvae assayed at
+# 26/38/39/40 C for 3.8-240 min under three oxygen treatments. The categorical
+# moderator is `Treatment` (hypoxia/normoxia/hyperoxia); `O` is the nominal % air
+# saturation it targets (25/100/225) and `oxygen` is the MEASURED saturation, both
+# carried through for reference. `T` is the target assay temperature, `temperature`
+# the measured one. Light cleaning only: relabel ploidy, type columns, no rows
+# dropped. Full design (all ploidy x oxygen x temp incl. the 26 C control).
+zebrafish_o2 <- read_csv(ext("data_lethal_TDT_zebrafish_oxygen.csv"),
+                         show_col_types = FALSE) |>
+  dplyr::transmute(
+    cohort        = as.character(Cohort),
+    ploidy        = factor(Ploidy, levels = c(2, 3),
+                           labels = c("diploid", "triploid")),
+    oxygen        = factor(Treatment,
+                           levels = c("hypoxia", "normoxia", "hyperoxia")),
+    o2_nominal    = as.integer(O),            # nominal % air saturation (25/100/225)
+    o2_measured   = as.numeric(oxygen),       # measured % air saturation
+    temp          = as.numeric(T),            # target assay temperature (C)
+    temp_measured = as.numeric(temperature),  # measured assay temperature (C)
+    duration_min  = as.numeric(time),         # exposure duration (minutes)
+    n_total       = as.integer(total),
+    n_surv        = as.integer(survival)
+  ) |>
+  as.data.frame()
+
+## 7. Cereal aphids — lethal TDT, three species x three ages (counts) ---------
+# Li et al. (2023) open data (CC0; Dryad 10.5061/dryad.mcvdnck4j), surv.txt.
+# Survival of three aphid species at three ages across a heat branch (34-40 C)
+# and a cold branch (-11 to -3 C); `branch` flags which. Species codes are
+# relabelled (MD/SA/RP; the README's "SD" is a typo for the data's SA). Light
+# cleaning only: relabel, type, derive `branch`; no rows dropped. Full design.
+aphid_tdt <- read_csv(ext("data_lethal_TDT_aphid.csv"), show_col_types = FALSE) |>
+  dplyr::transmute(
+    species      = factor(dplyr::recode(spec, MD = "M_dirhodum",
+                                        SA = "S_avenae", RP = "R_padi"),
+                          levels = c("M_dirhodum", "S_avenae", "R_padi")),
+    age          = factor(age, levels = c(2, 6, 12)),
+    branch       = factor(ifelse(temp >= 0, "heat", "cold"),
+                          levels = c("heat", "cold")),
+    temp         = as.numeric(temp),          # assay temperature (C)
+    duration_min = as.numeric(dur),           # exposure duration (minutes)
+    n_total      = as.integer(total),
+    n_surv       = as.integer(surv)
+  ) |>
+  as.data.frame()
+
 usethis::use_data(shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
-                  snowgum_psii, dsuzukii, overwrite = TRUE)
+                  snowgum_psii, dsuzukii, zebrafish_o2, aphid_tdt,
+                  overwrite = TRUE)
