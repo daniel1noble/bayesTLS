@@ -80,6 +80,24 @@ test_that("degenerate data yields no fit and NA summaries, not an error", {
   expect_silent(ts_ci(s2, method = "mvn", temp_grid = c(30, 34, 38)))
 })
 
+test_that("T_crit is invariant to t_ref (anchored at 1 h); CTmax tracks t_ref", {
+  s1   <- ts_stage1(make_two_stage_data(), "temp", "dur", "surv", "tot")
+  s60  <- ts_stage2(s1, t_ref = 60)$summary
+  s120 <- ts_stage2(s1, t_ref = 120)$summary
+  s240 <- ts_stage2(s1, t_ref = 240)$summary
+  # rate-multiplier T_crit is anchored at the 1 h CTmax -> independent of the
+  # reporting reference t_ref
+  expect_equal(s60$T_crit, s120$T_crit, tolerance = 1e-8)
+  expect_equal(s60$T_crit, s240$T_crit, tolerance = 1e-8)
+  # the reported CTmax does shift with t_ref (a later reference -> lower temp)
+  expect_lt(s120$CTmax_1hr, s60$CTmax_1hr)
+  # ts_ci T_crit bounds are likewise t_ref-invariant
+  ci60  <- ts_ci(ts_stage2(s1, t_ref = 60),  method = "mvn", seed = 1)$summary_ci
+  ci120 <- ts_ci(ts_stage2(s1, t_ref = 120), method = "mvn", seed = 1)$summary_ci
+  expect_equal(ci60$Tcrit_lower, ci120$Tcrit_lower, tolerance = 1e-6)
+  expect_equal(ci60$Tcrit_upper, ci120$Tcrit_upper, tolerance = 1e-6)
+})
+
 test_that("ts_stage1 beta-binomial path works when glmmTMB is available", {
   skip_if_not_installed("glmmTMB")
   d  <- make_two_stage_data()

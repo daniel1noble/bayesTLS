@@ -150,12 +150,16 @@ ts_stage2 <- function(stage1, t_ref = 60, time_multiplier = 1,
   }
   intercept <- as.numeric(co[["(Intercept)"]] + log10(time_multiplier))
   z         <- -1 / slope
-  ctmax     <- (log10(t_ref) - intercept) / slope
+  ctmax     <- (log10(t_ref) - intercept) / slope   # CTmax at the chosen t_ref
+  # T_crit uses the rate-multiplier definition anchored at the 1 h CTmax, so it
+  # is invariant to t_ref (matching extract_tdt()); only the reported CTmax
+  # tracks t_ref. At the default t_ref = 60 the two anchors coincide.
+  ctmax_1hr <- (log10(60) - intercept) / slope
   list(
     fit = fit,
     summary = tibble::tibble(
       intercept = intercept, slope_T = slope, z = z, CTmax_1hr = ctmax,
-      T_crit = ctmax + z * mean(log10(TC_rate_range / 100)),
+      T_crit = ctmax_1hr + z * mean(log10(TC_rate_range / 100)),
       r_squared = summary(fit)$r.squared,
       n_stage1 = nrow(keep), n_excluded = n_excluded))
 }
@@ -244,7 +248,10 @@ ts_ci <- function(stage2, method = c("delta", "mvn"), level = 0.95,
   draws <- MASS::mvrnorm(n_sim, mu = stats::coef(fit), Sigma = stats::vcov(fit))
   alpha <- draws[, "(Intercept)"]; beta <- draws[, "temp"]
   ctmax_d <- (log10_tr - (alpha + log10(time_multiplier))) / beta
-  tcrit_d <- ctmax_d + (-1 / beta) * log_rate_mid
+  # T_crit anchored at the 1 h CTmax (invariant to t_ref), matching ts_stage2()
+  # and extract_tdt(); the reported CTmax bounds still track t_ref.
+  ctmax1h_d <- (log10(60) - (alpha + log10(time_multiplier))) / beta
+  tcrit_d   <- ctmax1h_d + (-1 / beta) * log_rate_mid
   q <- function(x, p) stats::quantile(x, p, na.rm = TRUE, names = FALSE)
   summary_ci <- tibble::tibble(
     z_lower = z_lower, z_upper = z_upper,

@@ -169,6 +169,15 @@ standardize_data <- function(data,
       out$n_surv <- as.integer(round((1 - pmin(pmax(mv, 0), 1)) * out$n_total))
     }
 
+    # Defensive clamp to [0, n_total]. The survival/mortality paths already
+    # reject proportions > 1; the n_surv / n_dead count paths can still produce
+    # out-of-range counts from data-entry errors (survivors > trials, deaths >
+    # trials), so warn rather than silently fabricating a 0%/100% cell.
+    n_oob <- sum(out$n_surv > out$n_total | out$n_surv < 0, na.rm = TRUE)
+    if (n_oob > 0L)
+      warning(n_oob, " cell(s) had survivor counts outside [0, n_total] ",
+              "(e.g. n_surv > n_total); clamped to the valid range. ",
+              "Check for data-entry errors.", call. = FALSE)
     out$n_surv   <- pmin(pmax(out$n_surv, 0), out$n_total)
     out$n_dead   <- out$n_total - out$n_surv
     out$survival <- out$n_surv / out$n_total

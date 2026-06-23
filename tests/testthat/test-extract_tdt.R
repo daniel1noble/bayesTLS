@@ -144,3 +144,14 @@ test_that("an absolute target_surv outside the fitted asymptotes warns clearly",
     })
   expect_false(asymp_warn)
 })
+
+test_that("extract_tdt clamps ndraws to the posterior size (no crash when ndraws > draws)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow()                 # ~1500 posterior draws
+  # Regression: relative-mode derive_tdt_curve() passed `ndraws` straight to
+  # brms::posterior_linpred(), which errors when ndraws exceeds the posterior
+  # size. Requesting more draws than exist must now clamp, not crash. This is
+  # also what the default ndraws = 1000 hits on a small fit (< 1000 draws).
+  expect_no_error(extract_tdt(wf, target_surv = "relative", ndraws = 5000))
+  expect_no_error(derive_tdt_curve(wf, temp_grid = c(30, 34, 38), ndraws = 5000))
+})

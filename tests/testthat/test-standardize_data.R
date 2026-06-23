@@ -141,6 +141,16 @@ test_that("counts passed to survival=/mortality= error (not silently clamped)", 
     "values > 1")
 })
 
+test_that("survivor counts above n_total warn (clamped, not silently fabricated)", {
+  raw <- data.frame(t = c(30, 32), d = c(1, 1), n = c(10, 10),
+                    alive = c(12, 8))               # 12 > 10 is a data-entry error
+  expect_warning(
+    d <- standardize_data(raw, temp = "t", duration = "d",
+                          n_total = "n", n_surv = "alive"),
+    "outside \\[0, n_total\\]")
+  expect_true(all(d$n_surv <= d$n_total))           # clamped to a valid range
+})
+
 test_that("a continuous proportion outside [0, 1] errors", {
   raw <- data.frame(t = c(30, 32, 34), d = 1, p = c(0.9, 0.5, 1.4))
   expect_error(

@@ -94,6 +94,15 @@ derive_tdt_curve <- function(workflow,
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
+  # brms::posterior_linpred() errors if `ndraws` exceeds the posterior size, so
+  # clamp here (the default ndraws = 1000 otherwise crashes the relative-mode
+  # call below on any fit with fewer draws, e.g. 2 chains x 400). The absolute
+  # branch goes through posterior_linpred_tdt(), which clamps the same way.
+  if (!is.null(ndraws)) {
+    total <- tryCatch(brms::ndraws(workflow$fit), error = function(e) NA_integer_)
+    if (is.finite(total)) ndraws <- min(ndraws, total)
+  }
+
   time_multiplier <- tdt_resolve_time_multiplier(time_multiplier, workflow$meta,
                                                  output_time_unit)
   ts <- resolve_target_surv(target_surv)
