@@ -33,7 +33,8 @@ BUILD_MS  := $(BUILDROOT)/ms
         ms supp \
         ms-html ms-docx ms-pdf \
         supp-html supp-docx supp-pdf \
-        sync-sources
+        sync-sources \
+        osf-push osf-status
 
 all: ms supp
 
@@ -151,6 +152,25 @@ endef
 define STRIP_SUPP_NBSP_DOCX
 	@python3 scripts/strip-docx-nbsp.py $(1)
 endef
+
+# ---- OSF artifact publishing ----------------------------------------------
+
+# Mirror the latest cached artifacts to the project's OSF deposit (node c6dxy)
+# so a fresh clone can `make data` instead of refitting / re-simulating. Each
+# tier (results / models / full) is re-zipped + uploaded only when its source
+# files changed since the last publish (tracked in data-raw/osf_manifest.json).
+#
+#   make osf-status              # dry run: which tiers changed (no token)
+#   make osf-push                # publish all changed tiers
+#   make osf-push TIER=results   # publish one tier (or "--force" to ignore cache)
+#
+# Needs an OSF personal access token (scope osf.full_write) in OSF_PAT, e.g. a
+# line `OSF_PAT=...` in ~/.Renviron (gitignored). Never commit the token.
+osf-status:
+	@Rscript scripts/osf_publish.R --status
+
+osf-push:
+	@Rscript scripts/osf_publish.R $(TIER)
 
 # ---- maintenance ----------------------------------------------------------
 
