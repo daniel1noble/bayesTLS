@@ -122,3 +122,34 @@ test_that("fit_4pl(fit = FALSE) on proportion data builds a Beta workflow", {
   main <- paste(deparse(wf$formula$formula), collapse = " ")
   expect_true(grepl("^survival ~", main))
 })
+
+test_that("direct ctmax/z with intercept + multiple random effects builds (no dangling +)", {
+  # Regression: rhs_fixed_vars() used to leave a dangling "1 +" when an intercept
+  # was followed by >1 random-effect term, so `~ 1 + (1|a) + (1|b)` crashed
+  # group_vars extraction with "unexpected end of input".
+  set.seed(1)
+  raw <- expand.grid(temperature_C = c(34, 38, 42), exposure_h = c(1, 2, 4),
+                     a = c("a1", "a2"), b = c("b1", "b2"))
+  raw$n     <- 20L
+  raw$alive <- rbinom(nrow(raw), 20, 0.5)
+  std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                          n_total = "n", n_surv = "alive")
+
+  expect_no_error(
+    wf <- fit_4pl(std, ctmax = ~ 1 + (1 | a) + (1 | b),
+                  z = ~ 1 + (1 | a) + (1 | b), fit = FALSE))
+  expect_equal(wf$meta$parameterization, "direct")
+  expect_equal(wf$meta$group_vars, character(0))   # intercept + REs only -> no moderator
+  expect_false(wf$meta$grouped)
+  # random-effect SD priors land on CTmaxdev/logz for BOTH grouping factors
+  sd_rows <- as.data.frame(wf$prior)[as.data.frame(wf$prior)$class == "sd", ]
+  expect_setequal(unique(sd_rows$group), c("a", "b"))
+  expect_setequal(unique(sd_rows$nlpar), c("CTmaxdev", "logz"))
+})
+
+test_that("rhs_fixed_vars strips intercept + multiple random-effect terms cleanly", {
+  expect_equal(rhs_fixed_vars("1 + (1 | Day) + (1 | G_Room)"), character(0))
+  expect_equal(rhs_fixed_vars("(1 | Day) + (1 | G_Room)"),     character(0))
+  expect_equal(rhs_fixed_vars("0 + species + (1 | batch)"),    "species")
+  expect_equal(rhs_fixed_vars("temp_c * species + (1 | Day)"), "species")
+})

@@ -563,7 +563,11 @@ get_brmsfit <- function(workflow) {
 # (treatment) yield "species".
 rhs_fixed_vars <- function(rhs) {
   if (is.null(rhs) || !nzchar(rhs)) return(character(0))
-  rhs <- gsub("\\([^|]*\\|[^)]*\\)", "", rhs)          # drop (x | g) random terms
+  # Drop (x | g) random-effect terms, CONSUMING any leading "+" so e.g.
+  # "1 + (1 | Day) + (1 | G_Room)" collapses cleanly to "1" rather than leaving a
+  # dangling "1 +" (which would make the as.formula() below abort).
+  rhs <- gsub("\\+?\\s*\\([^|]*\\|[^)]*\\)", "", rhs)
+  rhs <- gsub("\\+\\s*\\+", "+", rhs)                  # collapse any doubled "+"
   rhs <- trimws(gsub("\\+\\s*$|^\\s*\\+", "", rhs))
   if (rhs %in% c("", "1", "0")) return(character(0))
   setdiff(all.vars(stats::as.formula(paste("~", rhs))), "temp_c")
