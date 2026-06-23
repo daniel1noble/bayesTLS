@@ -404,21 +404,35 @@ fit_4pl <- function(data,
 
   if (!fit) return(workflow)
 
-  workflow$fit <- brms::brm(
-    formula    = formula,
-    data       = data,
-    prior      = prior,
-    chains     = chains,
-    iter       = iter,
-    warmup     = warmup,
-    cores      = cores,
-    seed       = seed,
-    backend    = backend,
-    control    = control,
-    init       = init,
-    file       = file,
-    file_refit = file_refit,
-    ...
+  # The default priors set a general `class = "b"` catch-all on CTmaxdev/logz
+  # (needed only when CTmax/z carry a continuous moderator or interaction)
+  # alongside the per-level / Intercept priors. For the common cell-means or
+  # intercept-only fit every coefficient already has a specific prior, so brms
+  # emits a harmless "global prior ... will not be used in the model" note for
+  # the redundant catch-all. Muffle only that note (the fit is unaffected and
+  # the user cannot act on it); all other warnings pass through untouched.
+  workflow$fit <- withCallingHandlers(
+    brms::brm(
+      formula    = formula,
+      data       = data,
+      prior      = prior,
+      chains     = chains,
+      iter       = iter,
+      warmup     = warmup,
+      cores      = cores,
+      seed       = seed,
+      backend    = backend,
+      control    = control,
+      init       = init,
+      file       = file,
+      file_refit = file_refit,
+      ...
+    ),
+    warning = function(w) {
+      if (grepl("will not be used in the model", conditionMessage(w),
+                fixed = TRUE))
+        invokeRestart("muffleWarning")
+    }
   )
 
   workflow

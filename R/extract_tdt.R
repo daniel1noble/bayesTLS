@@ -68,7 +68,10 @@ resolve_target_surv <- function(target_surv) {
 #'                         data's duration range.
 #' @param target_surv      Threshold mode. `"relative"` (default; = `(low + up)/2`),
 #'                         `"absolute"` (= 0.5), or a numeric in `(0, 1)`.
-#' @param ndraws           Posterior draws to use. Default 1000.
+#' @param ndraws           Posterior draws to use; `NULL` (default) uses the full
+#'                       posterior. Subsampling can shift results slightly off
+#'                       the model, so the default keeps derived quantities
+#'                       consistent with the fit; pass an integer for speed.
 #' @param probs            Quantile probabilities for the summary. Default
 #'                         `c(0.025, 0.5, 0.975)`.
 #' @param time_multiplier  Multiplier from model time units to `output_time_unit`
@@ -87,7 +90,7 @@ derive_tdt_curve <- function(workflow,
                              temp_grid,
                              duration_grid    = NULL,
                              target_surv      = "relative",
-                             ndraws           = 1000,
+                             ndraws           = NULL,
                              probs            = c(0.025, 0.5, 0.975),
                              time_multiplier  = NULL,
                              output_time_unit = "min") {
@@ -200,7 +203,8 @@ derive_tdt_curve <- function(workflow,
 #' @param temp_grid        Numeric vector of temperatures to search over.
 #' @param target_surv      Threshold mode. `"relative"` (default), `"absolute"`,
 #'                         or a numeric in `(0, 1)`.
-#' @param ndraws           Posterior draws to subsample, or `NULL` for all.
+#' @param ndraws           Posterior draws to use; `NULL` (default) uses the
+#'                         full posterior. Pass an integer to subsample.
 #'                         Default 1000.
 #' @param probs            Quantile probabilities. Default `c(0.025, 0.5, 0.975)`.
 #' @param seed             Optional integer seeding the draw subsample for
@@ -217,7 +221,7 @@ derive_temperature_for_duration <- function(workflow,
                                             exposure_duration,
                                             temp_grid,
                                             target_surv = "absolute",
-                                            ndraws      = 1000,
+                                            ndraws      = NULL,
                                             probs       = c(0.025, 0.5, 0.975),
                                             seed        = NULL,
                                             by          = NULL) {
@@ -442,7 +446,10 @@ derive_z <- function(workflow,
 #' @param duration_grid Optional duration grid for the underlying LT50 curve.
 #'                    Default: 350 log-spaced values spanning 0.2× to 5× the
 #'                    training-data duration range.
-#' @param ndraws      Posterior draws to use. Default 1000.
+#' @param ndraws      Posterior draws to use; `NULL` (default) uses the full
+#'                       posterior. Subsampling can shift results slightly off
+#'                       the model, so the default keeps derived quantities
+#'                       consistent with the fit; pass an integer for speed.
 #' @param time_multiplier Multiplier from model time units to `output_time_unit`.
 #'                    `NULL` (default) derives it from the workflow's
 #'                    `duration_unit` and `output_time_unit` (e.g. 60 for an
@@ -511,7 +518,7 @@ extract_tdt <- function(workflow,
                         TC_rate_range    = c(0.1, 1),
                         temp_grid        = NULL,
                         duration_grid    = NULL,
-                        ndraws           = 1000,
+                        ndraws           = NULL,
                         time_multiplier  = NULL,
                         output_time_unit = "min",
                         lethal           = FALSE,

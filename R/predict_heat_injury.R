@@ -157,7 +157,10 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'                     Reconciled internally with the model's fitted
 #'                     `duration_unit`, so the result is correct for any
 #'                     combination of model and trace time units.
-#' @param ndraws       Posterior draws to use. Default 500.
+#' @param ndraws       Posterior draws to use; `NULL` (default) uses the full
+#'                     posterior, keeping the integral consistent with the model.
+#'                     Pass an integer to subsample -- useful for speed, since the
+#'                     full posterior over a long temperature trace can be slow.
 #' @param repair       Logical. If `TRUE`, add Sharpe-Schoolfield repair.
 #'                     Default `FALSE`.
 #' @param repair_pars  Required when `repair = TRUE`. Named list with elements
@@ -197,7 +200,7 @@ predict_heat_injury <- function(trace, workflow,
                                 target_surv = "relative",
                                 T_c         = NULL,
                                 trace_unit  = "hours",
-                                ndraws      = 500,
+                                ndraws      = NULL,
                                 repair      = FALSE,
                                 repair_pars = NULL,
                                 repair_scales_with_survival = TRUE,
@@ -248,6 +251,10 @@ predict_heat_injury <- function(trace, workflow,
 
   by       <- tdt_resolve_by(workflow, by)
   pars_all <- extract_4pl_pars(workflow, by = by)
+  # ndraws = NULL (default) uses the FULL posterior -- keeps the integral
+  # consistent with the model and the other derivation functions; pass an
+  # integer to subsample for speed on long traces.
+  if (is.null(ndraws)) ndraws <- nrow(pars_all)
 
   # Per-draw Euler dose-accumulation integral for one set of 4PL parameter draws.
   integrate_pars <- function(pars) {

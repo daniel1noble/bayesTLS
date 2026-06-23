@@ -169,7 +169,8 @@ summarise_observed_survival <- function(observed) {
 #'                  temperatures in the training data.
 #' @param durations Numeric vector of durations. Default: 250 log-spaced values
 #'                  spanning 0.2× to 5× the observed range.
-#' @param ndraws    Integer number of posterior draws to use. Default 1000.
+#' @param ndraws    Posterior draws to use; `NULL` (default) uses the full
+#'                  posterior. Pass an integer to subsample for speed.
 #' @param probs     Numeric length-3 quantile probabilities (lower, median,
 #'                  upper). Default `c(0.025, 0.5, 0.975)`.
 #' @param by        Optional moderator column(s) for per-group curves. `NULL`
@@ -189,7 +190,7 @@ summarise_observed_survival <- function(observed) {
 predict_survival_curves <- function(workflow,
                                     temps     = NULL,
                                     durations = NULL,
-                                    ndraws    = 1000,
+                                    ndraws    = NULL,
                                     probs     = c(0.025, 0.5, 0.975),
                                     by        = NULL) {
   if (!has_fit(workflow))
