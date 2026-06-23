@@ -96,3 +96,15 @@ test_that("rate at TREF is suppressed only by the (small) inactivation arms", {
   expect_lt(rate_ref, rp$r_ref)
   expect_gt(rate_ref, 0.9 * rp$r_ref)                 # arms are small here
 })
+
+test_that("repair_rate_schoolfield errors on Celsius TL/TH/TREF (must be Kelvin)", {
+  expect_error(
+    repair_rate_schoolfield(20, TA = 14065, TAL = 50000, TAH = 120000,
+                            TL = 10.5 + 273.15, TH = 22.5 + 273.15,
+                            TREF = 17, r_ref = 0.01),         # TREF in Celsius
+    "KELVIN")
+  expect_silent(
+    repair_rate_schoolfield(17, TA = 14065, TAL = 50000, TAH = 120000,
+                            TL = 10.5 + 273.15, TH = 22.5 + 273.15,
+                            TREF = 17 + 273.15, r_ref = 0.01))
+})

@@ -230,6 +230,10 @@ make_4pl_formula <- function(random_effects = NULL,
 #'                       are inherited from them when omitted.
 #' @param threshold      `"relative"` (default) or `"absolute"`; the threshold the
 #'                       fitted CTmax/z refer to (direct mode only).
+#' @param p              Survival fraction for the `"absolute"` threshold (direct
+#'                       mode). Default `0.5` (LT50). Must lie within the response
+#'                       bounds' achievable range, else `fit_4pl()` errors (use a
+#'                       relative threshold for sub-unit-bounded responses).
 #' @param t_ref          Reference exposure for CTmax, in **minutes** (default 60,
 #'                       i.e. one hour). Converted to the model's log10-time scale
 #'                       via the data's `duration_unit`.
@@ -272,12 +276,18 @@ fit_4pl <- function(data,
                     low            = NULL,
                     k              = NULL,
                     threshold      = c("relative", "absolute"),
+                    p              = 0.5,
                     t_ref          = 60,
                     ...) {
 
   threshold <- match.arg(threshold)
   if (!is.null(bounds)) { lower <- bounds[1]; upper <- bounds[2] }
   direct <- !is.null(ctmax) || !is.null(z)
+  if (direct && !is.null(random_effects))
+    stop("In the direct CTmax/z parameterisation, random effects go INSIDE the ",
+         "`ctmax`/`z` formulas, e.g. ctmax = ~ 0 + grp + (1 | batch). The ",
+         "`random_effects` argument is for the midpoint parameterisation and ",
+         "would otherwise be silently ignored here.", call. = FALSE)
 
   meta <- attr(data, "tdt_meta") %||%
     list(temp_mean      = mean(data$temp, na.rm = TRUE),
@@ -318,6 +328,7 @@ fit_4pl <- function(data,
                               low            = low,
                               k              = k,
                               threshold      = threshold,
+                              p              = p,
                               log10_tref     = log10_tref)
 
   if (is.null(prior)) {

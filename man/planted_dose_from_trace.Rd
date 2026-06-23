@@ -28,11 +28,13 @@ given known TDT parameters. Use this as the \strong{truth} that
 fit whose posterior is consistent with \verb{(z, CTmax_1hr, T_c)}.
 }
 \details{
-At each time step, contribution is
+Integrated by forward Euler from zero: the interval ending at point \eqn{i}
+accrues the rate at its start (point \eqn{i-1}) times that interval's width,
 
-\deqn{\Delta HI_i = 100 \cdot 10^{(T_i - CT_{max,1hr}) / z} \cdot \Delta t}
+\deqn{\Delta HI_i = 100 \cdot 10^{(T_{i-1} - CT_{max,1hr}) / z} \cdot (t_i - t_{i-1})}
 
-when \code{T_i > T_c}, and zero otherwise. Cumulative HI is the running sum.
+when \verb{T_\{i-1\} > T_c}, and zero otherwise (and \code{hi_inc[1] = 0}). Cumulative HI
+is the running sum. This matches \code{\link[=predict_heat_injury]{predict_heat_injury()}}'s integrator.
 }
 \examples{
 scens <- make_temperature_scenarios(spike_temp = 30)

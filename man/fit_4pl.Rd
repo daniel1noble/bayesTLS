@@ -30,6 +30,7 @@ fit_4pl(
   low = NULL,
   k = NULL,
   threshold = c("relative", "absolute"),
+  p = 0.5,
   t_ref = 60,
   ...
 )
@@ -92,6 +93,11 @@ are inherited from them when omitted.}
 
 \item{threshold}{\code{"relative"} (default) or \code{"absolute"}; the threshold the
 fitted CTmax/z refer to (direct mode only).}
+
+\item{p}{Survival fraction for the \code{"absolute"} threshold (direct
+mode). Default \code{0.5} (LT50). Must lie within the response
+bounds' achievable range, else \code{fit_4pl()} errors (use a
+relative threshold for sub-unit-bounded responses).}
 
 \item{t_ref}{Reference exposure for CTmax, in \strong{minutes} (default 60,
 i.e. one hour). Converted to the model's log10-time scale

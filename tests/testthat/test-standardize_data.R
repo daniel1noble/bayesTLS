@@ -128,3 +128,38 @@ test_that("standardize_data respects an explicit temp_mean", {
   expect_equal(attr(std, "tdt_meta")$temp_mean, 31)
   expect_equal(std$temp_c, std$temp - 31)
 })
+
+test_that("counts passed to survival=/mortality= error (not silently clamped)", {
+  raw <- data.frame(t = c(30, 32, 34), d = c(1, 1, 1), n = 30,
+                    s = c(29, 18, 2))            # survivor COUNTS, not proportions
+  expect_error(
+    standardize_data(raw, temp = "t", duration = "d", n_total = "n", survival = "s"),
+    "values > 1")
+  rawm <- data.frame(t = c(30, 32, 34), d = 1, n = 30, m = c(1, 12, 28))
+  expect_error(
+    standardize_data(rawm, temp = "t", duration = "d", n_total = "n", mortality = "m"),
+    "values > 1")
+})
+
+test_that("a continuous proportion outside [0, 1] errors", {
+  raw <- data.frame(t = c(30, 32, 34), d = 1, p = c(0.9, 0.5, 1.4))
+  expect_error(
+    standardize_data(raw, temp = "t", duration = "d", proportion = "p"),
+    "outside \\[0, 1\\]")
+})
+
+test_that("a single assay temperature warns about an unidentified z", {
+  raw <- data.frame(t = 30, d = c(1, 2, 4), n = 30, alive = c(29, 20, 5))
+  expect_warning(
+    standardize_data(raw, temp = "t", duration = "d", n_total = "n", n_surv = "alive"),
+    "not identified")
+})
+
+test_that("clobbering a transform-output column (temp_c) warns", {
+  raw <- data.frame(temperature_C = c(30, 32, 34), exposure_h = 1, n = 30,
+                    alive = c(29, 20, 5), temp_c = c("a", "b", "c"))  # unrelated column
+  expect_warning(
+    standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                     n_total = "n", n_surv = "alive"),
+    "overwrites existing column")
+})

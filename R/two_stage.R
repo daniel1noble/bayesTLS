@@ -139,8 +139,16 @@ ts_stage2 <- function(stage1, t_ref = 60, time_multiplier = 1,
 
   fit <- stats::lm(log10_lt50 ~ temp, data = keep)
   co  <- stats::coef(fit)
+  slope <- as.numeric(co[["temp"]])
+  # A valid TDT line decreases with temperature (slope < 0). A non-negative or
+  # ~zero slope makes z = -1/slope and CTmax nonsensical (negative or +/-Inf), so
+  # return the NA summary -- matching the bias simulation's fit_two_stage guard --
+  # rather than propagating garbage downstream.
+  if (!is.finite(slope) || slope >= -1e-8) {
+    empty$slope_T <- slope
+    return(list(fit = fit, summary = empty))
+  }
   intercept <- as.numeric(co[["(Intercept)"]] + log10(time_multiplier))
-  slope     <- as.numeric(co[["temp"]])
   z         <- -1 / slope
   ctmax     <- (log10(t_ref) - intercept) / slope
   list(

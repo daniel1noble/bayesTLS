@@ -112,6 +112,22 @@ standardize_data <- function(data,
               proportion, tdt_random_effect_variables(random_effects))
   tdt_check_columns(data, needed, "input columns")
 
+  # Warn if standardising will clobber a pre-existing column whose name is a
+  # transform-output name but which is NOT the source for that slot -- e.g. a
+  # categorical column literally named `temp`, or a `temp_c`/`logd` that means
+  # something else. (The count/response columns n_surv/n_dead/survival are
+  # intentionally excluded: they are routinely present in count data and are
+  # recomputed to consistent values, so warning on them is just noise.)
+  reserved  <- c("temp", "duration", "logd", "temp_c")
+  sources   <- unlist(list(temp, duration, n_total, n_surv, n_dead, survival,
+                           mortality, proportion))
+  clobbered <- setdiff(intersect(reserved, names(data)), sources)
+  if (length(clobbered))
+    warning("standardize_data() overwrites existing column(s) with standardised ",
+            "values: ", paste(clobbered, collapse = ", "),
+            ". Rename them in the raw data to keep their original contents.",
+            call. = FALSE)
+
   out          <- as.data.frame(data)
   out$temp     <- as.numeric(out[[temp]])
   out$duration <- as.numeric(out[[duration]])
@@ -121,6 +137,10 @@ standardize_data <- function(data,
     response_type <- "proportion"
     response_var  <- "survival"
     p             <- as.numeric(out[[proportion]])
+    if (any(p > 1 + 1e-6, na.rm = TRUE) || any(p < -1e-6, na.rm = TRUE))
+      stop("`proportion` has values outside [0, 1]. A continuous-proportion ",
+           "response must be a fraction in [0, 1] (e.g. post/pre Fv/Fm).",
+           call. = FALSE)
     out$survival  <- pmin(pmax(p, proportion_eps), 1 - proportion_eps)
     keep <- is.finite(out$survival) & is.finite(out$temp) &
             is.finite(out$duration) & out$duration > 0
@@ -134,11 +154,19 @@ standardize_data <- function(data,
     } else if (!is.null(n_dead)) {
       out$n_surv <- out$n_total - as.integer(round(as.numeric(out[[n_dead]])))
     } else if (!is.null(survival)) {
-      prop <- pmin(pmax(as.numeric(out[[survival]]), 0), 1)
-      out$n_surv <- as.integer(round(prop * out$n_total))
+      sv <- as.numeric(out[[survival]])
+      if (any(sv > 1 + 1e-6, na.rm = TRUE))
+        stop("`survival` has values > 1, which are not proportions. If these are ",
+             "survivor COUNTS, pass them via `n_surv =` instead (with `n_total`).",
+             call. = FALSE)
+      out$n_surv <- as.integer(round(pmin(pmax(sv, 0), 1) * out$n_total))
     } else if (!is.null(mortality)) {
-      prop <- 1 - pmin(pmax(as.numeric(out[[mortality]]), 0), 1)
-      out$n_surv <- as.integer(round(prop * out$n_total))
+      mv <- as.numeric(out[[mortality]])
+      if (any(mv > 1 + 1e-6, na.rm = TRUE))
+        stop("`mortality` has values > 1, which are not proportions. If these are ",
+             "death COUNTS, pass them via `n_dead =` instead (with `n_total`).",
+             call. = FALSE)
+      out$n_surv <- as.integer(round((1 - pmin(pmax(mv, 0), 1)) * out$n_total))
     }
 
     out$n_surv   <- pmin(pmax(out$n_surv, 0), out$n_total)
@@ -150,6 +178,13 @@ standardize_data <- function(data,
   }
 
   out <- out[keep, , drop = FALSE]
+
+  n_temp <- length(unique(out$temp))
+  if (n_temp < 2L)
+    warning("Only ", n_temp, " unique assay temperature(s) after cleaning: the ",
+            "temperature slope (z = -1/slope) is not identified by the data and ",
+            "would be driven entirely by the prior. Provide multiple assay ",
+            "temperatures (>= 3 recommended) for an identified z.", call. = FALSE)
 
   if (is.null(temp_mean)) temp_mean <- mean(out$temp, na.rm = TRUE)
   out$temp_c <- out$temp - temp_mean

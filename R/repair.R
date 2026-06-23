@@ -41,6 +41,16 @@ repair_rate_schoolfield <- function(temp_celsius,
                                     TA, TAL, TAH,
                                     TL, TH, TREF,
                                     r_ref) {
+  # TL/TH/TREF are Kelvin. Biological temperatures in Kelvin are ~250-330; a
+  # value below 150 almost certainly means the caller passed Celsius (e.g.
+  # TREF = 17 instead of 17 + 273.15), which silently collapses the rate to ~0
+  # and turns repair off without warning. Catch it.
+  k_args <- c(TL = TL, TH = TH, TREF = TREF)
+  if (any(k_args < 150))
+    stop("repair_rate_schoolfield(): TL/TH/TREF must be in KELVIN, but ",
+         paste(names(k_args)[k_args < 150], collapse = ", "),
+         " < 150 -- that looks like Celsius. Add 273.15 (e.g. TREF = 17 + 273.15).",
+         call. = FALSE)
   temp_k <- temp_celsius + 273.15
   numerator   <- exp(TA * (1 / TREF - 1 / temp_k))
   denominator <- 1 +

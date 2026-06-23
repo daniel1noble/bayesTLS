@@ -7,16 +7,19 @@
 format_interval(median, lower, upper, digits = 2)
 }
 \arguments{
-\item{median, lower, upper}{Numeric scalars.}
+\item{median, lower, upper}{Numeric (scalar or vector).}
 
 \item{digits}{Integer rounding precision.}
 }
 \value{
-Character scalar like \code{"5.12 [4.87, 5.40]"}.
+Character like \code{"5.12 [4.87, 5.4]"}. A non-finite \code{median} yields
+\code{NA_character_} (rather than \code{"NA [...]"}); a non-finite bound is shown as an
+en dash, so the strings stay table-ready.
 }
 \description{
 Format a posterior median plus credible interval as a single string
 }
 \examples{
 format_interval(5.123, 4.872, 5.401)
+format_interval(NA, 1, 2)   # -> NA
 }

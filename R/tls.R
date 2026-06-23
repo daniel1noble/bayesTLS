@@ -131,10 +131,17 @@ tls <- function(object, by = NULL, params = "all",
     inter <- rowMeans(logLT[, cols, drop = FALSE]) - slope * mean(tc[cols])  # at temp = 0
     gcols <- if (is.null(by)) NULL else newdata[cols[1], by, drop = FALSE]
     add <- function(q, v) {
-      s <- data.frame(quantity = q, median = stats::median(v),
-                      lower = stats::quantile(v, probs[1], names = FALSE),
-                      upper = stats::quantile(v, probs[3], names = FALSE),
-                      row.names = NULL)
+      # Summarise on the finite draws only. A near-zero LS slope sends z = -1/slope
+      # to +/-Inf and a single-temperature group sends it to NaN (0/0); without
+      # this, stats::quantile() aborts ("missing values not allowed") and takes
+      # down the whole tls() call. The raw draws (Inf/NaN included) are still
+      # returned in `$draws`.
+      vf <- v[is.finite(v)]
+      qs <- if (length(vf))
+              stats::quantile(vf, probs[c(1, 3)], names = FALSE) else c(NA_real_, NA_real_)
+      s <- data.frame(quantity = q,
+                      median = if (length(vf)) stats::median(vf) else NA_real_,
+                      lower = qs[1], upper = qs[2], row.names = NULL)
       d <- data.frame(quantity = q, .draw = seq_along(v), value = v,
                       row.names = NULL)
       if (!is.null(gcols)) {                       # data.frame recycles the 1-row gcols

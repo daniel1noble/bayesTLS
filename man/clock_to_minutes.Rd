@@ -10,13 +10,16 @@ clock_to_minutes(x)
 \item{x}{Time value(s).}
 }
 \value{
-Numeric vector of minutes since 00:00.
+Numeric vector of minutes.
 }
 \description{
-Accepts POSIXt, hms / difftime, numeric fractions of a day (Excel time),
-bare numerics (assumed minutes), or \code{"HH:MM:SS"} character strings.
+Accepts POSIXt, hms / difftime, numeric fractions of a day (Excel time) or
+bare numeric minutes, and character strings: \code{"HH:MM:SS"}, \code{"HH:MM"}, bare
+numeric strings (minutes), and durations beyond 24 h (e.g. \code{"25:30:00"}).
+Character strings are parsed element-wise; malformed entries become \code{NA}.
 }
 \examples{
 clock_to_minutes("08:30:00")
-clock_to_minutes(0.5)     # half a day = 720 min
+clock_to_minutes("25:30")   # 25 h 30 min = 1530 min
+clock_to_minutes(0.5)       # half a day = 720 min
 }
