@@ -2,6 +2,7 @@
 title: "Testing reusable Bayesian TDT functions"
 format:
   html:
+    embed-resources: true
     toc: true
     toc-depth: 3
     code-fold: false
