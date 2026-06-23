@@ -129,6 +129,7 @@ dsuzukii <- read_csv(ext("data_multitrait_TDT_drosophila_suzukii.csv"),
 # dropped. Full design (all ploidy x oxygen x temp incl. the 26 C control).
 zebrafish_o2 <- read_csv(ext("data_lethal_TDT_zebrafish_oxygen.csv"),
                          show_col_types = FALSE) |>
+  dplyr::rename(o2_measured = oxygen) |>      # raw measured % air saturation
   dplyr::transmute(
     cohort        = as.character(Cohort),
     ploidy        = factor(Ploidy, levels = c(2, 3),
@@ -136,7 +137,7 @@ zebrafish_o2 <- read_csv(ext("data_lethal_TDT_zebrafish_oxygen.csv"),
     oxygen        = factor(Treatment,
                            levels = c("hypoxia", "normoxia", "hyperoxia")),
     o2_nominal    = as.integer(O),            # nominal % air saturation (25/100/225)
-    o2_measured   = as.numeric(oxygen),       # measured % air saturation
+    o2_measured   = as.numeric(o2_measured),  # measured % air saturation
     temp          = as.numeric(T),            # target assay temperature (C)
     temp_measured = as.numeric(temperature),  # measured assay temperature (C)
     duration_min  = as.numeric(time),         # exposure duration (minutes)
