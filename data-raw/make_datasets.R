@@ -98,7 +98,11 @@ zebrafish_lethal <- zf_raw |>
 # the raw final/initial Fv/Fm so it is exact rather than the rounded raw column.
 # `Plant_rep` indexes the 6 replicate mature trees; `Measurement_Day` the two
 # assay days. Light cleaning only: drop the constant `Species` column, recompute
-# `fvfm_prop`, type the grouping factors; no rows dropped.
+# `fvfm_prop` from raw final/initial Fv/Fm, type the grouping factors. Two of the
+# 396 rows have post/pre Fv/Fm marginally above 1 (1.003, 1.006; both Dark, low
+# dose -- 40 C/15 min and 44 C/5 min) where a leaf measured slightly higher after
+# heat than before; retained function cannot exceed 1, so these are measurement
+# noise and are EXCLUDED, leaving 394 rows. No other rows dropped.
 snowgum_psii <- read_csv(ext("data_function_PSII_TDT_snowgum.csv"),
                          show_col_types = FALSE) |>
   dplyr::transmute(
@@ -114,6 +118,7 @@ snowgum_psii <- read_csv(ext("data_function_PSII_TDT_snowgum.csv"),
     final_fvfm      = as.numeric(final_fvfm),
     fvfm_prop       = as.numeric(final_fvfm) / as.numeric(initial_fvfm)
   ) |>
+  dplyr::filter(fvfm_prop <= 1) |>   # drop the 2 post/pre > 1 noise rows
   as.data.frame()
 
 ## 5. Drosophila suzukii — multi-trait TDT, per individual -------------------

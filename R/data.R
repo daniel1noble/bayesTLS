@@ -93,7 +93,12 @@
 #' two-group categorical moderator; in the source experiment post-heat light
 #' lowered apparent heat tolerance.
 #'
-#' @format A data frame with 396 rows and 8 variables:
+#' Two of the 396 raw rows have post/pre \eqn{F_v/F_m} marginally above 1 (both
+#' Dark, low dose) where a leaf measured slightly higher after heat than before;
+#' retained function cannot exceed 1, so these are treated as measurement noise
+#' and excluded, leaving 394 rows.
+#'
+#' @format A data frame with 394 rows and 8 variables:
 #' \describe{
 #'   \item{Temp}{Assay temperature (degrees C); 30, 35, 40, 44, 48, 52, 56.}
 #'   \item{Time}{Exposure duration (minutes); 5, 15, 30, 60, 120.}

@@ -5,7 +5,7 @@
 \alias{snowgum_psii}
 \title{Snow gum leaf PSII functional-impairment thermal-tolerance data}
 \format{
-A data frame with 396 rows and 8 variables:
+A data frame with 394 rows and 8 variables:
 \describe{
 \item{Temp}{Assay temperature (degrees C); 30, 35, 40, 44, 48, 52, 56.}
 \item{Time}{Exposure duration (minutes); 5, 15, 30, 60, 120.}
@@ -50,6 +50,12 @@ modelled with a Beta likelihood. The model-ready frame for the leaf PSII case
 study (sublethal, continuous-proportion endpoint). The light/dark contrast is a
 two-group categorical moderator; in the source experiment post-heat light
 lowered apparent heat tolerance.
+}
+\details{
+Two of the 396 raw rows have post/pre \eqn{F_v/F_m} marginally above 1 (both
+Dark, low dose) where a leaf measured slightly higher after heat than before;
+retained function cannot exceed 1, so these are treated as measurement noise
+and excluded, leaving 394 rows.
 }
 \examples{
 std <- standardize_data(snowgum_psii, temp = "Temp", duration = "Time",
