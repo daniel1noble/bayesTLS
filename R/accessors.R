@@ -144,6 +144,55 @@ get_tcrit_summary <- function(et) {
   tibble::as_tibble(et$T_crit$summary)
 }
 
+#' Paired posterior draws of z, CTmax and (optionally) T_crit
+#'
+#' Merges the per-quantity draws from an [extract_tdt()] result into a single
+#' tibble, joined on `.draw` (and the moderator column(s) for a grouped fit) so
+#' that every quantity is on the **same posterior draw**. This preserves their
+#' joint correlation, which is what per-draw contrasts, ratios and bivariate
+#' plots need. `z` and `CTmax` are always returned; `T_crit` is included only
+#' when [extract_tdt()] was called with `lethal = TRUE`.
+#'
+#' The merge is an inner join, not a column-bind: each quantity is filtered to
+#' finite values independently inside [extract_tdt()] (e.g. a draw with a
+#' near-zero midpoint slope has no finite `z`; a draw whose curve never crosses
+#' the reference duration has no finite `CTmax`), so the draws can differ in
+#' which rows they retain. Joining on `.draw` keeps only draws present for every
+#' returned quantity and guarantees alignment; binding columns could silently
+#' mis-pair them.
+#'
+#' @param et The list returned by [extract_tdt()].
+#' @return A tibble with one row per shared posterior draw: columns `.draw`, the
+#'   moderator column(s) for a grouped fit, `z`, `CTmax`, and (when available)
+#'   `T_crit`. The auxiliary `log10_rate` from [get_tcrit_draws()] is dropped.
+#' @seealso [get_z_draws()], [get_ctmax_draws()], [get_tcrit_draws()] for the
+#'   individual per-quantity draws; [extract_tdt()].
+#' @examples
+#' \dontrun{
+#' wf <- fit_4pl(std)
+#' d  <- get_tls_draws(extract_tdt(wf, lethal = TRUE))
+#' # joint per-draw transform keeps z and CTmax paired:
+#' stats::quantile(d$CTmax - 2.5 * d$z, c(0.025, 0.5, 0.975))
+#' }
+#' @export
+get_tls_draws <- function(et) {
+  stop_if_not_extract_tdt(et)
+  zd  <- get_z_draws(et)        # .draw, [moderators], z
+  cd  <- get_ctmax_draws(et)    # .draw, [moderators], CTmax
+  # Join keys = every shared column except the value columns (i.e. .draw plus any
+  # moderator columns), so this works for single-condition and grouped fits.
+  out <- dplyr::inner_join(
+    zd, cd, by = intersect(setdiff(names(zd), "z"), setdiff(names(cd), "CTmax")))
+  if (!is.null(et$T_crit)) {
+    td <- get_tcrit_draws(et)
+    td[["log10_rate"]] <- NULL  # keep .draw / moderators / T_crit
+    out <- dplyr::inner_join(
+      out, td, by = intersect(setdiff(names(out), c("z", "CTmax")),
+                              setdiff(names(td), "T_crit")))
+  }
+  out
+}
+
 #' Posterior draws of heat-injury trajectory
 #'
 #' Long-format tibble of per-draw HI, dose, survival and mortality at every

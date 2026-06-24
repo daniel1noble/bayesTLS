@@ -9,6 +9,40 @@ test_that("get_*_draws / get_*_summary reject non-extract_tdt input", {
   expect_error(get_z_summary(list(foo = 1)),     "extract_tdt")
   expect_error(get_ctmax_summary(list(foo = 1)), "extract_tdt")
   expect_error(get_tcrit_summary(list(foo = 1)), "extract_tdt")
+  expect_error(get_tls_draws(list(foo = 1)),     "extract_tdt")
+})
+
+test_that("get_tls_draws inner-joins on .draw: keeps only shared draws, never mis-pairs", {
+  # Quantities are filtered to finite values independently inside extract_tdt(),
+  # so their .draw sets can differ. Here z has draws 1:4, CTmax 1:3 (draw 4
+  # dropped), T_crit 2:3. get_tls_draws() must return only the draws present in
+  # ALL THREE, with each value carried from its own draw (a column-bind would
+  # mis-pair, e.g. give z = 5 against CTmax = 30 on different draws).
+  fake <- list(
+    z      = list(draws = tibble::tibble(.draw = 1:4, z    = c(5, 6, 7, 8))),
+    CTmax  = list(draws = tibble::tibble(.draw = 1:3, temp = c(30, 31, 32))),
+    T_crit = list(draws = tibble::tibble(.draw = 2:3, temp = c(20, 21),
+                                         log10_rate = c(-2.5, -2.5)))
+  )
+  d <- get_tls_draws(fake)
+  expect_named(d, c(".draw", "z", "CTmax", "T_crit"))
+  expect_equal(d$.draw,  2:3)          # intersection of all three draw sets
+  expect_equal(d$z,      c(6, 7))      # z FROM draws 2,3 (not 5,6 -> would be mis-paired)
+  expect_equal(d$CTmax,  c(31, 32))
+  expect_equal(d$T_crit, c(20, 21))
+  expect_false("log10_rate" %in% names(d))   # auxiliary column dropped
+})
+
+test_that("get_tls_draws omits T_crit when extract_tdt was lethal = FALSE", {
+  fake <- list(
+    z      = list(draws = tibble::tibble(.draw = 1:3, z    = c(5, 6, 7))),
+    CTmax  = list(draws = tibble::tibble(.draw = 1:3, temp = c(30, 31, 32))),
+    T_crit = NULL
+  )
+  d <- get_tls_draws(fake)
+  expect_named(d, c(".draw", "z", "CTmax"))
+  expect_false("T_crit" %in% names(d))
+  expect_equal(nrow(d), 3L)
 })
 
 test_that("get_tcrit_draws / get_tcrit_summary error when T_crit is absent (lethal = FALSE)", {
@@ -73,6 +107,46 @@ test_that("get_tcrit_draws round-trips with extract_tdt(lethal = TRUE)", {
   expect_named(ts, c("TC_rate_low", "TC_rate_high",
                      "temp_lower", "temp_median", "temp_upper"))
   expect_equal(nrow(ts), 1L)
+})
+
+test_that("get_tls_draws merges z/CTmax/T_crit on the SAME draw (joint pairing preserved)", {
+  skip_unless_brms()
+
+  wf <- load_fixture_workflow()
+  et <- suppressMessages(extract_tdt(wf, t_ref = 60, ndraws = 300, lethal = TRUE))
+  d  <- get_tls_draws(et)
+
+  expect_s3_class(d, "tbl_df")
+  expect_named(d, c(".draw", "z", "CTmax", "T_crit"))
+  expect_false(any(duplicated(d$.draw)))               # one row per draw
+
+  # Pairing: each column's value matches the per-quantity accessor for that draw.
+  zd <- get_z_draws(et); cd <- get_ctmax_draws(et); td <- get_tcrit_draws(et)
+  expect_equal(d$z,      zd$z[match(d$.draw, zd$.draw)])
+  expect_equal(d$CTmax,  cd$CTmax[match(d$.draw, cd$.draw)])
+  expect_equal(d$T_crit, td$T_crit[match(d$.draw, td$.draw)])
+
+  # lethal = FALSE -> z and CTmax only, no T_crit column.
+  e2 <- extract_tdt(wf, t_ref = 60, ndraws = 300, lethal = FALSE)
+  expect_named(get_tls_draws(e2), c(".draw", "z", "CTmax"))
+})
+
+test_that("get_tls_draws keeps the moderator and joins WITHIN group (no cross-join)", {
+  skip_unless_brms()
+
+  wf <- load_fixture_workflow_grouped()
+  et <- suppressMessages(extract_tdt(wf, t_ref = 60, lethal = TRUE, ndraws = NULL))
+  d  <- get_tls_draws(et)
+
+  expect_true(all(c("grp", ".draw", "z", "CTmax", "T_crit") %in% names(d)))
+  expect_setequal(unique(d$grp), c("A", "B"))
+  # No duplicate (grp, .draw) keys: a many-to-many join would scramble groups
+  # and inflate rows to ~n^2; the correct inner join is 1:1 per (grp, .draw).
+  expect_false(any(duplicated(d[, c("grp", ".draw")])))
+  expect_lte(nrow(d), nrow(get_z_draws(et)))
+  # within group A, z stays paired with its own draw
+  da <- d[d$grp == "A", ]; za <- get_z_draws(et); za <- za[za$grp == "A", ]
+  expect_equal(da$z[order(da$.draw)], za$z[order(za$.draw)])
 })
 
 test_that("get_hi_draws and get_surv_draws round-trip with predict_heat_injury", {
