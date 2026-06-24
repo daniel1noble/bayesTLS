@@ -168,8 +168,8 @@ set.seed(123)
 # the supplement first to (re)generate it.
 fig4_summary <- readRDS(here::here("output", "data", "fig4_summary.rds"))
 
-# CTmax_1hr across the 1-hour-reference case studies (shrimp, zebrafish stages,
-# leaf PSII; the vinegar fly is reported at 4 h and excluded here).
+# CTmax_1hr across the 1-hour-reference case studies (zebrafish x oxygen, aphid
+# species, leaf PSII; the vinegar fly is reported at 4 h and excluded here).
 ctmax1h    <- fig4_summary$median[fig4_summary$quantity == "CTmax_1hr"]
 ctmax1h_lo <- round(min(ctmax1h), 1)
 ctmax1h_hi <- round(max(ctmax1h), 1)
@@ -730,7 +730,7 @@ For lethal measures, without repair, cumulative heat injury exceeded one $LT_{50
 ```{r}
 #| label: fig-tls-comparison
 #| echo: false
-#| fig-cap: "Thermal sensitivity ($z$, left of each panel) and the critical thermal limit ($CT_{max}$, right) estimated by the joint Bayesian four-parameter logistic (4PL) model for four case studies: a) brown shrimp (*Crangon crangon*), b) snow gum leaf photosystem II function (*Eucalyptus pauciflora*), c) zebrafish (*Danio rerio*) across three early life stages, and d) vinegar fly (*Drosophila suzukii*) by sex. Larger $z$ values indicate lower sensitivity of tolerance time to warming. Filled ridges are posterior densities, coloured by species and group. The black-outlined point and bar give the posterior median and 95% credible interval, which are also printed beside each distribution. The $CT_{max}$ reference exposure follows each study's own design — 1 hour for brown shrimp, zebrafish, and leaf PSII, and 4 hours for the vinegar fly. Because the grouped case studies (c, d) were fit within a single model, life-stage and sex differences are evaluated as pairwise posterior contrasts, annotated as brackets labelled with $p_{\\mathrm{MCMC}}$ (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence that the groups differ)."
+#| fig-cap: "Thermal sensitivity ($z$, left of each panel) and the critical thermal limit ($CT_{max}$, right) estimated by the joint Bayesian four-parameter logistic (4PL) model for four case studies: a) three cereal-aphid species (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*), b) snow gum (*Eucalyptus pauciflora*) leaf photosystem II function under dark vs 90-min-light post-heat recovery, c) zebrafish (*Danio rerio*) larvae under normoxia vs hyperoxia, and d) vinegar fly (*Drosophila suzukii*) by sex. Larger $z$ values indicate lower sensitivity of tolerance time to warming. Filled ridges are posterior densities, coloured by group. The black-outlined point and bar give the posterior median and 95% credible interval, which are also printed beside each distribution. The $CT_{max}$ reference exposure follows each study's own design — 1 hour for aphids, leaf PSII, and zebrafish, and 4 hours for the vinegar fly. Within each panel the groups were fit within a single joint model, so group differences are evaluated as pairwise posterior contrasts, annotated as brackets labelled with $p_{\\mathrm{MCMC}}$ (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence that the groups differ)."
 #| fig-align: center
 #| out-width: "100%"
 knitr::include_graphics(here::here("output", "figs", "fig4_case_study_densities.png"))
