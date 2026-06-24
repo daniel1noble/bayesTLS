@@ -75,3 +75,25 @@ test_that("tdt_parameter_table returns natural-scale parameters that obey their 
   z_et  <- extract_tdt(wf, t_ref = 60, ndraws = 1000)$z$summary$z_median
   expect_equal(z_tab, z_et, tolerance = 0.25)
 })
+
+test_that("bayes_R2_tls rejects an unfitted workflow", {
+  expect_error(bayes_R2_tls(list(fit = NULL)), "no fit")
+})
+
+test_that("bayes_R2_tls returns a tidy one-row R^2 summary", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow()
+  r  <- bayes_R2_tls(wf)
+
+  expect_s3_class(r, "tbl_df")
+  expect_equal(nrow(r), 1L)
+  expect_named(r, c("estimate", "est_error", "lower", "upper"))
+  # R^2 is a proportion of variance explained: inside [0, 1] and interval-ordered.
+  expect_gte(r$estimate, 0); expect_lte(r$estimate, 1)
+  expect_lte(r$lower, r$estimate); expect_gte(r$upper, r$estimate)
+  expect_gt(r$est_error, 0)
+
+  # Matches brms::bayes_R2() read directly (the wrapper only reshapes it).
+  raw <- brms::bayes_R2(get_brmsfit(wf))
+  expect_equal(r$estimate, unname(raw[1, "Estimate"]), tolerance = 1e-8)
+})

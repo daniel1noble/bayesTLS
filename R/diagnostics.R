@@ -185,3 +185,44 @@ tdt_parameter_table <- function(workflow, by = NULL) {
   })
   dplyr::bind_rows(per_group)
 }
+
+#' Bayesian \eqn{R^2} for a fitted TDT workflow
+#'
+#' A thin tidy wrapper around [brms::bayes_R2()] for a fitted `bayes_tls`
+#' workflow: it pulls the underlying `brmsfit` (erroring clearly on an unfitted
+#' workflow, via [get_brmsfit()]) and returns the posterior median \eqn{R^2}
+#' with its standard error and 95% credible interval as a one-row tibble, rather
+#' than the bare matrix `brms::bayes_R2()` returns. Pass `...` straight through
+#' to [brms::bayes_R2()] (e.g. `re_formula = NA` to exclude group-level effects,
+#' or `ndraws =` to subsample). Map over a named list of workflows to build a
+#' multi-fit table.
+#'
+#' @param workflow A fitted `bayes_tls` workflow returned by [fit_4pl()].
+#' @param ... Further arguments passed to [brms::bayes_R2()].
+#' @return A one-row tibble with columns `estimate`, `est_error`, `lower`
+#'   (2.5%), and `upper` (97.5%).
+#' @seealso [brms::bayes_R2()], [diagnose_tdt_fit()]
+#' @examples
+#' \dontrun{
+#' wf <- fit_4pl(std)
+#' bayes_R2_tls(wf)
+#' # Multiple fits in one table:
+#' purrr::imap_dfr(list(binom = wf1, beta = wf2),
+#'                 ~ cbind(model = .y, bayes_R2_tls(.x)))
+#' }
+#' @export
+bayes_R2_tls <- function(workflow, ...) {
+  fit <- get_brmsfit(workflow)            # clear error if the workflow is unfitted
+  r   <- brms::bayes_R2(fit, ...)
+  # brms::bayes_R2() returns a 1-row matrix with columns
+  # Estimate / Est.Error / Q2.5 / Q97.5 (the quantile labels track `probs`).
+  cn  <- colnames(r)
+  qlo <- grep("^Q", cn)[1]
+  qhi <- grep("^Q", cn)[length(grep("^Q", cn))]
+  tibble::tibble(
+    estimate  = unname(r[1, "Estimate"]),
+    est_error = unname(r[1, "Est.Error"]),
+    lower     = unname(r[1, qlo]),
+    upper     = unname(r[1, qhi])
+  )
+}
