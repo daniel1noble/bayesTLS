@@ -5,21 +5,30 @@
 \alias{snowgum_psii}
 \title{Snow gum leaf PSII functional-impairment thermal-tolerance data}
 \format{
-A data frame with 319 rows and 8 variables:
+A data frame with 396 rows and 8 variables:
 \describe{
-\item{Temp}{Assay temperature (degrees C).}
-\item{Time}{Exposure duration (minutes).}
+\item{Temp}{Assay temperature (degrees C); 30, 35, 40, 44, 48, 52, 56.}
+\item{Time}{Exposure duration (minutes); 5, 15, 30, 60, 120.}
+\item{recovery}{Post-heat recovery light condition: \code{"Dark"} (darkness
+immediately after heat) or \code{"Light"} (90 min moderate light
+post-heat). A two-level moderator.}
+\item{plant}{Replicate mature tree (factor, 6 levels); the natural random-effect
+grouping.}
+\item{meas_day}{Assay day (factor, 2 levels). Two levels only, so a poor
+random-effect grouping; better treated as fixed or omitted.}
 \item{initial_fvfm}{\eqn{F_v/F_m} measured before heat exposure.}
-\item{final_fvfm}{\eqn{F_v/F_m} measured 24 h after heat exposure.}
+\item{final_fvfm}{\eqn{F_v/F_m} measured 16--24 h after heat exposure.}
 \item{fvfm_prop}{Retained PSII function, \code{final_fvfm / initial_fvfm}
-(a proportion in the unit interval).}
-\item{Unique_ID}{Leaf-segment / tree identifier.}
-\item{G_Room}{Glasshouse room (grouping factor).}
-\item{Day}{Measurement day (grouping factor).}
+(a proportion in the unit interval; 0 indicates complete loss of
+measurable PSII function).}
 }
 }
 \source{
-Snow gum leaf PSII TDT assay (Case Study 3). Raw file:
+Arnold PA, Harris RJ, Aitken SM, Hoek MM, Cook AM, Leigh A, Nicotra AB
+(2026) Towards a standard approach to investigating the thermal load
+sensitivity of photosystem II via chlorophyll fluorescence. bioRxiv
+\doi{10.64898/2026.04.09.717599} (CC BY-NC 4.0), Experiment 1, snow gum
+slice. Raw file:
 \code{system.file("extdata", "data_function_PSII_TDT_snowgum.csv", package = "bayesTLS")}.
 }
 \usage{
@@ -27,15 +36,25 @@ snowgum_psii
 }
 \description{
 Chlorophyll-fluorescence (\eqn{F_v/F_m}) measurements on excised snow gum
-(\emph{Eucalyptus pauciflora} var. \emph{pauciflora}) leaf segments before and
-24 h after heat exposure. The response is the continuous proportion
-\code{fvfm_prop} (post/pre ratio), modelled with a Beta likelihood. The
-model-ready frame for Case Study 3 (sublethal, continuous-proportion endpoint).
+(\emph{Eucalyptus pauciflora}) leaf sections before and 16--24 h after heat
+exposure, from Experiment 1 (post-heat light vs dark recovery) of Arnold et al.
+(2026). Short branches were cut from six mature trees grown outdoors in
+Canberra, ACT; \eqn{\sim}1 cm\eqn{^2} leaf sections were dark-adapted, given an
+initial \eqn{F_v/F_m}, then submerged in a temperature-controlled water bath
+under sub-saturating light across a grid of assay temperatures (30--56 degrees
+C) and exposure durations (5--120 min). After heat, paired arrays were held for
+90 min in moderate light (\code{recovery = "Light"}) or in darkness
+(\code{recovery = "Dark"}); a final \eqn{F_v/F_m} was taken 16--24 h later. The
+response is the continuous proportion \code{fvfm_prop} (post/pre ratio),
+modelled with a Beta likelihood. The model-ready frame for the leaf PSII case
+study (sublethal, continuous-proportion endpoint). The light/dark contrast is a
+two-group categorical moderator; in the source experiment post-heat light
+lowered apparent heat tolerance.
 }
 \examples{
 std <- standardize_data(snowgum_psii, temp = "Temp", duration = "Time",
                         proportion = "fvfm_prop",
-                        random_effects = c("Day", "G_Room"),
+                        random_effects = "plant",
                         duration_unit = "minutes")
 }
 \keyword{datasets}

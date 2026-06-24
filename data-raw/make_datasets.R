@@ -88,12 +88,32 @@ zebrafish_lethal <- zf_raw |>
   as.data.frame()
 
 ## 4. Snow gum leaf — PSII functional impairment (continuous proportion) -----
-# Response is the ratio of post- to pre-heat Fv/Fm (a proportion in [0, 1]).
+# Arnold et al. (2026) preprint open data (CC BY-NC 4.0; bioRxiv
+# 10.64898/2026.04.09.717599), Experiment 1 (light vs dark recovery), snow gum
+# (Eucalyptus pauciflora) slice. ~1 cm^2 leaf sections were heat-treated in a
+# water bath under sub-saturating light (Temp 30-56 C x Time 5-120 min), then
+# left for 90 min in moderate light OR in darkness post-heat (`Recovery_cond`),
+# before a final Fv/Fm 16-24 h later. Response is retained PSII function, the
+# ratio of post- to pre-heat Fv/Fm (a proportion in [0, 1]); recomputed here from
+# the raw final/initial Fv/Fm so it is exact rather than the rounded raw column.
+# `Plant_rep` indexes the 6 replicate mature trees; `Measurement_Day` the two
+# assay days. Light cleaning only: drop the constant `Species` column, recompute
+# `fvfm_prop`, type the grouping factors; no rows dropped.
 snowgum_psii <- read_csv(ext("data_function_PSII_TDT_snowgum.csv"),
                          show_col_types = FALSE) |>
-  dplyr::mutate(fvfm_prop = final_fvfm / initial_fvfm) |>
-  dplyr::select(Temp, Time, initial_fvfm, final_fvfm, fvfm_prop,
-                Unique_ID, G_Room, Day) |>
+  dplyr::transmute(
+    Temp            = as.numeric(Temp),        # assay temperature (degrees C)
+    Time            = as.numeric(Time),        # exposure duration (minutes)
+    recovery        = factor(Recovery_cond,
+                             levels = c("Dark", "Light")),  # post-heat light
+    plant           = factor(Plant_rep,
+                             levels = sort(unique(Plant_rep))),  # 6 trees
+    meas_day        = factor(Measurement_Day,
+                             levels = sort(unique(Measurement_Day))),  # 2 days
+    initial_fvfm    = as.numeric(initial_fvfm),
+    final_fvfm      = as.numeric(final_fvfm),
+    fvfm_prop       = as.numeric(final_fvfm) / as.numeric(initial_fvfm)
+  ) |>
   as.data.frame()
 
 ## 5. Drosophila suzukii — multi-trait TDT, per individual -------------------
