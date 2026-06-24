@@ -693,9 +693,12 @@ We also summarise the proportion of outcome variation explained by each fitted m
 #| echo: true
 #| code-fold: show
 
-# Compute Bayesian R2 for each fitted WORKFLOW via the package wrapper
-# bayes_R2_tls(), which pulls the brmsfit and returns a tidy one-row tibble
-# (estimate / est_error / lower / upper).
+# bayes_R2_tls() pulls the brmsfit and returns a tidy one-row tibble
+# (estimate / est_error / lower / upper) -- one call per fit:
+bayes_R2_tls(wf_bin)
+
+# For the tables we map that single call over a named list of fits and format it
+# as "median [95% CrI]"; this thin formatter is reused in every case study below.
 bayes_r2_table <- function(fits, digits = 3) {
   purrr::imap_dfr(fits, function(wf, nm) {
     r <- bayes_R2_tls(wf)
@@ -729,46 +732,26 @@ We assess recovery of true values by comparing posterior medians and 95% credibl
 #| label: tbl-recovery
 #| tbl-cap: "Posterior medians and 95% credible intervals for the four 4PL parameters and the temperature slope, compared to the known truth used to generate the simulated data. Recovery is judged successful when the credible interval covers the truth."
 
-# Format parameter recovery for the tutorial 4PL fits.
-post_summary <- function(workflow) {
-  # extract_4pl_pars() pulls the raw posterior and maps it back to the natural
-  # 4PL scale using the model's own stored bounds (no hand-coded constants),
-  # returning per-draw (low, up, k, mid_int, mid_temp). We rename to the
-  # tutorial's labels and summarise each parameter.
-  draws <- extract_4pl_pars(workflow) |>
-    dplyr::transmute(ell = low, up = up, k = k,
-                     `mid (intercept)` = mid_int, `mid (slope)` = mid_temp)
-  purrr::map_dfr(names(draws), \(p) tibble::tibble(
-    param  = p,
-    median = stats::median(draws[[p]]),
-    lower  = stats::quantile(draws[[p]], 0.025, names = FALSE),
-    upper  = stats::quantile(draws[[p]], 0.975, names = FALSE)
-  ))
-}
-
+# tdt_parameter_table() returns the per-parameter posterior summary on the
+# natural 4PL scale (median + 95% CrI) directly from a fit, so we don't roll our
+# own. We compare the four 4PL parameters and the temperature slope to the known
+# truth; the z row it also returns is the derived quantity tabulated in
+# @sec-joint-derive. format_interval() renders each cell as "median [2.5%, 97.5%]".
 truth <- tibble::tibble(
-  param = c("ell", "up", "k", "mid (intercept)", "mid (slope)"),
-  truth = c(true_params$ell, true_params$up, true_params$k,
-            true_params$m_beta0, true_params$m_beta1)
+  Parameter = c("low (lower asymptote)", "up (upper asymptote)", "k (slope)",
+                "mid intercept (at T_bar)", "mid temp_c slope"),
+  Truth     = round(c(true_params$ell, true_params$up, true_params$k,
+                      true_params$m_beta0, true_params$m_beta1), 3)
 )
-
+recovery_cell <- function(wf) tdt_parameter_table(wf) |>
+  dplyr::filter(parameter != "z (°C)") |>
+  dplyr::transmute(Parameter = parameter,
+                   cell = format_interval(median, lower, upper, digits = 3))
 recovery <- truth |>
-  dplyr::left_join(post_summary(wf_bin) |>
-                     dplyr::rename_with(~ paste0("bin_", .x), -param),
-                   by = "param") |>
-  dplyr::left_join(post_summary(wf_bb) |>
-                     dplyr::rename_with(~ paste0("bb_", .x), -param),
-                   by = "param") |>
-  dplyr::rename(
-    Parameter        = param,
-    Truth            = truth,
-    `Bin. median`    = bin_median,
-    `Bin. lower`     = bin_lower,
-    `Bin. upper`     = bin_upper,
-    `BB median`      = bb_median,
-    `BB lower`       = bb_lower,
-    `BB upper`       = bb_upper
-  )
+  dplyr::left_join(recovery_cell(wf_bin) |> dplyr::rename(Binomial = cell),
+                   by = "Parameter") |>
+  dplyr::left_join(recovery_cell(wf_bb)  |> dplyr::rename(`Beta-binomial` = cell),
+                   by = "Parameter")
 
 tinytable::tt(recovery, digits = 3, escape = TRUE)
 ```
@@ -800,7 +783,7 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 ### *Deriving $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the posterior* {#sec-joint-derive}
 
-The classical TLS quantities are transformations of the fitted joint posterior. `extract_tdt()` always returns the first two quantities below and returns the third when `lethal = TRUE`:
+The classical TLS quantities are transformations of the fitted joint posterior. The general extractor `tls()` (used in the tutorial below) and the workflow-specific `extract_tdt()` both return the first two quantities below, and the third when `lethal = TRUE`; they share the same `target_surv`, `t_ref` and `lethal` arguments and agree for a `fit_4pl()` fit:
 
 - **$z$** — thermal sensitivity is read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 7 of the manuscript). Under the relative threshold, $\log_{10}\text{LT}(T) = \text{mid}(T)$ and the derivative is simply the linear slope, so $z = -1/\beta_1$ exactly.
 - **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 h of exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
@@ -810,14 +793,14 @@ $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
 $$ {#eq-tcrit}
 
-The threshold one wishes to use is set by the `target_surv` argument in `extract_tdt()`. The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates drifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
+The threshold one wishes to use is set by the `target_surv` argument (shared by `tls()` and `extract_tdt()`). The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates drifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
 
 **How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value: breakpoint analyses of $\log_{10}$(time-to-thermal-failure) against temperature place the critical temperature anywhere from roughly 27 to 40 °C depending on the assay and taxon (including *Drosophila suzukii* and *Lemna gibba*) [@faber2026]. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
 ::: {.callout-warning}
 ## $T_{crit}$ is meaningful only for lethal-endpoint data
 
-The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data and can be used to make a prediction about $T_{crit}$ because $T_{crit}$ should be the tempearture where damage begins to accumlate (0.1-1% is what we assume). `extract_tdt()` is therefore able to predict $T_{crit}$ with lethal data. When  `lethal = FALSE` `extract_tdt()` returns only $z$ and $CT_{max_{1hr}}$. Users with lethal-endpoint data set can set `lethal = TRUE` to additionally derive an *estimate* of $T_{crit}$. Note that this is only a prediction and does not negate the need to follow up with studies to validate [see @faber2026].
+The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data and can be used to make a prediction about $T_{crit}$ because $T_{crit}$ should be the tempearture where damage begins to accumlate (0.1-1% is what we assume). Setting `lethal = TRUE` (in `tls()` or `extract_tdt()`) is therefore able to predict $T_{crit}$ with lethal data; with `lethal = FALSE` the extractors return only $z$ and $CT_{max_{1hr}}$. Users with lethal-endpoint data can set `lethal = TRUE` to additionally derive an *estimate* of $T_{crit}$. Note that this is only a prediction and does not negate the need to follow up with studies to validate [see @faber2026].
 
 For **sublethal** endpoints fitted $z$ instead describes performance loss and can be very different from $z$ derived from lethal data. Substituting that value into Equation @eq-tcrit can shift $T_{crit}$ substantially and produce non-sensical $T_{crit}$ estimates. For example, a smaller sublethal $z$ can produce a $T_{crit}$ several °C higher than the lethal estimate despite a similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
 :::
@@ -845,33 +828,31 @@ Under `target_surv = "absolute"`, `extract_tdt()` includes the asymmetry-correct
 #| echo: true
 #| code-fold: show
 
-# Extract z, CTmax and Tcrit from the tutorial models.
-# Use the 1-hour reference and request Tcrit because the endpoint is lethal.
-et_bin <- extract_tdt(wf_bin, target_surv = "relative", t_ref = 60, time_multiplier = 1,
-                      ndraws = 1000, lethal = TRUE)
-et_bb  <- extract_tdt(wf_bb,  target_surv = "relative", t_ref = 60, time_multiplier = 1,
-                      ndraws = 1000, lethal = TRUE)
+# tls() is the general one-call extractor: from any fitted 4PL it returns z,
+# CTmax and -- when lethal = TRUE -- T_crit, as a tidy-long summary ($summary)
+# plus the underlying posterior draws ($draws). One call per fit; t_ref = 60 min
+# sets the 1-hour reference and lethal = TRUE adds T_crit (the endpoint is lethal).
+tl_bin <- tls(wf_bin, target_surv = "relative", t_ref = 60, lethal = TRUE, ndraws = 1000)
+tl_bb  <- tls(wf_bb,  target_surv = "relative", t_ref = 60, lethal = TRUE, ndraws = 1000)
+
+# One row per quantity (z, CTmax, Tcrit): posterior median and 95% interval.
+tl_bin$summary
 ```
 
-`get_tls_draws()` merges the per-draw $z$, $CT_{max_{1hr}}$ and $T_{crit}$ into one tibble, joined on `.draw` so the three stay on the same posterior draw (preserving their joint correlation for the contrasts and densities below).
+@tbl-tls-recovery reads each quantity's median and interval straight off these `tls()` summaries, and @fig-tls-recovery plots the matching `$draws`.
 
 ```{r tls-recovery-table}
 #| label: tbl-tls-recovery
-#| tbl-cap: "Posterior medians and 95% credible intervals for thermal sensitivity ($z$), the critical thermal limit at a 1-hour reference duration ($CT_{max_{1hr}}$), and the rate-multiplier critical temperature ($T_{crit}$, integrated over $r^* \\in [0.1, 1]$ % HI per hour). All three derived via `extract_tdt()` from a single posterior. Each row's truth value is computed analytically from `true_params`."
+#| tbl-cap: "Posterior medians and 95% credible intervals for thermal sensitivity ($z$), the critical thermal limit at a 1-hour reference duration ($CT_{max_{1hr}}$), and the rate-multiplier critical temperature ($T_{crit}$, integrated over $r^* \\in [0.1, 1]$ % HI per hour). All three derived via `tls()` from a single posterior. Each row's truth value is computed analytically from `true_params`."
 
-# Format recovery of the derived TLS quantities. get_tls_summary() returns the
-# tidy combined posterior summary (one row per quantity: z, CTmax, Tcrit, with
-# harmonised median/lower/upper); format_interval() renders "median [2.5%, 97.5%]".
-tls_cells <- function(et) {
-  s <- get_tls_summary(et)              # rows ordered z, CTmax, Tcrit
-  format_interval(s$median, s$lower, s$upper)
-}
-
+# tls()$summary returns one row per quantity (z, CTmax, Tcrit) with median /
+# lower / upper, in that order. format_interval() (vectorised) renders each cell
+# as "median [2.5%, 97.5%]".
 tls_recovery <- tibble::tibble(
   Quantity        = c("z (°C)", "CTmax at 1 hr (°C)", "T_crit (°C)"),
   Truth           = round(c(true_z, true_CTmax, true_T_crit), 2),
-  Binomial        = tls_cells(et_bin),
-  `Beta-binomial` = tls_cells(et_bb)
+  Binomial        = format_interval(tl_bin$summary$median, tl_bin$summary$lower, tl_bin$summary$upper),
+  `Beta-binomial` = format_interval(tl_bb$summary$median,  tl_bb$summary$lower,  tl_bb$summary$upper)
 )
 
 tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
@@ -884,22 +865,21 @@ tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 3.5
 
-# Plot posterior distributions of the recovered TLS quantities. get_tls_draws()
-# returns the (.draw-aligned) paired posterior of z, CTmax and T_crit per fit.
+# Plot posterior distributions of the recovered TLS quantities. tls()$draws is
+# already tidy-long (quantity, .draw, value), so no reshaping is needed -- bind
+# the two fits and relabel the quantities for the facets.
 post_long <- dplyr::bind_rows(
-    get_tls_draws(et_bin) |> dplyr::mutate(model = "Binomial"),
-    get_tls_draws(et_bb)  |> dplyr::mutate(model = "Beta-binomial")) |>
-  tidyr::pivot_longer(c(z, CTmax, T_crit),
-                      names_to = "quantity", values_to = "value") |>
+    tl_bin$draws |> dplyr::mutate(model = "Binomial"),
+    tl_bb$draws  |> dplyr::mutate(model = "Beta-binomial")) |>
   dplyr::mutate(quantity = factor(quantity,
-                                  levels = c("z", "CTmax", "T_crit"),
+                                  levels = c("z", "CTmax", "Tcrit"),
                                   labels = c("z (°C)",
                                              "CTmax_1hr (°C)",
                                              "T_crit (°C)")))
 
 truth_long <- tibble::tibble(
-  quantity = factor(c("z", "CTmax", "T_crit"),
-                    levels = c("z", "CTmax", "T_crit"),
+  quantity = factor(c("z", "CTmax", "Tcrit"),
+                    levels = c("z", "CTmax", "Tcrit"),
                     labels = levels(post_long$quantity)),
   truth    = c(true_z, true_CTmax, true_T_crit)
 )
@@ -914,26 +894,24 @@ ggplot2::ggplot(post_long, ggplot2::aes(value, fill = model)) +
   ggplot2::theme_classic()
 ```
 
-Posterior densities of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the binomial (blue) and beta-binomial (orange) joint fits. Vertical dashed lines mark the simulation truth. All three posteriors concentrate around their respective truths, illustrating that a single call to `extract_tdt()` produces each classical TLS quantity with posterior uncertainty and no separate Stage-2 regression.
+Posterior densities of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the binomial (blue) and beta-binomial (orange) joint fits. Vertical dashed lines mark the simulation truth. All three posteriors concentrate around their respective truths, illustrating that a single call to `tls()` produces each classical TLS quantity with posterior uncertainty and no separate Stage-2 regression.
 :::
 
 Both fits recover all three simulation truths (@tbl-tls-recovery, @fig-tls-recovery), with credible intervals reflecting joint uncertainty in the 4PL parameters. In the joint approach, every classical TLS quantity is derived from the same fitted posterior.
 
-Posterior summary statistics — mean, SD, median, and 95% credible interval — are also readily available from the `$draws` slot of `extract_tdt()`'s output:
+Posterior summary statistics — mean, SD, median, and 95% credible interval — follow directly from the `$draws` slot of the same `tls()` output:
 
 ```{r uncert-z-ct}
 #| label: tbl-uncert-z-ct
 #| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval, reported separately for the binomial and beta-binomial fits."
 #| echo: true
 
-# Posterior summaries of z, CTmax and T_crit per likelihood. get_tls_draws()
-# returns the paired draws (same accessor as the density plot above); we
-# summarise each quantity x fit. The inline numbers below read off this table.
+# Posterior summaries of z, CTmax and T_crit per likelihood. tls()$draws is
+# tidy-long already (quantity, .draw, value), so we summarise each quantity x fit
+# directly. The inline numbers below read off this table.
 uncert_summary <- dplyr::bind_rows(
-    get_tls_draws(et_bin) |> dplyr::mutate(model = "Binomial"),
-    get_tls_draws(et_bb)  |> dplyr::mutate(model = "Beta-binomial")) |>
-  tidyr::pivot_longer(c(z, CTmax, T_crit),
-                      names_to = "quantity", values_to = "value") |>
+    tl_bin$draws |> dplyr::mutate(model = "Binomial"),
+    tl_bb$draws  |> dplyr::mutate(model = "Beta-binomial")) |>
   dplyr::group_by(quantity, likelihood = model) |>
   dplyr::summarise(mean = mean(value), sd = stats::sd(value),
                    median = stats::median(value),
@@ -941,7 +919,7 @@ uncert_summary <- dplyr::bind_rows(
                    upper = stats::quantile(value, 0.975, names = FALSE),
                    .groups = "drop") |>
   dplyr::mutate(
-    quantity   = factor(quantity, c("z", "CTmax", "T_crit"),
+    quantity   = factor(quantity, c("z", "CTmax", "Tcrit"),
                         c("z (°C)", "CTmax at 1 hr (°C)", "T_crit (°C)")),
     likelihood = factor(likelihood, c("Binomial", "Beta-binomial"))
   ) |>
@@ -969,17 +947,24 @@ Under the binomial likelihood, the posterior SD for $z$ is `r sd_z_bin` °C and 
 
 The beta-binomial fit is slightly wider for both quantities (SD for $z$: `r sd_z_bb` °C; for $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ captures extra-binomial variation and propagates it into the derived quantities. A two-stage pipeline requires an additional bootstrap or delta-method calculation to achieve comparable propagation.
 
-These per-draw values are also available as one aligned table via `get_tls_draws()` — one row per posterior draw, with $z$, $CT_{max_{1hr}}$ and $T_{crit}$ on the **same** draw (and joined within group for grouped fits). That joint pairing is what lets any function of several quantities — a between-group contrast, a ratio, or a derived index — be computed per draw with correctly-correlated uncertainty:
+For per-draw functions of *several* quantities at once, the wide-paired form — one row per draw, with the quantities as columns — is more convenient than the long `$draws` above. `extract_tdt()` returns the bundled posterior object (per-quantity slots, the LT50 curve, plus the `get_*()` accessors), and `get_tls_draws()` pulls $z$, $CT_{max_{1hr}}$ and $T_{crit}$ aligned on `.draw` into one tibble (an inner join, so the quantities keep their joint pairing — and join within group for grouped fits). That pairing is what lets a between-group contrast, a ratio, or a derived index be computed per draw with correctly-correlated uncertainty:
 
 ```{r tls-draws-showcase}
 #| label: tls-draws-showcase
 #| echo: true
 #| code-fold: show
 
-# One row per draw; z / CTmax / T_crit aligned on `.draw`. The merge is an inner
-# join on `.draw`, so the quantities stay jointly paired (a column-bind could not).
-d_bin <- get_tls_draws(et_bin)
+# extract_tdt() -> bundled object; get_tls_draws() -> one row per draw with
+# z / CTmax / T_crit aligned on `.draw`. The merge is an inner join on `.draw`,
+# so the quantities stay jointly paired (a column-bind could not).
+et_bin <- extract_tdt(wf_bin, target_surv = "relative", t_ref = 60, lethal = TRUE, ndraws = 1000)
+d_bin  <- get_tls_draws(et_bin)
 head(d_bin)
+
+# get_tls_summary() is the summary companion -- it returns the same tidy table as
+# tls()$summary above (same quantities, same threshold), confirming the bundled
+# extract_tdt() object and the general tls() extractor agree for a fit_4pl() fit:
+get_tls_summary(et_bin)
 
 # z and CTmax co-vary in the posterior -- a relationship only visible on PAIRED
 # draws (summarising the two separately would erase it):
@@ -1007,16 +992,16 @@ For real data, it is important to compare binomial and beta-binomial fits rather
 #| label: tbl-twostage-compare
 #| tbl-cap: "Point estimates (two-stage) and posterior medians (joint Bayesian) for thermal sensitivity ($z$) and $CT_{max_{1hr}}$, recovered by each of four estimator-dataset combinations from the same simulated datasets. Truth values are the simulation parameters."
 
-# Compare tutorial estimates from the joint and two-stage workflows.
+# Compare tutorial estimates from the joint and two-stage workflows. The joint
+# medians come straight off the tls() summaries derived above; match() pulls the
+# z and CTmax rows by name (so the result is independent of row order).
 compare_table <- tibble::tibble(
   quantity   = c("z (°C)", "CTmax at 1 hr (°C)"),
   truth      = c(true_z, true_CTmax),
   ts_bin     = c(stage2_bin$summary$z, stage2_bin$summary$CTmax_1hr),
-  joint_bin  = c(get_z_summary(et_bin)$z_median,
-                 get_ctmax_summary(et_bin)$temp_median),
+  joint_bin  = tl_bin$summary$median[match(c("z", "CTmax"), tl_bin$summary$quantity)],
   ts_bb      = c(stage2_bb$summary$z, stage2_bb$summary$CTmax_1hr),
-  joint_bb   = c(get_z_summary(et_bb)$z_median,
-                 get_ctmax_summary(et_bb)$temp_median)
+  joint_bb   = tl_bb$summary$median[match(c("z", "CTmax"), tl_bb$summary$quantity)]
 )
 
 compare_table |>
@@ -1032,6 +1017,66 @@ compare_table |>
 ```
 
 All four estimators give similar point estimates for $z$ and $CT_{max_{1hr}}$, close to the simulation truth. Under this simple generating scenario, the joint Bayesian 4PL reproduces the classical pipeline's central estimates while retaining a coherent posterior for downstream inference.
+
+#### One model, two parameterisations {#sec-compare-param}
+
+`fit_4pl()` defaults to the **midpoint** parameterisation: it estimates a linear midpoint $\text{mid}(T)$ and derives $z$ and $CT_{max}$ from its slope and intercept (Equation 7 of the manuscript). The **direct** parameterisation instead places `brms` non-linear parameters on $z$ and the $CT_{max}$ deviation themselves, requested by passing `ctmax = ~ 1` and `z = ~ 1`. The two are reparameterisations of one likelihood, so fitting the *same* simulated data both ways and extracting with `tls()` should return the same posterior for $z$ and $CT_{max_{1hr}}$.
+
+```{r fit-4pl-direct}
+#| label: fit-4pl-direct
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+# Refit the binomial tutorial data with the DIRECT (z, CTmax) parameterisation.
+# Same data, same family -- only the way the midpoint is written changes.
+# Cached like the fits above; the .rds is created on first render.
+wf_direct <- fit_4pl(std_bin,
+                     ctmax = ~ 1, z = ~ 1,
+                     family = binomial(link = "identity"),
+                     chains = 4, iter = 2000, cores = 4, seed = 123,
+                     file       = file.path(models_dir, "sim_4pl_direct"),
+                     file_refit = "never")
+```
+
+A single `tls()` call turns either fit into a tidy table of the derived quantities — one row per quantity, with the posterior median and 95% interval. It is the one-call extractor: pass it *any* fitted 4PL and it returns $z$, $CT_{max_{1hr}}$ and (for a lethal endpoint) $T_{crit}$, whatever the parameterisation.
+
+```{r tls-direct-showcase}
+#| label: tls-direct-showcase
+#| echo: true
+#| code-fold: show
+
+# One call per fit -- no separate extract step. target_surv picks the threshold,
+# t_ref sets the reference duration (minutes), lethal = TRUE adds T_crit.
+tls_mid <- tls(wf_bin,    target_surv = "relative", t_ref = 60, lethal = TRUE)
+tls_dir <- tls(wf_direct, target_surv = "relative", t_ref = 60, lethal = TRUE)
+
+# What a single tls() call returns for the direct fit:
+tls_dir$summary
+```
+
+@tbl-compare-param lays the two parameterisations side by side, reading $z$ and $CT_{max_{1hr}}$ straight off each `tls()` summary.
+
+```{r compare-param-table}
+#| label: tbl-compare-param
+#| tbl-cap: "Posterior medians and 95% credible intervals for $z$ and $CT_{max_{1hr}}$ recovered from the same simulated (binomial) data fit two ways — the default midpoint parameterisation and the direct $(z, CT_{max})$ parameterisation — both extracted with the single-call `tls()`. Truth values are the simulation parameters."
+
+# Pull the z and CTmax rows from each tls() summary (rows come back in the order
+# z, CTmax, Tcrit) and lay them side by side. format_interval() is vectorised.
+mid <- dplyr::filter(tls_mid$summary, quantity %in% c("z", "CTmax"))
+dir <- dplyr::filter(tls_dir$summary, quantity %in% c("z", "CTmax"))
+
+param_equiv <- tibble::tibble(
+  Quantity             = c("z (°C)", "CTmax at 1 hr (°C)"),
+  Truth                = round(c(true_z, true_CTmax), 2),
+  `Midpoint (default)` = format_interval(mid$median, mid$lower, mid$upper, digits = 2),
+  `Direct (z, CTmax)`  = format_interval(dir$median, dir$lower, dir$upper, digits = 2)
+)
+
+tinytable::tt(param_equiv, digits = 3, escape = TRUE)
+```
+
+The midpoint and direct fits return the same $z$ and $CT_{max_{1hr}}$ to within Monte Carlo error, confirming they are two ways of writing one model. The midpoint form is the default because its linear $\text{mid}(T)$ makes $z$ a closed-form transform of a single slope (Equation 7 of the manuscript); the direct form is available when a prior or hypothesis is most naturally expressed on $z$ or $CT_{max}$ directly.
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
