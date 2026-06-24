@@ -3429,51 +3429,29 @@ knitr::include_graphics(here("output", "figs", "fig4_case_study_densities.png"))
 Manuscript Figure 6 illustrates how a fitted joint 4PL translates a *natural*
 temperature trajectory into cumulative heat-injury (HI) accumulation and
 predicted survival, with uncertainty, for two case studies side by side: the
-vinegar fly (*Drosophila suzukii*) and the brown shrimp (*Crangon crangon*).
+vinegar fly (*Drosophila suzukii*, by sex) and the three cereal aphids
+(*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*). It reuses
+the fly and aphid fits built above (`wf_dros_mort_F`/`wf_dros_mort_M` and
+`wf_aphid`) and the package's `predict_heat_injury()`, so no model is refit here.
+
 For the fly we use the shaded hourly **microclimate** trace from the
-Ørsted et al. (2024) NicheMapR workflow (Rennes, France; June-August 2018;
+Ørsted et al. (2024) NicheMapR workflow (Rennes, France; June–August 2018;
 Zenodo record 10821572) and predict HI for each sex with and without damage
-repair.
+repair. For the aphids we use the **unmodified** hourly air-temperature trace
+for Wuhan — the hottest of @li2023's three Chinese wheat sites (summer 2016,
+Open-Meteo ERA5; shipped with the package) — and project all three species at
+once with a single `predict_heat_injury(by = "species")` call. The aphid trace
+crosses each species' $T_{crit}$ without any warming offset, so it is used as
+observed.
 
-```{r}
-#| label: shrimp-trace-facts
-#| echo: false
-#| message: false
-#| warning: false
-# Code-generated facts for the shrimp heat-injury trace, so the text, caption
-# and data README never drift from the shipped data or the fitted T_crit.
-shr_year   <- 2021L   # hottest fjord summer by peak hourly SST across 2008-2024
-shr_offset <- 3       # warming projection (deg C) added to the observed trace
-shr_Tc     <- et_shrimp$T_crit$summary$temp_median   # corrected relative-threshold T_crit
-.kb_facts  <- utils::read.csv(here::here("inst", "extdata", "kristineberg",
-                                         "kristineberg_sea_temp_hourly.csv.gz"))
-.kb_facts  <- .kb_facts[is.finite(.kb_facts$sea_temp_c), ]
-.summer    <- .kb_facts[substr(.kb_facts$datetime_utc, 6, 7) %in% c("06", "07", "08"), ]
-shr_max_file  <- max(.kb_facts$sea_temp_c)                          # whole-record hourly maximum
-shr_peak_year <- max(.summer$sea_temp_c[.summer$year == shr_year])  # chosen summer's peak hour
-shr_n_years   <- length(unique(.kb_facts$year))
-```
-
-For the shrimp we downloaded the full hourly
-**sea-surface**-temperature record (2008–2024) from the Kristineberg Marine
-Research Station on the Gullmar fjord, Sweden — a coastal site within the brown
-shrimp's range — from the station's public weather archive
-(`www.weather.mi.gu.se/kristineberg`). We use June–August of `r shr_year`, the
-warmest summer on record by peak hourly temperature (peaking at
-`r round(shr_peak_year, 1)` °C). Even this warmest summer only just reaches this
-shrimp population's corrected $T_{crit}$ (`r round(shr_Tc, 1)` °C), and across the
-whole `r shr_n_years`-year record the hourly maximum is only
-`r round(shr_max_file, 1)` °C, so a literal trace accumulates little or no
-injury. We therefore added a **+`r shr_offset` °C warming projection** — keeping
-the real diurnal and seasonal structure but shifting it warm enough to cross
-$T_{crit}$ — and label it as a scenario, not observed lethal exposure. Repair is
-modelled with an **illustrative Sharpe–Schoolfield kernel that is not
+Repair is modelled with an **illustrative Sharpe–Schoolfield kernel that is not
 empirically fitted** — it shows the *qualitative* effect of repair, not a
 calibrated rate. We set $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference
 temperature, so a full LT50 dose would take roughly 33 h to clear at that
-temperature in the absence of further injury. Bands are ±1 SE across posterior draws (not 95% credible
-intervals) to keep the exponential HI envelope readable. $T_{crit}$ is the
-relative-threshold critical temperature from each fit.
+temperature in the absence of further injury. Bands are ±1 SE across posterior
+draws (not 95% credible intervals) to keep the exponential HI envelope readable.
+$T_{crit}$ is the relative-threshold critical temperature from each fit (per
+species for the aphids).
 
 ```{r}
 #| label: fig5-hi-data
@@ -3511,6 +3489,7 @@ fly_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
                    TREF = 25 + 273.15, r_ref = 0.03)
 
 ND <- 150
+set.seed(123)  # reproducible posterior-draw subsample for both taxa
 agg_draws <- function(hi, ...) {
   hi$draws |> dplyr::group_by(time) |>
     dplyr::summarise(hi_med = median(hi), hi_se = sd(hi),
@@ -3532,124 +3511,140 @@ for (sx in c("Female", "Male")) {
       agg_draws(hi, sex = sx, repair = ifelse(rep, "With repair", "No repair"))
   }
 }
-fig5_fly <- dplyr::bind_rows(fly_rows) |> dplyr::left_join(fly_trace, by = "time")
+fdat <- dplyr::bind_rows(fly_rows) |> dplyr::left_join(fly_trace, by = "time")
+fTc  <- mean(c(Tc_F, Tc_M))
 
-## Shrimp: REAL Kristineberg (Gullmar fjord) hourly sea-surface temperature for
-## the warmest summer on record by peak hourly temperature (shr_year; Jun-Aug),
-## warmed by a +shr_offset C projection. The observed fjord trace only just
-## reaches T_crit, so the modest offset is needed to show heat-injury dynamics
-## and is labelled as a projection in the caption. Year / offset / T_crit come
-## from the code-generated `shrimp-trace-facts` chunk above. See
-## data-raw/build_kristineberg_temps.R and inst/extdata/kristineberg/README.md.
-Tc_S <- shr_Tc
-kb <- utils::read.csv(here::here("inst", "extdata", "kristineberg",
-                                 "kristineberg_sea_temp_hourly.csv.gz"))
-shr_trace <- kb |>
-  dplyr::filter(year == shr_year, substr(datetime_utc, 6, 7) %in% c("06", "07", "08"),
-                is.finite(sea_temp_c)) |>
-  dplyr::arrange(datetime_utc) |>
-  dplyr::transmute(time = dplyr::row_number() - 1,
-                   temp = sea_temp_c + shr_offset,
-                   datetime = as.POSIXct(datetime_utc, tz = "UTC"))
-shr_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
-                   TL = 8 + 273.15, TH = 22 + 273.15,
-                   TREF = 15 + 273.15, r_ref = 0.03)
-shr_rows <- list()
+## Aphids (d-f): UNMODIFIED hourly Wuhan air-temperature trace (no warming
+## offset), all three species projected at once with by = "species". Per-species
+## T_crit comes from the aphid fit; repair uses the same illustrative kernel.
+aphid_trace <- readr::read_csv(
+  here::here("inst", "extdata", "data_temp_trace_aphid_summer2016.csv"),
+  show_col_types = FALSE) |>
+  dplyr::filter(city == "Wuhan") |>
+  dplyr::transmute(time = time_h, temp = temp_c,
+                   datetime = as.POSIXct(sub("T", " ", as.character(datetime)), tz = "UTC"))
+aphid_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
+                     TL = 15 + 273.15, TH = 35 + 273.15,
+                     TREF = 25 + 273.15, r_ref = 0.03)
+aphid_Tc <- aphid_tls$summary |> dplyr::filter(quantity == "Tcrit") |>
+  dplyr::transmute(species = as.character(species), Tc = median)
+aphid_rows <- list()
 for (rep in c(FALSE, TRUE)) {
-  hi <- predict_heat_injury(shr_trace[, c("time", "temp")], wf_shrimp,
-          target_surv = "relative", T_c = Tc_S, trace_unit = "hours",
+  hi <- predict_heat_injury(aphid_trace[, c("time", "temp")], wf_aphid,
+          target_surv = "relative", trace_unit = "hours", by = "species",
           ndraws = ND, repair = rep,
-          repair_pars = if (rep) shr_repair else NULL, save_draws = TRUE)
-  shr_rows[[length(shr_rows) + 1]] <-
-    agg_draws(hi, repair = ifelse(rep, "With repair", "No repair"))
+          repair_pars = if (rep) aphid_repair else NULL, save_draws = TRUE)
+  aphid_rows[[length(aphid_rows) + 1]] <- hi$draws |>
+    dplyr::group_by(species, time) |>
+    dplyr::summarise(hi_med = median(hi), hi_se = sd(hi),
+                     surv_med = median(survival), surv_se = sd(survival),
+                     .groups = "drop") |>
+    dplyr::mutate(repair = ifelse(rep, "With repair", "No repair"))
 }
-fig5_shr <- dplyr::bind_rows(shr_rows) |> dplyr::left_join(shr_trace, by = "time")
+adat <- dplyr::bind_rows(aphid_rows) |> dplyr::mutate(species = as.character(species)) |>
+  dplyr::left_join(aphid_trace, by = "time")
 
 dir.create(here::here("output", "data"), recursive = TRUE, showWarnings = FALSE)
-saveRDS(list(fly = fig5_fly, fly_trace = fly_trace, fly_Tc = mean(c(Tc_F, Tc_M)),
-             shr = fig5_shr, shr_trace = shr_trace, shr_Tc = Tc_S,
-             shr_year = shr_year, shr_offset = shr_offset,
-             shr_max_file = shr_max_file, shr_peak_year = shr_peak_year,
-             shr_n_years = shr_n_years),
+saveRDS(list(fly = fdat, fly_trace = fly_trace, fly_Tc = fTc,
+             aphid = adat, aphid_trace = aphid_trace, aphid_Tc = aphid_Tc),
         here::here("output", "data", "fig5_hi_data.rds"))
 ```
 
 ```{r}
 #| label: fig-ms-fig5-heat-injury
-#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field-derived temperature trajectories for the vinegar fly (*Drosophila suzukii*, panels a-c) and the brown shrimp (*Crangon crangon*, panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and real Gullmar fjord summer sea-surface temperature for the shrimp (Kristineberg Marine Research Station, Jun–Aug 2021, the warmest summer on record by peak temperature) warmed by a **+3 °C projection** — with the relative-threshold $T_{crit}$ (purple dotted line). The observed fjord trace only just reaches the shrimp's $T_{crit}$, so the modest warming projection makes the heat-injury dynamics visible. (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dashed) and (c, f) predicted survival, each with and without damage repair (colour); fly sexes are distinguished by line type. Bands are ±1 SE across posterior draws. Predicted survival begins at each taxon's fitted upper asymptote rather than at 100%: the vinegar-fly 4PL estimates a maximum survival of ≈85% (the upper asymptote *up* < 1), so its survival trajectories start at ≈85%, whereas the shrimp asymptote is ≈100%. Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
+#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and the unmodified hourly air-temperature trace for the aphids (Wuhan, summer 2016; Li et al. 2023, Open-Meteo ERA5) — with the relative-threshold $T_{crit}$ (dotted; per species for the aphids). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
 
-# Build the manuscript heat-injury and survival prediction figure.
-f5  <- readRDS(here::here("output", "data", "fig5_hi_data.rds"))
-fdat <- f5$fly; ftr <- f5$fly_trace; fTc <- f5$fly_Tc
-sdat <- f5$shr; str <- f5$shr_trace; sTc <- f5$shr_Tc
+# Build the manuscript heat-injury figure from the in-session fly + aphid data
+# (fdat / adat / traces / Tc) prepared in the chunk above. svg_png() and P() are
+# the icon helpers defined in the Figure 5 chunk. Fly: colour = sex; aphids:
+# colour = species; line type = repair. Colours match the Figure 5 ridge panels.
 fdat$repair <- factor(fdat$repair, levels = c("No repair", "With repair"))
-sdat$repair <- factor(sdat$repair, levels = c("No repair", "With repair"))
-pal <- c("No repair" = "#D55E00", "With repair" = "#0072B2")
+adat$repair <- factor(adat$repair, levels = c("No repair", "With repair"))
+sp_pal  <- c("M_dirhodum" = "#E69F00", "S_avenae" = "#D55E00", "R_padi" = "#CC79A7")
+sp_lab  <- c(M_dirhodum = "M. dirhodum", S_avenae = "S. avenae", R_padi = "R. padi")
+sex_pal <- c(Female = "#009E73", Male = "#7B3294")
 tcrit_col <- "#7B3294"
 
-f5_thm <- theme_classic(base_size = 13) +
-  theme(panel.grid.major.y = element_line(colour = "grey93"),
-        plot.margin = margin(2, 7, 2, 3), legend.position = "none",
-        axis.title = element_text(size = 14), axis.text = element_text(size = 12))
-f5_xsc <- function() scale_x_datetime(date_breaks = "1 month", date_labels = "%b")
-f5_tg  <- function(p, lab) p + labs(tag = lab) +
+f6_thm <- theme_classic(base_size = 13) +
+  theme(panel.grid.major.y = element_line(colour = "grey93"), plot.margin = margin(2, 7, 2, 3),
+        legend.position = "none", axis.title = element_text(size = 13), axis.text = element_text(size = 11))
+f6_xsc <- function() scale_x_datetime(date_breaks = "1 month", date_labels = "%b")
+f6_tg  <- function(p, lab) p + labs(tag = lab) +
   theme(plot.tag = element_text(face = "bold", size = 12), plot.tag.position = c(0.015, 0.98))
 
-f5_temp <- function(tr, Tc, title, ylab) ggplot(tr, aes(datetime, temp)) +
+# fly temperature panel (single Tcrit line)
+f6_temp1 <- function(tr, Tc, title, ylab) ggplot(tr, aes(datetime, temp)) +
   geom_line(colour = "grey45", linewidth = 0.3) +
   geom_hline(yintercept = Tc, linetype = "dotted", colour = tcrit_col) +
-  annotate("text", x = min(tr$datetime), y = Tc, label = "T[crit]",
-           hjust = -0.1, vjust = -0.4, size = 3.4, colour = tcrit_col,
-           parse = TRUE) +
-  labs(y = ylab, x = NULL, title = title) + f5_xsc() + f5_thm +
-  theme(axis.text.x = element_blank(),
-        plot.title = element_markdown(face = "bold", size = 14, hjust = 0.5))
+  annotate("text", x = min(tr$datetime), y = Tc, label = "T[crit]", hjust = -0.1, vjust = -0.4,
+           size = 3.2, colour = tcrit_col, parse = TRUE) +
+  labs(y = ylab, x = NULL, title = title) + f6_xsc() + f6_thm +
+  theme(axis.text.x = element_blank(), plot.title = element_markdown(face = "bold", size = 13, hjust = 0.5))
+# aphid temperature panel (per-species Tcrit lines)
+f6_tempA <- function(tr, tc_df, title, ylab) ggplot(tr, aes(datetime, temp)) +
+  geom_line(colour = "grey45", linewidth = 0.3) +
+  geom_hline(data = tc_df, aes(yintercept = Tc, colour = species), linetype = "dotted", linewidth = 0.5, show.legend = FALSE) +
+  annotate("text", x = min(tr$datetime), y = max(tc_df$Tc), label = "T[crit]~(per~sp.)", hjust = -0.04, vjust = -0.5,
+           size = 3.0, colour = "grey25", parse = TRUE) +
+  scale_colour_manual(values = sp_pal) +
+  labs(y = ylab, x = NULL, title = title) + f6_xsc() + f6_thm +
+  theme(axis.text.x = element_blank(), plot.title = element_markdown(face = "bold", size = 13, hjust = 0.5))
+# fly HI / survival (colour = sex, line type = repair)
+f6_hiF <- function(dd) ggplot(dd, aes(datetime, hi_med, colour = sex, fill = sex)) +
+  geom_ribbon(aes(ymin = pmax(0, hi_med - hi_se), ymax = hi_med + hi_se, group = interaction(sex, repair)), colour = NA, alpha = 0.13) +
+  geom_hline(yintercept = 100, linetype = "dotted", colour = "grey55") + geom_line(aes(linetype = repair), linewidth = 0.55) +
+  scale_colour_manual(values = sex_pal) + scale_fill_manual(values = sex_pal, guide = "none") +
+  scale_linetype_manual(values = c("No repair" = "solid", "With repair" = "22")) +
+  labs(y = "Heat injury (%)", x = NULL) + f6_xsc() + f6_thm + theme(axis.text.x = element_blank())
+f6_survF <- function(dd) ggplot(dd, aes(datetime, surv_med, colour = sex, fill = sex)) +
+  geom_ribbon(aes(ymin = pmax(0, surv_med - surv_se), ymax = pmin(1, surv_med + surv_se), group = interaction(sex, repair)), colour = NA, alpha = 0.13) +
+  geom_line(aes(linetype = repair), linewidth = 0.55) +
+  scale_colour_manual(values = sex_pal) + scale_fill_manual(values = sex_pal, guide = "none") +
+  scale_linetype_manual(values = c("No repair" = "solid", "With repair" = "22")) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) + labs(y = "Survival", x = NULL) + f6_xsc() + f6_thm
+# aphid HI / survival (colour = species, line type = repair)
+f6_hiA <- function(dd) ggplot(dd, aes(datetime, hi_med, colour = species, fill = species)) +
+  geom_ribbon(aes(ymin = pmax(0, hi_med - hi_se), ymax = hi_med + hi_se, group = interaction(species, repair)), colour = NA, alpha = 0.12) +
+  geom_hline(yintercept = 100, linetype = "dotted", colour = "grey55") + geom_line(aes(linetype = repair), linewidth = 0.55) +
+  scale_colour_manual(values = sp_pal, labels = sp_lab) + scale_fill_manual(values = sp_pal, guide = "none") +
+  scale_linetype_manual(values = c("No repair" = "solid", "With repair" = "22")) +
+  labs(y = "Heat injury (%)", x = NULL) + f6_xsc() + f6_thm + theme(axis.text.x = element_blank())
+f6_survA <- function(dd) ggplot(dd, aes(datetime, surv_med, colour = species, fill = species)) +
+  geom_ribbon(aes(ymin = pmax(0, surv_med - surv_se), ymax = pmin(1, surv_med + surv_se), group = interaction(species, repair)), colour = NA, alpha = 0.12) +
+  geom_line(aes(linetype = repair), linewidth = 0.55) +
+  scale_colour_manual(values = sp_pal, labels = sp_lab) + scale_fill_manual(values = sp_pal, guide = "none") +
+  scale_linetype_manual(values = c("No repair" = "solid", "With repair" = "22")) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) + labs(y = "Survival", x = NULL) + f6_xsc() + f6_thm
+f6_ins     <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(svg_png(f)), left = l, bottom = b, right = r, top = t, align_to = "panel")
+f6_ins_png <- function(p, png, l, b, r, t) p + inset_element(ggdraw() + draw_image(P(png)),     left = l, bottom = b, right = r, top = t, align_to = "panel")
 
-f5_hi <- function(dd, lt) {
-  g <- ggplot(dd, aes(datetime, hi_med, colour = repair, fill = repair)) +
-    geom_ribbon(aes(ymin = pmax(0, hi_med - hi_se), ymax = hi_med + hi_se),
-                colour = NA, alpha = 0.15) +
-    geom_hline(yintercept = 100, linetype = "dashed", colour = "grey60") +
-    scale_colour_manual(values = pal) + scale_fill_manual(values = pal) +
-    labs(y = "Heat injury (%)", x = NULL) + f5_xsc() + f5_thm +
-    theme(axis.text.x = element_blank())
-  if (lt) g + geom_line(aes(linetype = sex), linewidth = 0.55) +
-            scale_linetype_manual(values = c(Female = "solid", Male = "22"))
-  else    g + geom_line(linewidth = 0.6)
+fly_hi   <- f6_ins(f6_tg(f6_hiF(fdat), "b)"), "dros_male_v2.svg", .02, .55, .34, .98)
+aphid_hi <- f6_ins_png(f6_tg(f6_hiA(adat), "e)"), "aphid_Mdirhodum_V2.png", .02, .46, .44, .99)
+col_f <- f6_tg(f6_temp1(fly_trace,  fTc,      "Vinegar fly (*D. suzukii*)", "Microclimate (°C)"), "a)") / fly_hi   / f6_tg(f6_survF(fdat), "c)")
+col_a <- f6_tg(f6_tempA(aphid_trace, aphid_Tc, "Cereal aphids (Wuhan)",      "Air temp (°C)"),     "d)") / aphid_hi / f6_tg(f6_survA(adat), "f)")
+
+mk_leg <- function(p, which) {
+  g <- p + theme(legend.position = "bottom", legend.title = element_blank())
+  g <- if (which == "colour") g + guides(fill = "none", linetype = "none", colour = guide_legend(order = 1))
+       else g + guides(fill = "none", colour = "none", linetype = guide_legend(order = 1))
+  cowplot::get_legend(g)
 }
-f5_surv <- function(dd, lt) {
-  g <- ggplot(dd, aes(datetime, surv_med, colour = repair, fill = repair)) +
-    geom_ribbon(aes(ymin = pmax(0, surv_med - surv_se), ymax = pmin(1, surv_med + surv_se)),
-                colour = NA, alpha = 0.15) +
-    scale_colour_manual(values = pal) + scale_fill_manual(values = pal) +
-    scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
-    labs(y = "Survival", x = NULL) + f5_xsc() + f5_thm
-  if (lt) g + geom_line(aes(linetype = sex), linewidth = 0.55) +
-            scale_linetype_manual(values = c(Female = "solid", Male = "22"))
-  else    g + geom_line(linewidth = 0.6)
-}
-f5_ins <- function(p, f, l, b, r, t, sc = 1) p +
-  inset_element(ggdraw() + draw_image(svg_png(f), scale = sc),
-                left = l, bottom = b, right = r, top = t, align_to = "panel")
-
-fly_hi <- f5_ins(f5_tg(f5_hi(fdat, TRUE),  "b)"), "dros_male_v2.svg", .02, .55, .34, .98)
-shr_hi <- f5_ins(f5_tg(f5_hi(sdat, FALSE), "e)"), "shrimp_v2.svg",    .04, .58, .44, .96)
-f5_leg <- cowplot::get_legend(
-  f5_hi(fdat, TRUE) + theme(legend.position = "bottom", legend.title = element_blank()) +
-    guides(fill = "none", colour = guide_legend(order = 1), linetype = guide_legend(order = 2)))
-
-col_f <- f5_tg(f5_temp(ftr, fTc, "Vinegar fly (*D. suzukii*)",  "Microclimate temp (°C)"), "a)") / fly_hi / f5_tg(f5_surv(fdat, TRUE),  "c)")
-col_s <- f5_tg(f5_temp(str, sTc, "Brown shrimp (*C. crangon*)", "Water temp (°C)"), "d)") / shr_hi / f5_tg(f5_surv(sdat, FALSE), "f)")
-f5_body  <- (col_f | col_s) + plot_layout(heights = c(0.5, 1, 1))
-fig5_final <- cowplot::plot_grid(f5_body, f5_leg, ncol = 1, rel_heights = c(1, 0.06))
+leg_fly_col <- mk_leg(f6_hiF(fdat), "colour")   # Female / Male
+leg_aph_col <- mk_leg(f6_hiA(adat), "colour")   # three species
+leg_repair  <- mk_leg(f6_hiA(adat), "linetype") # No repair / With repair -- shared
+f6_body <- (col_f | col_a) + plot_layout(heights = c(0.5, 1, 1))
+fig5_final <- cowplot::plot_grid(
+  f6_body,
+  cowplot::plot_grid(leg_fly_col, leg_aph_col, leg_repair, ncol = 3, rel_widths = c(1, 1.3, 1)),
+  ncol = 1, rel_heights = c(1, 0.09))
 
 ggsave(here::here("output", "figs", "fig5_heat_injury.png"), fig5_final,
-       width = 9.5, height = 7.8, dpi = 600, bg = "white")
+       width = 9.8, height = 8.0, dpi = 300, bg = "white")
 
-# Display the saved PNG (not the live object) so the tuned 9.5 x 7.8 in canvas
+# Display the saved PNG (not the live object) so the tuned 9.8 x 8.0 in canvas
 # and inset positions are not re-flowed by the chunk's fig dimensions.
 knitr::include_graphics(here::here("output", "figs", "fig5_heat_injury.png"))
 ```
