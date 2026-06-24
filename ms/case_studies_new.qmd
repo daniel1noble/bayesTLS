@@ -333,9 +333,12 @@ Retained photosystem-II function — post-exposure $F_v/F_m$ divided by its
 pre-exposure value — is a **continuous proportion in $[0, 1]$ with no count
 denominator**, so the 4PL uses a **Beta** likelihood rather than beta-binomial.
 Loss of PSII function is **sublethal**, so we report $z$ and $CT_{max}$ but not
-$T_{crit}$. Otherwise nothing changes: the same posterior-midpoint extraction
-gives $z$ and $CT_{max}$. The data (snow gum, *Eucalyptus pauciflora*) ship with
-the package (`?snowgum_psii`).
+$T_{crit}$. The data (snow gum, *Eucalyptus pauciflora*; @arnold_psii_2026) ship
+with the package (`?snowgum_psii`): leaf sections from six trees, heated across
+30–56 °C and 5–120 min, then held in **darkness** or **90 min of light** before
+$F_v/F_m$ was re-measured. We first fit a pooled curve to demonstrate the by-hand
+$z$/$CT_{max}$ derivation, then put `recovery` on $CT_{max}$ and $z$ to compare
+the two recovery conditions (post-heat light is expected to lower $CT_{max}$).
 
 ```{r psii-fit}
 #| eval: false
@@ -344,45 +347,47 @@ data(snowgum_psii)
 
 # `proportion =` (not n_total/n_surv) flags a continuous response: standardize_data()
 # records response_type = "proportion" and clamps to (0.001, 0.999) for the Beta
-# density. Random intercepts on mid soak up day / glasshouse-room batch structure.
+# density. `recovery` (Dark/Light) and `plant` (6 trees) pass through; a random
+# intercept on `plant` absorbs among-tree variation (meas_day has only 2 levels).
 leaf_std <- standardize_data(snowgum_psii, temp = "Temp", duration = "Time",
                              proportion = "fvfm_prop",
-                             random_effects = c("Day", "G_Room"),
                              duration_unit = "minutes")
 
-# Beta family is auto-picked from response_type; named here for clarity. Single
-# group (no moderator): one marginal PSII TDT curve.
+# (1) A pooled fit that ignores recovery condition: one marginal PSII TDT curve,
+# midpoint parameterisation, used for the by-hand derivation below.
 wf_leaf <- fit_4pl(leaf_std,
                    family = brms::Beta(link = "identity"),
-                   random_effects = c("Day", "G_Room"),
+                   random_effects = "plant",
                    t_ref = 60,
-                   control = list(adapt_delta = 0.99, max_treedepth = 15),
-                   file = file.path(models_dir, "fit_leaf_function_4pl"),
+                   control = list(adapt_delta = 0.999, max_treedepth = 15),
+                   file = file.path(models_dir, "fit_leaf_recovery_pooled"),
                    file_refit = "on_change")
 summary(wf_leaf)
 extr_wf_leaf <- tls(wf_leaf)
 extr_wf_leaf$summary
-# Now add random effects cirect to ctmax and z, Cis will change...but we can't really model random effects they onlu have two levels need a rethink
+
+# (2) The comparison of interest: CTmax and z directly on `recovery` (cell-means),
+# with a tree random intercept. tls(by = "recovery") returns per-condition z/CTmax.
 wf_leaf2 <- fit_4pl(leaf_std,
-                    ctmax = ~1 + (1|Day) + (1|G_Room), 
-                        z = ~1 + (1|Day) + (1|G_Room),
+                    ctmax = ~ 0 + recovery + (1 | plant),
+                        z = ~ 0 + recovery,
                    family = brms::Beta(link = "identity"),
                    t_ref = 60,
-                   control = list(adapt_delta = 0.99, max_treedepth = 15),
-                   file = file.path(models_dir, "fit_leaf_function_4pl_ct_z"),
+                   control = list(adapt_delta = 0.999, max_treedepth = 15),
+                   file = file.path(models_dir, "fit_leaf_recovery_4pl"),
                    file_refit = "on_change")
 summary(wf_leaf2)
-extr_wf_leaf2 <- tls(wf_leaf2)
+extr_wf_leaf2 <- tls(wf_leaf2, by = "recovery", lethal = FALSE)
 extr_wf_leaf2$summary
 
 
-# Have a look at the funtinal plots
+# Have a look at the functional plots (per recovery condition).
 
 psc_plant <- predict_survival_curves(wf_leaf2)
 plot_survival_curves(psc_plant, observed = leaf_std, log_time = TRUE, response_label = "Photosystem II Function")
 
-bayes_R2(wf_leaf2$fit)
-bayes_R2(wf_leaf$fit)
+bayes_R2_tls(wf_leaf2)
+bayes_R2_tls(wf_leaf)
 
 
 ```
@@ -407,11 +412,11 @@ round(quantile(z_hand,     c(0.025, 0.5, 0.975)), 2)   # == et_leaf$z$summary
 round(quantile(ctmax_hand, c(0.025, 0.5, 0.975)), 2)   # == et_leaf$CTmax$summary
 ```
 
-PSII function falls steeply with temperature: $z \approx 5.1$ °C (95% CrI
-4.5–5.8) and a relative $CT_{max}$ at 1 h $\approx 39.9$ °C (35.5–43.7; wide,
-because the relative midpoint extrapolates to 1 h for this sublethal plateau).
-The by-hand $z$ and $CT_{max}$ reproduce `extract_tdt()` exactly, confirming the
-Beta path feeds the same posterior-midpoint machinery as the count families.
+For the pooled curve, `extract_tdt()` returns a moderate $z$ and a relative
+$CT_{max}$ at 1 h in the low-to-mid 40s °C (the printout above gives the exact
+posterior median and 95% CrI). The by-hand $z$ and $CT_{max}$ reproduce
+`extract_tdt()` exactly, confirming the Beta path feeds the same
+posterior-midpoint machinery as the count families.
 
 We can also target the **absolute** LT50 (the literal 0.5 survival crossing)
 instead of the relative midpoint. The threshold time is then no longer just
@@ -454,10 +459,9 @@ round(quantile(z_abs,     c(0.025, 0.5, 0.975)), 2)  # ~ et_leaf_abs$z$summary
 round(quantile(ctmax_abs, c(0.025, 0.5, 0.975)), 2)  # ~ et_leaf_abs$CTmax$summary
 ```
 
-Here the absolute and relative answers are similar ($z_{\text{abs}} \approx 4.9$ °C,
-$CT_{max,\text{abs}} \approx 39.3$ °C) because the fitted upper plateau is well
-above 0.5; the hand-calc lands within ~0.5% of `extract_tdt()`, the residual being
-the LT50 curve's bend.
+Here the absolute and relative answers are close because the fitted upper plateau
+sits well above 0.5; the hand-calc lands within ~0.5% of `extract_tdt()`, the
+residual being the LT50 curve's bend.
 
 # 4. Vinegar fly (*Drosophila suzukii*) — comparing sexes on the midpoint
 
