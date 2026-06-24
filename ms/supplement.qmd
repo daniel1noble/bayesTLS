@@ -151,7 +151,7 @@ models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
 
-# **Introduction**
+# **General Introduction**
 
 This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. To cite the approach and the associated R package please use:
 
@@ -161,9 +161,11 @@ The supplement is broken into two parts. The first, introducing readers to the `
 
 # **Introduction to `bayesTLS` R Package**
 
-We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty. It can also fit, direct models for $z$ and $CT_{max_{1hr}}$, which means one can model differences in groups or estimate random effects for $z$ and $CT_{max_{1hr}}$ directly, making interpretation and inference quite easy. **`bayesTLS`** also uses these models to predict heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel [@arnoldi2025]. It also contains all the data used throughout the manuscript and supplement.
+We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL model, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$), with posterior uncertainty. It can also fit, direct models for $z$ and $CT_{max_{1hr}}$, which means one can model differences in groups or estimate random effects for $z$ and $CT_{max_{1hr}}$ directly, making interpretation and inference quite easy. We show this form of direct parameterization as well. **`bayesTLS`** also uses these models (estimates of $z$, $CT_{max_{1hr}}$) to predict heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel [@arnoldi2025]. 
 
-The **`bayesTLS`** package is also complimented by the **`freqTLS`** package, which uses frequentist approaches to fit the same models. It has advantages of being faster which can help with large datasets, but generally yields similar results without the need for priors. For the purpose of this tutorial, we demonstrate **`bayesTLS`**.
+All the data used throughout the manuscript and supplement are already preloaded into **`bayesTLS`**, so are easily accessible. 
+
+The **`bayesTLS`** package is also complimented by the **`freqTLS`** package, which uses frequentist approaches to fit the same models. It has advantages of being faster which can help with large datasets, but generally yields similar results without the need for priors. For the purpose of this tutorial, we demonstrate **`bayesTLS`**. Bayesian approaches have major benefits with respect to error propagation should estimates or predictions wish to use the full posterior. 
 
 To access the `bayesTLS` R package, install it once from GitHub. Installing
 `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
@@ -182,9 +184,8 @@ remotes::install_github("daniel1noble/bayesTLS")
 install.packages(c("here", "purrr", "tidyr"))
 ```
 
-Then load the package and helpers, and choose a folder in which to cache the
-fitted models. Every fit below passes `file = file.path(models_dir, "...")`, so
-re-running a chunk reloads the saved model instead of refitting it. Run this
+Every fit below passes `file = file.path(models_dir, "...")`, so
+re-running a chunk reloads the saved model instead of refitting it. For this tutorial, the folder models are stored are in `output/models`. If you don't already have this folder it will create it for you. Run this
 setup chunk once, before the analyses that follow:
 
 ```{r load-bayesTLS}
@@ -208,11 +209,11 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 
 The functions in `bayesTLS` chain together as a single pipeline with the following logic:
 
-1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …).
-2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation.
-3. **Extract** $z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$, all with posterior uncertainty.
-4. **Predict** survival and heat-injury accumulation under fluctuating field temperature traces, with optional repair.
-5. **Plot** each step with shared theming so figures across the workflow read consistently.
+1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …). This step is important because it also stores meta-data about the centering temperatures used which ensures calculations are made correctly.
+2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation. We also have other families built in depending on the response variable distribution. 
+3. **Extract** $z$, $CT_{max}$ (at a chosen reference exposure) and, for lethal endpoints, $T_{crit}$ — all as transforms of the fitted posterior, with full uncertainty. `tls()` is the general extractor: it works on any fitted 4PL — the `fit_4pl()` workflow or a hand-coded `brms` model — and returns results **per moderator group** (`by =`, e.g. species, sex or oxygen treatment) as tidy-long summaries plus the underlying posterior draws. `tls()` and the workflow-specific `extract_tdt()` share one `target_surv` argument that sets the survival threshold the curve is read at — the relative midpoint (default), the absolute LT50, or any LT$x$ — and return the same quantities for a `fit_4pl()` fit.
+4. **Predict** survival across a temperature × duration grid, and heat-injury accumulation with predicted survival under fluctuating field temperature traces — both group-aware (`by =`) and with optional damage repair.
+5. **Plot** each step — survival curves, tolerance landscapes and heat-injury trajectories — with a shared project theme so figures across the workflow read consistently.
 
 Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to the snow gum leaf PSII and *Drosophila* datasets.
 
@@ -245,7 +246,7 @@ tinytable::tt(tdt_function_core, escape = TRUE)
 ```
 
 #### *Full package functions*
-Theer are many helper functions in the package that maybe useful for various users. @tbl-function-tour lists every exported function in the library, grouped by pipeline stage with a description of what they are designed to do.
+There are many helper functions in the package that maybe useful for various users. @tbl-function-tour lists every exported function in the library, grouped by pipeline stage with a description of what they are designed to do.
 
 ```{r function-tour-table}
 #| label: tbl-function-tour
@@ -272,15 +273,18 @@ tdt_function_tour <- tibble::tribble(
   "Accessors",        "get_z_summary()",                    "Posterior summary (median + 95% CrI) of z from an `extract_tdt()` output.",
   "Accessors",        "get_ctmax_summary()",                "Posterior summary (median + 95% CrI) of CTmax from an `extract_tdt()` output.",
   "Accessors",        "get_tcrit_summary()",                "Posterior summary (median + 95% CrI) of T_crit from an `extract_tdt(lethal = TRUE)` output.",
+  "Accessors",        "get_tls_draws()",                    "Per-draw z, CTmax and (lethal) T_crit merged on `.draw` into one tibble (joins within group for grouped fits), so the quantities keep their joint pairing for contrasts and bivariate plots.",
+  "Accessors",        "get_tls_summary()",                  "Tidy combined posterior summary (the summary companion to `get_tls_draws()`): one row per quantity (z, CTmax, Tcrit) x group with median + 95% CrI, matching the shape `tls()` returns.",
   "Accessors",        "get_surv_draws()",                   "Per-draw posterior of survival probability from `predict_survival_curves()`.",
   "Accessors",        "get_hi_draws()",                     "Per-draw posterior of heat-injury integrals from `predict_heat_injury()`.",
   "Diagnostics",      "diagnose_tdt_fit()",                 "Rhat / ESS / divergences / treedepth, with pass-fail flags.",
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z; or low, up, k, CTmax, z for a direct fit), per group via `by =`.",
+  "Diagnostics",      "bayes_R2_tls()",                     "Bayesian R^2 for a fitted `bayes_tls` workflow (posterior median + 95% CrI), a tidy wrapper around `brms::bayes_R2()`.",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands (per group via `by =`).",
   "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap.",
   "Predictions",      "summarise_observed_survival()",      "Observed survival mean and SE per (temp, duration) cell; an overlay for the plotted posterior curves.",
-  "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"absolute\"` (the 50% LT50); pass `\"relative\"` (`(low + up)/2` per draw) or a numeric for another probability.",
-  "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes; per group via `by =`).",
+  "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` (the 50% LT50) or a numeric for another probability.",
+  "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes, default the absolute 50% crossing; per group via `by =`).",
   "TDT quantities",   "derive_z()",                         "Thermal sensitivity z read directly from the posterior (relative: -1/slope of mid(T); absolute: pooled per-draw local z over assay temps); optional local z(T); per group via `by =`.",
   "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only). Same `target_surv` argument as the primitives above; per-group output for grouped fits (`by =`).",
   "TDT quantities",   "tls()",                              "One call returning z, CTmax and (when `lethal = TRUE`) T_crit per moderator group from ANY fitted 4PL, including hand-coded `brms` models. Evaluates each sub-parameter at a moderator x temperature grid via `posterior_linpred()`; `target_surv` selects the relative midpoint or absolute LT50 threshold.",
@@ -336,7 +340,7 @@ true_params <- list(
 )
 ```
 
-The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
+The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. Saavy readers will note that this is technically relative $z$, but because our asymptotes are 0.03 and 0.97, despite these shifts from 0 and 1, we are still at a midpoint of 50% survival. So, in this case, they are the same. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
 
 We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating parameters to provide reference values for the fitted models.
 
@@ -347,6 +351,7 @@ We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating param
 
 # Compute the true TDT summaries implied by the simulation parameters.
 true_z      <- -1 / true_params$m_beta1
+
 # Convert the centred midpoint model to the original temperature scale.
 true_alpha  <- true_params$m_beta0 +
   (1 / true_params$k) *
@@ -433,7 +438,7 @@ Notice the curves shift left as temperature rises: hotter temperatures kill fast
 
 #### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
 
-Survival counts may exhibit two forms of variation. Under **binomial** sampling, each replicate's survival count is drawn from $\text{Binomial}(n, p)$, where $p$ is given by the 4PL surface. **Beta-binomial** sampling adds *overdispersion*: replicate-to-replicate variation in $p$, for example from cohort effects or unmodelled heterogeneity. When TDT data show this extra variation, the beta-binomial likelihood is more appropriate.
+Survival counts may exhibit two forms of variation. Under **binomial** sampling, each replicate's survival count is drawn from $\text{Binomial}(n, p)$, where $p$ is given by the 4PL surface. **Beta-binomial** sampling adds *overdispersion*: replicate-to-replicate variation in $p$, for example from cohort effects or unmodelled heterogeneity. When TDT data show this extra variation, the beta-binomial likelihood is more appropriate (note that our 4PL fit function defaults to beta-binomial to protect against mis-fits - over- or under-dispersion).
 
 ```{r sim-data}
 #| label: sim-data
@@ -472,17 +477,16 @@ We fit a binomial GLM with a logit link separately at each assay temperature. Th
 
 # Fit the per-temperature dose-response curves for the classical Stage-1 analysis.
 # Stage 1 uses the package function ts_stage1(): a per-temperature binomial GLM
-# (the field-default Stage 1), applied here to both the binomial and the
-# overdispersed beta-binomial datasets.
+# (the field-default Stage 1). Here we assume stage 1 fit liklihoods are correctly specified. Given that the families differ mainly in the LT50 SEs, which Stage-2 discards the LT50 point estimates will not change (much).
 stage1_bin <- ts_stage1(sim_bin, temp = "T", duration = "t",
                         n_surv = "y", n_total = "n", family = "binomial")
 stage1_bb  <- ts_stage1(sim_bb,  temp = "T", duration = "t",
-                        n_surv = "y", n_total = "n", family = "binomial")
+                        n_surv = "y", n_total = "n", family = "betabinomial")
 ```
 
 ```{r stage1-lt50-table}
 #| label: tbl-stage1-lt50
-#| tbl-cap: "Per-temperature Stage-1 estimates of $\\log_{10}\\text{LT50}$ from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with $\\log_{10}\\text{LT50}$ here because the simulation asymptotes are near 0 and 1)."
+#| tbl-cap: "Per-temperature Stage-1 estimates of $\\log_{10}\\text{LT50}$ from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with $\\log_{10}\\text{LT50}$ here because the simulation asymptotes are near 0 and 1 and change equally)."
 
 # Format the Stage-1 LT50 estimates and simulation truth.
 stage1_table <- dplyr::full_join(
@@ -583,7 +587,7 @@ Point estimates of $z$ and $CT_{max_{1hr}}$ are than used as is often without un
 ::: {.callout-important}
 Classical two-stage analyses often treat Stage-1 $LT_{50}$ estimates as known when fitting Stage-2 models. In otherwords, uncertainty in $LT_{50}$ values are never accounted for in the Stage-2 regression. This can have consequences when estmating slopes and intercepts in Stage-2.
 
-Despite being a potential issue, it is also challenging to correctly propagate error to $z$ and $CT_{max_{1hr}}$ may have bigger impacts. Without propagating uncertainty properly these will systematically bias sampling uncertainty in $z$ and $CT_{max_{1hr}}$ compromising inferences and leading to optimistic predictions. The Delta-method or bootstrap procedures can be used to propagate uncertainty, though, these are rarely used in practice.
+Despite being a potential issue, it is also challenging to correctly propagate error to $z$ and $CT_{max_{1hr}}$. Incorrectly doing so in Stage-2 may have bigger impacts. Without propagating uncertainty properly these will systematically bias sampling uncertainty in $z$ and $CT_{max_{1hr}}$ compromising inferences and leading to optimistic predictions. The Delta-method or bootstrap procedures can be used to propagate uncertainty, though, these are rarely used in practice. In addition, even if uncertainty was correctly propagated, a likelihood approach makes it harder to propogate uncertainty through downstream predictions (e.g., heat injury).
 :::
 
 ### *A joint Bayesian 4PL* {#sec-joint}
@@ -613,19 +617,28 @@ The function library exposes this model as a single call: `fit_4pl()` constructs
 #| echo: true
 #| code-fold: show
 
-# Print the non-linear 4PL brms formula used by fit_4pl().
-make_4pl_formula()
+# Show the 4PL brms formula fit_4pl() builds.
+f <- make_4pl_formula()
+cat("4PL dose-response (disjoint-bounds reparameterisation; survival stays in (0, 1)):\n\n")
+cat("  ", paste(deparse(f$formula[[2]]), collapse = ""),
+    "  ~  low + (up - low) / (1 + exp(k * (logd - mid)))\n", sep = "")
+cat("      low = 0.001 + inv_logit(lowraw) * 0.498\n")
+cat("      up  = 0.501 + inv_logit(upraw)  * 0.498\n")
+cat("      k   = exp(logk)\n\n")
+cat("  Sub-parameter linear predictors (default: a temp_c slope on each):\n")
+for (nm in c("lowraw", "upraw", "logk", "mid"))
+  cat(sprintf("      %-6s ~ %s\n", nm, paste(deparse(f$pforms[[nm]][[3]]), collapse = "")))
 ```
 
 ::: {.callout-important}
 
-The default model puts a `temp_c` slope on all four 4PL sub-parameters and includes no random effects. Random intercepts on `mid` can be added by passing `random_effects = c("Date", "Tank", ...)` to `fit_4pl()`. The simulation here has no batch structure so we leave it off; the snow gum leaf case study below uses `random_effects = c("Day", "G_Room")`.
+The default model puts a `temp_c` slope on all four 4PL sub-parameters and includes no random effects. How random effects are added depends on the parameterisation: in the **midpoint** parameterisation (used here) pass `random_effects = c("Date", "Tank", ...)` to `fit_4pl()` to place random intercepts on `mid`; in the **direct** CTmax/*z* parameterisation they instead go *inside* the `ctmax`/`z` formulas, e.g. `ctmax = ~ 0 + group + (1 | batch)`. The simulation here has no batch structure so we leave them off; the snow gum leaf case study below uses the direct form with a per-plant random intercept (`ctmax = ~ 0 + recovery + (1 | plant)`).
 
 :::
 
 #### Standardising and fitting {#sec-joint-fit}
 
-The first step is to pass the simulated data through `standardize_data()` so the columns match the schema the rest of the library expects (`temp`, `duration`, `logd`, `temp_c`, `n_total`, `n_surv`).
+The first step is to pass the simulated data through `standardize_data()` so the columns match the schema the rest of the library expects (`temp`, `duration`, `logd`, `temp_c`, `n_total`, `n_surv`). This function also keeps track of your reference temperature, time units and centering so it's important to use for calculations to be done correctly. 
 
 ```{r standardise-sim}
 #| label: standardise-sim
@@ -643,7 +656,7 @@ std_bb  <- standardize_data(sim_bb,
                             duration_unit = "minutes")
 ```
 
-We now call `fit_4pl()` twice — once with the built-in `binomial(link = "identity")` family for the non-overdispersed simulation, and once with the default `beta_binomial(link = "identity")` for the overdispersed case. Caching is handled by brms's `file = ...` mechanism, so subsequent renders reload the cached fits unless the formula or data changes.
+We now call `fit_4pl()` twice — once with the built-in `binomial(link = "identity")` family for the non-overdispersed simulation, and once with the default `beta_binomial(link = "identity")` for the overdispersed case. We store the model fitsusing brms's `file = ...` mechanism, so subsequent code calls just reload the cached fits unless the formula or data changes.
 
 ```{r fit-4pl-tutorial}
 #| label: fit-4pl-tutorial
@@ -673,21 +686,22 @@ fit_bin <- get_brmsfit(wf_bin)
 fit_bb  <- get_brmsfit(wf_bb)
 ```
 
-We also summarise the proportion of outcome variation explained by each fitted model using Bayesian $R^2$. For any fitted 4PL this is a single `brms::bayes_R2()` call; we define a small helper that runs it per model and tidies the result into a `median [95% CrI]` table, then reuse it in every case study below.
+We also summarise the proportion of outcome variation explained by each fitted model using Bayesian $R^2$. For any fitted workflow this is a single `bayes_R2_tls()` call. We define a small helper that maps it over a named list of fits and formats the result into a `median [95% CrI]` table, then reuse it in every case study below.
 
 ```{r}
 #| label: bayes-r2-helper
 #| echo: true
 #| code-fold: show
 
-# Compute Bayesian R2 for each fitted model.
+# Compute Bayesian R2 for each fitted WORKFLOW via the package wrapper
+# bayes_R2_tls(), which pulls the brmsfit and returns a tidy one-row tibble
+# (estimate / est_error / lower / upper).
 bayes_r2_table <- function(fits, digits = 3) {
-  purrr::imap_dfr(fits, function(f, nm) {
-    r <- brms::bayes_R2(f)                       # <- R^2 read straight from the fit
+  purrr::imap_dfr(fits, function(wf, nm) {
+    r <- bayes_R2_tls(wf)
     tibble::tibble(
       Model         = nm,
-      `Bayesian R²` = format_interval(r[1, "Estimate"], r[1, "Q2.5"],
-                                      r[1, "Q97.5"], digits = digits)
+      `Bayesian R²` = format_interval(r$estimate, r$lower, r$upper, digits = digits)
     )
   })
 }
@@ -695,21 +709,21 @@ bayes_r2_table <- function(fits, digits = 3) {
 
 ```{r, r2_bayes}
 #| label: tbl-r2-tutorial
-#| tbl-cap: "Bayesian $R^2$ for the two tutorial joint 4PL fits (binomial and beta-binomial), read straight from `brms::bayes_R2()`. Cells are the posterior median with the 95% credible interval."
+#| tbl-cap: "Bayesian $R^2$ for the two tutorial joint 4PL fits (binomial and beta-binomial), via `bayes_R2_tls()` (a tidy wrapper around `brms::bayes_R2()`). Cells are the posterior median with the 95% credible interval."
 #| echo: true
 #| code-fold: show
 
 # Format Bayesian R2 for the tutorial fits.
 bayes_r2_table(list(
-  "Binomial 4PL"      = fit_bin,
-  "Beta-binomial 4PL" = fit_bb
+  "Binomial 4PL"      = wf_bin,
+  "Beta-binomial 4PL" = wf_bb
 )) |> tinytable::tt(escape = TRUE)
 
 ```
 
 #### Checking parameter recovery {#sec-joint-recovery}
 
-We assess recovery by comparing posterior medians and 95% credible intervals with the known generating values (@tbl-recovery). Given the large simulated sample, the posterior should concentrate near those values.
+We assess recovery of true values by comparing posterior medians and 95% credible intervals with the known generating values (@tbl-recovery). Given the large simulated sample, the posterior should concentrate near those values.
 
 ```{r recovery-table}
 #| label: tbl-recovery
@@ -796,14 +810,14 @@ $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
 $$ {#eq-tcrit}
 
-The threshold one wishes to use is set by the `target_surv` argument in `extract_tdt()`. Using `"relative"` evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are anchored at 0 and 1 but accommodates sub-unit upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` (the default) or any numeric value in $(0, 1)$ uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
+The threshold one wishes to use is set by the `target_surv` argument in `extract_tdt()`. The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates drifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
 
-Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value. Empirical breakpoint analyses across taxa including *Drosophila suzukii* and *Lemna gibba* place $r^*$ in the range $[0.1, 1]$ % HI per hour, corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$ [@jorgensen_unifying_2021; @arnold_thermal_2025; @faber2026]. We therefore integrate over a uniform prior on $\log_{10} r^*$ in that range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
+**How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value: breakpoint analyses of $\log_{10}$(time-to-thermal-failure) against temperature place the critical temperature anywhere from roughly 27 to 40 °C depending on the assay and taxon (including *Drosophila suzukii* and *Lemna gibba*) [@faber2026]. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
 ::: {.callout-warning}
 ## $T_{crit}$ is meaningful only for lethal-endpoint data
 
-The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data and can be used to make a prediction about $T_{crit}$ because $T_{crit}$ should be the tempearture where damage begins to accumlate (0.1-1% is what we assume). `extract_tdt()` is therefore able to predict $T_{crit}$ with lethal data. When  `lethal = FALSE` `extract_tdt()` returns only $z$ and $CT_{max_{1hr}}$. Users with lethal-endpoint data set can set `lethal = TRUE` to additionally derive $T_{crit}$. Note that this is only a prediction and does not negate the need to follow up with studies to validate [see @faber2026].
+The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data and can be used to make a prediction about $T_{crit}$ because $T_{crit}$ should be the tempearture where damage begins to accumlate (0.1-1% is what we assume). `extract_tdt()` is therefore able to predict $T_{crit}$ with lethal data. When  `lethal = FALSE` `extract_tdt()` returns only $z$ and $CT_{max_{1hr}}$. Users with lethal-endpoint data set can set `lethal = TRUE` to additionally derive an *estimate* of $T_{crit}$. Note that this is only a prediction and does not negate the need to follow up with studies to validate [see @faber2026].
 
 For **sublethal** endpoints fitted $z$ instead describes performance loss and can be very different from $z$ derived from lethal data. Substituting that value into Equation @eq-tcrit can shift $T_{crit}$ substantially and produce non-sensical $T_{crit}$ estimates. For example, a smaller sublethal $z$ can produce a $T_{crit}$ several °C higher than the lethal estimate despite a similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
 :::
@@ -822,7 +836,7 @@ The correction factor is needed when calculating an 'absolute' threshold (e.g., 
 
 If using a 'relative threshold' (`target_surv = "relative"`) then the calculations do not require the correction factor. $CT_{max_{1hr}}$ is the temperature at which $\log_{10}\text{LT}(T)$ crosses $t_\text{ref}$, per draw. For $z$, under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is exactly linear, so $z = -1/\beta_1$ per draw.  The worked example in @sec-joint-extend demonstrates this with a simulation where `up` and $k$ carry strong $T$ effects.
 
-The `extract_tdt()` function automatically applies the right correction factor by using the full posterior distribution for all parameters when using the `target_surv = "absolute"`. When subsampling to calculate $z$ and $CT_{max_{1hr}}$ the posterior draws are taken once across all parameters to compute $z$ and $CT_{max_{1hr}}$ from that single set of draws. As such, the two quantities share draws and their correlation (and the joint pairing used for $T_{crit}$) is preserved.
+Under `target_surv = "absolute"`, `extract_tdt()` includes the asymmetry-correction term automatically, evaluating it per draw from the same posterior of $\ell$, $\text{up}$ and $k$ so that any temperature-dependence of those parameters is propagated. The draws used to compute $z$ and $CT_{max_{1hr}}$ are subsampled once across all parameters, so the two quantities share draws — their correlation, and the joint pairing used for $T_{crit}$, is preserved.
 
 :::
 
@@ -839,42 +853,25 @@ et_bb  <- extract_tdt(wf_bb,  target_surv = "relative", t_ref = 60, time_multipl
                       ndraws = 1000, lethal = TRUE)
 ```
 
+`get_tls_draws()` merges the per-draw $z$, $CT_{max_{1hr}}$ and $T_{crit}$ into one tibble, joined on `.draw` so the three stay on the same posterior draw (preserving their joint correlation for the contrasts and densities below).
+
 ```{r tls-recovery-table}
 #| label: tbl-tls-recovery
 #| tbl-cap: "Posterior medians and 95% credible intervals for thermal sensitivity ($z$), the critical thermal limit at a 1-hour reference duration ($CT_{max_{1hr}}$), and the rate-multiplier critical temperature ($T_{crit}$, integrated over $r^* \\in [0.1, 1]$ % HI per hour). All three derived via `extract_tdt()` from a single posterior. Each row's truth value is computed analytically from `true_params`."
 
-# Format recovery of the derived TLS quantities.
-# Pull median and interval columns from z or temperature summaries.
-row_from_summary <- function(s, kind = c("z", "temp")) {
-  kind <- match.arg(kind)
-  if (kind == "z") {
-    c(s$z_median, s$z_lower, s$z_upper)
-  } else {
-    c(s$temp_median, s$temp_lower, s$temp_upper)
-  }
+# Format recovery of the derived TLS quantities. get_tls_summary() returns the
+# tidy combined posterior summary (one row per quantity: z, CTmax, Tcrit, with
+# harmonised median/lower/upper); format_interval() renders "median [2.5%, 97.5%]".
+tls_cells <- function(et) {
+  s <- get_tls_summary(et)              # rows ordered z, CTmax, Tcrit
+  format_interval(s$median, s$lower, s$upper)
 }
 
 tls_recovery <- tibble::tibble(
-  Quantity = c("z (°C)", "CTmax at 1 hr (°C)", "T_crit (°C)"),
-  Truth    = c(true_z, true_CTmax, true_T_crit),
-  `Bin. median` = c(row_from_summary(et_bin$z$summary,      "z")[1],
-                    row_from_summary(et_bin$CTmax$summary,  "temp")[1],
-                    row_from_summary(et_bin$T_crit$summary, "temp")[1]),
-  `Bin. lower`  = c(row_from_summary(et_bin$z$summary,      "z")[2],
-                    row_from_summary(et_bin$CTmax$summary,  "temp")[2],
-                    row_from_summary(et_bin$T_crit$summary, "temp")[2]),
-  `Bin. upper`  = c(row_from_summary(et_bin$z$summary,      "z")[3],
-                    row_from_summary(et_bin$CTmax$summary,  "temp")[3],
-                    row_from_summary(et_bin$T_crit$summary, "temp")[3]),
-  `BB median`   = c(row_from_summary(et_bb$z$summary,      "z")[1],
-                    row_from_summary(et_bb$CTmax$summary,  "temp")[1],
-                    row_from_summary(et_bb$T_crit$summary, "temp")[1]),
-  `BB lower`    = c(row_from_summary(et_bb$z$summary,      "z")[2],
-                    row_from_summary(et_bb$CTmax$summary,  "temp")[2],
-                    row_from_summary(et_bb$T_crit$summary, "temp")[2]),
-  `BB upper`    = c(row_from_summary(et_bb$z$summary,      "z")[3],
-                    row_from_summary(et_bb$CTmax$summary,  "temp")[3],
-                    row_from_summary(et_bb$T_crit$summary, "temp")[3])
+  Quantity        = c("z (°C)", "CTmax at 1 hr (°C)", "T_crit (°C)"),
+  Truth           = round(c(true_z, true_CTmax, true_T_crit), 2),
+  Binomial        = tls_cells(et_bin),
+  `Beta-binomial` = tls_cells(et_bb)
 )
 
 tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
@@ -887,29 +884,22 @@ tinytable::tt(tls_recovery, digits = 3, escape = TRUE)
 #| fig-width: 9
 #| fig-height: 3.5
 
-# Plot posterior distributions of the recovered TLS quantities.
-# Join posterior draws by `.draw` so quantities stay paired.
-draws_bin_d <- get_z_draws(et_bin) |>
-  dplyr::inner_join(get_ctmax_draws(et_bin), by = ".draw") |>
-  dplyr::inner_join(get_tcrit_draws(et_bin), by = ".draw") |>
-  dplyr::transmute(z, CTmax_1hr = CTmax, T_crit, model = "Binomial")
-draws_bb_d <- get_z_draws(et_bb) |>
-  dplyr::inner_join(get_ctmax_draws(et_bb),  by = ".draw") |>
-  dplyr::inner_join(get_tcrit_draws(et_bb),  by = ".draw") |>
-  dplyr::transmute(z, CTmax_1hr = CTmax, T_crit, model = "Beta-binomial")
-
-post_long <- dplyr::bind_rows(draws_bin_d, draws_bb_d) |>
-  tidyr::pivot_longer(c(z, CTmax_1hr, T_crit),
+# Plot posterior distributions of the recovered TLS quantities. get_tls_draws()
+# returns the (.draw-aligned) paired posterior of z, CTmax and T_crit per fit.
+post_long <- dplyr::bind_rows(
+    get_tls_draws(et_bin) |> dplyr::mutate(model = "Binomial"),
+    get_tls_draws(et_bb)  |> dplyr::mutate(model = "Beta-binomial")) |>
+  tidyr::pivot_longer(c(z, CTmax, T_crit),
                       names_to = "quantity", values_to = "value") |>
   dplyr::mutate(quantity = factor(quantity,
-                                  levels = c("z", "CTmax_1hr", "T_crit"),
+                                  levels = c("z", "CTmax", "T_crit"),
                                   labels = c("z (°C)",
                                              "CTmax_1hr (°C)",
                                              "T_crit (°C)")))
 
 truth_long <- tibble::tibble(
-  quantity = factor(c("z", "CTmax_1hr", "T_crit"),
-                    levels = c("z", "CTmax_1hr", "T_crit"),
+  quantity = factor(c("z", "CTmax", "T_crit"),
+                    levels = c("z", "CTmax", "T_crit"),
                     labels = levels(post_long$quantity)),
   truth    = c(true_z, true_CTmax, true_T_crit)
 )
@@ -936,44 +926,40 @@ Posterior summary statistics — mean, SD, median, and 95% credible interval —
 #| tbl-cap: "Posterior summaries of $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the joint Bayesian 4PL: posterior mean, standard deviation, median, and 95% credible interval, reported separately for the binomial and beta-binomial fits."
 #| echo: true
 
-# Compare uncertainty in z and CTmax across tutorial fits.
-summarise_draws <- function(x) {
-  q <- stats::quantile(x, c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
-  tibble::tibble(mean = mean(x, na.rm = TRUE),
-                 sd   = stats::sd(x, na.rm = TRUE),
-                 median = q[2], lower = q[1], upper = q[3])
-}
-
+# Posterior summaries of z, CTmax and T_crit per likelihood. get_tls_draws()
+# returns the paired draws (same accessor as the density plot above); we
+# summarise each quantity x fit. The inline numbers below read off this table.
 uncert_summary <- dplyr::bind_rows(
-  summarise_draws(get_z_draws(et_bin)$z)          |> dplyr::mutate(quantity = "z (°C)",              likelihood = "Binomial"),
-  summarise_draws(get_ctmax_draws(et_bin)$CTmax)  |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Binomial"),
-  summarise_draws(get_tcrit_draws(et_bin)$T_crit) |> dplyr::mutate(quantity = "T_crit (°C)",        likelihood = "Binomial"),
-  summarise_draws(get_z_draws(et_bb)$z)           |> dplyr::mutate(quantity = "z (°C)",              likelihood = "Beta-binomial"),
-  summarise_draws(get_ctmax_draws(et_bb)$CTmax)   |> dplyr::mutate(quantity = "CTmax at 1 hr (°C)", likelihood = "Beta-binomial"),
-  summarise_draws(get_tcrit_draws(et_bb)$T_crit)  |> dplyr::mutate(quantity = "T_crit (°C)",        likelihood = "Beta-binomial")
-) |>
-  dplyr::select(quantity, likelihood, mean, sd, median, lower, upper)
+    get_tls_draws(et_bin) |> dplyr::mutate(model = "Binomial"),
+    get_tls_draws(et_bb)  |> dplyr::mutate(model = "Beta-binomial")) |>
+  tidyr::pivot_longer(c(z, CTmax, T_crit),
+                      names_to = "quantity", values_to = "value") |>
+  dplyr::group_by(quantity, likelihood = model) |>
+  dplyr::summarise(mean = mean(value), sd = stats::sd(value),
+                   median = stats::median(value),
+                   lower = stats::quantile(value, 0.025, names = FALSE),
+                   upper = stats::quantile(value, 0.975, names = FALSE),
+                   .groups = "drop") |>
+  dplyr::mutate(
+    quantity   = factor(quantity, c("z", "CTmax", "T_crit"),
+                        c("z (°C)", "CTmax at 1 hr (°C)", "T_crit (°C)")),
+    likelihood = factor(likelihood, c("Binomial", "Beta-binomial"))
+  ) |>
+  dplyr::arrange(likelihood, quantity)
 
-# Scalars for inline reporting in the next paragraph.
-sd_z_bin  <- round(stats::sd(get_z_draws(et_bin)$z),         2)
-sd_z_bb   <- round(stats::sd(get_z_draws(et_bb)$z),          2)
-sd_ct_bin <- round(stats::sd(get_ctmax_draws(et_bin)$CTmax), 2)
-sd_ct_bb  <- round(stats::sd(get_ctmax_draws(et_bb)$CTmax),  2)
-ci_z_bin  <- round(diff(stats::quantile(get_z_draws(et_bin)$z,         c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_z_bb   <- round(diff(stats::quantile(get_z_draws(et_bb)$z,          c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_ct_bin <- round(diff(stats::quantile(get_ctmax_draws(et_bin)$CTmax, c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
-ci_ct_bb  <- round(diff(stats::quantile(get_ctmax_draws(et_bb)$CTmax,  c(0.025, 0.975), names = FALSE, na.rm = TRUE)), 2)
+# Scalars for inline reporting, read straight off uncert_summary (single source).
+g <- function(q, lik, col)
+  uncert_summary[[col]][uncert_summary$quantity == q & uncert_summary$likelihood == lik]
+sd_z_bin  <- round(g("z (°C)",             "Binomial",      "sd"), 2)
+sd_z_bb   <- round(g("z (°C)",             "Beta-binomial", "sd"), 2)
+sd_ct_bin <- round(g("CTmax at 1 hr (°C)", "Binomial",      "sd"), 2)
+sd_ct_bb  <- round(g("CTmax at 1 hr (°C)", "Beta-binomial", "sd"), 2)
+ci_z_bin  <- round(g("z (°C)",             "Binomial", "upper") - g("z (°C)",             "Binomial", "lower"), 2)
+ci_ct_bin <- round(g("CTmax at 1 hr (°C)", "Binomial", "upper") - g("CTmax at 1 hr (°C)", "Binomial", "lower"), 2)
 
 uncert_summary |>
-  dplyr::rename(
-    Quantity   = quantity,
-    Likelihood = likelihood,
-    Mean       = mean,
-    SD         = sd,
-    Median     = median,
-    Lower      = lower,
-    Upper      = upper
-  ) |>
+  dplyr::rename(Quantity = quantity, Likelihood = likelihood, Mean = mean,
+                SD = sd, Median = median, Lower = lower, Upper = upper) |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
@@ -982,6 +968,30 @@ Both $z$ and $CT_{max_{1hr}}$ are estimated precisely, and their credible interv
 Under the binomial likelihood, the posterior SD for $z$ is `r sd_z_bin` °C and its 95% credible interval is `r ci_z_bin` °C wide; $CT_{max_{1hr}}$ has SD `r sd_ct_bin` °C and interval width `r ci_ct_bin` °C.
 
 The beta-binomial fit is slightly wider for both quantities (SD for $z$: `r sd_z_bb` °C; for $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ captures extra-binomial variation and propagates it into the derived quantities. A two-stage pipeline requires an additional bootstrap or delta-method calculation to achieve comparable propagation.
+
+These per-draw values are also available as one aligned table via `get_tls_draws()` — one row per posterior draw, with $z$, $CT_{max_{1hr}}$ and $T_{crit}$ on the **same** draw (and joined within group for grouped fits). That joint pairing is what lets any function of several quantities — a between-group contrast, a ratio, or a derived index — be computed per draw with correctly-correlated uncertainty:
+
+```{r tls-draws-showcase}
+#| label: tls-draws-showcase
+#| echo: true
+#| code-fold: show
+
+# One row per draw; z / CTmax / T_crit aligned on `.draw`. The merge is an inner
+# join on `.draw`, so the quantities stay jointly paired (a column-bind could not).
+d_bin <- get_tls_draws(et_bin)
+head(d_bin)
+
+# z and CTmax co-vary in the posterior -- a relationship only visible on PAIRED
+# draws (summarising the two separately would erase it):
+round(stats::cor(d_bin$z, d_bin$CTmax), 2)
+
+# Because they share a draw, derived per-draw quantities carry the joint
+# uncertainty. CTmax_1hr - 2.5*z is T_crit at the central rate (r* ~ 0.3% HI/h);
+# the full T_crit column is wider because it ALSO integrates the r* prior:
+qs <- c(0.025, 0.5, 0.975)
+stats::quantile(d_bin$CTmax - 2.5 * d_bin$z, qs)   # paired z & CTmax, central rate
+stats::quantile(d_bin$T_crit,                qs)   # + rate uncertainty -> wider
+```
 
 ::: {.callout-important}
 For real data, it is important to compare binomial and beta-binomial fits rather than assuming either likelihood is adequate. When extra dispersion is present, the choice can affect uncertainty and inference.
@@ -1002,11 +1012,11 @@ compare_table <- tibble::tibble(
   quantity   = c("z (°C)", "CTmax at 1 hr (°C)"),
   truth      = c(true_z, true_CTmax),
   ts_bin     = c(stage2_bin$summary$z, stage2_bin$summary$CTmax_1hr),
-  joint_bin  = c(median(draws_bin_d$z),
-                 median(draws_bin_d$CTmax_1hr)),
+  joint_bin  = c(get_z_summary(et_bin)$z_median,
+                 get_ctmax_summary(et_bin)$temp_median),
   ts_bb      = c(stage2_bb$summary$z, stage2_bb$summary$CTmax_1hr),
-  joint_bb   = c(median(draws_bb_d$z),
-                 median(draws_bb_d$CTmax_1hr))
+  joint_bb   = c(get_z_summary(et_bb)$z_median,
+                 get_ctmax_summary(et_bb)$temp_median)
 )
 
 compare_table |>
@@ -1722,11 +1732,11 @@ plot_heat_injury(aphid_hi)
 
 The accumulated injury and end-of-season survival differ across species in line with their thermal limits, and the same single call would map the south-to-north climate gradient (Wuhan hottest, Beijing coolest) onto a corresponding gradient in projected survival — the link Li et al. draw between thermal tolerance and field abundance.
 
-# **Case Study 3: Leaf PSII data** {#sec-leaves}
+# **Case Study 3: Snow gum leaf PSII — light vs dark recovery** {#sec-leaves}
 
-We apply `standardize_data()` → `fit_4pl()` → `extract_tdt()` to photosystem II (PSII) heat-response data from snow gum leaves (*Eucalyptus pauciflora* var. *pauciflora*). Chlorophyll fluorescence measurements of maximum potential quantum efficiency ($F_v/F_m$) were obtained from excised leaf segments of 11 glasshouse-grown trees before heat exposure and again after exposure. The response is retained PSII function, defined as post-exposure $F_v/F_m$ divided by its pre-exposure value and bounded between 0 and 1.
+@arnold_psii_2026 developed a thermal-load-sensitivity (TLS) protocol for photosystem II (PSII) and asked, among other things, whether the light environment a leaf experiences *after* heat exposure changes its apparent heat tolerance. Here we take the snow gum (*Eucalyptus pauciflora*) arm of their Experiment 1: excised leaf sections from six mature trees were heated across a grid of assay temperatures (30–56 °C) and exposure durations (5–120 min), then held either in **darkness** or under **90 min of moderate light** before $F_v/F_m$ was re-measured 16–24 h later. The response — retained PSII function, post-exposure $F_v/F_m$ divided by its pre-exposure value — is a **continuous proportion in $[0, 1]$ with no count denominator**, so the 4PL uses a **Beta** likelihood rather than the beta-binomial of the count case studies. Loss of PSII function is **sublethal**, so we report $z$ and $CT_{max}$ but not $T_{crit}$.
 
-The trials spanned 28–48 °C and 5 min to 2 h of exposure. Replicate plants originated from two glasshouse rooms and were measured over two days; `Day` and `G_Room` therefore enter the model as random intercepts on `mid`.
+We let both $CT_{max}$ and $z$ depend on the recovery condition inside one joint 4PL — a two-group comparison that is also a validation. @arnold_psii_2026 report that post-heat light *lowers* apparent heat tolerance while leaving thermal sensitivity broadly unchanged, so the joint model should place the Light $CT_{max}$ below the Dark one with similar $z$.
 
 ## Data and standardisation {#sec-leaf-data}
 
@@ -1735,321 +1745,49 @@ The trials spanned 28–48 °C and 5 min to 2 h of exposure. Replicate plants or
 #| echo: true
 #| code-fold: show
 
-# Prepare the leaf data.
-# Use the bundled retained-function data.
-leaf_raw <- snowgum_psii
-str(leaf_raw)
+# Bundled Arnold et al. (2026) snow gum PSII data (Experiment 1, light vs dark
+# recovery). Two raw rows with post/pre Fv/Fm marginally above 1 (measurement
+# noise) are already excluded upstream, leaving 394 rows.
+data(snowgum_psii)
+str(snowgum_psii)
 
-# Standardise as a continuous-proportion response for the Beta model.
-leaf_std <- standardize_data(
-  leaf_raw,
-  temp           = "Temp",
-  duration       = "Time",
-  proportion     = "fvfm_prop",
-  random_effects = c("Day", "G_Room"),
-  duration_unit  = "minutes"
-)
-temp_mean <- attr(leaf_std, "tdt_meta")$temp_mean
-
-# Add aliases used by the two-stage comparison code below.
-leaf_std$fvfm_beta  <- leaf_std$survival
-leaf_std$assay_temp <- leaf_std$temp
-
+# `proportion =` (not n_total/n_surv) flags a continuous response: standardize_data()
+# records response_type = "proportion" and clamps to (0.001, 0.999) for the Beta
+# density. `recovery` (Dark/Light) and `plant` (six trees) pass through as the
+# moderator and the random-effect grouping.
+leaf_std <- standardize_data(snowgum_psii, temp = "Temp", duration = "Time",
+                             proportion = "fvfm_prop", duration_unit = "minutes")
 str(leaf_std)
-
 ```
 
 ```{r leaf-zero-fraction}
 #| echo: false
 # Check how often the leaf PSII endpoint reaches zero retained function.
-leaf_n_zero   <- sum(leaf_raw$fvfm_prop <= 0, na.rm = TRUE)
-leaf_n_obs    <- sum(!is.na(leaf_raw$fvfm_prop))
+leaf_n_zero   <- sum(snowgum_psii$fvfm_prop <= 0, na.rm = TRUE)
+leaf_n_obs    <- sum(!is.na(snowgum_psii$fvfm_prop))
 leaf_pct_zero <- round(100 * leaf_n_zero / leaf_n_obs)
 ```
 
-**Response model and zeros.** Unlike the count-based case studies, the leaf response is a continuous proportion with no denominator, so we use a Beta likelihood. The Beta density is undefined at exactly 0 or 1, but `r leaf_n_zero` of `r leaf_n_obs` observations (`r leaf_pct_zero`%) are zeros, indicating complete loss of measurable PSII function. We clamp these values to 0.001 to retain a single Beta model. A zero-inflated Beta model that separately estimates complete shutdown and retained function among non-zero tissues would represent these structural zeros more faithfully, at the cost of an additional dose-dependent component.
+**Response model and zeros.** Unlike the count-based case studies, the leaf response is a continuous proportion with no denominator, so we use a Beta likelihood. The Beta density is undefined at exactly 0 or 1, but `r leaf_n_zero` of `r leaf_n_obs` observations (`r leaf_pct_zero`%) are zeros — complete loss of measurable PSII function at the hottest, longest exposures. `standardize_data()` clamps these to 0.001 so a single Beta model covers the whole surface. A zero-inflated Beta that separately modelled complete shutdown would represent these structural zeros more faithfully, at the cost of an extra dose-dependent component.
 
 ```{r leaf-summary-table}
 #| label: tbl-leaf-summary
-#| tbl-cap: "Summary of the leaf PSII TDT dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
+#| tbl-cap: "Summary of the snow gum leaf PSII dataset after standardisation. Temperature centre is the grand mean used to mean-centre the temperature covariate."
 
-# Format the leaf summary table.
 leaf_summary <- tibble::tibble(
-  `n individuals`              = length(unique(leaf_std$Unique_ID)),
-  `Temperature range (°C)`     = paste(range(leaf_std$assay_temp), collapse = "–"),
-  `Duration range (min)`       = paste(round(range(leaf_std$duration), 2), collapse = "–"),
-  `Temperature centre (°C)`    = attr(leaf_std, "tdt_meta")$temp_mean,
-  `n Day`                      = length(unique(leaf_std$Day)),
-  `n glasshouse room`          = length(unique(leaf_std$G_Room))
+  `n observations`            = nrow(leaf_std),
+  `n trees (plant)`           = nlevels(leaf_std$plant),
+  `Recovery conditions`       = paste(levels(leaf_std$recovery), collapse = ", "),
+  `Temperature range (°C)`    = paste(range(leaf_std$temp), collapse = "–"),
+  `Duration range (min)`      = paste(round(range(leaf_std$duration), 0), collapse = "–"),
+  `Temperature centre (°C)`   = round(attr(leaf_std, "tdt_meta")$temp_mean, 1)
 )
 tinytable::tt(leaf_summary, digits = 2, escape = TRUE)
 ```
 
-## Classical two-stage TDT fits {#sec-leaf-twostep}
+## Joint 4PL with recovery on $CT_{max}$ and $z$ {#sec-leaf-fit}
 
-Before fitting the joint 4PL, we run the classical two-stage pipeline on retained PSII function. Stage 1 fits a logistic curve at each assay temperature to the continuous $F_v/F_m$ proportion in $(0, 1)$; Stage 2 regresses the resulting $\log_{10}\text{LT50}$ estimates on assay temperature. We compare a quasi-binomial logistic fit with maximum-likelihood beta regression having estimated precision $\phi$. Here $\text{LT50}$ denotes the duration at which retained function crosses 0.5.
-
-```{r leaf-two-step-helpers}
-#| label: leaf-two-step-helpers
-#| echo: true
-#| code-fold: show
-
-# Define helper functions for the leaf two-stage comparison.
-fit_stage1_leaf_quasibin_case <- function(dat) {
-  validate_stage1_case <- function(log10_lt50, slope, d) {
-    is.finite(log10_lt50) &&
-      is.finite(slope) &&
-      slope < 0 &&
-      abs(slope) > 1e-4 &&
-      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
-      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
-  }
-
-  dat |>
-    dplyr::group_by(temp) |>
-    dplyr::group_modify(function(d, key) {
-      if (dplyr::n_distinct(d$logd) < 3) {
-        return(tibble::tibble(
-          method       = "Two-stage quasi-binomial",
-          log10_lt50   = NA_real_,
-          stage1_slope = NA_real_,
-          phi          = NA_real_,
-          stage1_ok    = FALSE
-        ))
-      }
-      fit <- suppressWarnings(
-        stats::glm(fvfm_beta ~ logd, data = d,
-                   family = stats::quasibinomial(link = "logit"))
-      )
-      co <- stats::coef(fit)
-      lt <- as.numeric(-co[1] / co[2])
-      sl <- as.numeric(co[2])
-      tibble::tibble(
-        method       = "Two-stage quasi-binomial",
-        log10_lt50   = lt,
-        stage1_slope = sl,
-        phi          = NA_real_,
-        stage1_ok    = validate_stage1_case(lt, sl, d)
-      )
-    }) |>
-    dplyr::ungroup()
-}
-
-fit_stage1_leaf_beta_case <- function(dat) {
-  validate_stage1_case <- function(log10_lt50, slope, d) {
-    is.finite(log10_lt50) &&
-      is.finite(slope) &&
-      slope < 0 &&
-      abs(slope) > 1e-4 &&
-      log10_lt50 >= min(d$logd, na.rm = TRUE) - 0.5 &&
-      log10_lt50 <= max(d$logd, na.rm = TRUE) + 0.5
-  }
-
-  beta_nll <- function(par, y, x) {
-    mu  <- stats::plogis(par[1] + par[2] * x)
-    mu  <- pmin(pmax(mu, 1e-8), 1 - 1e-8)
-    phi <- exp(par[3])
-    a   <- mu * phi
-    b   <- (1 - mu) * phi
-    -sum(stats::dbeta(y, a, b, log = TRUE))
-  }
-
-  dat |>
-    dplyr::group_by(temp) |>
-    dplyr::group_modify(function(d, key) {
-      if (dplyr::n_distinct(d$logd) < 3) {
-        return(tibble::tibble(
-          method       = "Two-stage beta",
-          log10_lt50   = NA_real_,
-          stage1_slope = NA_real_,
-          phi          = NA_real_,
-          stage1_ok    = FALSE
-        ))
-      }
-      fit_glm <- suppressWarnings(
-        stats::glm(fvfm_beta ~ logd, data = d,
-                   family = stats::quasibinomial(link = "logit"))
-      )
-      start <- c(stats::coef(fit_glm), log(20))
-      if (any(!is.finite(start))) {
-        p0 <- pmin(pmax(mean(d$fvfm_beta, na.rm = TRUE), 1e-4), 1 - 1e-4)
-        start <- c(stats::qlogis(p0), -1, log(20))
-      }
-      fit <- try(stats::optim(
-        par     = start,
-        fn      = beta_nll,
-        y       = d$fvfm_beta,
-        x       = d$logd,
-        method  = "BFGS",
-        control = list(maxit = 1000)
-      ), silent = TRUE)
-      if (inherits(fit, "try-error")) {
-        return(tibble::tibble(
-          method       = "Two-stage beta",
-          log10_lt50   = NA_real_,
-          stage1_slope = NA_real_,
-          phi          = NA_real_,
-          stage1_ok    = FALSE
-        ))
-      }
-      co <- fit$par
-      lt <- as.numeric(-co[1] / co[2])
-      sl <- as.numeric(co[2])
-      tibble::tibble(
-        method       = "Two-stage beta",
-        log10_lt50   = lt,
-        stage1_slope = sl,
-        phi          = exp(co[3]),
-        stage1_ok    = validate_stage1_case(lt, sl, d)
-      )
-    }) |>
-    dplyr::ungroup()
-}
-```
-
-```{r leaf-two-step-fit}
-#| label: leaf-two-step-fit
-#| echo: true
-#| code-fold: show
-
-# Fit the leaf two-stage model.
-leaf_stage1_twostep <- dplyr::bind_rows(
-  fit_stage1_leaf_quasibin_case(leaf_std),
-  fit_stage1_leaf_beta_case(leaf_std)
-)
-
-leaf_stage2_twostep <- lapply(
-  split(leaf_stage1_twostep, leaf_stage1_twostep$method),
-  fit_stage2_case,
-  time_multiplier = 1,
-  t_ref           = 60,
-  TC_rate_range   = c(0.1, 1)
-)
-
-leaf_twostep_tdt <- dplyr::bind_rows(
-  lapply(leaf_stage2_twostep, `[[`, "summary")
-)
-
-leaf_twostep_grid <- seq(min(leaf_std$temp) - 1.5,
-                         max(leaf_std$temp) + 1.5, by = 0.05)
-
-leaf_twostep_unc <- list(
-  "Two-stage quasi-binomial" = propagate_twostep_case(
-    leaf_stage2_twostep[["Two-stage quasi-binomial"]]$fit,
-    temp_grid = leaf_twostep_grid,
-    n_sim = 1000, time_multiplier = 1, t_ref = 60,
-    TC_rate_range = c(0.1, 1), seed = 301
-  ),
-  "Two-stage beta" = propagate_twostep_case(
-    leaf_stage2_twostep[["Two-stage beta"]]$fit,
-    temp_grid = leaf_twostep_grid,
-    n_sim = 1000, time_multiplier = 1, t_ref = 60,
-    TC_rate_range = c(0.1, 1), seed = 302
-  )
-)
-
-# The two-stage TDT line/CI are only defined over temperatures that have a valid
-# Stage-1 LT50. Beyond that span the 3-4-point Stage-2 regression extrapolates a
-# bow-tie CI that blows up to ~1e8 min and swamps the plots, so the figures clip
-# each method's line and band to its own Stage-1 temperature range.
-leaf_stage1_range <- leaf_stage1_twostep |>
-  dplyr::filter(stage1_ok) |>
-  dplyr::group_by(method) |>
-  dplyr::summarise(tmin = min(temp), tmax = max(temp), .groups = "drop")
-
-clip_to_stage1 <- function(df) {
-  df |>
-    dplyr::left_join(leaf_stage1_range, by = "method") |>
-    dplyr::filter(temp >= tmin, temp <= tmax) |>
-    dplyr::select(-tmin, -tmax)
-}
-```
-
-```{r leaf-two-step-tdt-table}
-#| label: tbl-leaf-two-step-tdt
-#| tbl-cap: "Classical two-stage TDT quantities for snow gum leaf PSII. Point estimates are from the Stage-2 regression. The 95% CIs for $z$ and $CT_{max_{1hr}}$ both come from 1000 parametric simulations from $\\mathrm{MVN}(\\hat{\\boldsymbol{\\theta}}, \\widehat{\\mathrm{Cov}}(\\hat{\\boldsymbol{\\theta}}))$ of the Stage-2 coefficients. Each Stage-1 $\\log_{10}\\text{LT50}$ is treated as a known point, as is standard practice. $T_{crit}$ is not reported because loss of PSII function is a sublethal endpoint and the rate-multiplier $T_{crit}$ is only meaningful for lethal endpoints."
-
-# Format the leaf two-stage TDT table.
-leaf_twostep_tdt_ci <- dplyr::bind_rows(lapply(
-  names(leaf_twostep_unc),
-  function(m) {
-    pt <- dplyr::filter(leaf_twostep_tdt, method == m)
-    ci <- leaf_twostep_unc[[m]]$summary_ci
-    tibble::tibble(
-      `Stage-1 likelihood` = m,
-      `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
-      `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2),
-      `Stage-2 R2`                 = round(pt$r_squared, 3),
-      `Stage-1 estimates used`     = pt$n_stage1,
-      `Stage-1 estimates excluded` = pt$n_excluded
-    )
-  }
-))
-
-tinytable::tt(leaf_twostep_tdt_ci, escape = TRUE)
-```
-
-```{r leaf-two-step-tdt-line}
-#| label: fig-leaf-two-step-tdt-line
-#| fig-cap: "Classical two-stage TDT lines for snow gum leaf PSII. Points are Stage-1 $\\log_{10}\\text{LT50}$ estimates; lines are the Stage-2 regressions; shaded bands are pointwise 95% confidence intervals from `predict.lm()` on the Stage-2 regression (Stage-1 LT50s treated as known points, as in standard practice). Each line/band is shown only over temperatures with a valid Stage-1 LT50: only 3-4 assay temperatures reach 50% retained function within 120 min. The beta Stage-1 fit allows extra dispersion within each assay temperature, but both approaches reduce to a single point estimate per temperature for Stage 2."
-#| fig-width: 7
-#| fig-height: 4.5
-
-# Build the leaf two-stage TDT line figure.
-leaf_twostep_line_min <- dplyr::bind_rows(lapply(
-  leaf_stage2_twostep,
-  make_twostep_curve_case,
-  temp_grid = leaf_twostep_grid,
-  time_multiplier = 1,
-  output_time_unit = "min"
-))
-
-leaf_twostep_band_min <- dplyr::bind_rows(lapply(
-  names(leaf_twostep_unc),
-  function(m) {
-    leaf_twostep_unc[[m]]$curve_ci |>
-      dplyr::mutate(method = m)
-  }
-))
-
-# Clip each line and band to its valid Stage-1 temperature span.
-leaf_twostep_line_min <- clip_to_stage1(leaf_twostep_line_min)
-leaf_twostep_band_min <- clip_to_stage1(leaf_twostep_band_min)
-
-ggplot2::ggplot() +
-  ggplot2::geom_ribbon(
-    data = leaf_twostep_band_min,
-    ggplot2::aes(x = temp,
-                 ymin = log10(duration_lower),
-                 ymax = log10(duration_upper),
-                 fill = method),
-    alpha = 0.18, colour = NA
-  ) +
-  ggplot2::geom_point(
-    data = dplyr::filter(leaf_stage1_twostep, stage1_ok),
-    ggplot2::aes(x = temp,
-                 y = log10_lt50,
-                 colour = method),
-    size = 2.5
-  ) +
-  ggplot2::geom_line(
-    data = leaf_twostep_line_min,
-    ggplot2::aes(x = temp, y = log10(duration_median),
-                 colour = method),
-    linewidth = 1
-  ) +
-  ggplot2::labs(
-    x = "Assay temperature (C)",
-    y = expression(log[10]~LT[50]~"(min)"),
-    colour = "Two-stage fit",
-    fill   = "Two-stage fit"
-  ) +
-  ggplot2::theme_classic()
-```
-
-## Fitting the joint Bayesian 4PL {#sec-leaf-fit}
-
-`fit_4pl()` is the package's high-level fitting wrapper. It takes the standardised data and configures the joint 4PL for proportional response data: a beta distribution, the disjoint-bounds reparameterisation that keeps the asymptotes identifiable, and a `temp_c` slope on each 4PL sub-parameter. We add random intercepts on `mid` for `Day` and `G_Room` to absorb the day-to-day and room-to-room variation that would otherwise contaminate the dose-response surface.
+We fit $CT_{max}$ and $z$ directly as functions of `recovery` using cell-means coding (`~ 0 + recovery`), so each condition gets its own coefficient. A random intercept on `plant` absorbs among-tree variation in the threshold; `meas_day` has only two levels, too few to estimate a variance, so it is omitted. With the shape parameters left to inherit the same per-condition structure, each recovery condition has its own full dose-response surface, coupled through the shared tree random intercept. The `CTmax`/`z` priors are coding-aware, so cell-means returns the same per-group estimates as treatment coding while reading most directly.
 
 ```{r leaf-fit}
 #| label: leaf-fit
@@ -2057,516 +1795,101 @@ ggplot2::ggplot() +
 #| cache: false
 #| code-fold: show
 
-# Fit the leaf 4PL with a Beta likelihood and random intercepts on `mid`.
+# Beta family is auto-picked from response_type; named here for clarity. The 89
+# clamped structural zeros sit on the Beta boundary and induce a small number of
+# divergent transitions (~1%); adapt_delta is raised to keep them low. The
+# posterior is otherwise well-mixed (Rhat <= 1.003, bulk ESS > 2000).
 wf_leaf <- fit_4pl(
   leaf_std,
-  family         = brms::Beta(link = "identity"),
-  random_effects = c("Day", "G_Room"),
-  chains  = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
-  init    = 0,
-  backend = "cmdstanr",
-  control = list(adapt_delta = 0.995, max_treedepth = 25),
+  ctmax  = ~ 0 + recovery + (1 | plant),
+  z      = ~ 0 + recovery,
+  family = brms::Beta(link = "identity"),
+  t_ref  = 60,
+  iter = 6000, warmup = 3000, seed = 123,
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
   file_refit = "on_change",
-  file    = file.path(models_dir, "fit_leaf_function_4pl")
+  file = file.path(models_dir, "fit_leaf_recovery_4pl")
 )
-
-# Full posterior summary (brms): coefficient table, group-level SDs, family
-# parameters, and HMC diagnostics (Rhat/ESS).
 summary(wf_leaf)
 ```
 
-### Sampling diagnostics
-
 ```{r leaf-diagnostics}
 #| label: tbl-leaf-diagnostics
-#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, high ESS, near-zero divergences."
+#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, high ESS. A small residual divergence count comes from the clamped structural zeros at the Beta boundary."
 #| cache: false
 
-# Format the leaf diagnostics table.
 tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
-
 ```
 
-The diagnostics table is a numerical pass/fail summary. The canonical visual check is the chain trace ("fuzzy caterpillar"): healthy chains overlap and explore the same posterior support; chains that drift, diverge, or hang in different regions signal a problem with the fit.
+## Per-condition thermal limits {#sec-leaf-extract}
 
-```{r leaf-trace-plot}
-#| label: fig-leaf-trace
-#| fig-cap: "Posterior chain traces for the leaf 4PL fixed-effect parameters and the beta dispersion $\\phi$. Each panel overlays four chains; well-mixed chains overlap throughout."
-#| fig-width: 9
-#| fig-height: 6
-#| cache: false
+`tls(by = "recovery")` derives $z$ and $CT_{max_{1hr}}$ for each condition from the shared posterior, so each quantity carries full uncertainty. Loss of PSII function is sublethal, so `lethal = FALSE` and no $T_{crit}$ is returned.
 
-# Build the leaf trace figure.
-brms::mcmc_plot(
-  get_brmsfit(wf_leaf),
-  type     = "trace",
-  variable = c("b_lowraw_Intercept", "b_upraw_Intercept",
-               "b_logk_Intercept",   "b_mid_Intercept",
-               "b_mid_temp_c",       "phi")
-) +
-  ggplot2::theme_classic(base_size = 11) +
-  ggplot2::theme(legend.position = "bottom")
+```{r leaf-tls}
+#| label: leaf-tls
+#| echo: true
 
+leaf_tls <- tls(wf_leaf, by = "recovery", lethal = FALSE)
+leaf_tls$summary
 ```
 
-### Posterior parameters on the natural scale
+```{r leaf-tls-table}
+#| label: tbl-leaf-extract
+#| tbl-cap: "Per-condition TDT summaries for snow gum leaf PSII (relative midpoint threshold), posterior medians with 95% credible intervals. $z$ is the temperature slope on the midpoint ($z = -1/\\beta_1$); $CT_{max_{1hr}}$ is the temperature at which the retained-function threshold is reached after 1 h."
 
-```{r leaf-parameter-table}
-#| label: tbl-leaf-parameters
-#| tbl-cap: "Posterior medians and 95% credible intervals for the leaf 4PL fit, transformed back to the natural scale. `low` and `up` are the bottom and top asymptotes of retained PSII function at the grand-mean temperature; `k` is the slope on $\\log_{10}$ time; `mid` intercept is $\\log_{10}$ threshold time in minutes at the grand-mean temperature; `mid temp_c slope` is $\\beta_1$, from which $z = -1/\\beta_1$."
-
-# Format the leaf parameters table.
-tinytable::tt(tdt_parameter_table(wf_leaf), digits = 3, escape = TRUE)
+leaf_tls_tab <- leaf_tls$summary |>
+  dplyr::mutate(quantity = dplyr::recode(quantity,
+                                         z = "z (°C)", CTmax = "CTmax_1hr (°C)")) |>
+  dplyr::transmute(`Recovery` = recovery, Quantity = quantity,
+                   Median = round(median, 2),
+                   Lower = round(lower, 2), Upper = round(upper, 2))
+tinytable::tt(leaf_tls_tab, escape = TRUE)
 ```
+
+```{r leaf-facts}
+#| echo: false
+.lg <- function(cond, q) leaf_tls$summary$median[leaf_tls$summary$recovery == cond &
+                                                 leaf_tls$summary$quantity == q]
+leaf_ctmax_dark  <- .lg("Dark",  "CTmax"); leaf_ctmax_light <- .lg("Light", "CTmax")
+leaf_z_dark      <- .lg("Dark",  "z");     leaf_z_light     <- .lg("Light", "z")
+```
+
+The joint fit reproduces the direction @arnold_psii_2026 report: 90 min of post-heat light lowers $CT_{max_{1hr}}$ to `r round(leaf_ctmax_light, 1)` °C, below the dark-recovery `r round(leaf_ctmax_dark, 1)` °C, while thermal sensitivity is essentially unchanged ($z$ ≈ `r round(leaf_z_light, 1)` °C under light vs `r round(leaf_z_dark, 1)` °C in the dark). Post-heat light therefore depresses the apparent tolerance limit without altering how steeply tolerance time falls with temperature — matching their summary that light following heat alters tolerance but not sensitivity. Both quantities fall out of a single posterior, with no per-temperature regressions.
 
 ## Retained PSII function curves with observed overlay {#sec-leaf-survival-curves}
 
-Here the library's `survival` interface represents retained PSII function. `predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and durations and returns posterior retained-function proportions. Overlaying observed proportions checks how closely the fitted curves track the data.
+`predict_survival_curves()` evaluates the fitted 4PL on a grid of assay temperatures and durations, here returning posterior retained-function proportions for each recovery condition; overlaying the observed proportions checks how closely the fitted surfaces track the data.
 
 ```{r leaf-survival-curves}
 #| label: fig-leaf-survival-curves
-#| fig-cap: "Posterior curves for retained PSII function in snow gum leaves at each assayed temperature, with 95% credible bands. Coloured points are observed per-replicate retained-function proportions."
+#| fig-cap: "Fitted retained-PSII-function surfaces for snow gum under dark and light post-heat recovery (posterior median and 95% credible band), with observed per-replicate proportions overlaid. The light-recovery curves cross the midpoint at shorter durations, the visual signature of the lower $CT_{max}$."
 #| fig-width: 8
 #| fig-height: 5
+#| echo: true
+#| code-fold: show
 
-# Build the leaf survival curves figure.
-psc_leaf <- predict_survival_curves(
-  wf_leaf,
-  temps     = sort(unique(leaf_std$temp)),
-  ndraws    = 500
-)
-
-# Add the library-facing variable for plotting: `survival` = retained function.
-leaf_std$survival <- leaf_std$fvfm_prop
-
+psc_leaf <- predict_survival_curves(wf_leaf)
 plot_survival_curves(psc_leaf, observed = leaf_std) +
-  ggplot2::labs(x = "Exposure duration (minutes)") +
-  ggplot2::coord_cartesian(xlim = c(0, 120))
-
+  ggplot2::labs(x = "Exposure duration (minutes)",
+                y = "Retained PSII function")
 ```
-
-## TDT landscape {#sec-leaf-landscape}
-
-`derive_tdt_landscape()` evaluates the fitted 4PL on a dense temperature-by-duration grid, and `plot_tdt_landscape()` renders it as a heatmap with contours at 10%, 50%, and 90% retained PSII function. This surface is summarised by the TDT line below.
-
-```{r leaf-landscape}
-#| label: fig-leaf-landscape
-#| fig-cap: "TDT landscape for snow gum PSII function: posterior median retained function across a 120 × 120 grid of assay temperatures × durations. White contours mark 10%, 50%, and 90% retained-function isolines. Overlaid points are observed proportions."
-#| fig-width: 8
-#| fig-height: 6
-#| cache: false
-
-# Build the leaf landscape figure.
-leaf_dur_grid <- seq(min(leaf_std$duration), max(leaf_std$duration),
-                        length.out = 120)
-lsp_leaf <- derive_tdt_landscape(wf_leaf,
-                                   duration_grid = leaf_dur_grid,
-                                   ndraws        = 500)
-plot_tdt_landscape(lsp_leaf, observed = leaf_std)
-```
-
-## TDT line: time to the threshold vs temperature {#sec-leaf-tdt-line}
-
-The one-dimensional **TDT line** gives the predicted time to the retained-function threshold at each temperature. `derive_tdt_curve()` constructs it from the joint fit, and `plot_tdt_curve()` shows linear and $\log_{10}$ time axes side by side. Here we use the relative threshold (the midpoint between the fitted asymptotes); pass `target_surv = "absolute"` for an absolute $F_v/F_m = 0.5$ threshold.
-
-```{r leaf-tdt-line}
-#| label: leaf-tdt-line
-#| echo: true
-#| code-fold: show
-
-# Derive the leaf TDT line summaries.
-ltx_leaf <- derive_tdt_curve(
-  wf_leaf,
-  target_surv      = "relative",
-  temp_grid        = seq(min(leaf_std$temp) - 1.5,
-                         max(leaf_std$temp) + 1.5, by = 0.05),
-  ndraws           = 500,
-  time_multiplier  = 1,
-  output_time_unit = "minutes"
-)
-```
-
-```{r plot-leaf-tdt-line}
-#| label: fig-leaf-tdt-line
-#| fig-cap: "Snow gum leaf PSII function posterior TDT line: predicted time to threshold vs assay temperature, with 95 % credible band. Linear-time panel on the left, $\\log_{10}$-time panel on the right (slope is $-1/z$). Both panels share the same posterior."
-#| fig-width: 9
-#| fig-height: 4
-
-# Build the leaf TDT line figure.
-plot_tdt_curve(ltx_leaf, panels = "both", colour = "#b2182b")
-```
-
-## Classical TDT quantities: $z$, $CT_{max_{1hr}}$ {#sec-leaf-extract}
-
-`extract_tdt()` returns $z$ (read directly from the posterior — at the relative threshold $z = -1/\beta_1$ per draw, the slope of $\text{mid}(T)$) and $CT_{max_{1hr}}$ (the temperature at which the retained-function threshold is reached after 1 h, obtained by per-draw 4PL inversion).
-
-```{r leaf-extract}
-#| label: leaf-extract
-#| echo: true
-#| code-fold: show
-
-# Extract TLS summaries from the leaf 4PL fit.
-et_leaf <- extract_tdt(
-  wf_leaf,
-  target_surv     = "relative",
-  t_ref           = 60,
-  time_multiplier = 1,   # leaf model time is MINUTES; t_ref = 60 => CTmax at 1 h.
-                          # extract_tdt() now auto-derives this from duration_unit,
-                          # but we keep it explicit for clarity.
-  TC_rate_range   = c(0.1, 1),
-  ndraws          = 500,
-  lethal          = FALSE
-)
-```
-
-```{r leaf-extract-table}
-#| label: tbl-leaf-extract
-#| tbl-cap: "TDT summaries for snow gum leaf PSII function, with full posterior uncertainty. $z$ is read directly from the posterior (the temperature slope on $\\text{mid}$; $z = -1/\\beta_1$ at the relative threshold). $CT_{max_{1hr}}$ is the temperature at which the retained-function threshold is reached after 1 h (4PL inversion per draw)."
-
-# Format the leaf TLS summary table.
-leaf_extract <- tibble::tribble(
-  ~Quantity,                        ~Median, ~Lower, ~Upper,
-  "z (°C)",                             et_leaf$z$summary$z_median,
-                                    et_leaf$z$summary$z_lower,
-                                    et_leaf$z$summary$z_upper,
-  "CTmax_1hr (°C)",                 et_leaf$CTmax$summary$temp_median,
-                                    et_leaf$CTmax$summary$temp_lower,
-                                    et_leaf$CTmax$summary$temp_upper
-)
-tinytable::tt(leaf_extract, digits = 2, escape = TRUE)
-```
-
-```{r leaf-ctmax-plot}
-#| label: fig-leaf-ctmax
-#| fig-cap: "Posterior densities of $z$ (left) and $CT_{max_{1hr}}$ (right) for snow gum leaf PSII function. The horizontal bar below each density is the 95% credible interval; the point marks the posterior median. $T_{crit}$ is not shown because loss of PSII function is a sublethal endpoint."
-#| fig-width: 11
-#| fig-height: 3.5
-
-# Build the leaf CTmax figure.
-z_draws_leaf   <- get_z_draws(et_leaf) |>
-  dplyr::transmute(temp = z)
-z_q <- stats::quantile(z_draws_leaf$temp,
-                       c(0.025, 0.5, 0.975), names = FALSE, na.rm = TRUE)
-z_post_leaf <- list(
-  draws   = z_draws_leaf,
-  summary = tibble::tibble(temp_lower  = z_q[1],
-                           temp_median = z_q[2],
-                           temp_upper  = z_q[3])
-)
-
-patchwork::wrap_plots(
-  plot_temperature_density(z_post_leaf,
-                            x_label = expression(italic(z)~"(°C per 10-fold change in time)")),
-  plot_temperature_density(et_leaf$CTmax,
-                            x_label = expression(CT[max[1*hr]]~("°C"))),
-  ncol = 2
-)
-```
-
-
-## Comparison between approaches {#sec-leaf-approach-compare}
-
-The classical two-stage pipeline fits a 0–1 logistic at each temperature, so its LT50 is necessarily the **absolute** $F_v/F_m = 0.5$ crossing; it cannot represent the fitted PSII plateau ($\text{up} \approx 0.78$) or target a relative midpoint. For a like-with-like comparison, this section extracts the joint 4PL at the same absolute threshold (`target_surv = "absolute"`). The main leaf analysis (@sec-leaf-extract, @sec-leaf-tdt-line) instead uses the package-default relative midpoint, representing 50% of the fitted functional range. The absolute $F_v/F_m = 0.5$ crossing occurs within the assayed 5–120 min window only at intermediate temperatures (~39–45 °C).
-
-```{r leaf-approach-compare-table}
-#| label: tbl-leaf-approach-compare
-#| tbl-cap: "Snow gum leaf PSII TDT quantities from the classical two-stage pipeline and the joint Bayesian 4PL, compared at a **common absolute threshold** ($F_v/F_m = 0.5$). The two-stage pipeline forces a 0–1 logistic per temperature and so can only target an absolute 0.5 crossing; for a like-with-like comparison the joint 4PL row is therefore extracted with `target_surv = \"absolute\"` rather than the package-default relative midpoint (the main leaf result in @tbl-leaf-extract uses the relative midpoint, representing 50% of the fitted functional range given the plateau $\\text{up} \\approx 0.78$). Two-stage rows report point estimates with 95% intervals derived from the Stage-2 linear model only; Stage-1 LT50 uncertainty is not propagated. The 4PL row reports posterior medians with 95% credible intervals."
-
-# Format the leaf approach comparison table.
-# Compare like-with-like: the forced-0/1 two-stage can only read an absolute 0.5
-# crossing, so extract the joint 4PL at the same absolute threshold here.
-et_leaf_abs <- extract_tdt(
-  wf_leaf, t_ref = 60, time_multiplier = 1, target_surv = "absolute",
-  ndraws = 500, lethal = FALSE
-)
-
-leaf_compare_approaches <- dplyr::bind_rows(
-  dplyr::bind_rows(lapply(
-    names(leaf_twostep_unc),
-    function(m) {
-      pt <- dplyr::filter(leaf_twostep_tdt, method == m)
-      ci <- leaf_twostep_unc[[m]]$summary_ci
-      tibble::tibble(
-        Approach        = m,
-        `z (C)`         = format_interval(pt$z,         ci$z_lower,     ci$z_upper,     digits = 2),
-        `CTmax_1hr (C)` = format_interval(pt$CTmax_1hr, ci$CTmax_lower, ci$CTmax_upper, digits = 2)
-      )
-    }
-  )),
-  tibble::tibble(
-    Approach = "Joint Bayesian 4PL",
-    `z (C)` = format_interval(et_leaf_abs$z$summary$z_median,
-                              et_leaf_abs$z$summary$z_lower,
-                              et_leaf_abs$z$summary$z_upper,
-                              digits = 2),
-    `CTmax_1hr (C)` = format_interval(et_leaf_abs$CTmax$summary$temp_median,
-                                      et_leaf_abs$CTmax$summary$temp_lower,
-                                      et_leaf_abs$CTmax$summary$temp_upper,
-                                      digits = 2)
-  )
-)
-
-tinytable::tt(leaf_compare_approaches, escape = TRUE)
-```
-
-```{r leaf-approach-compare-tdt-lines}
-#| label: fig-leaf-approach-compare-tdt-lines
-#| fig-cap: "Snow gum leaf PSII TDT-line comparison at a common absolute threshold ($F_v/F_m = 0.5$). The joint 4PL posterior median and 95% credible band (time to $F_v/F_m = 0.5$, `target_surv = \"absolute\"` — the only threshold the forced-0/1 two-stage can target) are shown across the assayed 28–48 °C range; the two classical two-stage lines and their pointwise 95% `predict.lm()` confidence bands are shown only over each method's Stage-1 temperature span (39–48 °C quasi-binomial, 39–45 °C beta), since only those assay temperatures yield a valid Stage-1 LT50. Where they overlap the three methods agree closely; the joint 4PL additionally constrains the cooler temperatures the two-stage cannot reach."
-#| fig-width: 9
-#| fig-height: 4
-
-# Build the leaf approach comparison TDT lines figure.
-leaf_twostep_band_cmp <- dplyr::bind_rows(lapply(
-  names(leaf_twostep_unc),
-  function(m) {
-    leaf_twostep_unc[[m]]$curve_ci |>
-      dplyr::transmute(
-        temp,
-        duration_lower,
-        duration_upper,
-        method = m
-      )
-  }
-))
-
-# Clip two-stage lines to valid Stage-1 temperature spans.
-leaf_twostep_band_cmp <- clip_to_stage1(leaf_twostep_band_cmp)
-leaf_twostep_line_cmp <- clip_to_stage1(leaf_twostep_line_min)
-
-# Derive the joint 4PL line at the same absolute threshold as the two-stage fits.
-ltx_leaf_abs <- derive_tdt_curve(
-  wf_leaf, temp_grid = leaf_twostep_grid, ndraws = 500,
-  time_multiplier = 1, output_time_unit = "minutes", target_surv = "absolute"
-)
-leaf_4pl_line <- ltx_leaf_abs$summary |>
-  dplyr::transmute(temp,
-                   duration_median,
-                   duration_lower,
-                   duration_upper,
-                   method = "Joint Bayesian 4PL") |>
-  dplyr::filter(temp >= min(leaf_std$temp), temp <= max(leaf_std$temp))
-
-leaf_method_cols <- c(
-  "Joint Bayesian 4PL"       = "#b2182b",
-  "Two-stage quasi-binomial"  = "#2166ac",
-  "Two-stage beta"            = "#1b9e77"
-)
-
-p_leaf_cmp_lin <- ggplot2::ggplot() +
-  ggplot2::geom_ribbon(
-    data = leaf_4pl_line,
-    ggplot2::aes(x = temp, ymin = duration_lower, ymax = duration_upper,
-                 fill = method),
-    alpha = 0.20, colour = NA
-  ) +
-  ggplot2::geom_ribbon(
-    data = leaf_twostep_band_cmp,
-    ggplot2::aes(x = temp, ymin = duration_lower, ymax = duration_upper,
-                 fill = method),
-    alpha = 0.15, colour = NA
-  ) +
-  ggplot2::geom_line(
-    data = leaf_4pl_line,
-    ggplot2::aes(x = temp, y = duration_median, colour = method),
-    linewidth = 1
-  ) +
-  ggplot2::geom_line(
-    data = leaf_twostep_line_cmp,
-    ggplot2::aes(x = temp, y = duration_median, colour = method),
-    linewidth = 0.9
-  ) +
-  ggplot2::scale_colour_manual(values = leaf_method_cols) +
-  ggplot2::scale_fill_manual(values   = leaf_method_cols) +
-  ggplot2::labs(x = "Assay temperature (C)",
-                y = expression("Time to "*italic(F)[v]/italic(F)[m]*" = 0.5 (min)"),
-                colour = "Approach", fill = "Approach") +
-  ggplot2::theme_classic() + 
-  ggplot2::coord_cartesian(xlim = c(36, 48))
-
-p_leaf_cmp_log <- p_leaf_cmp_lin +
-  ggplot2::scale_y_log10() +
-  ggplot2::labs(y = expression(log[10]~"time to "*italic(F)[v]/italic(F)[m]*" = 0.5 (min)")) +
-  ggplot2::theme(legend.position = "none")
-
-patchwork::wrap_plots(p_leaf_cmp_lin, p_leaf_cmp_log, ncol = 2) +
-  patchwork::plot_layout(guides = "collect") &
-  ggplot2::theme(legend.position = "bottom")
-```
-
-## Heat injury under reference traces {#sec-leaf-hi}
-
-For this sublethal endpoint, `predict_heat_injury()` is interpreted as projecting cumulative functional injury and retained PSII function through a temperature trace. We specify $T_c$ as an illustrative no-accumulation threshold rather than deriving $T_{crit}$, which is reserved for lethal endpoints.
-
-We illustrate the function on four reference traces built by `make_temperature_scenarios()`: a flat baseline, a single one-hour spike, three one-hour spikes, and a four-day diurnal cycle that mimics a typical summer heatwave. The single-spike trace is calibrated as an analytical sanity check — its spike temperature is set to the posterior median of $CT_{max_{1hr}}$, so by definition the trace delivers approximately one $LT_{50}$ dose by the end of the spike hour. These values are plausible leaf temperatures on sunny, still conditions.
-
-```{r leaf-hi}
-#| label: leaf-hi
-#| echo: true
-#| code-fold: show
-
-# Predict leaf heat injury for the temperature scenarios.
-leaf_T_c       <- 32.5
-leaf_CTmax_med <- et_leaf$CTmax$summary$temp_median
-
-leaf_scens <- make_temperature_scenarios(
-  baseline   = 30,
-  spike_temp = leaf_CTmax_med,
-  n_hours    = 96,
-  spike_times_single = 24,
-  spike_times_multi  = c(24, 48, 72),
-  diurnal_n_days     = 4,
-  diurnal_day_peaks  = c(38.0, 41.0, 44.0, 43.5),
-  diurnal_night_temp = c(20.0, 15.5, 17.5, 19.0),
-  diurnal_peak_fwhm  = 5,
-  diurnal_noise_sd   = 0.5,
-  diurnal_seed       = 1L
-)
-
-leaf_hi <- purrr::map(leaf_scens, function(sc) {
-  predict_heat_injury(trace = sc, workflow = wf_leaf, target_surv = "relative",
-                      T_c = leaf_T_c, trace_unit = "hours", ndraws = 500)
-})
-```
-
-Setting `repair = TRUE` adds a temperature-dependent Sharpe-Schoolfield repair kernel so injury accumulated at hot temperatures can be partially cleared during cooler intervals. Here we re-run only the two scenarios that accrue meaningful HI without repair — the multi-spike and the diurnal traces.
-
-```{r leaf-hi-repair}
-#| label: leaf-hi-repair
-#| echo: true
-#| code-fold: show
-
-# Predict leaf heat injury with temperature-dependent repair.
-leaf_repair_pars <- list(
-  TA = 14065, TAL = 50000, TAH = 120000,
-  TL = 10.5 + 273.15, TH = 32.5 + 273.15, TREF = 30 + 273.15,
-  r_ref = 0.15
-)
-
-leaf_hi_multi_rep <- predict_heat_injury(
-  leaf_scens$multi_spike, wf_leaf, target_surv = "relative",
-  T_c = leaf_T_c, trace_unit = "hours",
-  ndraws = 500, repair = TRUE, repair_pars = leaf_repair_pars
-)
-leaf_hi_diurnal_rep <- predict_heat_injury(
-  leaf_scens$diurnal, wf_leaf, target_surv = "relative",
-  T_c = leaf_T_c, trace_unit = "hours",
-  ndraws = 500, repair = TRUE, repair_pars = leaf_repair_pars
-)
-```
-
-```{r leaf-hi-traces}
-#| label: fig-leaf-hi-traces
-#| fig-cap: "The four reference temperature traces used for the leaf functional-injury prediction. Baseline temperature is 30 °C; 1-hour spikes are set to the posterior median $CT_{max_{1hr}}$ so each spike delivers approximately one threshold dose. The diurnal scenario is a clustered 4-day heatwave: a cool day below $T_c$ followed by three hotter days. The dashed line marks the chosen threshold $T_c = 32.5$ °C."
-#| fig-width: 7
-#| fig-height: 9
-
-# Build the leaf heat-injury traces figure.
-plot_temperature_scenarios(leaf_scens, T_c = leaf_T_c)
-```
-
-```{r leaf-hi-single-noreapair}
-#| label: fig-leaf-hi-single-norep
-#| fig-cap: "Cumulative functional injury (top) and predicted retained PSII function (bottom; plotted through the library's survival interface) under the **single-spike** trace, **no repair**. Because the spike sits at the posterior median $CT_{max_{1hr}}$, approximately one threshold dose accrues by the end of the spike hour."
-#| fig-width: 7
-#| fig-height: 5
-
-# Build the leaf heat-injury single no-repair figure.
-plot_heat_injury(leaf_hi$single_spike)
-```
-
-```{r leaf-hi-multi-noreapair}
-#| label: fig-leaf-hi-multi-norep
-#| fig-cap: "**Multi-spike** trace, **no repair**. Three 1-hour spikes at $CT_{max_{1hr}}$ deliver approximately three threshold doses, driving cumulative functional injury above 100% and retained function toward zero."
-#| fig-width: 7
-#| fig-height: 5
-
-# Build the leaf heat-injury multi no-repair figure.
-plot_heat_injury(leaf_hi$multi_spike)
-```
-
-```{r leaf-hi-multi-rep}
-#| label: fig-leaf-hi-multi-rep
-#| fig-cap: "Same multi-spike trace, **with Sharpe-Schoolfield repair active**. Repair clears most of the dose between spikes, stopping the runaway accumulation seen without repair."
-#| fig-width: 7
-#| fig-height: 5
-
-# Build the leaf heat-injury multi repair figure.
-plot_heat_injury(leaf_hi_multi_rep)
-```
-
-The diurnal scenario (@fig-leaf-hi-diurnal-norep, @fig-leaf-hi-diurnal-rep) approximates a field heatwave. Day 1 remains below $T_c$ and accumulates no injury; days 2–4 each add injury as daily peaks rise. Without repair, cumulative functional injury exceeds 100% by day 4 and predicted retained function declines strongly. With repair, cool periods partly offset injury accumulated near daily peaks.
-
-```{r leaf-hi-diurnal-noreapair}
-#| label: fig-leaf-hi-diurnal-norep
-#| fig-cap: "**4-day diurnal heatwave** trace, **no repair**. The cool first day remains below $T_c$; days 2–4 each accrue functional injury as daily peaks rise."
-#| fig-width: 7
-#| fig-height: 5
-
-# Build the leaf heat-injury diurnal no-repair figure.
-plot_heat_injury(leaf_hi$diurnal)
-```
-
-```{r leaf-hi-diurnal-rep}
-#| label: fig-leaf-hi-diurnal-rep
-#| fig-cap: "Same 4-day heatwave trace, **with Sharpe-Schoolfield repair active**. The cool first day and overnight troughs now act as recovery phases."
-#| fig-width: 7
-#| fig-height: 5
-
-# Build the leaf heat-injury diurnal repair figure.
-plot_heat_injury(leaf_hi_diurnal_rep)
-```
-
-```{r leaf-hi-summary}
-#| label: tbl-leaf-hi-summary
-#| tbl-cap: "Final cumulative functional injury and predicted retained PSII function under each scenario for snow gum leaves, posterior medians with 95% credible intervals."
-
-# Format the leaf heat-injury summary table.
-final_row <- function(hi) {
-  s <- tail(hi$summary, 1)
-  tibble::tibble(
-    `HI median (%)` = round(s$hi_median, 1),
-    `HI lower`      = round(s$hi_lower,  1),
-    `HI upper`      = round(s$hi_upper,  1),
-    `Retained function median` = round(s$surv_median, 3),
-    `Retained function lower`  = round(s$surv_lower,  3),
-    `Retained function upper`  = round(s$surv_upper,  3)
-  )
-}
-
-leaf_hi_table <- dplyr::bind_rows(
-  final_row(leaf_hi$flat)         |> dplyr::mutate(Scenario = "Flat",
-                                                     Repair = "None"),
-  final_row(leaf_hi$single_spike) |> dplyr::mutate(Scenario = "Single spike",
-                                                     Repair = "None"),
-  final_row(leaf_hi$multi_spike)  |> dplyr::mutate(Scenario = "Multi spike",
-                                                     Repair = "None"),
-  final_row(leaf_hi_multi_rep)    |> dplyr::mutate(Scenario = "Multi spike",
-                                                     Repair = "Sharpe-Schoolfield"),
-  final_row(leaf_hi$diurnal)      |> dplyr::mutate(Scenario = "Diurnal (4 days)",
-                                                     Repair = "None"),
-  final_row(leaf_hi_diurnal_rep)  |> dplyr::mutate(Scenario = "Diurnal (4 days)",
-                                                     Repair = "Sharpe-Schoolfield")
-) |>
-  dplyr::select(Scenario, Repair, dplyr::everything())
-
-tinytable::tt(leaf_hi_table, escape = TRUE)
-```
-The snow gum leaf case study takes continuous retained-function proportions through a fitted joint 4PL to posterior TDT summaries and illustrative functional-injury projections. Every derived quantity inherits the posterior of the same fit.
 
 ## Model fit: Bayesian $R^2$ {#sec-leaf-r2}
 
-Loss of PSII function is described by a single joint 4PL (Beta likelihood), so there is one model to report (@tbl-r2-leaf).
+Loss of PSII function is described by a single joint 4PL (Beta likelihood), so there is one model to report (@tbl-r2-leaf). `bayes_R2_tls()` wraps `brms::bayes_R2()` for a fitted workflow and returns a tidy posterior median with its 95% credible interval.
 
-```{r}
+```{r leaf-r2}
 #| label: tbl-r2-leaf
-#| tbl-cap: "Bayesian $R^2$ for the snow gum leaf PSII 4PL fit, from `brms::bayes_R2()`. Posterior median with 95% credible interval."
+#| tbl-cap: "Bayesian $R^2$ for the snow gum leaf PSII 4PL fit, from `bayes_R2_tls()` (a tidy wrapper around `brms::bayes_R2()`). Posterior median with 95% credible interval."
 #| echo: true
 #| code-fold: show
 
-# Format Bayesian R2 for the leaf 4PL fit.
-bayes_r2_table(list(
-  "Leaf PSII (4PL, Beta)" = get_brmsfit(wf_leaf)
-)) |> tinytable::tt(escape = TRUE)
+bayes_R2_tls(wf_leaf) |>
+  dplyr::transmute(
+    Model         = "Leaf PSII (4PL, Beta)",
+    `Bayesian R²` = format_interval(estimate, lower, upper, digits = 3)
+  ) |>
+  tinytable::tt(escape = TRUE)
 ```
 
 # **Case Study 4: Vinegar fly (*Drosophila suzukii*) across sexes**
@@ -2644,14 +1967,14 @@ The per-sex Bayesian $R^2$ for the two mortality fits:
 
 ```{r}
 #| label: tbl-r2-dros
-#| tbl-cap: "Bayesian $R^2$ for the per-sex *D. suzukii* mortality 4PL fits, from `brms::bayes_R2()`. Posterior median with 95% credible interval."
+#| tbl-cap: "Bayesian $R^2$ for the per-sex *D. suzukii* mortality 4PL fits, via `bayes_R2_tls()` (a tidy wrapper around `brms::bayes_R2()`). Posterior median with 95% credible interval."
 #| echo: true
 #| code-fold: show
 
 # Format Bayesian R2 for the Drosophila mortality fits.
 bayes_r2_table(list(
-  Female = get_brmsfit(wf_dros_mort_F),
-  Male   = get_brmsfit(wf_dros_mort_M)
+  Female = wf_dros_mort_F,
+  Male   = wf_dros_mort_M
 )) |> tinytable::tt(escape = TRUE)
 ```
 
@@ -3806,114 +3129,80 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
 
 # **Manuscript Figure 5: cross-case-study summary** {#sec-ms-fig4}
 
-This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. The zebrafish row splits into three ridges (one per life stage) and the vinegar fly row into two (female, male). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for shrimp, zebrafish and leaf, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale in any case.
+This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. Every panel is a group comparison drawn from a single joint fit: three cereal-aphid species (panel a), snow gum under dark vs light post-heat recovery (panel b), zebrafish across two oxygen treatments (panel c), and the vinegar fly by sex (panel d). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for aphids, leaf and zebrafish, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale.
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig4-case-study-densities
-#| fig-cap: "Manuscript Figure 5. Posterior distributions of thermal sensitivity $z$ (left) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: brown shrimp (*Crangon crangon*), snow gum leaf PSII (*Eucalyptus pauciflora*), zebrafish (*Danio rerio*; three life stages, panel c) and the vinegar fly (*Drosophila suzukii*; by sex, panel d). Filled ridges are the posterior densities, coloured by species and level; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study’s own analysis: 1 h for shrimp, zebrafish and leaf (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). For the zebrafish life stages and fly sexes, pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
+#| fig-cap: "Manuscript Figure 5. Posterior distributions of thermal sensitivity $z$ (left of each panel) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: a) three cereal-aphid species (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*), b) snow gum (*Eucalyptus pauciflora*) leaf photosystem II function under dark vs 90-min-light post-heat recovery, c) zebrafish (*Danio rerio*) larvae under normoxia vs hyperoxia, and d) the vinegar fly (*Drosophila suzukii*) by sex. Filled ridges are the posterior densities, coloured by group; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study's own analysis: 1 h for aphids, leaf and zebrafish (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). Within each panel the groups are fit jointly, so pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
 
-# Assemble the manuscript cross-case posterior-density figure.
-# 4PL posterior draws (one row per draw, per case study × group × quantity).
-fig4_draws <- dplyr::bind_rows(
-  tibble::tibble(
-    case_study = "Brown shrimp", group = "Brown shrimp",
-    quantity   = "z",         value = get_z_draws(et_shrimp)$z,
-    .draw      = get_z_draws(et_shrimp)$.draw
-  ),
-  tibble::tibble(
-    case_study = "Brown shrimp", group = "Brown shrimp",
-    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_shrimp)$CTmax,
-    .draw      = get_ctmax_draws(et_shrimp)$.draw
-  ),
-  dplyr::bind_rows(lapply(zf_stages, function(s) {
-    dr <- zf_joint_tdt[[s]]$z$draws  # hand-packaged list (built via tls()): .draw, z, CTmax
-    dplyr::bind_rows(
-      tibble::tibble(case_study = "Zebrafish", group = s,
-                     quantity = "z",         value = dr$z,     .draw = dr$.draw),
-      tibble::tibble(case_study = "Zebrafish", group = s,
-                     quantity = "CTmax_1hr", value = dr$CTmax, .draw = dr$.draw)
-    )
-  })),
-  tibble::tibble(
-    case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
-    quantity   = "z",         value = get_z_draws(et_leaf)$z,
-    .draw      = get_z_draws(et_leaf)$.draw
-  ),
-  tibble::tibble(
-    case_study = "Snow gum leaf PSII", group = "Snow gum leaf PSII",
-    quantity   = "CTmax_1hr", value = get_ctmax_draws(et_leaf)$CTmax,
-    .draw      = get_ctmax_draws(et_leaf)$.draw
-  ),
-  tibble::tibble(
-    case_study = "Vinegar fly (mortality)", group = "Female",
-    quantity   = "z",         value = get_z_draws(tdt_dros_f)$z,
-    .draw      = get_z_draws(tdt_dros_f)$.draw
-  ),
-  tibble::tibble(
-    case_study = "Vinegar fly (mortality)", group = "Female",
-    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_f)$CTmax,
-    .draw      = get_ctmax_draws(tdt_dros_f)$.draw
-  ),
-  tibble::tibble(
-    case_study = "Vinegar fly (mortality)", group = "Male",
-    quantity   = "z",         value = get_z_draws(tdt_dros_m)$z,
-    .draw      = get_z_draws(tdt_dros_m)$.draw
-  ),
-  tibble::tibble(
-    case_study = "Vinegar fly (mortality)", group = "Male",
-    quantity   = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_m)$CTmax,
-    .draw      = get_ctmax_draws(tdt_dros_m)$.draw
-  )
-) |>
-  dplyr::filter(is.finite(value))
+# Assemble the manuscript cross-case posterior-density figure from the four joint
+# 4PL case-study fits. Per-group z and CTmax draws come from the tidy-long tls()
+# output (aphids, leaf, zebrafish) or the per-sex extract_tdt() objects (fly).
+suppressPackageStartupMessages({
+  library(ggplot2); library(dplyr); library(tibble); library(ggridges)
+  library(patchwork); library(ggtext); library(cowplot); library(magick); library(here)
+})
 
-# Posterior median + 95% credible interval from the joint 4PL, one row per
-# case × group × quantity (overlaid on the ridge as a pointrange).
+# A tls() result -> fig4 long draws + summary, relabelling CTmax to the study's
+# reference (1 h here). `modcol` is the moderator column name in the tls output.
+tls_to_fig4 <- function(tls_obj, modcol, case, ctmax_lab = "CTmax_1hr") {
+  relab <- function(q) ifelse(q == "z", "z", ctmax_lab)
+  dr <- tls_obj$draws |>
+    dplyr::filter(quantity %in% c("z", "CTmax")) |>
+    dplyr::transmute(case_study = case, group = as.character(.data[[modcol]]),
+                     quantity = relab(quantity), value, .draw)
+  sm <- tls_obj$summary |>
+    dplyr::filter(quantity %in% c("z", "CTmax")) |>
+    dplyr::transmute(case_study = case, group = as.character(.data[[modcol]]),
+                     quantity = relab(quantity), median, lower, upper)
+  list(draws = dr, summary = sm)
+}
 mk_row <- function(cs, grp, q, med, lo, hi) {
   tibble::tibble(case_study = cs, group = grp, quantity = q,
                  median = med, lower = lo, upper = hi)
 }
 
-zf_rows <- dplyr::bind_rows(lapply(zf_stages, function(s) {
-  z_sum <- zf_joint_tdt[[s]]$z$summary
-  dplyr::bind_rows(
-    mk_row("Zebrafish", s, "z",         z_sum$z_median,     z_sum$z_lower,     z_sum$z_upper),
-    mk_row("Zebrafish", s, "CTmax_1hr", z_sum$CTmax_median, z_sum$CTmax_lower, z_sum$CTmax_upper)
-  )
-}))
+aphid_f4 <- tls_to_fig4(aphid_tls, "species",  "Cereal aphids")
+leaf_f4  <- tls_to_fig4(leaf_tls,  "recovery", "Snow gum leaf PSII")
+zf_f4    <- tls_to_fig4(zf_tls,    "oxygen",   "Zebrafish (oxygen)")
 
-fig4_summary <- dplyr::bind_rows(
-  mk_row("Brown shrimp", "Brown shrimp", "z",
-         et_shrimp$z$summary$z_median,
-         et_shrimp$z$summary$z_lower,
-         et_shrimp$z$summary$z_upper),
-  mk_row("Brown shrimp", "Brown shrimp", "CTmax_1hr",
-         et_shrimp$CTmax$summary$temp_median,
-         et_shrimp$CTmax$summary$temp_lower,
-         et_shrimp$CTmax$summary$temp_upper),
-  zf_rows,
-  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "z",
-         et_leaf$z$summary$z_median,
-         et_leaf$z$summary$z_lower,
-         et_leaf$z$summary$z_upper),
-  mk_row("Snow gum leaf PSII", "Snow gum leaf PSII", "CTmax_1hr",
-         et_leaf$CTmax$summary$temp_median,
-         et_leaf$CTmax$summary$temp_lower,
-         et_leaf$CTmax$summary$temp_upper),
-  # Vinegar fly mortality, by sex. 4PL summaries (z_f/z_m, ctmax4_f/ctmax4_m)
-  # come from the extract_tdt() chunk above; CTmax is the 4 h value.
-  mk_row("Vinegar fly (mortality)", "Female", "z",
-         z_f$z_median, z_f$z_lower, z_f$z_upper),
-  mk_row("Vinegar fly (mortality)", "Female", "CTmax_4hr",
-         ctmax4_f$temp_median, ctmax4_f$temp_lower, ctmax4_f$temp_upper),
-  mk_row("Vinegar fly (mortality)", "Male", "z",
-         z_m$z_median, z_m$z_lower, z_m$z_upper),
-  mk_row("Vinegar fly (mortality)", "Male", "CTmax_4hr",
-         ctmax4_m$temp_median, ctmax4_m$temp_lower, ctmax4_m$temp_upper)
+# Vinegar fly mortality, by sex: separate per-sex fits (absolute 4 h threshold).
+fly_draws <- dplyr::bind_rows(
+  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Female",
+                 quantity = "z",         value = get_z_draws(tdt_dros_f)$z,
+                 .draw = get_z_draws(tdt_dros_f)$.draw),
+  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Female",
+                 quantity = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_f)$CTmax,
+                 .draw = get_ctmax_draws(tdt_dros_f)$.draw),
+  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Male",
+                 quantity = "z",         value = get_z_draws(tdt_dros_m)$z,
+                 .draw = get_z_draws(tdt_dros_m)$.draw),
+  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Male",
+                 quantity = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_m)$CTmax,
+                 .draw = get_ctmax_draws(tdt_dros_m)$.draw)
 )
+fly_summary <- dplyr::bind_rows(
+  mk_row("Vinegar fly (mortality)", "Female", "z",         z_f$z_median, z_f$z_lower, z_f$z_upper),
+  mk_row("Vinegar fly (mortality)", "Female", "CTmax_4hr", ctmax4_f$temp_median, ctmax4_f$temp_lower, ctmax4_f$temp_upper),
+  mk_row("Vinegar fly (mortality)", "Male",   "z",         z_m$z_median, z_m$z_lower, z_m$z_upper),
+  mk_row("Vinegar fly (mortality)", "Male",   "CTmax_4hr", ctmax4_m$temp_median, ctmax4_m$temp_lower, ctmax4_m$temp_upper)
+)
+
+fig4_draws <- dplyr::bind_rows(aphid_f4$draws, leaf_f4$draws, zf_f4$draws, fly_draws) |>
+  dplyr::filter(is.finite(value))
+# Panel a only: trim the aphid display tails to the central 98% per group so its
+# axes stay tight and the contrast brackets sit cleanly (the 95% CIs are still
+# drawn explicitly). Other case studies (b/c/d) are left untouched.
+fig4_draws <- fig4_draws |>
+  dplyr::group_by(case_study, group, quantity) |>
+  dplyr::filter(case_study != "Cereal aphids" |
+                (value <= stats::quantile(value, 0.99) &
+                 value >= stats::quantile(value, 0.01))) |>
+  dplyr::ungroup()
+fig4_summary <- dplyr::bind_rows(aphid_f4$summary, leaf_f4$summary, zf_f4$summary, fly_summary)
 
 # Persist the per-group z/CTmax medians so the manuscript can report figures
 # (e.g. the CTmax_1hr range across case studies) as inline code, not magic
@@ -3921,20 +3210,21 @@ fig4_summary <- dplyr::bind_rows(
 dir.create(here::here("output", "data"), showWarnings = FALSE, recursive = TRUE)
 saveRDS(fig4_summary, here::here("output", "data", "fig4_summary.rds"))
 
-# Manuscript Figure 5 design settings.
-suppressPackageStartupMessages({
-  library(ggplot2); library(dplyr); library(tibble); library(ggridges)
-  library(patchwork); library(ggtext); library(cowplot); library(magick); library(here)
-})
-
 # Facet order: z (left), CTmax (right); fly uses the 4 h CTmax reference.
 fig4_draws   <- mutate(fig4_draws,   quantity = factor(quantity, levels = c("z", "CTmax_1hr", "CTmax_4hr")))
 fig4_summary <- mutate(fig4_summary, quantity = factor(quantity, levels = c("z", "CTmax_1hr", "CTmax_4hr")))
 
-# Colour by species / level; the CI bar + point use a darker tone of the fill.
-vz <- viridisLite::viridis(3, begin = 0.15, end = 0.85)              # zebrafish stages
-fig4_pal <- c("Brown shrimp" = "#C8732B", "Snow gum leaf PSII" = "#4F7942",
-              setNames(vz, zf_stages), "Female" = "#009E73", "Male" = "#E69F00")
+# Group display order. Colour by level; the CI bar + point use a darker tone of
+# the fill. Aphid species reuse the original 3-level viridis palette; snow gum
+# keeps its olive, the fly its green/orange, zebrafish a blue oxygen pair.
+sp_lv  <- c("M_dirhodum", "S_avenae", "R_padi")
+rec_lv <- c("Dark", "Light")
+oxy_lv <- c("normoxia", "hyperoxia")
+vz <- viridisLite::viridis(3, begin = 0.15, end = 0.85)
+fig4_pal <- c(setNames(vz, sp_lv),
+              "Dark" = "#4F7942", "Light" = "#8FB07A",
+              "normoxia" = "#2C7FB8", "hyperoxia" = "#7FCDBB",
+              "Female" = "#009E73", "Male" = "#E69F00")
 darken <- function(col, f = 0.34) { v <- grDevices::col2rgb(col) / 255 * (1 - f); grDevices::rgb(v[1], v[2], v[3]) }
 fig4_pal_dark <- sapply(fig4_pal, darken)
 qlab <- as_labeller(c(z = "italic(z)~(degree*C)", CTmax_1hr = "CT[max[1*hr]]~(degree*C)",
@@ -3958,10 +3248,11 @@ svg_png <- local({
   }
 })
 
-# Trim white margins so the danio stage illustrations are size-comparable.
-danio_src  <- c(young_embryos = "danio_early_v2.svg", old_embryos = "danio_late_embryo_v2.svg", larvae = "danio_larvae_v2.svg")
-danio_trim <- vapply(danio_src, function(f) {
-  o <- tempfile(fileext = ".png"); image_write(image_trim(image_read_svg(P(f), width = 900), fuzz = 8), o); o
+# Trim white margins so the aphid species illustrations are size-comparable
+# (mirrors the original danio-stage y-label treatment for the 3-group panel).
+aphid_src  <- c(M_dirhodum = "aphid_Mdirhodum_V2.png", S_avenae = "aphid_Savenae_V2.png", R_padi = "aphid_Rpadi_V2.png")
+aphid_trim <- vapply(aphid_src, function(f) {
+  o <- tempfile(fileext = ".png"); image_write(image_trim(image_read(P(f)), fuzz = 8), o); o
 }, character(1))
 imgH <- function(p, h) sprintf("<img src='%s' height='%d'/>", p, h)
 imgW <- function(p, w) sprintf("<img src='%s' width='%d'/>", p, w)
@@ -3970,38 +3261,45 @@ sym  <- function(ch, pt) sprintf("<span style='font-size:%dpt'>%s</span>", pt, c
 # pMCMC = twice the smaller posterior tail probability of the paired difference.
 pmcmc <- function(d) { n <- length(d); max(2 * min(sum(d > 0) / n, sum(d < 0) / n), 1 / n) }
 fmtp  <- function(p) ifelse(p < 0.001, "p<0.001", paste0("p=", sub("^0", "", sprintf("%.3f", p))))
-make_brackets <- function(case, glevels) {
+make_brackets <- function(case, glevels, base = 0.10, step = 0.20, cbase = base, cstep = step) {
   ylev <- rev(glevels); ypos <- setNames(seq_along(ylev), ylev); prs <- combn(glevels, 2, simplify = FALSE)
+  sp_all <- sapply(prs, function(pr) abs(ypos[[pr[1]]] - ypos[[pr[2]]])); maxsp <- max(sp_all)
+  # x-offset keyed to the bracket's VERTICAL SPAN: adjacent-pair (inner) brackets
+  # share one thin x-column and the widest (outer) bracket steps right by `step`.
+  # INNER p-values print horizontally to the LEFT of their bar (tucked toward the
+  # data, in the between-row gaps); the OUTER p-value prints to the RIGHT. `base`
+  # offsets the inner column past the CI labels.
   dc <- filter(fig4_draws, case_study == case); rows <- list()
   for (q in as.character(unique(dc$quantity))) {
+    b <- if (grepl("^CTmax", q)) cbase else base
+    s <- if (grepl("^CTmax", q)) cstep else step
     dq <- filter(dc, quantity == q); rng <- range(dq$value); w <- diff(rng); tick <- 0.04 * w
-    sp <- sapply(prs, function(pr) abs(ypos[[pr[1]]] - ypos[[pr[2]]])); maxsp <- max(sp)
     for (i in seq_along(prs)) {
-      pr <- prs[[i]]; ya <- ypos[[pr[1]]]; yb <- ypos[[pr[2]]]; span <- sp[i]
-      xbar <- rng[2] + w * (0.06 + 0.16 * (span - 1))
-      # paired by .draw (joint zebrafish fit; matched draws for the per-sex fly fits)
+      pr <- prs[[i]]; ya <- ypos[[pr[1]]]; yb <- ypos[[pr[2]]]; span <- abs(ya - yb)
+      xbar <- rng[2] + w * (b + s * (span - 1))
       m <- inner_join(filter(dq, group == pr[1])[, c(".draw", "value")],
                       filter(dq, group == pr[2])[, c(".draw", "value")],
                       by = ".draw", suffix = c("_a", "_b"))
-      p <- pmcmc(m$value_a - m$value_b); side <- if (span == maxsp) "R" else "L"
+      p    <- pmcmc(m$value_a - m$value_b)
+      side <- if (span == maxsp) "R" else "L"
       rows[[length(rows) + 1]] <- tibble(quantity = factor(q, levels = levels(fig4_draws$quantity)),
         x = xbar, xt = xbar - tick, side = side,
-        xtext = if (side == "R") xbar + 0.03 * w else xbar - tick - 0.02 * w,
+        xtext = if (side == "R") xbar + 0.04 * w else xbar - tick - 0.04 * w,
         y = min(ya, yb), yend = max(ya, yb), label = fmtp(p))
     }
   }
   bind_rows(rows)
 }
-add_brackets <- function(p, case, glevels) {
-  br <- make_brackets(case, glevels)
+add_brackets <- function(p, case, glevels, base = 0.10, step = 0.20, cbase = base, cstep = step) {
+  br <- make_brackets(case, glevels, base, step, cbase, cstep)
   p + geom_segment(data = br, aes(x = x, xend = x, y = y, yend = yend), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
       geom_segment(data = br, aes(x = xt, xend = x, y = y, yend = y), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
       geom_segment(data = br, aes(x = xt, xend = x, y = yend, yend = yend), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
-      geom_text(data = filter(br, side == "L"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 1, size = 3.1, colour = "grey10", fontface = "bold") +
-      geom_text(data = filter(br, side == "R"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 0, size = 3.1, colour = "grey10", fontface = "bold")
+      geom_text(data = subset(br, side == "L"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 1, size = 3.0, colour = "grey10", fontface = "bold") +
+      geom_text(data = subset(br, side == "R"), aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE, hjust = 0, size = 3.0, colour = "grey10", fontface = "bold")
 }
 fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
-                       texp = 1.15, xexp_r = 0.05, ridge_scale = 0.65,
+                       texp = 1.15, xexp_r = 0.05, xexp_l = 0.18, ridge_scale = 0.65,
                        ridge_scale_ctmax = ridge_scale) {
   d <- filter(fig4_draws,   case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)))
   s <- filter(fig4_summary, case_study == cs) |> mutate(group = factor(group, levels = rev(glevels)), ci_col = fig4_pal_dark[as.character(group)])
@@ -4021,7 +3319,7 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
     geom_label(data = s, aes(median, group, label = sprintf("%.1f [%.1f, %.1f]", median, lower, upper)), inherit.aes = FALSE, vjust = -0.7, size = 3.2, fontface = "bold", colour = "grey10", fill = alpha("white", 0.7), label.size = 0, label.padding = unit(0.08, "lines")) +
     facet_wrap(~ quantity, scales = "free_x", nrow = 1, strip.position = "bottom", labeller = labeller(quantity = qlab)) +
     scale_fill_manual(values = fig4_pal, guide = "none") + scale_colour_identity() +
-    scale_x_continuous(expand = expansion(mult = c(.05, xexp_r))) +
+    scale_x_continuous(expand = expansion(mult = c(xexp_l, xexp_r))) +
     scale_y_discrete(labels = ylabels, expand = expansion(mult = c(.06, texp))) +
     labs(x = NULL, y = NULL, title = title, subtitle = sci, tag = tag) +
     theme_classic(base_size = 13) +
@@ -4032,22 +3330,48 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
 }
 ins <- function(p, f, l, b, r, t) p + inset_element(ggdraw() + draw_image(f), left = l, bottom = b, right = r, top = t, align_to = "full")
 
-fig4_A <- ins(fig4_panel("Brown shrimp", "Brown shrimp", c("Brown shrimp" = ""), "Brown shrimp", "Crangon crangon", "a)", ridge_scale_ctmax = .28), svg_png("shrimp_v2.svg"), .23, .58, .62, .93)
-fig4_B <- ins(fig4_panel("Snow gum leaf PSII", "Snow gum leaf PSII", c("Snow gum leaf PSII" = ""), "Snow gum", "Eucalyptus pauciflora", "b)"), svg_png("snowgum_v4.svg"), .06, .60, .46, .88)
-fig4_C <- add_brackets(fig4_panel("Zebrafish", zf_stages,
-            setNames(c(imgH(danio_trim["young_embryos"], 50), imgH(danio_trim["old_embryos"], 50), imgW(danio_trim["larvae"], 62)), zf_stages),
-            "Zebrafish", "Danio rerio", "c)", texp = 0.62, xexp_r = 0.32), "Zebrafish", zf_stages)
-fig4_C <- ins(fig4_C, svg_png("zebrafish_v2.svg"), .27, .62, .57, .90)
-fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "d)", texp = 1.35, xexp_r = 0.27), "Vinegar fly (mortality)", c("Female", "Male"))
-fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .18, .62, .48, .82)
+# All panel icons are placed in the central gap BETWEEN the z and CTmax facets
+# (centred horizontally on the facet divider, upper-middle vertically), where
+# each panel has whitespace. Top expansion (texp) is reduced accordingly, since
+# the icons no longer sit above the top ridge.
+
+# a) Cereal aphids (3 species) — species illustration + italic name as each
+#    y-label, PLUS a general aphid icon raised into the top whitespace (clear of
+#    the posterior ridges). Extra right expansion makes room for the three
+#    right-stacked contrast brackets.
+fig4_A <- add_brackets(fig4_panel("Cereal aphids", sp_lv,
+            setNames(c(paste0(imgH(aphid_trim["M_dirhodum"], 40), "<br>*M. dirhodum*"),
+                       paste0(imgH(aphid_trim["S_avenae"],   38), "<br>*S. avenae*"),
+                       paste0(imgH(aphid_trim["R_padi"],     38), "<br>*R. padi*")), sp_lv),
+            "Cereal aphids", "three species", "a)", texp = 0.72, xexp_r = 0.38, xexp_l = 0.30),
+            "Cereal aphids", sp_lv, base = 0.30, step = 0.12, cbase = 0.55, cstep = 0.14)
+fig4_A <- ins(fig4_A, P("aphid_Mdirhodum_V2.png"), .44, .56, .69, .96)
+
+# b) Snow gum, dark vs light recovery. Icon enlarged ~30%.
+fig4_B <- add_brackets(fig4_panel("Snow gum leaf PSII", rec_lv,
+            c(Dark = "Dark", Light = "Light"), "Snow gum", "Eucalyptus pauciflora", "b)",
+            texp = 0.5, xexp_r = 0.34), "Snow gum leaf PSII", rec_lv)
+fig4_B <- ins(fig4_B, svg_png("snowgum_v4.svg"), .40, .52, .72, .93)
+
+# c) Zebrafish x oxygen — LARVAL illustration raised and shrunk a touch; ridges
+#    scaled DOWN (0.7) so the tight hyperoxia peaks are not so tall.
+fig4_C <- add_brackets(fig4_panel("Zebrafish (oxygen)", oxy_lv,
+            c(normoxia = "Normoxia", hyperoxia = "Hyperoxia"), "Zebrafish", "Danio rerio", "c)",
+            texp = 0.5, xexp_r = 0.34, ridge_scale = 0.7), "Zebrafish (oxygen)", oxy_lv)
+fig4_C <- ins(fig4_C, svg_png("danio_larvae_v2.svg"), .41, .54, .68, .90)
+
+# d) Vinegar fly by sex.
+fig4_D <- add_brackets(fig4_panel("Vinegar fly (mortality)", c("Female", "Male"), c(Female = sym("♀", 30), Male = sym("♂", 30)), "Vinegar fly", "Drosophila suzukii", "d)", texp = 0.5, xexp_r = 0.34), "Vinegar fly (mortality)", c("Female", "Male"))
+fig4_D <- ins(fig4_D, svg_png("dros_male_v2.svg"), .44, .48, .66, .90)
 
 fig4_final <- (fig4_A | fig4_B) / (fig4_C | fig4_D)
 
 # Also write a standalone high-res PNG so the assembled figure can be imported
 # directly (e.g. into the manuscript or slides) without re-running the chunk.
+# Wider canvas (13.5 in) so the estimate labels are no longer clipped/overlapping.
 dir.create(here("output", "figs"), recursive = TRUE, showWarnings = FALSE)
 ggsave(here("output", "figs", "fig4_case_study_densities.png"), fig4_final,
-       width = 11.5, height = 9.6, dpi = 600, bg = "white")
+       width = 13.5, height = 9.6, dpi = 600, bg = "white")
 
 # Display the saved PNG rather than the live plot object, so the figure's tuned
 # canvas (11.5 x 9.6 in) and inset/bracket positions are not re-flowed by the
