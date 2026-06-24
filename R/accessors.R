@@ -193,6 +193,47 @@ get_tls_draws <- function(et) {
   out
 }
 
+#' Combined posterior summary of z, CTmax and (optionally) T_crit
+#'
+#' Reshapes the per-quantity summaries from an [extract_tdt()] result into one
+#' tidy-long tibble — the summary companion to [get_tls_draws()], and the same
+#' shape [tls()] returns: one row per quantity (per group, for a grouped fit),
+#' with harmonised `median` / `lower` / `upper` columns. `z` and `CTmax` are
+#' always returned; `Tcrit` is included only when [extract_tdt()] was called
+#' with `lethal = TRUE`. (The individual accessors use quantity-specific column
+#' names — `z_median` vs `temp_median` — so this is the tidy way to tabulate or
+#' plot all quantities together.)
+#'
+#' @param et The list returned by [extract_tdt()].
+#' @return A tibble with columns `quantity` (`"z"`, `"CTmax"`, and when available
+#'   `"Tcrit"`), `median`, `lower`, `upper`, plus the moderator column(s) for a
+#'   grouped fit. The `T_crit` rate-floor columns (`TC_rate_*`) are dropped.
+#' @seealso [get_tls_draws()] for the paired per-draw posterior;
+#'   [get_z_summary()], [get_ctmax_summary()], [get_tcrit_summary()] for the
+#'   individual summaries; [tls()], which returns the same tidy shape from a fit.
+#' @examples
+#' \dontrun{
+#' get_tls_summary(extract_tdt(wf, lethal = TRUE))
+#' }
+#' @export
+get_tls_summary <- function(et) {
+  stop_if_not_extract_tdt(et)
+  pick <- function(summ, quantity, med, lo, hi) {
+    mods <- setdiff(names(summ),
+                    c(med, lo, hi, grep("^TC_rate", names(summ), value = TRUE)))
+    out  <- tibble::tibble(quantity = quantity,
+                           median = summ[[med]], lower = summ[[lo]], upper = summ[[hi]])
+    if (length(mods)) tibble::as_tibble(cbind(summ[mods], out)) else out
+  }
+  parts <- list(
+    pick(get_z_summary(et),     "z",     "z_median",    "z_lower",    "z_upper"),
+    pick(get_ctmax_summary(et), "CTmax", "temp_median", "temp_lower", "temp_upper"))
+  if (!is.null(et$T_crit))
+    parts <- c(parts, list(pick(get_tcrit_summary(et), "Tcrit",
+                                "temp_median", "temp_lower", "temp_upper")))
+  dplyr::bind_rows(parts)
+}
+
 #' Posterior draws of heat-injury trajectory
 #'
 #' Long-format tibble of per-draw HI, dose, survival and mortality at every

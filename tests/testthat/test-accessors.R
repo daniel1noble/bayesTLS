@@ -10,6 +10,29 @@ test_that("get_*_draws / get_*_summary reject non-extract_tdt input", {
   expect_error(get_ctmax_summary(list(foo = 1)), "extract_tdt")
   expect_error(get_tcrit_summary(list(foo = 1)), "extract_tdt")
   expect_error(get_tls_draws(list(foo = 1)),     "extract_tdt")
+  expect_error(get_tls_summary(list(foo = 1)),   "extract_tdt")
+})
+
+test_that("get_tls_summary reshapes per-quantity summaries to a tidy long table", {
+  # Harmonises the quantity-specific column names (z_median vs temp_median) into
+  # quantity / median / lower / upper, drops the T_crit rate-floor columns, and
+  # labels quantities z / CTmax / Tcrit (matching tls()).
+  fake <- list(
+    z      = list(summary = tibble::tibble(z_median = 5, z_lower = 4, z_upper = 6)),
+    CTmax  = list(summary = tibble::tibble(temp_lower = 30, temp_median = 31, temp_upper = 32)),
+    T_crit = list(summary = tibble::tibble(TC_rate_low = 0.1, TC_rate_high = 1,
+                                           temp_lower = 20, temp_median = 22, temp_upper = 24))
+  )
+  s <- get_tls_summary(fake)
+  expect_named(s, c("quantity", "median", "lower", "upper"))
+  expect_equal(s$quantity, c("z", "CTmax", "Tcrit"))
+  expect_equal(s$median,   c(5, 31, 22))
+  expect_equal(s$lower,    c(4, 30, 20))
+  expect_equal(s$upper,    c(6, 32, 24))
+  expect_false(any(grepl("TC_rate", names(s))))      # rate-floor columns dropped
+
+  fake$T_crit <- NULL                                # lethal = FALSE
+  expect_equal(get_tls_summary(fake)$quantity, c("z", "CTmax"))
 })
 
 test_that("get_tls_draws inner-joins on .draw: keeps only shared draws, never mis-pairs", {
@@ -129,6 +152,31 @@ test_that("get_tls_draws merges z/CTmax/T_crit on the SAME draw (joint pairing p
   # lethal = FALSE -> z and CTmax only, no T_crit column.
   e2 <- extract_tdt(wf, t_ref = 60, ndraws = 300, lethal = FALSE)
   expect_named(get_tls_draws(e2), c(".draw", "z", "CTmax"))
+})
+
+test_that("get_tls_summary matches the individual summaries and carries the moderator", {
+  skip_unless_brms()
+
+  wf <- load_fixture_workflow()
+  et <- suppressMessages(extract_tdt(wf, t_ref = 60, ndraws = 300, lethal = TRUE))
+  s  <- get_tls_summary(et)
+  expect_named(s, c("quantity", "median", "lower", "upper"))
+  expect_equal(s$quantity, c("z", "CTmax", "Tcrit"))
+  expect_equal(s$median[s$quantity == "z"],     get_z_summary(et)$z_median)
+  expect_equal(s$median[s$quantity == "CTmax"], get_ctmax_summary(et)$temp_median)
+  expect_equal(s$upper[s$quantity == "Tcrit"],  get_tcrit_summary(et)$temp_upper)
+
+  # lethal = FALSE -> z and CTmax only
+  e2 <- extract_tdt(wf, t_ref = 60, ndraws = 300)
+  expect_equal(get_tls_summary(e2)$quantity, c("z", "CTmax"))
+
+  # grouped: one row per quantity x group, moderator preserved
+  wg <- load_fixture_workflow_grouped()
+  sg <- get_tls_summary(suppressMessages(
+    extract_tdt(wg, t_ref = 60, lethal = TRUE, ndraws = NULL)))
+  expect_true(all(c("grp", "quantity", "median", "lower", "upper") %in% names(sg)))
+  expect_setequal(unique(sg$grp), c("A", "B"))
+  expect_equal(nrow(sg), 6L)                          # 3 quantities x 2 groups
 })
 
 test_that("get_tls_draws keeps the moderator and joins WITHIN group (no cross-join)", {
