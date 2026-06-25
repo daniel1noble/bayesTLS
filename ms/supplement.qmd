@@ -3672,6 +3672,70 @@ ggsave(here::here("output", "figs", "fig5_heat_injury.png"), fig5_final,
 knitr::include_graphics(here::here("output", "figs", "fig5_heat_injury.png"))
 ```
 
+```{r}
+#| label: case-study-contrasts
+#| echo: false
+#| message: false
+#| warning: false
+# Calibrated group contrasts and the repair effect, all computed on the SAME
+# posterior draws that produce Figs 5-6. These are the quantities the manuscript
+# Results highlight as impossible under the two-stage pipeline. Saved to
+# output/data/case_study_contrasts.rds so ms.qmd can cite them inline.
+.pm  <- function(d) { d <- d[is.finite(d)]; 2 * min(mean(d > 0), mean(d < 0)) }
+.qci <- function(x) { x <- x[is.finite(x)]; stats::quantile(x, c(.5, .025, .975), names = FALSE) }
+.con <- function(d) { q <- .qci(d); c(med = q[1], lo = q[2], hi = q[3], p = .pm(d)) }
+
+# Group contrast (hi - lo) from a tls()$draws object (tidy-long: <gcol>/quantity/.draw/value).
+.tlsdiff <- function(draws, gcol, q, hi, lo) {
+  w <- draws |> dplyr::filter(quantity == q) |>
+    dplyr::select(.draw, .grp = dplyr::all_of(gcol), value) |>
+    tidyr::pivot_wider(names_from = .grp, values_from = value)
+  .con(w[[hi]] - w[[lo]])
+}
+
+case_contrasts <- list(
+  # Aphids: pairwise (the tolerance ordering, tested)
+  aphid_ct_rp_md = .tlsdiff(aphid_tls$draws, "species", "CTmax", "R_padi", "M_dirhodum"),
+  aphid_z_md_rp  = .tlsdiff(aphid_tls$draws, "species", "z",     "M_dirhodum", "R_padi"),
+  # Zebrafish x oxygen: limit (CTmax) vs sensitivity (z)
+  zf_ct = .tlsdiff(zf_tls$draws, "oxygen", "CTmax", "hyperoxia", "normoxia"),
+  zf_z  = .tlsdiff(zf_tls$draws, "oxygen", "z",     "hyperoxia", "normoxia"),
+  # Snow gum: light penalty on the limit; sensitivity unchanged
+  sg_ct = .tlsdiff(leaf_tls$draws, "recovery", "CTmax", "Light", "Dark"),
+  sg_z  = .tlsdiff(leaf_tls$draws, "recovery", "z",     "Light", "Dark")
+)
+# Vinegar fly: sex contrast (separate per-sex fits -> difference of posteriors)
+.zd <- dplyr::inner_join(get_z_draws(tdt_dros_m), get_z_draws(tdt_dros_f), by = ".draw", suffix = c("M", "F"))
+.cd <- dplyr::inner_join(get_ctmax_draws(tdt_dros_m), get_ctmax_draws(tdt_dros_f), by = ".draw", suffix = c("M", "F"))
+case_contrasts$fly_z  <- .con(.zd$zM - .zd$zF)
+case_contrasts$fly_ct <- .con(.cd$CTmaxM - .cd$CTmaxF)
+
+# Repair effect on end-of-window survival, on PAIRED draws (same posterior draws
+# with vs without the repair kernel) -- a downstream contrast the two-stage cannot
+# make. Aphids, per species, on the May-June Wuhan trace used in Fig 6.
+.repk <- list(TA = 14065, TAL = 50000, TAH = 100000, TL = 15 + 273.15,
+              TH = 35 + 273.15, TREF = 25 + 273.15, r_ref = 0.03)
+set.seed(7)
+.h0 <- predict_heat_injury(aphid_trace[, c("time", "temp")], wf_aphid, target_surv = "relative",
+                           trace_unit = "hours", by = "species", ndraws = 400,
+                           repair = FALSE, save_draws = TRUE)
+set.seed(7)
+.h1 <- predict_heat_injury(aphid_trace[, c("time", "temp")], wf_aphid, target_surv = "relative",
+                           trace_unit = "hours", by = "species", ndraws = 400,
+                           repair = TRUE, repair_pars = .repk, save_draws = TRUE)
+.ts <- max(.h0$draws$time)
+.rep <- dplyr::inner_join(
+  dplyr::filter(.h0$draws, time == .ts) |> dplyr::select(species, .draw, s0 = survival),
+  dplyr::filter(.h1$draws, time == .ts) |> dplyr::select(species, .draw, s1 = survival),
+  by = c("species", ".draw")) |>
+  dplyr::mutate(d = 100 * (s1 - s0))
+case_contrasts$aphid_repair <- lapply(split(.rep$d, .rep$species),
+  function(d) { q <- stats::quantile(d, c(.5, .025, .975), names = FALSE); c(med = q[1], lo = q[2], hi = q[3]) })
+
+dir.create(here::here("output", "data"), recursive = TRUE, showWarnings = FALSE)
+saveRDS(case_contrasts, here::here("output", "data", "case_study_contrasts.rds"))
+```
+
 
 # **Derivation of the correction factors for threshold summaries**
 
