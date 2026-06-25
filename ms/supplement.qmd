@@ -266,6 +266,8 @@ tdt_function_core <- tibble::tribble(
   "Fit",          "fit_4pl()",                   "Fit the joint Bayesian 4PL in one call (builds priors and the brms formula internally). Compare moderator groups in one joint fit with `by = \"<moderator>\"` (midpoint) or `ctmax = ~ 0 + <moderator>` (direct CTmax/z).",
   "Extract",      "extract_tdt()",               "Derive z, CTmax and (for lethal endpoints) T_crit from a `fit_4pl()` model, with full posterior uncertainty; per-group results for fits whose CTmax/z vary by a moderator (`by =`).",
   "Extract",      "tls()",                       "Derive the same quantities per moderator group from ANY fitted 4PL, including hand-coded `brms` models (`by =`); `target_surv` picks the relative or absolute threshold.",
+  "Extract",      "get_tls_est()",               "Pull the derived TLS quantities (z, CTmax, T_crit) out of a `tls()` object as posterior draws or a median + 95% CrI summary -- any or all quantities, per group.",
+  "Extract",      "get_4pl_est()",               "Pull the natural-scale 4PL parameters (low, up, k, mid) out of a fitted workflow as draws or a summary; the 4PL-shape counterpart to `get_tls_est()`.",
   "Predict",      "predict_survival_curves()",   "Posterior survival across a temperature x duration grid, with credible bands (per group via `by =`).",
   "Predict",      "predict_heat_injury()",       "Heat-injury accumulation and predicted survival under a fluctuating temperature trace (optional repair; per group via `by =`).",
   "Plot",         "plot_tdt_curve()",            "Visualise the TDT (LT_x) curve on a log-time axis; companion `plot_*` functions cover each workflow step."
