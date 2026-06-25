@@ -163,10 +163,19 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 #| label: fetch-osf-artifacts
 #| include: false
 #| eval: true
-# Fetch cached simulation outputs + model fits from the public OSF deposit
-# (node c6dxy) so this document renders/reproduces from a fresh clone. The
-# script is check-then-download: tiers already present locally are skipped.
-try(system2("Rscript", here::here("scripts", "fetch_artifacts.R")), silent = TRUE)
+# Cached simulation outputs + model fits live on the public OSF deposit (node
+# c6dxy). Download them ONLY if they are not already present locally, using the
+# same markers scripts/fetch_artifacts.R checks (results tier:
+# sim_twostage/per_sim_*.rds; models tier: models/*.rds). No-op when the data
+# are already present (e.g. via `make data`, or the symlinked output/ in the
+# out-of-tree render dir); and it never errors if the fetch script is not
+# reachable from the render directory (scripts/ is not synced there).
+.have_results <- length(Sys.glob(here::here("output", "sim_twostage", "per_sim_*.rds"))) > 0
+.have_models  <- length(Sys.glob(here::here("output", "models", "*.rds"))) > 0
+.fetch_script <- here::here("scripts", "fetch_artifacts.R")
+if (!(.have_results && .have_models) && file.exists(.fetch_script)) {
+  try(system2("Rscript", .fetch_script, stdout = FALSE, stderr = FALSE), silent = TRUE)
+}
 ```
 
 # **General Introduction**
