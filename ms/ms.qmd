@@ -814,7 +814,7 @@ We thank Johannes Overgaard, Joey Bernhardt, Wilco Verbeck, Jennifer Sunday, Ign
 
 # Author contributions {.unnumbered}
 
-D.W.A.N.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.P.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.A.A.: Conceptualization, Methodology, Investigation, Resources, Writing – Review & Editing. All authors contributed to interpretation of results, reviewed and edited the manuscript, approved the final version, and agree to be accountable for the work.
+D.W.A.N.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.P.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.A.A.: Conceptualization, Methodology, Investigation, Resources, Writing – Review & Editing. S.N.: Conceptualization, Methodology, Software, Investigation, Resources, Writing – Review & Editing. All authors contributed to interpretation of results, reviewed and edited the manuscript, approved the final version, and agree to be accountable for the work.
 
 # Data and code availability {.unnumbered}
 
