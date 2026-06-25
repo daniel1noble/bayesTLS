@@ -247,3 +247,37 @@ test_that("grouped extract_tdt accessors preserve the moderator column (key on g
   zj <- merge(get_z_draws(et), get_ctmax_draws(et), by = c("grp", ".draw"))
   expect_equal(nrow(zj), nrow(get_z_draws(et)))
 })
+
+test_that("get_tls_est pulls summary/draws and filters params from a tls object", {
+  fake <- structure(
+    list(
+      summary = tibble::tibble(
+        quantity = c("z", "CTmax", "Tcrit"),
+        median   = c(3, 40, 30), lower = c(2, 39, 29), upper = c(4, 41, 31)),
+      draws = tibble::tibble(
+        quantity = rep(c("z", "CTmax", "Tcrit"), each = 5),
+        .draw    = rep(1:5, 3), value = as.numeric(1:15)),
+      meta = list()),
+    class = c("tls", "list"))
+
+  s <- get_tls_est(fake, "summary")
+  expect_true(all(c("quantity", "median", "lower", "upper") %in% names(s)))
+  expect_equal(nrow(s), 3L)
+  expect_s3_class(s, "tbl_df")
+
+  d <- get_tls_est(fake, "draws")
+  expect_true(all(c("quantity", ".draw", "value") %in% names(d)))
+  expect_equal(nrow(d), 15L)
+
+  # default is summary
+  expect_equal(get_tls_est(fake), s)
+
+  # params filter, case-insensitive
+  expect_equal(unique(get_tls_est(fake, "summary", "z")$quantity), "z")
+  expect_setequal(unique(get_tls_est(fake, "draws", c("Z", "ctmax"))$quantity),
+                  c("z", "CTmax"))
+
+  # errors
+  expect_error(get_tls_est(list(z = 1, CTmax = 2)), "must be a `tls` object")
+  expect_error(get_tls_est(fake, "summary", "nope"), "No matching")
+})

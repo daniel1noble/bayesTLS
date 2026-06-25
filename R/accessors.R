@@ -234,6 +234,56 @@ get_tls_summary <- function(et) {
   dplyr::bind_rows(parts)
 }
 
+#' Extract TLS estimates (draws or summary) from a `tls` object
+#'
+#' Pulls the posterior `draws` or the `summary` (median + 95% credible interval)
+#' for any or all thermal-load-sensitivity quantities (`z`, `CTmax`, and, when the
+#' fit was extracted with `lethal = TRUE`, `Tcrit`) from a [tls()] result. This is
+#' the accessor companion for `tls` objects, mirroring [get_tls_summary()] /
+#' [get_tls_draws()] for an [extract_tdt()] result. Draws are returned in
+#' tidy-long form (`quantity`, `.draw`, `value`, plus any grouping column), so a
+#' posterior contrast is a join on `.draw` followed by a difference of `value`.
+#'
+#' @param x A `tls` object, the result of [tls()].
+#' @param what Either `"summary"` (the default; median + lower/upper per
+#'   quantity x group) or `"draws"` (one row per posterior draw per quantity x
+#'   group).
+#' @param params Optional character vector selecting quantities to return, matched
+#'   case-insensitively against `"z"`, `"CTmax"`, `"Tcrit"`. `NULL` (default)
+#'   returns all available quantities.
+#' @return A tibble. For `what = "summary"`: columns `quantity`, `median`,
+#'   `lower`, `upper` (plus grouping columns for a grouped fit). For
+#'   `what = "draws"`: columns `quantity`, `.draw`, `value` (plus grouping
+#'   columns).
+#' @seealso [tls()]; [get_tls_summary()] and [get_tls_draws()] for an
+#'   [extract_tdt()] result.
+#' @examples
+#' \dontrun{
+#' fit <- fit_4pl(standardize_data(my_data, temp = "temp", duration = "time",
+#'                                 n_total = "n", n_dead = "dead"))
+#' est <- tls(fit, lethal = TRUE)
+#' get_tls_est(est, "summary")             # all quantities: median + 95% CrI
+#' zd  <- get_tls_est(est, "draws", "z")   # z draws, ready for a contrast
+#' }
+#' @export
+get_tls_est <- function(x, what = c("summary", "draws"), params = NULL) {
+  if (!inherits(x, "tls"))
+    stop("`x` must be a `tls` object (the result of `tls()`). For an ",
+         "`extract_tdt()` result use `get_tls_summary()` / `get_tls_draws()`.",
+         call. = FALSE)
+  what <- match.arg(what)
+  out  <- if (what == "summary") x$summary else x$draws
+  if (!is.null(params)) {
+    avail <- unique(out$quantity)
+    sel   <- avail[tolower(avail) %in% tolower(params)]
+    if (!length(sel))
+      stop("No matching `params`. Available quantities: ",
+           paste(avail, collapse = ", "), ".", call. = FALSE)
+    out <- out[out$quantity %in% sel, , drop = FALSE]
+  }
+  tibble::as_tibble(out)
+}
+
 #' Posterior draws of heat-injury trajectory
 #'
 #' Long-format tibble of per-draw HI, dose, survival and mortality at every
