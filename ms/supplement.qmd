@@ -19,6 +19,7 @@ authors:
     corresponding: true
     affiliations:
       - ref: gu
+      - ref: unsw
 affiliations:
   - id: anu
     name: Division of Ecology and Evolution, Research School of Biology, Australian National University
@@ -33,6 +34,11 @@ affiliations:
     city: Edmonton
     state: Alberta
     country: Canada
+  - id: unsw
+    name: Evolution & Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales
+    city: Sydney
+    state: New South Wales
+    country: Australia
 date: today
 output-file: supp
 format:
@@ -95,10 +101,11 @@ format:
           \OldAuthor[1]{Daniel W.A. Noble\thanks{Corresponding author: \texttt{daniel.noble@anu.edu.au}}}%
           \OldAuthor[1]{Pieter A. Arnold}%
           \OldAuthor[2]{Shinichi Nakagawa}%
-          \OldAuthor[3]{Patrice Pottier\thanks{Corresponding author: \texttt{patrice.pottier@bioenv.gu.se}}}%
+          \OldAuthor[3,4]{Patrice Pottier\thanks{Corresponding author: \texttt{patrice.pottier@bioenv.gu.se}}}%
           \affil[1]{Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia}%
           \affil[2]{Department of Biological Sciences, University of Alberta, Edmonton, Canada}%
           \affil[3]{Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden}%
+          \affil[4]{Evolution \& Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales, Sydney, New South Wales, Australia}%
         }
 bibliography: ../bib/tdt_problems.bib
 csl: ../bib/ecology-letters.csl
@@ -113,11 +120,12 @@ execute:
 ---
 
 ::: {.content-visible when-format="docx"}
-**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Shinichi Nakagawa**^2^, **Patrice Pottier**^3,\*^
+**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Shinichi Nakagawa**^2^, **Patrice Pottier**^3,4,\*^
 
 ^1^Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia.
 ^2^Department of Biological Sciences, University of Alberta, Edmonton, Canada.
 ^3^Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden.
+^4^Evolution & Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales, Sydney, New South Wales, Australia.
 ^\*^Corresponding authors: daniel.noble@anu.edu.au; patrice.pottier@bioenv.gu.se
 :::
 
@@ -151,6 +159,16 @@ models_dir <- here::here("output", "models")
 if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 ```
 
+```{r}
+#| label: fetch-osf-artifacts
+#| include: false
+#| eval: true
+# Fetch cached simulation outputs + model fits from the public OSF deposit
+# (node c6dxy) so this document renders/reproduces from a fresh clone. The
+# script is check-then-download: tiers already present locally are skipped.
+try(system2("Rscript", here::here("scripts", "fetch_artifacts.R")), silent = TRUE)
+```
+
 # **General Introduction**
 
 This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. To cite the approach and the associated R package please use:
@@ -158,6 +176,8 @@ This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) frame
 Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (in preparation). A flexible modelling framework for estimating thermal tolerance and sensitivity.
 
 The supplement has two parts. The first introduces the `bayesTLS` R package using simulated data and empirical case studies. The second reports the extended simulation results and provides the code used to reproduce the main manuscript figures.
+
+The cached simulation outputs and model fits that several chunks below read back via `readRDS()` are archived on the public OSF deposit (node `c6dxy`). They are fetched automatically when this document is rendered (the setup chunk above runs `scripts/fetch_artifacts.R`, which downloads only the tiers not already present locally), or you can pull them ahead of time with `make data`.
 
 # **Introduction to `bayesTLS` R Package**
 
@@ -262,9 +282,9 @@ tdt_function_tour <- tibble::tribble(
   "Fit",              "fit_4pl()",                          "Joint Bayesian 4PL fit; returns a `bayes_tls` object (use `print()`, `summary()`, `plot()`). Group by a moderator with `by = \"<moderator>\"` (midpoint) or `ctmax = ~ 0 + <moderator>` (direct); the moderator is recorded so downstream readers auto-group.",
   "Inspection",       "print.bayes_tls()",                  "Compact one-screen header: data shape, T_bar, asymptote bounds, random-effect grouping, fit status (draws if fitted, spec only otherwise).",
   "Inspection",       "summary.bayes_tls()",                "Delegates to `summary()` on the underlying `brmsfit`; returns a `summary.brmsfit` with the population-level coefficient table, group-level SDs, family parameters, and HMC diagnostics laid out by brms. Extra arguments (e.g. `prob`, `robust`) are passed through.",
-  "Inspection",       "plot.bayes_tls()",                   "Delegates to `plot()` on the underlying `brmsfit`; returns brms's default `mcmc_combo` (density + post-warmup trace, chains coloured) for inspecting MCMC mixing. Extra arguments (e.g. `pars`, `combo`) are passed through.",
+  "Inspection",       "plot.bayes_tls()",                   "Delegates to `plot()` on the underlying `brmsfit`; returns brms's default `mcmc_combo` (density + post-warmup trace, chains coloured) for inspecting MCMC mixing. Extra arguments (e.g. `variable`, `combo`) are passed through.",
   "Inspection",       "has_fit()",                          "Predicate: is a `bayes_tls` workflow fitted (TRUE) or spec-only (FALSE)?",
-  "Inspection",       "extract_4pl_pars()",                 "Posterior draws of the four natural-scale 4PL parameters (low, up, k, mid) at the centring temperature T_bar (per group via `by =`).",
+  "Inspection",       "extract_4pl_pars()",                 "Posterior draws of the natural-scale 4PL parameters: low, up and k, plus the midpoint intercept (mid_int, at the centring temperature T_bar) and temperature slope (mid_temp) — the latter suitable for the analytical heat-injury integral (per group via `by =`).",
   "Inspection",       "get_brmsfit()",                      "Return the underlying `brmsfit` object held inside a `bayes_tls` workflow (for bespoke brms post-processing).",
   "Inspection",       "print.tls()",                        "Compact print method for a `tls` object: shows the per-group TDT summary table.",
   "Accessors",        "get_z_draws()",                      "Per-draw posterior of z from an `extract_tdt()` output.",
@@ -342,7 +362,7 @@ The manuscript examples use the following model specifications:
 - **Cereal aphids**: lethal survival counts were fit with a beta-binomial 4PL, placing species directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + species`, `z = ~ 0 + species`). No random effects were included. The fitted species-specific posterior was then projected under the unmodified Wuhan May-June 2016 air-temperature trace with `predict_heat_injury(by = "species")`.
 - **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). No random effects were included.
 - **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood. Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with a plant-level random intercept on $CT_{max}$ (`ctmax = ~ 0 + recovery + (1 | plant)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
-- **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. The main mortality summaries use the absolute LT50 threshold and a 4-hour reference exposure; the heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the Ørsted et al. NicheMapR workflow.
+- **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. The separate-fit comparison with Ørsted et al. uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model summary uses the relative midpoint threshold (also at a 4-hour reference). The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the Ørsted et al. NicheMapR workflow.
 
 The exact formulas, priors, sampler settings and diagnostics are shown in the code chunks for each case study. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
@@ -371,7 +391,7 @@ true_params <- list(
 )
 ```
 
-The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. Saavy readers will note that this is technically relative $z$, but because our asymptotes are 0.03 and 0.97, despite these shifts from 0 and 1, we are still at a midpoint of 50% survival. So, in this case, they are the same. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
+The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. Savvy readers will note that this is technically relative $z$, but because our asymptotes are 0.03 and 0.97, despite these shifts from 0 and 1, we are still at a midpoint of 50% survival. So, in this case, they are the same. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
 
 We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating parameters to provide reference values for the fitted models.
 
@@ -396,7 +416,7 @@ true_T_crit <- true_CTmax - 2.5 * true_z
 
 #### Step 2 — Simulated study design {#sec-sim-step2}
 
-We mimic a well-replicated TDT experiment: five assay temperatures crossed with six log-spaced exposure durations, with 30 replicates of 30 individuals per cell. The resulting 900 trials and 27,000 individuals make parameter recovery clear but the the case studies below and simulations illustrate less information-rich designs.
+We mimic a well-replicated TDT experiment: five assay temperatures crossed with six log-spaced exposure durations, with 30 replicates of 30 individuals per cell. The resulting 900 trials and 27,000 individuals make parameter recovery clear, but the case studies below and simulations illustrate less information-rich designs.
 
 ```{r sim-design}
 #| label: sim-design
@@ -508,7 +528,10 @@ We fit a binomial GLM with a logit link separately at each assay temperature. Th
 
 # Fit the per-temperature dose-response curves for the classical Stage-1 analysis.
 # Stage 1 uses the package function ts_stage1(): a per-temperature binomial GLM
-# (the field-default Stage 1). Here we assume stage 1 fit liklihoods are correctly specified. Given that the families differ mainly in the LT50 SEs, which Stage-2 discards the LT50 point estimates will not change (much).
+# (the field-default Stage 1). We fit both a binomial and a beta-binomial GLM:
+# the two families differ chiefly in the LT50 standard errors (which the
+# classical Stage 2 discards), so the LT50 *point* estimates are near-identical
+# -- the binomial and beta-binomial columns of tbl-stage1-lt50 confirm this.
 stage1_bin <- ts_stage1(sim_bin, temp = "T", duration = "t",
                         n_surv = "y", n_total = "n", family = "binomial")
 stage1_bb  <- ts_stage1(sim_bb,  temp = "T", duration = "t",
@@ -517,7 +540,7 @@ stage1_bb  <- ts_stage1(sim_bb,  temp = "T", duration = "t",
 
 ```{r stage1-lt50-table}
 #| label: tbl-stage1-lt50
-#| tbl-cap: "Per-temperature Stage-1 estimates of $\\log_{10}\\text{LT50}$ from a binomial GLM with logit link, fit separately at each of the five assay temperatures. Truth values are the simulated midpoints (which coincide with $\\log_{10}\\text{LT50}$ here because the simulation asymptotes are near 0 and 1 and change equally)."
+#| tbl-cap: "Per-temperature Stage-1 estimates of $\\log_{10}\\text{LT50}$, fit at each of the five assay temperatures with a binomial GLM (logit link) and, for comparison, a beta-binomial GLM. Truth values are the simulated midpoints (which coincide with $\\log_{10}\\text{LT50}$ here because the simulation asymptotes are near 0 and 1 and change equally)."
 
 # Format the Stage-1 LT50 estimates and simulation truth.
 stage1_table <- dplyr::full_join(
@@ -556,7 +579,7 @@ stage2_bin <- ts_stage2(stage1_bin, t_ref = 60, time_multiplier = 1)
 stage2_bb  <- ts_stage2(stage1_bb,  t_ref = 60, time_multiplier = 1)
 ```
 
-@fig-stage2-regression visualises the Stage-2 fit. Each point is one Stage-1 $\log_{10}\text{LT50}$ estimate from @tbl-stage1-lt50; the solid line is the OLS regression through them. The slope is $\beta_1$, from which $z = -1/\beta_1$ — i.e., the temperature increase that causes LT50 to change by a factor of 10. The line's height at $\log_{10} 60 \approx 1.78$ (1 hour) is at the temperature equal to $CT_{max_{1hr}}$ — the vertical dotted line drops from this intersection straight to the temperature axis to mark it. The dashed grey line is the simulation truth.
+@fig-stage2-regression visualises the Stage-2 fit. Each point is one Stage-1 $\log_{10}\text{LT50}$ estimate from @tbl-stage1-lt50; the solid line is the OLS regression through them. The slope is $\beta_1$, from which $z = -1/\beta_1$ — i.e., the temperature increase that causes LT50 to change by a factor of 10. The vertical dotted line marks the simulation truth's $CT_{max_{1hr}}$ (the temperature at which the *true* $\log_{10}\text{LT50}(T)$ line crosses $\log_{10} 60 \approx 1.78$, i.e. 1 hour), so the eye can check how close the OLS line passes to it. The dashed grey line is the simulation truth.
 
 ::: {#fig-stage2-regression}
 
@@ -613,7 +636,7 @@ ggplot2::ggplot(stage1_combined,
 Stage-2 OLS regression of $\log_{10}\text{LT50}$ on assay temperature, fit separately to the binomial and beta-binomial simulated datasets. Points are the Stage-1 per-temperature LT50 estimates; solid coloured lines are the OLS fits; the dashed grey line is the simulation truth. The slope of each line equals $\beta_1$, from which $z = -1/\beta_1$. The horizontal dotted line marks $\log_{10} 60$ (1 hour); the vertical dotted line drops from where the truth crosses 1 hour straight down to the temperature axis, marking $CT_{max_{1hr}}$ visually.
 :::
 
-Point estimates of $z$ and $CT_{max_{1hr}}$ are than used as is often without uncertainty associated with these estimates. We compare these to the joint Bayesian results to show the 4PL gives the same values under these ideal conditions.
+Point estimates of $z$ and $CT_{max_{1hr}}$ are then used as-is, often without uncertainty associated with these estimates. We compare these to the joint Bayesian results to show the 4PL gives the same values under these ideal conditions.
 
 ::: {.callout-important}
 Classical two-stage analyses often treat Stage-1 $LT_{50}$ estimates as known when fitting Stage-2 models. In otherwords, uncertainty in $LT_{50}$ values are never accounted for in the Stage-2 regression. This can have consequences when estmating slopes and intercepts in Stage-2.
@@ -641,20 +664,24 @@ $$ {#eq-supp-mid-temp}
 
 so that $\beta_1$ encodes how fast the dose-response curve shifts on the time axis as assay temperature changes; $\bar{T}$ is the grand-mean temperature, included so that $\beta_0$ is interpretable as the midpoint at the average assay temperature.
 
-The function library exposes this model as a single call: `fit_4pl()` constructs the brms `bf()` formula, the default weakly-informative priors, and the sampling controls, and returns a workflow object containing the fit. Internally the formula uses the disjoint-bounds reparameterisation described in §[Loading the function library] — `low = 0.001 + \text{inv\_logit}(\text{lowraw}) \cdot 0.498` and `up = 0.501 + \text{inv\_logit}(\text{upraw}) \cdot 0.498` — so the 4PL output is guaranteed to lie in $(0, 1)$ regardless of where MCMC takes the unconstrained `lowraw`, `upraw`, and `logk` parameters. The default also puts a `temp_c` slope on every 4PL sub-parameter; when temperature has no real effect on a given parameter, the slope shrinks toward zero under the prior. We inspect the brms formula `fit_4pl()` builds with:
+The function library exposes this model as a single call: `fit_4pl()` constructs the brms `bf()` formula, the default weakly-informative priors, and the sampling controls, and returns a workflow object containing the fit. Internally the formula uses the disjoint-bounds reparameterisation introduced in this section — `low = 0.001 + \text{inv\_logit}(\text{lowraw}) \cdot 0.498` and `up = 0.501 + \text{inv\_logit}(\text{upraw}) \cdot 0.498` — so the 4PL output is guaranteed to lie in $(0, 1)$ regardless of where MCMC takes the unconstrained `lowraw`, `upraw`, and `logk` parameters. The default also puts a `temp_c` slope on every 4PL sub-parameter; when temperature has no real effect on a given parameter, the slope shrinks toward zero under the prior. We inspect the brms formula `fit_4pl()` builds with:
 
 ```{r show-formula}
 #| label: show-formula
 #| echo: true
 #| code-fold: show
 
-# Show the 4PL brms formula fit_4pl() builds.
+# Show the 4PL brms formula fit_4pl() builds. The asymptote-bound mapping is
+# derived from the package's own bound helper (compute_4pl_bounds) rather than
+# hardcoded, so the displayed coefficients track the pad/gap defaults and cannot
+# drift from what fit_4pl() actually uses.
 f <- make_4pl_formula()
+b <- getFromNamespace("compute_4pl_bounds", "bayesTLS")(0, 1)
 cat("4PL dose-response (disjoint-bounds reparameterisation; survival stays in (0, 1)):\n\n")
 cat("  ", paste(deparse(f$formula[[2]]), collapse = ""),
     "  ~  low + (up - low) / (1 + exp(k * (logd - mid)))\n", sep = "")
-cat("      low = 0.001 + inv_logit(lowraw) * 0.498\n")
-cat("      up  = 0.501 + inv_logit(upraw)  * 0.498\n")
+cat(sprintf("      low = %.3f + inv_logit(lowraw) * %.3f\n", b$low_min, b$low_w))
+cat(sprintf("      up  = %.3f + inv_logit(upraw)  * %.3f\n", b$up_min,  b$up_w))
 cat("      k   = exp(logk)\n\n")
 cat("  Sub-parameter linear predictors (default: a temp_c slope on each):\n")
 for (nm in c("lowraw", "upraw", "logk", "mid"))
@@ -687,7 +714,7 @@ std_bb  <- standardize_data(sim_bb,
                             duration_unit = "minutes")
 ```
 
-We now call `fit_4pl()` twice — once with the built-in `binomial(link = "identity")` family for the non-overdispersed simulation, and once with the default `beta_binomial(link = "identity")` for the overdispersed case. We store the model fitsusing brms's `file = ...` mechanism, so subsequent code calls just reload the cached fits unless the formula or data changes.
+We now call `fit_4pl()` twice — once with the built-in `binomial(link = "identity")` family for the non-overdispersed simulation, and once with the default `beta_binomial(link = "identity")` for the overdispersed case. We store the model fits using brms's `file = ...` mechanism, so subsequent code calls just reload the cached fits unless the formula or data changes.
 
 ```{r fit-4pl-tutorial}
 #| label: fit-4pl-tutorial
@@ -805,7 +832,6 @@ psc_bin <- predict_survival_curves(
 )
 
 plot_survival_curves(psc_bin, observed = std_bin, log_time = TRUE) +
-  ggplot2::scale_x_log10() +
   ggplot2::labs(x = expression(exposure~time~(min)))
 ```
 
@@ -816,7 +842,7 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 The classical TLS quantities are transformations of the fitted joint posterior. The general extractor `tls()` (used in the tutorial below) and the workflow-specific `extract_tdt()` both return the first two quantities below, and the third when `lethal = TRUE`; they share the same `target_surv`, `t_ref` and `lethal` arguments and agree for a `fit_4pl()` fit:
 
-- **$z$** — thermal sensitivity is read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 7 of the manuscript). Under the relative threshold, $\log_{10}\text{LT}(T) = \text{mid}(T)$ and the derivative is simply the linear slope, so $z = -1/\beta_1$ exactly.
+- **$z$** — thermal sensitivity is read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 3 of the manuscript, the midpoint–temperature relation). Under the relative threshold, $\log_{10}\text{LT}(T) = \text{mid}(T)$ and the derivative is simply the linear slope, so $z = -1/\beta_1$ exactly.
 - **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 h of exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
 - **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
 
@@ -826,17 +852,17 @@ $$ {#eq-tcrit}
 
 The threshold one wishes to use is set by the `target_surv` argument (shared by `tls()` and `extract_tdt()`). The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates drifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
 
-**How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value: breakpoint analyses of $\log_{10}$(time-to-thermal-failure) against temperature place the critical temperature anywhere from roughly 27 to 40 °C depending on the assay and taxon (including *Drosophila suzukii* and *Lemna gibba*) [@faber2026]. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
+**How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value: breakpoint analyses of $\log_{10}$(time-to-thermal-failure) against temperature place the critical temperature anywhere from roughly 27 to 40 °C depending on the assay and taxon (including *Drosophila suzukii* and *Lemna gibba*) [@faber2026]. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which we assume net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
 ::: {.callout-warning}
 ## $T_{crit}$ is meaningful only for lethal-endpoint data
 
-The rate-multiplier $T_{crit}$ in Equation @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data and can be used to make a prediction about $T_{crit}$ because $T_{crit}$ should be the tempearture where damage begins to accumlate (0.1-1% is what we assume). Setting `lethal = TRUE` (in `tls()` or `extract_tdt()`) is therefore able to predict $T_{crit}$ with lethal data; with `lethal = FALSE` the extractors return only $z$ and $CT_{max_{1hr}}$. Users with lethal-endpoint data can set `lethal = TRUE` to additionally derive an *estimate* of $T_{crit}$. Note that this is only a prediction and does not negate the need to follow up with studies to validate [see @faber2026].
+The rate-multiplier $T_{crit}$ in @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data. It treats $T_{crit}$ as the temperature where damage begins to accumulate, and so can be used to make a prediction about $T_{crit}$. Users with lethal-endpoint data therefore set `lethal = TRUE` (in `tls()` or `extract_tdt()`) to additionally derive an *estimate* of $T_{crit}$; with `lethal = FALSE` the extractors return only $z$ and $CT_{max_{1hr}}$. Note that this is only a prediction and does not negate the need to follow up with studies to validate [see @faber2026].
 
-For **sublethal** endpoints fitted $z$ instead describes performance loss and can be very different from $z$ derived from lethal data. Substituting that value into Equation @eq-tcrit can shift $T_{crit}$ substantially and produce non-sensical $T_{crit}$ estimates. For example, a smaller sublethal $z$ can produce a $T_{crit}$ several °C higher than the lethal estimate despite a similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
+For **sublethal** endpoints fitted $z$ instead describes performance loss and can be very different from $z$ derived from lethal data. Substituting that value into @eq-tcrit can shift $T_{crit}$ substantially and produce non-sensical $T_{crit}$ estimates. For example, a smaller sublethal $z$ can produce a $T_{crit}$ several °C higher than the lethal estimate despite a similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
 :::
 
-Returned quantities (e.g., $CT_{max,1hr}$ and $z$) inherit the same posterior, so every credible interval reflects joint uncertainty in $(\ell, \text{up}, k, \beta_0, \beta_1)$. The opt-in $T_{crit}$ pools that same posterior with the additional uniform prior on $\log_{10} r^*$.
+Returned quantities (e.g., $CT_{max,1hr}$ and $z$) inherit the same posterior, so every credible interval reflects joint uncertainty in all fitted 4PL parameters. The opt-in $T_{crit}$ pools that same posterior with the additional uniform prior on $\log_{10} r^*$.
 
 ::: {.callout-note}
 
@@ -993,8 +1019,10 @@ d_bin  <- get_tls_draws(et_bin)
 head(d_bin)
 
 # get_tls_summary() is the summary companion -- it returns the same tidy table as
-# tls()$summary above (same quantities, same threshold), confirming the bundled
-# extract_tdt() object and the general tls() extractor agree for a fit_4pl() fit:
+# tls()$summary above (same quantities, same threshold). z and CTmax agree
+# exactly (both paths read the same posterior draws); T_crit agrees only in
+# distribution, since each path samples the r* floor independently, so its median
+# differs by Monte-Carlo error:
 get_tls_summary(et_bin)
 
 # z and CTmax co-vary in the posterior -- a relationship only visible on PAIRED
@@ -1051,7 +1079,7 @@ All four estimators give similar point estimates for $z$ and $CT_{max_{1hr}}$, c
 
 #### One model, two parameterisations {#sec-compare-param}
 
-`fit_4pl()` defaults to the **midpoint** parameterisation: it estimates a linear midpoint $\text{mid}(T)$ and derives $z$ and $CT_{max}$ from its slope and intercept (Equation 7 of the manuscript). The **direct** parameterisation instead places `brms` non-linear parameters on $z$ and the $CT_{max}$ deviation themselves, requested by passing `ctmax = ~ 1` and `z = ~ 1`. The two are reparameterisations of one likelihood, so fitting the *same* simulated data both ways and extracting with `tls()` should return the same posterior for $z$ and $CT_{max_{1hr}}$.
+`fit_4pl()` defaults to the **midpoint** parameterisation: it estimates a linear midpoint $\text{mid}(T)$ and derives $z$ and $CT_{max}$ from its slope and intercept (Equation 3 of the manuscript, the midpoint–temperature relation). The **direct** parameterisation instead places `brms` non-linear parameters on $z$ and the $CT_{max}$ deviation themselves, requested by passing `ctmax = ~ 1` and `z = ~ 1`. The two are reparameterisations of one likelihood, so fitting the *same* simulated data both ways and extracting with `tls()` should return the same posterior for $z$ and $CT_{max_{1hr}}$.
 
 ```{r fit-4pl-direct}
 #| label: fit-4pl-direct
@@ -1107,7 +1135,7 @@ param_equiv <- tibble::tibble(
 tinytable::tt(param_equiv, digits = 3, escape = TRUE)
 ```
 
-The midpoint and direct fits return the same $z$ and $CT_{max_{1hr}}$ to within Monte Carlo error, confirming they are two ways of writing one model. The midpoint form is the default because its linear $\text{mid}(T)$ makes $z$ a closed-form transform of a single slope (Equation 7 of the manuscript); the direct form is available when a prior or hypothesis is most naturally expressed on $z$ or $CT_{max}$ directly.
+The midpoint and direct fits return the same $z$ and $CT_{max_{1hr}}$ to within Monte Carlo error, confirming they are two ways of writing one model. The midpoint form is the default because its linear $\text{mid}(T)$ makes $z$ a closed-form transform of a single slope (Equation 3 of the manuscript, the midpoint–temperature relation); the direct form is available when a prior or hypothesis is most naturally expressed on $z$ or $CT_{max}$ directly.
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
@@ -1233,17 +1261,20 @@ true_log10_LT50 <- function(T_value) {
   mid + (1 / k) * log((up - 0.5) / (0.5 - ell))
 }
 
-# Local z(T) via central finite difference of true log10(LT50)(T).
-true_local_z <- function(T_at, half_step = 0.5) {
+# Local z(T) via central finite difference of true log10(LT50)(T). half_step
+# matches the package's pointwise derivative step (h = 1e-3) for an exact
+# like-for-like comparison against the value derive_z() returns.
+true_local_z <- function(T_at, half_step = 1e-3) {
   -1 / ((true_log10_LT50(T_at + half_step) -
          true_log10_LT50(T_at - half_step)) / (2 * half_step))
 }
 
-# True CTmax_1hr: search the fine grid for the T at which log10(LT50)
-# crosses log10(60).
-T_grid_truth   <- seq(20, 45, by = 0.001)
-ll_grid_truth  <- vapply(T_grid_truth, true_log10_LT50, numeric(1))
-true_CTmax_1hr <- T_grid_truth[which.min(abs(ll_grid_truth - log10(60)))]
+# True CTmax_1hr: solve log10(LT50)(T) = log10(60) directly with uniroot()
+# (a root-find, rather than a grid search, so the truth is exact).
+true_CTmax_1hr <- stats::uniroot(
+  function(T_value) true_log10_LT50(T_value) - log10(60),
+  interval = c(20, 45)
+)$root
 
 truth_ext <- tibble::tibble(
   T               = temps,
@@ -1466,11 +1497,11 @@ The same `fit_4pl()` and `extract_tdt()` calls recover the bent $\log_{10}\text{
 
 ### Heat injury accumulation and survival under a fluctuating trace
 
-TLS models can translate dynamic field temperatures into predicted heat-injury (HI) accumulation toward a threshold such as $LT_{50}$ [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint 4PL posterior propagates uncertainty in $z$ and $CT_{max_{1hr}}$ through the HI integral and uses the fitted surface to predict survival fraction $S_{\text{pred}}(t)$ along the same trajectory (Equation 9 of the manuscript). `predict_heat_injury()` returns both trajectories in one call.
+TLS models can translate dynamic field temperatures into predicted heat-injury (HI) accumulation toward a threshold such as $LT_{50}$ [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint 4PL posterior propagates uncertainty in $z$ and $CT_{max_{1hr}}$ through the HI integral and uses the fitted surface to predict survival fraction $S_{\text{pred}}(t)$ along the same trajectory (the predicted-survival relation, Equations 9–10 of the manuscript). `predict_heat_injury()` returns both trajectories in one call.
 
 #### A simulated temperature profile across 5 days
 
-To mimic conditions for a moderately heat-tolerant ectotherm, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12 °C overnight to a midday peak of 24 °C. We set the net-accumulation threshold $T_c$ to 20 °C, below which HI does not increase [@orsted_finding_2022; @jorgensen_unifying_2021]. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$ °C and $z \approx `r round(true_z, 1)`$ °C, so the daily peak remains below the 1-hour critical limit and generates gradual sublethal accumulation.
+To mimic conditions for a moderately heat-tolerant ectotherm, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12 °C overnight to a midday peak of 24 °C. We set the net-accumulation threshold $T_c$ to 20 °C, below which HI does not increase [@orsted_finding_2022; @jorgensen_unifying_2021]. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$ °C and $z \approx `r round(true_z, 1)`$ °C, so the daily peak remains below the 1-hour critical limit, yet damage accrues at every hour above $T_c$ and the integrated dose ultimately proves lethal.
 
 ```{r hi-trace}
 #| label: hi-trace
@@ -1507,12 +1538,12 @@ ggplot2::ggplot(hi_trace, ggplot2::aes(time, temp)) +
   ggplot2::theme_classic()
 ```
 
-5-day diurnal temperature trace. The dashed line is the damage-accumulation threshold $T_c = 20$ °C; the dotted line is the simulated organism's $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C — well above the daily peaks, so accumulation is sub-lethal and gradual.
+5-day diurnal temperature trace. The dashed line is the damage-accumulation threshold $T_c = 20$ °C; the dotted line is the simulated organism's $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C — well above the daily peaks, yet the dose integrated over many sub-critical hours is ultimately lethal (@fig-hi-trajectory).
 :::
 
 #### Posterior HI and survival via `predict_heat_injury()`
 
-`predict_heat_injury()` takes a temperature trace plus a fitted workflow, propagates the full posterior of $(\ell, \text{up}, k, \beta_0, \beta_1)$ through the HI integral, and returns the median and 95% credible band of cumulative HI and predicted survival at every time point. We supply `T_c` to enforce zero damage accumulation below the threshold (matching Equation 7 of the manuscript). The model time units here are minutes (because `standardize_data()` was called with `duration_unit = "minutes"`), so the trace's `time` is in hours and damage rates are computed accordingly internally.
+`predict_heat_injury()` takes a temperature trace plus a fitted workflow, propagates the full posterior of $(\ell, \text{up}, k, \beta_0, \beta_1)$ through the HI integral, and returns the median and 95% credible band of cumulative HI and predicted survival at every time point. We supply `T_c` to enforce zero damage accumulation below the threshold (matching the heat-injury integral, Equation 8 of the manuscript). The model time units here are minutes (because `standardize_data()` was called with `duration_unit = "minutes"`), so the trace's `time` is in hours and damage rates are computed accordingly internally.
 
 ```{r hi-predict}
 #| label: hi-predict
@@ -1554,7 +1585,7 @@ By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_media
 
 ### Validation: recovering known doses {#sec-hi-validation}
 
-Before trusting `predict_heat_injury()` on real field data, we validate it against analytical truth on three reference traces with known dosing structure. `make_temperature_scenarios()` builds the traces; `planted_dose_from_trace()` implements the classical HI integral (Equation 7) directly given known `z` and `CTmax_1hr`. Posterior medians from `predict_heat_injury()` should sit near the analytical truth, and the 95% credible intervals should cover it.
+Before trusting `predict_heat_injury()` on real field data, we validate it against analytical truth on three reference traces with known dosing structure. `make_temperature_scenarios()` builds the traces; `planted_dose_from_trace()` implements the classical HI integral (Equation 8 of the manuscript) directly given known `z` and `CTmax_1hr`. Posterior medians from `predict_heat_injury()` should sit near the analytical truth, and the 95% credible intervals should cover it.
 
 ```{r hi-validation}
 #| label: hi-validation
@@ -1614,7 +1645,7 @@ The flat trace stays below $T_c$ for its entire duration and so accrues zero HI,
 
 # **Case Study 1: Zebrafish heat tolerance across an oxygen gradient** {#sec-zebrafish-o2}
 
-@saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (38–40 °C) and exposure durations (7.5–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The dual purpose here is methodological *and* a validation: if the joint model is doing its job it should recover the OCLTT prediction the authors report — that added oxygen raises heat tolerance.
+@saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (26 °C controls plus 38–40 °C) and exposure durations (3.8–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The 26 °C control rows are retained in the modelled frame and anchor the upper asymptote. The dual purpose here is methodological *and* a validation: if the joint model is doing its job it should recover the OCLTT prediction the authors report — that added oxygen raises heat tolerance.
 
 ## Data and standardisation {#sec-zf-o2-data}
 
@@ -1853,10 +1884,11 @@ We fit $CT_{max}$ and $z$ directly as functions of `recovery` using cell-means c
 #| cache: false
 #| code-fold: show
 
-# Beta family is auto-picked from response_type; named here for clarity. The 89
+# Beta family is auto-picked from response_type; named here for clarity. The
 # clamped structural zeros sit on the Beta boundary and induce a small number of
-# divergent transitions (~1%); adapt_delta is raised to keep them low. The
-# posterior is otherwise well-mixed (Rhat <= 1.003, bulk ESS > 2000).
+# divergent transitions (exact count + rate reported below the diagnostics
+# table); adapt_delta is raised to keep them low. The posterior is otherwise
+# well-mixed (see the diagnostics table).
 wf_leaf <- fit_4pl(
   leaf_std,
   ctmax  = ~ 0 + recovery + (1 | plant),
@@ -1878,6 +1910,17 @@ summary(wf_leaf)
 
 tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
 ```
+
+```{r leaf-divergence-facts}
+#| label: leaf-divergence-facts
+#| echo: false
+# Exact divergence count and rate, derived from the fit (no magic numbers).
+.leaf_div_n   <- diagnose_tdt_fit(wf_leaf)$divergences
+.leaf_div_tot <- brms::ndraws(get_brmsfit(wf_leaf))
+.leaf_div_pct <- round(100 * .leaf_div_n / .leaf_div_tot, 1)
+```
+
+The clamped structural zeros leave `r .leaf_div_n` divergent transitions out of `r .leaf_div_tot` post-warmup draws (`r .leaf_div_pct`%); the per-recovery $z$ and $CT_{max}$ estimates below are insensitive to them.
 
 ## Per-condition thermal limits {#sec-leaf-extract}
 
@@ -1960,7 +2003,7 @@ We'll first load the data and start with the mortality data:
 ```{r}
 #| label: flydat
 #| echo: true
-#| messages: fales
+#| message: false
 #| warning: false
 #| code-fold: show
 
@@ -1973,13 +2016,11 @@ mort_dros <- dsuzukii |>
             dplyr::summarise(n_total = dplyr::n(), n_dead = sum(dead), .groups = "drop") |>
             arrange(temp, time, sex)
 
-# Keep sex for the separate and joint models below.
-
 ```
 
 
 #### Fitting the 4PL model
-Now that we have the data set up we'll fit the 4PL model:
+Now that we have the data set up we'll fit the 4PL model. Just to showcase how we can use the posterior to make comparisons we'll first model the sexes separately.
 
 ```{r}
 #| label: dros_fit
@@ -2029,14 +2070,20 @@ The per-sex Bayesian $R^2$ for the two mortality fits:
 #| echo: true
 #| code-fold: show
 
-# Format Bayesian R2 for the Drosophila mortality fits.
-bayes_r2_table(list(
-  Female = wf_dros_mort_F,
-  Male   = wf_dros_mort_M
-)) |> tinytable::tt(escape = TRUE)
+# Bayesian R2 for each mortality fit, straight from bayes_R2_tls().
+dplyr::bind_rows(
+  Female = bayes_R2_tls(wf_dros_mort_F),
+  Male   = bayes_R2_tls(wf_dros_mort_M),
+  .id = "Model"
+) |>
+  dplyr::transmute(
+    Model,
+    `Bayesian R²` = format_interval(estimate, lower, upper, digits = 3)
+  ) |>
+  tinytable::tt(escape = TRUE)
 ```
 
-Now that we have the models we can extract the TDT for each sex. Note that the models have converged well with base don the Rhat, but we can also look at the MCMC chains if we need do as per below:
+We can see each model explains quite a bit of variance but not the >90% reported in the paper. That's because all the variance is retained in the joint fit. Regardless, its high!  Note that the models have converged well based on the Rhat, but we can also look at the MCMC chains if we need to as per below:
 
 ```{r}
 #| label: dros_chains
@@ -2059,24 +2106,22 @@ We can extract the TDT parameters now as we have done in other case studies:
 #| echo: true
 #| code-fold: show
 
-# Extract z, CTmax and Tcrit from the separate Drosophila mortality fits.
+# Compute the z, CTmax and Tcrit from the separate Drosophila mortality fits.
 # Use the absolute LT50 threshold and the 4-hour reference exposure.
-  tdt_dros_m <- extract_tdt(wf_dros_mort_M, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
-  tdt_dros_f <- extract_tdt(wf_dros_mort_F, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
+  tdt_dros_m <- tls(wf_dros_mort_M, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
+  tdt_dros_f <- tls(wf_dros_mort_F, target_surv = "absolute", t_ref = 60*4, lethal = TRUE)
 
-# Summarise z.
-  z_m <- get_z_summary(tdt_dros_m)
-  z_f <- get_z_summary(tdt_dros_f)
-
-# Summarise CTmax at 4 hours.
-  ctmax4_m  <- get_ctmax_summary(tdt_dros_m)
-  ctmax4_f  <- get_ctmax_summary(tdt_dros_f)
-
-# Summarise Tcrit.
-  tcrit_m <- get_tcrit_summary(tdt_dros_m)
-  tcrit_f <- get_tcrit_summary(tdt_dros_f)
-
+# We'll use the get_tls_est() function. This allows us to extract the full posterior or the summary for any tls estimate (z, ctmax, tcrit). We'll extract all of them but we can specify which ones.
+# Combine the per-sex tidy-long summaries (quantity / median / lower / upper)
+# into one table, tagging each block with its Sex. This `dros_sex_sum` object
+# feeds both the per-sex TDT table below and the manuscript Figure 5 summary.
+  dros_sex_sum <- dplyr::bind_rows(
+    Female = get_tls_est(tdt_dros_f, "summary"),
+    Male   = get_tls_est(tdt_dros_m, "summary"),
+    .id    = "Sex"
+  )
 ```
+
 
 ```{r}
 #| label: tbl-dros-sex-tdt
@@ -2084,30 +2129,31 @@ We can extract the TDT parameters now as we have done in other case studies:
 #| message: false
 #| warning: false
 
-# Format the Drosophila sex TDT table.
-dros_sex_tdt <- data.frame(
-  Sex = c("Female", "Male"),
-  `z (°C)` = c(
-    format_interval(z_f$z_median, z_f$z_lower, z_f$z_upper),
-    format_interval(z_m$z_median, z_m$z_lower, z_m$z_upper)
-  ),
-  `CTmax (4 h, °C)` = c(
-    format_interval(ctmax4_f$temp_median, ctmax4_f$temp_lower, ctmax4_f$temp_upper),
-    format_interval(ctmax4_m$temp_median, ctmax4_m$temp_lower, ctmax4_m$temp_upper)
-  ),
-  `T_crit (°C)` = c(
-    format_interval(tcrit_f$temp_median, tcrit_f$temp_lower, tcrit_f$temp_upper),
-    format_interval(tcrit_m$temp_median, tcrit_m$temp_lower, tcrit_m$temp_upper)
-  ),
-  check.names = FALSE
-)
+# Format the separate-fit Drosophila sex TDT table from the combined per-sex
+# summaries (same pivot idiom as the joint-fit tables above).
+dros_sex_tdt <- dros_sex_sum |>
+  dplyr::transmute(
+    Sex,
+    quantity = factor(quantity,
+                      levels = c("z", "CTmax", "Tcrit"),
+                      labels = c("z (°C)", "CTmax (4 h, °C)", "T_crit (°C)")),
+    cell     = format_interval(median, lower, upper)
+  ) |>
+  dplyr::arrange(Sex) |>
+  tidyr::pivot_wider(names_from = quantity, values_from = cell)
 
 tinytable::tt(dros_sex_tdt, escape = TRUE)
+
+# Absolute CTmax_4hr medians per sex, for inline reporting (no magic numbers).
+ctmax4_f <- round(dros_sex_sum$median[dros_sex_sum$Sex == "Female" &
+                                        dros_sex_sum$quantity == "CTmax"], 1)
+ctmax4_m <- round(dros_sex_sum$median[dros_sex_sum$Sex == "Male" &
+                                        dros_sex_sum$quantity == "CTmax"], 1)
 ```
 
-The per-sex TDT parameters are summarised in @tbl-dros-sex-tdt. We see that our *z* values (their Table 1: 3.28 for males, 3.03 for females) as well as $CT_{max_{4hr}}$ (35.2 °C for both sexes) pretty much match @orsted_suzukii_2024 quite well for mortality.
+The per-sex TDT parameters are summarised in @tbl-dros-sex-tdt. We see that our *z* values (their Table 1: 3.28 for males, 3.03 for females) as well as $CT_{max_{4hr}}$ (`r ctmax4_f` °C for females and `r ctmax4_m` °C for males, at the absolute threshold) pretty much match @orsted_suzukii_2024 quite well for mortality.
 
-We could ask whether males and females are significantly different or not from each other by simply comparing the posterior distributions. Since we have the full posetrior draws, this is easy to do:
+We could ask whether males and females are significantly different or not from each other by simply comparing the posterior distributions. Since we have the full posterior draws, this is easy to do:
 
 ```{r}
 #| label: post_comps_dros
@@ -2117,12 +2163,12 @@ We could ask whether males and females are significantly different or not from e
 #| warning: false
 
 # Compare female and male posterior z distributions directly.
-# Draw z posteriors for each sex.
-  z_draws_m  <- get_z_draws(tdt_dros_m)
-  z_draws_f  <- get_z_draws(tdt_dros_f)
+# get_tls_est(..., "draws", "z") returns tidy-long z draws (quantity/.draw/value).
+  z_draws_m  <- get_tls_est(tdt_dros_m, "draws", "z")
+  z_draws_f  <- get_tls_est(tdt_dros_f, "draws", "z")
 
-# Form the female-minus-male contrast.
-  diff_sex_z <-  z_draws_f$z - z_draws_m$z   # difference the z columns, not the tibbles
+# Form the female-minus-male contrast on the per-draw values.
+  diff_sex_z <-  z_draws_f$value - z_draws_m$value
 
 # pMCMC is twice the smaller posterior tail probability.
   pmcmc_sex_z <- 2 * min(mean(diff_sex_z > 0), mean(diff_sex_z < 0))
@@ -2131,9 +2177,9 @@ We could ask whether males and females are significantly different or not from e
 
 The median difference in *z* between males and females is `r round(median(diff_sex_z), 2)` °C (95% CI: `r round(quantile(diff_sex_z, 0.025), 2)` to `r round(quantile(diff_sex_z, 0.975), 2)` °C; pMCMC = `r round(pmcmc_sex_z, 2)`). The interval spans zero, so the sexes' thermal sensitivities are not clearly distinguishable.
 
-#### Fitting a model to compare sexes directly
+#### Fitting a model to compare sexes directly - indirect method
 
-We can also fit the sex data in a single model, which is a more powerful approach. To do that, we need to add `sex` as a categorical predictor.
+We can also fit the sex data in a single model, which is a more powerful approach. To do that, we need to add `sex` as a categorical predictor. We'll first use the indirect method by fiting to the midpoint paremeter.
 
 ```{r}
 #| label: joint_sex_mod
@@ -2608,7 +2654,7 @@ prod_inc_tbl <- tibble::tribble(
 tinytable::tt(prod_inc_tbl, escape = TRUE)
 ```
 
-The incidence component gives a conventional reproduction TDT. The estimated $z$ is approximately `r round(stats::median(prod_inc_F$z),1)` °C for females and `r round(stats::median(prod_inc_M$z),1)` °C for males, with $CT_{max_{1hr}}$ from `r round(stats::median(prod_inc_F$ct),1)` to `r round(stats::median(prod_inc_M$ct),1)` °C, close to the fecundity estimates reported by @orsted_suzukii_2024 (@tbl-dros-prod-incidence). This works because reproduction incidence is bounded and has a natural 50% threshold: whether half of flies reproduce. The duration-by-temperature interaction makes the TDT line slightly curved, so we report the mean local $z$ across the assay range.
+The incidence component gives a conventional reproduction TDT. The estimated $z$ is approximately `r round(stats::median(prod_inc_F$z),1)` °C for females and `r round(stats::median(prod_inc_M$z),1)` °C for males, with $CT_{max_{1hr}}$ from `r round(stats::median(prod_inc_F$ct),1)` to `r round(stats::median(prod_inc_M$ct),1)` °C, close to the fecundity estimates reported by @orsted_suzukii_2024 (@tbl-dros-prod-incidence). The per-sex credible intervals overlap, so the point estimates do not reproduce Ørsted et al.'s male > female $z$ ordering as a clear difference. This works because reproduction incidence is bounded and has a natural 50% threshold: whether half of flies reproduce. The duration-by-temperature interaction makes the TDT line slightly curved, so we report the mean local $z$ across the assay range.
 
 The magnitude component answers a different biological question. Conditional clutch size is modelled as an unbounded positive response, with no upper asymptote and no natural 50% threshold. Unlike survival or reproduction incidence, there is therefore no single threshold from which to define a conventional $z$. What the joint model does identify is the duration-sensitivity of clutch size, $b(T) = \mathrm{d}\log_{10}(\text{clutch})/\mathrm{d}\log_{10}(\text{exposure})$, which changes strongly with temperature (@tbl-dros-prod-magnitude):
 
@@ -3185,12 +3231,12 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
 ```
 
 
-# **Manuscript Figure 5: cross-case-study summary** {#sec-ms-fig4}
+# **Manuscript Figure 5: cross-case-study summary** {#sec-ms-fig5}
 
 This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. Every panel is a group comparison drawn from a single joint fit: three cereal-aphid species (panel a), snow gum under dark vs light post-heat recovery (panel b), zebrafish across two oxygen treatments (panel c), and the vinegar fly by sex (panel d). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for aphids, leaf and zebrafish, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale.
 
 ```{r ms-fig4-case-study-densities}
-#| label: fig-ms-fig4-case-study-densities
+#| label: fig-ms-fig5-case-study-densities
 #| fig-cap: "Manuscript Figure 5. Posterior distributions of thermal sensitivity $z$ (left of each panel) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: a) three cereal-aphid species (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*), b) snow gum (*Eucalyptus pauciflora*) leaf photosystem II function under dark vs 90-min-light post-heat recovery, c) zebrafish (*Danio rerio*) larvae under normoxia vs hyperoxia, and d) the vinegar fly (*Drosophila suzukii*) by sex. Filled ridges are the posterior densities, coloured by group; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study's own analysis: 1 h for aphids, leaf and zebrafish (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). Within each panel the groups are fit jointly, so pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
 #| fig-align: center
 #| out-width: "100%"
@@ -3218,10 +3264,6 @@ tls_to_fig4 <- function(tls_obj, modcol, case, ctmax_lab = "CTmax_1hr") {
                      quantity = relab(quantity), median, lower, upper)
   list(draws = dr, summary = sm)
 }
-mk_row <- function(cs, grp, q, med, lo, hi) {
-  tibble::tibble(case_study = cs, group = grp, quantity = q,
-                 median = med, lower = lo, upper = hi)
-}
 
 aphid_f4 <- tls_to_fig4(aphid_tls, "species",  "Cereal aphids")
 leaf_f4  <- tls_to_fig4(leaf_tls,  "recovery", "Snow gum leaf PSII")
@@ -3229,25 +3271,24 @@ zf_f4    <- tls_to_fig4(zf_tls,    "oxygen",   "Zebrafish (oxygen)")
 
 # Vinegar fly mortality, by sex: separate per-sex fits (absolute 4 h threshold).
 fly_draws <- dplyr::bind_rows(
-  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Female",
-                 quantity = "z",         value = get_z_draws(tdt_dros_f)$z,
-                 .draw = get_z_draws(tdt_dros_f)$.draw),
-  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Female",
-                 quantity = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_f)$CTmax,
-                 .draw = get_ctmax_draws(tdt_dros_f)$.draw),
-  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Male",
-                 quantity = "z",         value = get_z_draws(tdt_dros_m)$z,
-                 .draw = get_z_draws(tdt_dros_m)$.draw),
-  tibble::tibble(case_study = "Vinegar fly (mortality)", group = "Male",
-                 quantity = "CTmax_4hr", value = get_ctmax_draws(tdt_dros_m)$CTmax,
-                 .draw = get_ctmax_draws(tdt_dros_m)$.draw)
-)
-fly_summary <- dplyr::bind_rows(
-  mk_row("Vinegar fly (mortality)", "Female", "z",         z_f$z_median, z_f$z_lower, z_f$z_upper),
-  mk_row("Vinegar fly (mortality)", "Female", "CTmax_4hr", ctmax4_f$temp_median, ctmax4_f$temp_lower, ctmax4_f$temp_upper),
-  mk_row("Vinegar fly (mortality)", "Male",   "z",         z_m$z_median, z_m$z_lower, z_m$z_upper),
-  mk_row("Vinegar fly (mortality)", "Male",   "CTmax_4hr", ctmax4_m$temp_median, ctmax4_m$temp_lower, ctmax4_m$temp_upper)
-)
+    Female = get_tls_est(tdt_dros_f, "draws", c("z", "CTmax")),
+    Male   = get_tls_est(tdt_dros_m, "draws", c("z", "CTmax")),
+    .id    = "group"
+  ) |>
+  dplyr::transmute(
+    case_study = "Vinegar fly (mortality)",
+    group,
+    quantity = ifelse(quantity == "CTmax", "CTmax_4hr", "z"),
+    value, .draw
+  )
+fly_summary <- dros_sex_sum |>
+  dplyr::filter(quantity %in% c("z", "CTmax")) |>
+  dplyr::transmute(
+    case_study = "Vinegar fly (mortality)",
+    group      = Sex,
+    quantity   = ifelse(quantity == "CTmax", "CTmax_4hr", "z"),
+    median, lower, upper
+  )
 
 fig4_draws <- dplyr::bind_rows(aphid_f4$draws, leaf_f4$draws, zf_f4$draws, fly_draws) |>
   dplyr::filter(is.finite(value))
@@ -3437,7 +3478,7 @@ ggsave(here("output", "figs", "fig4_case_study_densities.png"), fig4_final,
 knitr::include_graphics(here("output", "figs", "fig4_case_study_densities.png"))
 ```
 
-# **Manuscript Figure 6: Heat injury and survival** {#sec-ms-fig5}
+# **Manuscript Figure 6: Heat injury and survival** {#sec-ms-fig6}
 
 Manuscript Figure 6 illustrates how a fitted joint 4PL translates a *natural*
 temperature trajectory into cumulative heat-injury (HI) accumulation and
@@ -3464,10 +3505,11 @@ alive.
 
 Repair is modelled with an **illustrative Sharpe–Schoolfield kernel that is not
 empirically fitted** — it shows the *qualitative* effect of repair, not a
-calibrated rate. We set $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference
-temperature, so a full LT50 dose would take roughly 33 h to clear at that
-temperature in the absence of further injury. Bands are ±1 SE across posterior
-draws (not 95% credible intervals) to keep the exponential HI envelope readable.
+calibrated rate. We set the Arrhenius (uninhibited) rate scale to
+$r_{ref}=0.03$ LT50-dose h$^{-1}$; the realised repair rate is a little below
+this because the inactivation arms of the kernel suppress it. Bands are ±1 SE
+across posterior draws (not 95% credible intervals) to keep the exponential HI
+envelope readable.
 $T_{crit}$ is the relative-threshold critical temperature from each fit (per
 species for the aphids).
 
@@ -3574,8 +3616,8 @@ saveRDS(list(fly = fdat, fly_trace = fly_trace, fly_Tc = fTc,
 ```
 
 ```{r}
-#| label: fig-ms-fig5-heat-injury
-#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and the unmodified hourly air-temperature trace for the aphids (Wuhan, May–June 2016; Li et al. 2023, Open-Meteo ERA5) — with the relative-threshold $T_{crit}$ (dotted; per species for the aphids). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
+#| label: fig-ms-fig6-heat-injury
+#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and the unmodified hourly air-temperature trace for the aphids (Wuhan, May–June 2016; Li et al. 2023, Open-Meteo ERA5) — with the relative-threshold $T_{crit}$ (dotted; per species for the aphids). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with an Arrhenius (uninhibited) rate scale $r_{ref}=0.03$ LT50-dose h$^{-1}$; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
@@ -3705,10 +3747,14 @@ case_contrasts <- list(
   sg_z  = .tlsdiff(leaf_tls$draws, "recovery", "z",     "Light", "Dark")
 )
 # Vinegar fly: sex contrast (separate per-sex fits -> difference of posteriors)
-.zd <- dplyr::inner_join(get_z_draws(tdt_dros_m), get_z_draws(tdt_dros_f), by = ".draw", suffix = c("M", "F"))
-.cd <- dplyr::inner_join(get_ctmax_draws(tdt_dros_m), get_ctmax_draws(tdt_dros_f), by = ".draw", suffix = c("M", "F"))
-case_contrasts$fly_z  <- .con(.zd$zM - .zd$zF)
-case_contrasts$fly_ct <- .con(.cd$CTmaxM - .cd$CTmaxF)
+.zd <- dplyr::inner_join(get_tls_est(tdt_dros_m, "draws", "z"),
+                         get_tls_est(tdt_dros_f, "draws", "z"),
+                         by = ".draw", suffix = c("M", "F"))
+.cd <- dplyr::inner_join(get_tls_est(tdt_dros_m, "draws", "CTmax"),
+                         get_tls_est(tdt_dros_f, "draws", "CTmax"),
+                         by = ".draw", suffix = c("M", "F"))
+case_contrasts$fly_z  <- .con(.zd$valueM - .zd$valueF)
+case_contrasts$fly_ct <- .con(.cd$valueM - .cd$valueF)
 
 # Repair effect on end-of-window survival, on PAIRED draws (same posterior draws
 # with vs without the repair kernel) -- a downstream contrast the two-stage cannot
@@ -3728,6 +3774,8 @@ set.seed(7)
   dplyr::filter(.h0$draws, time == .ts) |> dplyr::select(species, .draw, s0 = survival),
   dplyr::filter(.h1$draws, time == .ts) |> dplyr::select(species, .draw, s1 = survival),
   by = c("species", ".draw")) |>
+  # d is 100 x (difference in survival PROBABILITIES) = percentage POINTS,
+  # not a percent change. Report it as "percentage points" downstream.
   dplyr::mutate(d = 100 * (s1 - s0))
 case_contrasts$aphid_repair <- lapply(split(.rep$d, .rep$species),
   function(d) { q <- stats::quantile(d, c(.5, .025, .975), names = FALSE); c(med = q[1], lo = q[2], hi = q[3]) })
@@ -3745,7 +3793,11 @@ $\log_{10}t_{50}(T)$ from a 4PL whose asymptotes are not 0 and 1 (Eq. (4)),
 and the corresponding correction *subtracted* from the naive
 $CT_{max}(t_{\text{ref}})$ (Eq. (5)). Here we derive both expressions, extend
 them to an arbitrary survival threshold $x/100$, and check them against direct
-4PL inversion.
+4PL inversion. (The "Eq. (N)" labels below are the manuscript's display-equation
+numbers — currently the 4PL, Eq. 2; the midpoint–temperature relation, Eq. 3;
+the LT50 asymmetry correction, Eq. 4; and the corrected $CT_{max}$, Eq. 5. These
+are plain-text cross-document references, so they must be re-checked if the
+manuscript's display equations are inserted or removed.)
 
 ## Why a correction is needed {#sec-supp-corr-why}
 
