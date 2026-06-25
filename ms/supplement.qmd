@@ -1080,7 +1080,9 @@ The midpoint and direct fits return the same $z$ and $CT_{max_{1hr}}$ to within 
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
-The default `fit_4pl()` places a `temp_c` slope on $\ell$, $\text{up}$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. To test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with `up` declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `extract_tdt()` calls used above.
+The default `fit_4pl()` places a `temp_c` slope on $\ell$, $\text{up}$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. Strictly speaking, this isn't necessary if you are interested in *relative* measures so long as they are on the midpoint. However, these are needed for *absolute* measures because of the need for the correction factor. 
+
+Here, we test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with `up` declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `extract_tdt()` calls used above.
 
 ```{r sim-data-ext}
 #| label: sim-data-ext
@@ -1306,8 +1308,12 @@ Now we apply the same `extract_tdt()` call as in @sec-joint-derive — there is 
 #| echo: true
 #| code-fold: show
 
-# Extract TDT quantities from the extended simulation fit.
-et_ext <- extract_tdt(wf_ext, target_surv = "relative", t_ref = 60, time_multiplier = 1,
+# Extract TDT quantities from the extended simulation fit. We use the ABSOLUTE
+# threshold here: with temperature effects on up/k the log10(LT50) curve is bent,
+# so its local z varies with T and the asymmetry correction must be evaluated per
+# draw. (The relative threshold reads mid(T), which is linear and would give a
+# constant z that cannot match the bent truth.)
+et_ext <- extract_tdt(wf_ext, target_surv = "absolute", t_ref = 60, time_multiplier = 1,
                       ndraws = 1000, lethal = TRUE)
 ```
 
@@ -1315,7 +1321,7 @@ et_ext <- extract_tdt(wf_ext, target_surv = "relative", t_ref = 60, time_multipl
 
 ```{r extract-tdt-ext-table}
 #| label: tbl-extract-ext
-#| tbl-cap: "Classical TDT quantities from `extract_tdt()` on the T-varying fit, compared against analytical truth. The single-summary $z$ is read directly from the posterior (under the relative threshold $z = -1/\\beta_1$ per draw — the slope of $\\text{mid}(T)$, with no regression); the truth row reports the mean of the analytical local $z(T)$ of the bent absolute-0.5 $\\log_{10}\\text{LT50}(T)$ curve at the assay temperatures. $CT_{max_{1hr}}$ comes from direct inversion of the fitted 4PL at 60 min per draw."
+#| tbl-cap: "Classical TDT quantities from `extract_tdt(target_surv = \"absolute\")` on the T-varying fit, compared against analytical truth. Under the absolute threshold the single-summary $z$ is the per-draw **local** $z(T)$ of the bent $\\log_{10}\\text{LT50}(T)$ curve, pooled (averaged) over the assay temperatures; the truth row reports the mean of the analytical local $z(T)$ at those temperatures. $CT_{max_{1hr}}$ comes from direct inversion of the fitted 4PL at 60 min per draw, including the per-draw asymmetry correction."
 
 # Format extracted TDT quantities for the extended simulation fit.
 tibble::tibble(
@@ -1338,7 +1344,7 @@ tibble::tibble(
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-Both posterior intervals cover their analytical truths. The single-summary $z$ read from the posterior ($-1/\beta_1$ per draw under the relative threshold) is close to the average local sensitivity of the bent curve, and its credible interval covers the truth (truth = `r round(true_mean_local_z, 2)` °C; posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). The bent absolute-threshold local $z(T)$ itself is available with `target_surv = "absolute", z_local = TRUE`. Direct 4PL inversion at the reference duration also recovers $CT_{max_{1hr}}$ (truth `r round(true_CTmax_1hr, 2)` °C; posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C), without assuming a constant asymmetry correction in $T$.
+Both posterior intervals cover their analytical truths. Under the absolute threshold the single-summary $z$ is the per-draw local $z(T)$ averaged over the assay temperatures; it recovers the truth (mean local $z$ = `r round(true_mean_local_z, 2)` °C; posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). Because the curve is bent, the *full* per-temperature local $z(T)$ profile varies across the assay range (examined below, and returned directly by `extract_tdt(target_surv = "absolute", z_local = TRUE)`) — unlike the relative threshold, which reads the linear $\text{mid}(T)$ and would give a single constant $z$. Direct 4PL inversion at the reference duration also recovers $CT_{max_{1hr}}$ (truth `r round(true_CTmax_1hr, 2)` °C; posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C), with the asymmetry correction evaluated per draw rather than assumed constant in $T$.
 
 The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both quantities are built from; it lives in `et_ext$lt50_curve` (the output of `derive_tdt_curve()`) and can be plotted directly (@fig-lt50-curve-ext).
 
