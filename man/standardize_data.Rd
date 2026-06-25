@@ -68,8 +68,10 @@ value to align multiple datasets to a common centre.}
 \value{
 A tibble with the standardised columns plus a \code{"tdt_meta"} attribute
 storing \code{temp_mean}, \code{duration_unit}, \code{random_effects},
-\code{response_type} (\code{"count"} or \code{"proportion"}), and \code{response_var}
-(the response column name for a proportion fit, else \code{NULL}).
+\code{response_type} (\code{"count"} or \code{"proportion"}), \code{response_var}
+(the response column name for a proportion fit, else \code{NULL}), and
+\code{proportion_eps} (the clamp half-width used for a proportion fit, else
+\code{NULL}).
 }
 \description{
 Rewrites user column names into a single project-standard schema and attaches

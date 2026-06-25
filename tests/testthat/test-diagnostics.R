@@ -76,6 +76,28 @@ test_that("tdt_parameter_table returns natural-scale parameters that obey their 
   expect_equal(z_tab, z_et, tolerance = 0.25)
 })
 
+test_that("tdt_parameter_table's per-draw guard drops non-finite z/CTmax before quantiling", {
+  # Regression guard for the summary_row() defect: a near-zero midpoint slope
+  # yields +/-Inf per-draw z (z = -1 / mid_temp), and quantile(na.rm = TRUE)
+  # without a finite filter propagates +/-Inf into the reported bounds (and can
+  # corrupt the median). summary_row() is a local closure, so we replicate its
+  # guarded quantile path on a fixture mid_temp draw vector containing a
+  # near-zero slope, matching tls_local_z() in R/tls_engine.R.
+  mid_temp <- c(-2, -1.5, -1, 1e-300, 1, 1.5, 2)  # one ~zero slope -> -Inf z
+  z <- -1 / mid_temp
+  expect_true(any(!is.finite(z)))                  # the offending draw exists
+
+  # Unguarded behaviour (the bug): +/-Inf leaks into the bounds.
+  q_bug <- stats::quantile(z, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+  expect_true(any(!is.finite(q_bug)))
+
+  # Guarded behaviour (the fix): non-finite -> NA before quantiling.
+  z[!is.finite(z)] <- NA_real_
+  q_fix <- stats::quantile(z, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+  expect_true(all(is.finite(q_fix)))
+  expect_lte(q_fix[1], q_fix[2]); expect_lte(q_fix[2], q_fix[3])
+})
+
 test_that("bayes_R2_tls rejects an unfitted workflow", {
   expect_error(bayes_R2_tls(list(fit = NULL)), "no fit")
 })

@@ -179,8 +179,11 @@ summarise_observed_survival <- function(observed) {
 #'                  group with the moderator column(s) prepended to `summary`.
 #' @return A list with elements `summary` (tibble of `temp`, `duration`,
 #'         `survival_median`, `survival_lower`, `survival_upper`; plus the
-#'         moderator column(s) for a grouped fit) and `draws`
-#'         (the raw posterior matrix as a long tibble).
+#'         moderator column(s) for a grouped fit), `draws_matrix` (the raw
+#'         posterior matrix `[ndraws x grid points]` of survival
+#'         probabilities), and `grid` (the prediction grid tibble from
+#'         [new_tdt_grid()]). Use [get_surv_draws()] for the long-tibble form
+#'         of the draws.
 #' @examples
 #' \dontrun{
 #' wf <- fit_4pl(d, ...)

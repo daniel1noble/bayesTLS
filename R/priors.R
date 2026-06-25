@@ -37,8 +37,17 @@
 #'                        `CTmaxdev`/`logz` priors (the level prior lands on the
 #'                        Intercept or each factor level, while between-group
 #'                        contrasts and temperature slopes are centred on zero, so
-#'                        per-group z/CTmax are invariant to cell-means vs
-#'                        treatment coding), and random-effect SD priors on
+#'                        the per-group z/CTmax prior **mean** is invariant to
+#'                        cell-means vs treatment coding — this removes the
+#'                        log(3) shrinkage bias). The prior **variance** is not
+#'                        fully coding-invariant: under treatment coding a
+#'                        non-reference group's implied prior convolves the
+#'                        Intercept and contrast SDs (e.g. logz SD
+#'                        `sqrt(0.7^2 + 0.7^2) ~ 0.99` vs `0.70` under
+#'                        cell-means), and `normalize_cellmeans()` only rewrites
+#'                        single-factor formulas. Prefer cell-means (`0 + G`) for
+#'                        multi-factor models to keep groups symmetric. Plus
+#'                        random-effect SD priors on
 #'                        `CTmaxdev`/`logz` only (never on the shape
 #'                        sub-parameters). `up`/`low`/`k`
 #'                        follow the same inheritance resolution as the formula.
@@ -119,10 +128,16 @@ make_4pl_priors <- function(data,
   # Intercept (treatment coding) or on each factor level (cell-means coding); a
   # separate, MEAN-ZERO prior covers everything else — temperature slopes AND
   # between-group contrasts. Centring the *contrast* prior on zero (not on
-  # `centre`) is what makes CTmaxdev/logz coding-invariant: under treatment
-  # coding the logz contrast must not be shrunk toward log(3), or the
+  # `centre`) is what makes the CTmaxdev/logz prior MEAN coding-invariant: under
+  # treatment coding the logz contrast must not be shrunk toward log(3), or the
   # between-group z ratio is biased toward 3x (the asymptotes already did this
   # via `asy`; CTmaxdev/logz previously used a single blanket prior and did not).
+  # The prior VARIANCE is not fully coding-invariant: a treatment-coded
+  # non-reference group convolves the level + contrast SDs, so prefer cell-means
+  # (0 + G) for multi-factor models. The global mean-zero `b` prior is emitted
+  # only when extra terms (slopes/contrasts) exist beyond the cell-means levels;
+  # for a bare `0 + G` it would be redundant (no slope/contrast coefficient) and
+  # brms would warn about an unused global prior (CI runs error-on=warning).
   direct_par <- function(rhs, nlpar, centre, level_sd, slope_sd) {
     cells <- cell_means_coefs(rhs, data)
     centred <- if (is.null(cells))
@@ -131,8 +146,12 @@ make_4pl_priors <- function(data,
     else lapply(cells, function(cf)
       brms::set_prior(sprintf("normal(%.6f, %s)", centre, level_sd),
                       class = "b", nlpar = nlpar, coef = cf))
-    c(do.call(c, centred),
-      brms::set_prior(sprintf("normal(0, %s)", slope_sd), class = "b", nlpar = nlpar))
+    priors <- do.call(c, centred)
+    if (is.null(cells) || cell_means_has_extra_terms(rhs))
+      priors <- c(priors,
+                  brms::set_prior(sprintf("normal(0, %s)", slope_sd),
+                                  class = "b", nlpar = nlpar))
+    priors
   }
 
   priors <- c(
@@ -166,6 +185,19 @@ cell_means_coefs <- function(rhs, data) {
   fac  <- trimws(strsplit(core, "[:+*]")[[1]][1])
   if (is.null(data) || !fac %in% names(data)) return(NULL)
   paste0(fac, levels(factor(data[[fac]])))
+}
+
+# TRUE when a cell-means "0 + G" RHS carries terms beyond the single factor
+# (slopes or interactions, e.g. "0 + G + temp_c:G"), so its coefficients are
+# not fully covered by the per-level priors and a global mean-zero `b` prior is
+# still needed. FALSE for a bare "0 + G" (per-level priors cover everything, so
+# the global prior would be redundant and trigger a brms unused-prior warning).
+cell_means_has_extra_terms <- function(rhs) {
+  if (!grepl("^0\\s*\\+", rhs)) return(TRUE)
+  core  <- trimws(sub("^0\\s*\\+\\s*", "", rhs))
+  terms <- trimws(strsplit(core, "\\+")[[1]])
+  terms <- terms[nzchar(terms)]
+  length(terms) > 1L || grepl("[:*]", core)
 }
 
 # Grouping-factor names in a one-sided formula's (x | g) random-effect terms.

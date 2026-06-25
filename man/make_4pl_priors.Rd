@@ -51,8 +51,17 @@ cell-means terms), coding-aware weakly-informative
 \code{CTmaxdev}/\code{logz} priors (the level prior lands on the
 Intercept or each factor level, while between-group
 contrasts and temperature slopes are centred on zero, so
-per-group z/CTmax are invariant to cell-means vs
-treatment coding), and random-effect SD priors on
+the per-group z/CTmax prior \strong{mean} is invariant to
+cell-means vs treatment coding — this removes the
+log(3) shrinkage bias). The prior \strong{variance} is not
+fully coding-invariant: under treatment coding a
+non-reference group's implied prior convolves the
+Intercept and contrast SDs (e.g. logz SD
+\code{sqrt(0.7^2 + 0.7^2) ~ 0.99} vs \code{0.70} under
+cell-means), and \code{normalize_cellmeans()} only rewrites
+single-factor formulas. Prefer cell-means (\code{0 + G}) for
+multi-factor models to keep groups symmetric. Plus
+random-effect SD priors on
 \code{CTmaxdev}/\code{logz} only (never on the shape
 sub-parameters). \code{up}/\code{low}/\code{k}
 follow the same inheritance resolution as the formula.}

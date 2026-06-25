@@ -16,7 +16,11 @@ survival_from_dose(dose, low, up, k, target_surv = "relative")
 string \code{"relative"} for the \code{(low + up)/2} threshold.}
 }
 \value{
-Numeric vector of predicted survival probabilities.
+Numeric vector of predicted survival probabilities. \code{NA} for every
+element when a numeric \code{target_surv} lies outside \verb{(low, up)} and is
+therefore unreachable on this draw's 4PL (mirrors
+\code{\link[=time_to_surv_threshold_4pl]{time_to_surv_threshold_4pl()}}, so the draw drops cleanly rather than
+producing \code{log()}-of-negative \code{NaN}s that would poison the trace).
 }
 \description{
 Inverts the dose interpretation: at \code{dose = 1}, survival equals the

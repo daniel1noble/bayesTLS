@@ -22,7 +22,7 @@ The input trace augmented with two new columns:
 - \code{hi_cumulative} — running sum of \code{hi_inc} (\%).
 }
 \description{
-Implements the classical HI integral exactly (Equation 7 of the manuscript),
+Implements the classical HI integral exactly (Equation 8 of the manuscript),
 given known TDT parameters. Use this as the \strong{truth} that
 \code{\link[=predict_heat_injury]{predict_heat_injury()}} should recover when fed the same trace and a model
 fit whose posterior is consistent with \verb{(z, CTmax_1hr, T_c)}.

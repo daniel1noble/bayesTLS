@@ -108,9 +108,15 @@ with \verb{by = }. Both error in direct mode.}
 fitted CTmax/z refer to (direct mode only).}
 
 \item{p}{Survival fraction for the \code{"absolute"} threshold (direct
-mode). Default \code{0.5} (LT50). Must lie within the response
-bounds' achievable range, else \code{fit_4pl()} errors (use a
-relative threshold for sub-unit-bounded responses).}
+mode). Default \code{0.5} (LT50). The disjoint-bounds reparam
+splits the asymptotes at the bounds' midpoint, so an
+absolute \code{p} is only achievable \emph{near that midpoint}
+(with the default bounds \verb{[0, 1]} the achievable range is
+roughly \verb{(0.499, 0.501)}); \code{fit_4pl()} errors otherwise.
+For any other LTx (LT60, LT90, ...) or a sub-unit-bounded
+response, fit with \code{threshold = "relative"} and derive it
+afterwards via \code{\link[=extract_tdt]{extract_tdt()}}/\code{\link[=tls]{tls()}} with
+\verb{target_surv = }.}
 
 \item{t_ref}{Reference exposure for CTmax, in \strong{minutes} (default 60,
 i.e. one hour). Converted to the model's log10-time scale

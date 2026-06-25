@@ -8,7 +8,7 @@ derive_temperature_for_duration(
   workflow,
   exposure_duration,
   temp_grid,
-  target_surv = "absolute",
+  target_surv = "relative",
   ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
   seed = NULL,
@@ -26,8 +26,7 @@ derive_temperature_for_duration(
 or a numeric in \verb{(0, 1)}.}
 
 \item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the
-full posterior. Pass an integer to subsample.
-Default 1000.}
+full posterior. Pass an integer to subsample.}
 
 \item{probs}{Quantile probabilities. Default \code{c(0.025, 0.5, 0.975)}.}
 
@@ -61,4 +60,13 @@ inversion of the 4PL survival surface at the literal probability \code{p}.
 }
 
 This is the primitive used by \code{\link[=extract_tdt]{extract_tdt()}} to derive CTmax at \code{t_ref}.
+}
+\examples{
+\dontrun{
+wf <- fit_4pl(std)
+# Temperature giving the relative midpoint threshold after a 60-unit exposure:
+tt <- derive_temperature_for_duration(wf, exposure_duration = 60,
+                                       temp_grid = seq(36, 44, by = 0.1))
+tt$summary
+}
 }

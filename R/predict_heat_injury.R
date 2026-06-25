@@ -110,7 +110,11 @@ time_to_surv_threshold_4pl <- function(temp, survival_target,
 #' @param low,up,k 4PL parameters at the reference (centring) temperature.
 #' @param target_surv Either the literal probability defining "1 dose" or the
 #'                    string `"relative"` for the `(low + up)/2` threshold.
-#' @return Numeric vector of predicted survival probabilities.
+#' @return Numeric vector of predicted survival probabilities. `NA` for every
+#'         element when a numeric `target_surv` lies outside `(low, up)` and is
+#'         therefore unreachable on this draw's 4PL (mirrors
+#'         [time_to_surv_threshold_4pl()], so the draw drops cleanly rather than
+#'         producing `log()`-of-negative `NaN`s that would poison the trace).
 #' @keywords internal
 survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
   dose_use <- pmax(dose, 1e-12)
@@ -118,6 +122,11 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
       target_surv == "relative") {
     c_target <- 0
   } else {
+    # Unreachable target on this draw -- guard like time_to_surv_threshold_4pl()
+    # so the whole draw drops as NA instead of evaluating log() of a negative
+    # number (which would yield NaN and silently bias the medians upward).
+    if (target_surv <= low || target_surv >= up)
+      return(rep(NA_real_, length(dose)))
     c_target <- log((up - target_surv) / (target_surv - low)) / k
   }
   low + (up - low) / (1 + exp(k * (log10(dose_use) + c_target)))
@@ -150,7 +159,8 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'                     meaningful anchor for dose accounting.
 #' @param T_c          Optional damage-accumulation threshold (°C). When
 #'                     supplied, the damage rate is forced to zero at
-#'                     `temp <= T_c` (matches Equation 7 of the manuscript).
+#'                     `temp <= T_c` (matches the heat-injury integral,
+#'                     Equation 8 of the manuscript).
 #'                     Default `NULL` lets the rate fall naturally with T.
 #' @param trace_unit   Time unit of the trace's `time` column: one of
 #'                     `"hours"` (default), `"minutes"`, `"seconds"`, `"days"`.
@@ -318,13 +328,18 @@ predict_heat_injury <- function(trace, workflow,
     n_used <- min(ndraws, nrow(pars_all))
   } else {
     groups <- unique(pars_all[, by, drop = FALSE])
+    per_group_n <- integer(nrow(groups))
     draws <- dplyr::bind_rows(lapply(seq_len(nrow(groups)), function(gi) {
-      gp <- dplyr::inner_join(pars_all, groups[gi, , drop = FALSE], by = by)
+      gp     <- dplyr::inner_join(pars_all, groups[gi, , drop = FALSE], by = by)
+      n_gi   <- min(ndraws, nrow(gp))
+      per_group_n[gi] <<- n_gi
       cbind(groups[gi, , drop = FALSE],
-            integrate_pars(dplyr::slice_sample(gp, n = min(ndraws, nrow(gp)))),
+            integrate_pars(dplyr::slice_sample(gp, n = n_gi)),
             row.names = NULL)
     }))
-    n_used <- ndraws
+    # Report the actual clamped per-group count integrated, not the raw request.
+    n_used <- if (length(unique(per_group_n)) == 1L) per_group_n[1]
+              else sum(per_group_n)
   }
 
   q_lower <- function(x) stats::quantile(x, 0.025, na.rm = TRUE)

@@ -98,6 +98,18 @@ test_that("T_crit is invariant to t_ref (anchored at 1 h); CTmax tracks t_ref", 
   expect_equal(ci60$Tcrit_upper, ci120$Tcrit_upper, tolerance = 1e-6)
 })
 
+test_that("ts_stage2 and ts_ci reject non-positive t_ref / time_multiplier", {
+  s1 <- ts_stage1(make_two_stage_data(), "temp", "dur", "surv", "tot")
+  expect_error(ts_stage2(s1, t_ref = 0))
+  expect_error(ts_stage2(s1, t_ref = -1))
+  expect_error(ts_stage2(s1, time_multiplier = 0))
+  expect_error(ts_stage2(s1, time_multiplier = -5))
+  s2 <- ts_stage2(s1)
+  expect_error(ts_ci(s2, method = "delta", t_ref = 0))
+  expect_error(ts_ci(s2, method = "delta", time_multiplier = 0))
+  expect_error(ts_ci(s2, method = "mvn", t_ref = -1, temp_grid = c(30, 34, 38)))
+})
+
 test_that("ts_stage1 beta-binomial path works when glmmTMB is available", {
   skip_if_not_installed("glmmTMB")
   d  <- make_two_stage_data()

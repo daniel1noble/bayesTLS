@@ -78,7 +78,7 @@ test_that("tdt_resolve_time_multiplier derives from duration_unit, override hono
 
 test_that("clock_to_minutes handles common formats", {
   expect_equal(clock_to_minutes("08:30:00"), 510)
-  expect_equal(clock_to_minutes(0.5), 720)
+  expect_equal(suppressMessages(clock_to_minutes(0.5)), 720)
   expect_equal(clock_to_minutes(as.POSIXct("2026-01-01 08:30:00", tz = "UTC")),
                510)
 })
@@ -88,7 +88,7 @@ test_that("clock_to_minutes parses HH:MM, >24h, bare numbers, and NA element-wis
   expect_equal(clock_to_minutes("08:30"),    510)   # HH:MM (no seconds)
   expect_equal(clock_to_minutes("25:30:00"), 1530)  # > 24 h
   expect_equal(clock_to_minutes("90"),       90)    # bare number -> minutes
-  expect_equal(clock_to_minutes(0.5),        720)   # Excel day-fraction
+  expect_equal(suppressMessages(clock_to_minutes(0.5)), 720) # Excel day-fraction
   expect_equal(clock_to_minutes(c("01:00:00", "02:00:00", "bad")),
                c(60, 120, NA))                       # malformed -> NA, not all-NA
 })
@@ -96,4 +96,11 @@ test_that("clock_to_minutes parses HH:MM, >24h, bare numbers, and NA element-wis
 test_that("clock_to_minutes warns (not silently flips) on an ambiguous mixed numeric vector", {
   expect_warning(r <- clock_to_minutes(c(0.5, 720)), "mixes values")
   expect_equal(r, c(0.5, 720))   # treated as minutes, the < 1 value left as-is
+})
+
+test_that("clock_to_minutes messages when applying the all-in-[0,1] day-fraction rule", {
+  expect_message(r <- clock_to_minutes(c(0.25, 0.5)), "day-fractions")
+  expect_equal(r, c(360, 720))
+  # > 1 values are unambiguous minutes and stay silent.
+  expect_silent(clock_to_minutes(c(60, 120)))
 })

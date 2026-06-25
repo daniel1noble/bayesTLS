@@ -103,19 +103,28 @@ ts_stage1 <- function(data, temp = "temp", duration = "duration",
 #' Regresses Stage-1 `log10(LT50)` on assay temperature by ordinary least
 #' squares and derives the classical quantities. `z = -1/slope`;
 #' `CTmax(t_ref) = (log10(t_ref) - intercept) / slope`; `T_crit` follows the
-#' rate-multiplier definition, `CTmax + z * mean(log10(TC_rate_range/100))`.
+#' rate-multiplier definition, `CTmax(1h) + z * mean(log10(TC_rate_range/100))`.
+#'
+#' The Stage-2 regression is **unweighted** ordinary least squares: it ignores
+#' the Stage-1 standard errors (`se_log10_lt50`) by design. This is the
+#' generated-regressor bias the manuscript demonstrates, so `se_log10_lt50` is
+#' exposed for diagnostics only and is not propagated into the Stage-2 quantities.
 #'
 #' @param stage1 Output of [ts_stage1()].
 #' @param t_ref Reference exposure duration for CTmax (minutes). Default 60.
+#'   Must be > 0.
 #' @param time_multiplier Multiplier from the Stage-1 duration unit to minutes
-#'   (e.g. 60 if durations are in hours). Default 1.
+#'   (e.g. 60 if durations are in hours). Default 1. Must be > 0.
 #' @param TC_rate_range Length-2 HI-rate range (% per hour) for T_crit.
 #' @param rows Which Stage-1 rows to keep: `"stage1_ok"` (bracketing validation,
 #'   the case-study default) or `"finite_ok"` (finite/negative slope only, the
 #'   simulation's looser rule).
 #' @return `list(fit, summary)`; `fit` is `NULL` if fewer than 3 valid Stage-1
 #'   estimates remain. `summary` has `intercept`, `slope_T`, `z`, `CTmax_1hr`,
-#'   `T_crit`, `r_squared`, `n_stage1`, `n_excluded`.
+#'   `T_crit`, `r_squared`, `n_stage1`, `n_excluded`. Note that despite its name
+#'   `CTmax_1hr` reports CTmax at `t_ref` (the two coincide at the default
+#'   `t_ref = 60`); the 1 h anchor used for `T_crit` is computed separately and
+#'   is invariant to `t_ref`.
 #' @examples
 #' d <- data.frame(
 #'   temp = rep(c(30, 32, 34, 36, 38), each = 12),
@@ -128,6 +137,7 @@ ts_stage2 <- function(stage1, t_ref = 60, time_multiplier = 1,
                       TC_rate_range = c(0.1, 1),
                       rows = c("stage1_ok", "finite_ok")) {
   rows <- match.arg(rows)
+  stopifnot(t_ref > 0, time_multiplier > 0)
   keep <- stage1[stage1[[rows]] & is.finite(stage1$log10_lt50), , drop = FALSE]
   n_excluded <- nrow(stage1) - nrow(keep)
 
@@ -186,7 +196,9 @@ ts_stage2 <- function(stage1, t_ref = 60, time_multiplier = 1,
 #' @param n_sim MVN draws (`"mvn"` only). Default 1000.
 #' @param seed RNG seed (`"mvn"` only). Default 123.
 #' @return For `"delta"`, a list with `z` and `CTmax_1hr`, each
-#'   `list(point, lower, upper, lower_t, upper_t, se)`, plus `df_resid`.
+#'   `list(point, lower, upper, lower_t, upper_t, se)`, plus `df_resid`. As in
+#'   [ts_stage2()], the `CTmax_1hr` block reports CTmax at `t_ref` despite its
+#'   name (the two coincide at the default `t_ref = 60`).
 #'   For `"mvn"`, a list with `summary_ci` (z/CTmax/T_crit bounds) and
 #'   `curve_ci` (per-`temp_grid` line band).
 #' @examples
@@ -201,6 +213,7 @@ ts_ci <- function(stage2, method = c("delta", "mvn"), level = 0.95,
                   t_ref = 60, time_multiplier = 1, TC_rate_range = c(0.1, 1),
                   temp_grid = NULL, n_sim = 1000, seed = 123) {
   method <- match.arg(method)
+  stopifnot(t_ref > 0, time_multiplier > 0)
   fit <- stage2$fit
   a   <- (1 - level) / 2
 

@@ -10,7 +10,8 @@
 #' Pulls the per-draw values of z from an [extract_tdt()] result.
 #'
 #' @param et The list returned by [extract_tdt()].
-#' @return A tibble with columns `.draw` and `z`.
+#' @return A tibble with columns `.draw` and `z` (plus the moderator column(s)
+#'         for a grouped fit).
 #' @seealso [get_z_summary()] for the median + 95% credible-interval summary.
 #' @examples
 #' \dontrun{
@@ -34,7 +35,8 @@ get_z_draws <- function(et) {
 #' returned by [get_z_draws()].
 #'
 #' @param et The list returned by [extract_tdt()].
-#' @return A tibble with columns `z_median`, `z_lower`, `z_upper`.
+#' @return A tibble with columns `z_median`, `z_lower`, `z_upper` (plus the
+#'         moderator column(s) for a grouped fit).
 #' @seealso [get_z_draws()] for the per-draw posterior.
 #' @examples
 #' \dontrun{
@@ -79,7 +81,8 @@ get_ctmax_draws <- function(et) {
 #' opposed to the per-draw values returned by [get_ctmax_draws()].
 #'
 #' @param et The list returned by [extract_tdt()].
-#' @return A tibble with columns `temp_lower`, `temp_median`, `temp_upper`.
+#' @return A tibble with columns `temp_lower`, `temp_median`, `temp_upper`
+#'         (plus the moderator column(s) for a grouped fit).
 #' @seealso [get_ctmax_draws()] for the per-draw posterior.
 #' @examples
 #' \dontrun{
@@ -129,7 +132,8 @@ get_tcrit_draws <- function(et) {
 #'
 #' @param et The list returned by `extract_tdt(..., lethal = TRUE)`.
 #' @return A tibble with columns `TC_rate_low`, `TC_rate_high`, `temp_lower`,
-#'         `temp_median`, `temp_upper`.
+#'         `temp_median`, `temp_upper` (plus the moderator column(s) for a
+#'         grouped fit).
 #' @seealso [get_tcrit_draws()] for the per-draw posterior.
 #' @examples
 #' \dontrun{

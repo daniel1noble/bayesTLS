@@ -11,7 +11,8 @@ get_tcrit_summary(et)
 }
 \value{
 A tibble with columns \code{TC_rate_low}, \code{TC_rate_high}, \code{temp_lower},
-\code{temp_median}, \code{temp_upper}.
+\code{temp_median}, \code{temp_upper} (plus the moderator column(s) for a
+grouped fit).
 }
 \description{
 Pulls the T_crit summary table from an \code{\link[=extract_tdt]{extract_tdt()}} result — median and

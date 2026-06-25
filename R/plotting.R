@@ -66,7 +66,7 @@ plot_survival_curves <- function(pred, observed = NULL,
                                       ymax = survival_upper),
                          alpha = 0.18, colour = NA) +
     ggplot2::geom_line(linewidth = 0.9) +
-    ggplot2::scale_y_continuous(limits = c(0, 1)) +
+    ggplot2::coord_cartesian(ylim = c(0, 1)) +
     ggplot2::labs(x = "Exposure duration", y = response_label,
                   colour = "Temperature (\u00b0C)",
                   fill   = "Temperature (\u00b0C)") +
@@ -231,7 +231,7 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
   df <- landscape$summary
   p <- ggplot2::ggplot(df, ggplot2::aes(x = temp, y = duration,
                                         fill = survival_median)) +
-    ggplot2::geom_raster(interpolate = TRUE) +
+    ggplot2::geom_tile() +
     ggplot2::geom_contour(ggplot2::aes(z = survival_median),
                           breaks = contours,
                           colour = "white", alpha = 0.7) +
@@ -265,7 +265,7 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
 #'                   with `$draws` and `$summary` from [extract_tdt()].
 #' @param truth      Optional numeric scalar: a true value to mark with a
 #'                   dashed vertical line.
-#' @param x_label    X-axis label. Default `"Temperature (degC)"`.
+#' @param x_label    X-axis label. Default `"Temperature (°C)"`.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -375,7 +375,7 @@ plot_heat_injury <- function(hi, lt50_threshold = 100) {
     ggplot2::geom_ribbon(ggplot2::aes(ymin = surv_lower, ymax = surv_upper),
                          fill = "#146C7C", alpha = 0.2) +
     ggplot2::geom_line(colour = "#146C7C", linewidth = 0.9) +
-    ggplot2::scale_y_continuous(limits = c(0, 1)) +
+    ggplot2::coord_cartesian(ylim = c(0, 1)) +
     ggplot2::labs(x = "Time (hours)", y = "Predicted survival") +
     theme_tdt()
 

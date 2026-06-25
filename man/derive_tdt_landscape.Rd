@@ -18,8 +18,12 @@ derive_tdt_landscape(
 \item{temp_grid}{Numeric vector of temperatures (°C). Default: 120
 equally spaced values across the training-data range.}
 
-\item{duration_grid}{Numeric vector of durations. Default: 120 log-spaced
-values across the training-data range.}
+\item{duration_grid}{Numeric vector of durations. Default: 120 equally
+spaced values across the training-data range. A linear
+(rather than log-spaced) default keeps the grid regular
+on the linear duration axis that \code{\link[=plot_tdt_landscape]{plot_tdt_landscape()}}
+uses by default, so the survival surface renders without
+uneven-raster artefacts.}
 
 \item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the full
 posterior. Pass an integer to subsample for speed.}

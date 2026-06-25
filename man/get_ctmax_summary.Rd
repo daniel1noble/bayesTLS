@@ -10,7 +10,8 @@ get_ctmax_summary(et)
 \item{et}{The list returned by \code{\link[=extract_tdt]{extract_tdt()}}.}
 }
 \value{
-A tibble with columns \code{temp_lower}, \code{temp_median}, \code{temp_upper}.
+A tibble with columns \code{temp_lower}, \code{temp_median}, \code{temp_upper}
+(plus the moderator column(s) for a grouped fit).
 }
 \description{
 Pulls the CTmax summary table from an \code{\link[=extract_tdt]{extract_tdt()}} result (the

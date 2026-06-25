@@ -65,6 +65,22 @@ test_that("planted_dose_from_trace matches the analytical formula for a single s
   expect_equal(tail(d$hi_cumulative, 1), expected, tolerance = 1e-8)
 })
 
+test_that("single-spike dose scales with dt_hours (one-time-step spike width)", {
+  z   <- 5
+  CT1 <- 32
+  T_c <- 25
+  s_temp <- 30
+  dt  <- 0.5
+  s   <- make_temperature_scenarios(baseline = 20, spike_temp = s_temp,
+                                     n_hours = 48, dt_hours = dt,
+                                     spike_times_single = 12)
+  d   <- planted_dose_from_trace(s$single_spike, z = z, CTmax_1hr = CT1, T_c = T_c)
+  # Each spike is one time step (dt_hours) wide, so the delivered dose is the
+  # instantaneous rate times dt_hours (documented behaviour).
+  expected <- 100 * 10 ^ ((s_temp - CT1) / z) * dt
+  expect_equal(tail(d$hi_cumulative, 1), expected, tolerance = 1e-8)
+})
+
 test_that("planted_dose_from_trace cumulative equals sum of single-spike contributions", {
   z   <- 5
   CT1 <- 32

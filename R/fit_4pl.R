@@ -32,7 +32,12 @@
 #' @param family         brms family. Default `beta_binomial(link = "identity")`.
 #'                       Pass `binomial(link = "identity")` for the simpler
 #'                       no-overdispersion case, or `brms::Beta(link = "identity")`
-#'                       for a continuous proportion response.
+#'                       for a continuous proportion response. The count families
+#'                       (`binomial`, `beta_binomial`) require `link = "identity"`
+#'                       — the 4PL produces a probability directly, so any other
+#'                       link would double-transform it (an error is thrown). A
+#'                       known family name passed as a string (e.g. `"binomial"`)
+#'                       is coerced to its identity-link constructor.
 #' @param response_var   Response column name for a `Beta` (continuous
 #'                       proportion) fit. Ignored for count families. Default
 #'                       `"survival"` (the column [standardize_data()] writes for
@@ -86,9 +91,20 @@
 #'                       `CTmax`/`z` are the relative-threshold quantities;
 #'                       `"absolute"` bakes the asymmetry correction
 #'                       \eqn{C(T) = (1/k)\log((up-p)/(p-low))} into `mid` so
-#'                       they are the absolute (`p`-survival) quantities.
+#'                       they are the absolute (`p`-survival) quantities. The
+#'                       disjoint-bounds reparam splits the asymptotes at the
+#'                       bounds' midpoint, so `"absolute"` is only well defined
+#'                       for `p` *near that midpoint* (with the default bounds
+#'                       `[0, 1]` the achievable range is roughly `(0.499,
+#'                       0.501)`); other LTx values (LT60, LT90, ...) must be
+#'                       obtained from a `"relative"` fit plus
+#'                       [extract_tdt()]/[tls()] with `target_surv = `, which
+#'                       inverts the fitted surface post hoc for any `p`.
 #' @param p              Survival fraction defining the absolute threshold.
-#'                       Default `0.5`.
+#'                       Default `0.5`. Only meaningful when `threshold =
+#'                       "absolute"`, and (see `threshold`) only achievable for
+#'                       `p` near the bounds' midpoint -- use the relative
+#'                       threshold + `target_surv` for any other LTx.
 #' @param log10_tref     `log10` of the reference exposure (in the model's time
 #'                       unit) at which `CTmax` is defined. Default `0` (one time
 #'                       unit). [fit_4pl()] derives this from `t_ref` and the
@@ -124,6 +140,8 @@ make_4pl_formula <- function(random_effects = NULL,
   if (is.null(bounds)) bounds <- c(lower, upper)
   threshold <- match.arg(threshold)
   b <- compute_4pl_bounds(bounds[1], bounds[2])
+
+  family <- validate_4pl_family(family)
 
   low_expr <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
   up_expr  <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min,  b$up_w)
@@ -173,14 +191,25 @@ make_4pl_formula <- function(random_effects = NULL,
     # `low = ~ temp_c * species` intends -- point them at `by=` / `mid=`.
     shape_mods <- setdiff(rhs_fixed_vars(paste(low_r, up_r, k_r, sep = " + ")),
                           rhs_fixed_vars(mid_r))
-    if (length(shape_mods))
+    if (length(shape_mods)) {
+      # When `by=` is set, the moderator landed on low/up/k via the `by`
+      # shortcut but an explicit `mid=` override dropped it -- so re-suggesting
+      # `by = "<mod>"` (which the user already passed) is circular. Point at the
+      # explicit-mid override as the cause and give only the working remedy.
+      remedy <- if (!is.null(by_term))
+        sprintf(paste0("your explicit `mid` override dropped the `by` moderator; ",
+                       "include it, e.g. mid = ~ temp_c * %s, to let z vary by ",
+                       "group."), shape_mods[1])
+      else
+        sprintf(paste0("Use by = \"%s\" (applies the moderator to all four ",
+                       "sub-parameters) or mid = ~ temp_c * %s to let z vary by ",
+                       "group."), shape_mods[1], shape_mods[1])
       warning(sprintf(
         paste0("low/up/k vary by %s but mid does not, so z (= -1/mid's temp_c ",
-               "slope) is POOLED across %s. Use by = \"%s\" (applies the moderator ",
-               "to all four sub-parameters) or mid = ~ temp_c * %s to let z vary ",
-               "by group."),
+               "slope) is POOLED across %s. %s"),
         paste(shape_mods, collapse = ", "), paste(shape_mods, collapse = ", "),
-        shape_mods[1], shape_mods[1]), call. = FALSE)
+        remedy), call. = FALSE)
+    }
     mid_rhs <- paste(c(mid_r, tdt_format_random_effects(random_effects)),
                      collapse = " + ")
     return(brms::bf(
@@ -302,9 +331,15 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param threshold      `"relative"` (default) or `"absolute"`; the threshold the
 #'                       fitted CTmax/z refer to (direct mode only).
 #' @param p              Survival fraction for the `"absolute"` threshold (direct
-#'                       mode). Default `0.5` (LT50). Must lie within the response
-#'                       bounds' achievable range, else `fit_4pl()` errors (use a
-#'                       relative threshold for sub-unit-bounded responses).
+#'                       mode). Default `0.5` (LT50). The disjoint-bounds reparam
+#'                       splits the asymptotes at the bounds' midpoint, so an
+#'                       absolute `p` is only achievable *near that midpoint*
+#'                       (with the default bounds `[0, 1]` the achievable range is
+#'                       roughly `(0.499, 0.501)`); `fit_4pl()` errors otherwise.
+#'                       For any other LTx (LT60, LT90, ...) or a sub-unit-bounded
+#'                       response, fit with `threshold = "relative"` and derive it
+#'                       afterwards via [extract_tdt()]/[tls()] with
+#'                       `target_surv = `.
 #' @param t_ref          Reference exposure for CTmax, in **minutes** (default 60,
 #'                       i.e. one hour). Converted to the model's log10-time scale
 #'                       via the data's `duration_unit`.
@@ -395,12 +430,16 @@ fit_4pl <- function(data,
   response_type <- meta$response_type %||% "count"
   response_var  <- meta$response_var %||% "survival"
 
-  # Default family from the response type when not supplied.
+  # Default family from the response type when not supplied; otherwise validate
+  # (and lightly coerce string names) so a misspecified family fails clearly
+  # here rather than as a cryptic `$` error or a silently double-linked fit.
   if (is.null(family)) {
     family <- if (identical(response_type, "proportion"))
                 brms::Beta(link = "identity")
               else
                 brms::beta_binomial(link = "identity")
+  } else {
+    family <- validate_4pl_family(family)
   }
 
   # Reference exposure for CTmax (direct mode): t_ref is in minutes; place it on
@@ -457,10 +496,15 @@ fit_4pl <- function(data,
   group_vars <- if (direct) direct_group_vars(ctmax, z, up, low, k)
                 else direct_group_vars(NULL, NULL, up, low, k, mid, by)
 
+  # `temp_effects` only governs the midpoint parameterisation; the direct
+  # CTmax/z fit ignores it, so don't record a misleading default-all-four value
+  # in a direct fit's meta.
+  meta_temp_effects <- if (direct) NULL else
+    match.arg(temp_effects, c("low", "up", "k", "mid"), several.ok = TRUE)
+
   meta_full <- utils::modifyList(meta, list(
     random_effects   = random_effects,
-    temp_effects     = match.arg(temp_effects, c("low", "up", "k", "mid"),
-                                 several.ok = TRUE),
+    temp_effects     = meta_temp_effects,
     lower            = lower,
     upper            = upper,
     bounds           = compute_4pl_bounds(lower, upper),
@@ -551,6 +595,56 @@ get_brmsfit <- function(workflow) {
   if (!has_fit(workflow))
     stop("workflow has no fit; call fit_4pl() first.", call. = FALSE)
   workflow$fit
+}
+
+# --- internal: family validation -------------------------------------------
+
+# Validate (and lightly coerce) the brms family passed to make_4pl_formula() /
+# fit_4pl(). Three jobs:
+#  1. Reject non-family inputs with a clear message. A bare string (e.g.
+#     "binomial") is a plausible mistake -- ts_stage1() and brms::brm() accept
+#     string family names -- but make_4pl_formula() reads family$family /
+#     family$link, which on an atomic vector throws the cryptic "$ operator is
+#     invalid for atomic vectors". Coerce known string names via the matching
+#     brms constructor (identity link, matching the design's default).
+#  2. Enforce identity link for the COUNT families (binomial, beta_binomial):
+#     the disjoint-bounds reparam keeps the 4PL output inside (low_min, up_max)
+#     so the 4PL value IS the mean, and only identity is wired up. A non-identity
+#     count link (e.g. binomial(link = "logit")) makes brms apply inv_logit() to
+#     a value that is already a probability -- a silent double transform. Catch
+#     it here with an actionable message rather than fitting a misspecified model.
+# Returns the (possibly coerced) family.
+validate_4pl_family <- function(family) {
+  if (is.character(family) && length(family) == 1L) {
+    ctor <- switch(family,
+                   "binomial"      = brms::binomial,
+                   "beta_binomial" = brms::beta_binomial,
+                   "beta"          = brms::Beta,
+                   "Beta"          = brms::Beta,
+                   NULL)
+    if (is.null(ctor))
+      stop(sprintf(paste0("`family` = \"%s\" is not a supported string family ",
+                          "name. Pass a brms family object instead, e.g. ",
+                          "beta_binomial(link = \"identity\"), ",
+                          "binomial(link = \"identity\"), or ",
+                          "brms::Beta(link = \"identity\")."), family),
+           call. = FALSE)
+    family <- ctor(link = "identity")
+  }
+  if (!inherits(family, c("brmsfamily", "family")))
+    stop("`family` must be a brms family object (e.g. ",
+         "beta_binomial(link = \"identity\")) or NULL, not a ",
+         class(family)[1], ".", call. = FALSE)
+  if (family$family %in% c("binomial", "beta_binomial") &&
+      !identical(family$link, "identity"))
+    stop(sprintf(paste0("Count family `%s` requires link = \"identity\" (got ",
+                        "\"%s\"). The joint 4PL produces a probability directly ",
+                        "and a non-identity link would double-transform it (brms ",
+                        "would apply inv_%s() to an already-probability mean). ",
+                        "Use %s(link = \"identity\")."),
+                 family$family, family$link, family$link, family$family),
+         call. = FALSE)
+  family
 }
 
 # --- internal: formula-resolution helpers for the direct CTmax/z mode -------

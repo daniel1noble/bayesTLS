@@ -153,3 +153,73 @@ test_that("rhs_fixed_vars strips intercept + multiple random-effect terms cleanl
   expect_equal(rhs_fixed_vars("0 + species + (1 | batch)"),    "species")
   expect_equal(rhs_fixed_vars("temp_c * species + (1 | Day)"), "species")
 })
+
+test_that("count families require an identity link (no silent double transform)", {
+  # code-fit-003: binomial/beta_binomial with a non-identity link would make brms
+  # inv_logit() an already-probability mean. Guard rejects it with a clear message.
+  expect_error(make_4pl_formula(family = binomial(link = "logit")),
+               "requires link = \"identity\"")
+  expect_error(make_4pl_formula(family = brms::beta_binomial(link = "logit")),
+               "requires link = \"identity\"")
+  # identity link still builds.
+  expect_s3_class(make_4pl_formula(family = binomial(link = "identity")),
+                  "brmsformula")
+})
+
+test_that("string family names are coerced (identity) or rejected clearly", {
+  # A bare string is a plausible mistake (ts_stage1()/brms::brm() accept them);
+  # coerce known names to identity link rather than throwing a cryptic `$` error.
+  f <- make_4pl_formula(family = "binomial")
+  expect_s3_class(f, "brmsformula")
+  expect_equal(f$family$family, "binomial")
+  expect_equal(f$family$link,   "identity")
+
+  # Unknown string -> actionable message; non-family object -> clear message.
+  expect_error(make_4pl_formula(family = "poisson"),
+               "not a supported string family")
+  expect_error(make_4pl_formula(family = 42),
+               "must be a brms family object")
+})
+
+test_that("by + explicit mid override warns with a non-circular remedy", {
+  # `by=` puts the moderator on low/up/k, but an explicit `mid=` that drops it
+  # pools z. The remedy must NOT just re-suggest the `by=` the user passed.
+  w <- tryCatch(
+    make_4pl_formula(by = "species", mid = ~ temp_c),
+    warning = function(w) conditionMessage(w))
+  expect_match(w, "POOLED across species")
+  expect_match(w, "explicit `mid` override dropped the `by` moderator")
+  expect_match(w, "mid = ~ temp_c \\* species")
+  # It must not re-suggest the by= the user already supplied as the fix.
+  expect_false(grepl("by = \"species\"", w))
+})
+
+test_that("direct-mode meta omits the (ignored) temp_effects, midpoint records it", {
+  raw <- data.frame(
+    temperature_C = rep(c(34, 38, 42), each = 3),
+    exposure_h    = rep(c(1, 2, 4), times = 3),
+    n             = 20L,
+    alive         = c(19, 14, 3, 20, 10, 1, 18, 6, 0)
+  )
+  std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                          n_total = "n", n_surv = "alive")
+
+  wf_direct <- fit_4pl(std, ctmax = ~ 1, z = ~ 1, fit = FALSE)
+  expect_null(wf_direct$meta$temp_effects)
+
+  wf_mid <- fit_4pl(std, fit = FALSE)
+  expect_setequal(wf_mid$meta$temp_effects, c("low", "up", "k", "mid"))
+})
+
+test_that("fit_4pl rejects a count family with a non-identity link override", {
+  raw <- data.frame(
+    temperature_C = rep(c(34, 38, 42), each = 3),
+    exposure_h    = rep(c(1, 2, 4), times = 3),
+    n             = 20L,
+    alive         = c(19, 14, 3, 20, 10, 1, 18, 6, 0)
+  )
+  std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                          n_total = "n", n_surv = "alive")
+  expect_error(fit_4pl(std, family = binomial(link = "logit"), fit = FALSE),
+               "requires link = \"identity\"")
+})

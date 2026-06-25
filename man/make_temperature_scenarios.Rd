@@ -22,8 +22,8 @@ make_temperature_scenarios(
 \arguments{
 \item{baseline}{Numeric. Constant baseline temperature (°C). Default 20.}
 
-\item{spike_temp}{Numeric. Temperature of each one-hour spike (°C).
-Default 30.}
+\item{spike_temp}{Numeric. Temperature of each spike (°C); each spike is one
+time step (\code{dt_hours}) wide. Default 30.}
 
 \item{n_hours}{Integer. Total length of each trace, in hours. Default 96.}
 
@@ -65,7 +65,9 @@ trace is reproducible. Default 1L.}
 \value{
 A named list of four tibbles (\code{flat}, \code{single_spike}, \code{multi_spike},
 \code{diurnal}), each with columns \code{time} (numeric, hours from start)
-and \code{temp} (°C).
+and \code{temp} (°C). Note the traces differ in length: \code{flat},
+\code{single_spike}, and \code{multi_spike} span \code{n_hours} (default 96) while
+\code{diurnal} spans \code{diurnal_n_days * 24} (default 168) hours.
 }
 \description{
 Returns a list of four tibbles, each with columns \code{time} and \code{temp},
@@ -74,20 +76,24 @@ representing the canonical validation scenarios:
 \details{
 \itemize{
 \item \code{flat} — constant \code{baseline} temperature for \code{n_hours} hours.
-\item \code{single_spike} — flat baseline with one hour at \code{spike_temp} placed at
-each of \code{spike_times_single} (default one spike).
-\item \code{multi_spike} — flat baseline with one hour at \code{spike_temp} placed at
-each of \code{spike_times_multi} (default three spikes).
+\item \code{single_spike} — flat baseline with one time step (\code{dt_hours} wide) at
+\code{spike_temp} placed at each of \code{spike_times_single} (default one spike).
+\item \code{multi_spike} — flat baseline with one time step (\code{dt_hours} wide) at
+\code{spike_temp} placed at each of \code{spike_times_multi} (default three spikes).
 \item \code{diurnal} — multi-day diurnal cycle with day-to-day variation in peak
 temperature and small hourly fluctuations on top. Useful as a stand-in
 for a natural thermal regime where some days exceed \code{T_crit} and accrue
 injury while others stay below.
 }
 
-For a single 1-hour spike, the analytical dose is
-\eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}} \% LT50-dose. Setting
-\code{spike_temp = CTmax_1hr} therefore delivers ~100\% LT50-dose per spike — a
-calibration target for \code{predict_heat_injury()} validation.
+Each spike is one time step (\code{dt_hours}) wide, so the analytical dose it
+delivers is the instantaneous rate times the step width,
+\eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}\cdot dt_{hours}} \% LT50-dose.
+With the default \code{dt_hours = 1} this reduces to
+\eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}}, so setting
+\code{spike_temp = CTmax_1hr} delivers ~100\% LT50-dose per spike — a calibration
+target for \code{predict_heat_injury()} validation. For \code{dt_hours != 1} the dose
+scales by \code{dt_hours}.
 }
 \examples{
 scens <- make_temperature_scenarios()

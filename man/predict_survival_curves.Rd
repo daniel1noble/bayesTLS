@@ -36,8 +36,11 @@ group with the moderator column(s) prepended to \code{summary}.}
 \value{
 A list with elements \code{summary} (tibble of \code{temp}, \code{duration},
 \code{survival_median}, \code{survival_lower}, \code{survival_upper}; plus the
-moderator column(s) for a grouped fit) and \code{draws}
-(the raw posterior matrix as a long tibble).
+moderator column(s) for a grouped fit), \code{draws_matrix} (the raw
+posterior matrix \verb{[ndraws x grid points]} of survival
+probabilities), and \code{grid} (the prediction grid tibble from
+\code{\link[=new_tdt_grid]{new_tdt_grid()}}). Use \code{\link[=get_surv_draws]{get_surv_draws()}} for the long-tibble form
+of the draws.
 }
 \description{
 Predicts survival probability at every combination of \code{temps} × \code{durations}

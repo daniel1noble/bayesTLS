@@ -30,6 +30,32 @@ test_that("survival_from_dose returns u at dose = 0 and target_surv at dose = 1"
                0.5, tolerance = 1e-6)
 })
 
+test_that("survival_from_dose returns NA (no NaN/warning) when target outside (low, up)", {
+  # up = 0.9 < target = 0.95: the threshold is unreachable on this draw, so the
+  # whole vector must drop as NA rather than producing log()-of-negative NaNs.
+  expect_no_warning(
+    out_hi <- survival_from_dose(c(0, 0.5, 1, 2),
+                                 low = 0.02, up = 0.9, k = 6,
+                                 target_surv = 0.95)
+  )
+  expect_true(all(is.na(out_hi)))
+  expect_false(any(is.nan(out_hi)))
+
+  # target = 0.01 below low = 0.02: also unreachable -> NA, no warning.
+  expect_no_warning(
+    out_lo <- survival_from_dose(c(0, 1, 5),
+                                 low = 0.02, up = 0.98, k = 6,
+                                 target_surv = 0.01)
+  )
+  expect_true(all(is.na(out_lo)))
+
+  # In-range target is unaffected and finite.
+  out_ok <- survival_from_dose(c(0, 1),
+                               low = 0.02, up = 0.98, k = 6,
+                               target_surv = 0.5)
+  expect_true(all(is.finite(out_ok)))
+})
+
 test_that("repair_rate_schoolfield returns positive rates peaked near TREF", {
   rp <- list(TA = 14065, TAL = 50000, TAH = 120000,
              TL = 10.5 + 273.15, TH = 22.5 + 273.15,
@@ -95,6 +121,18 @@ test_that("predict_heat_injury is invariant to the trace time unit (dt reconcili
     wf, trace_unit = "minutes", ndraws = 200, seed = 1)$summary
   expect_equal(hi_h$hi_median,   hi_m$hi_median,   tolerance = 1e-8)
   expect_equal(hi_h$surv_median, hi_m$surv_median, tolerance = 1e-8)
+})
+
+test_that("predict_heat_injury absolute target yields finite summaries without warnings", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow()
+  expect_no_warning(
+    hi <- predict_heat_injury(
+      data.frame(time = 0:6, temp = seq(30, 36, length.out = 7)),
+      wf, target_surv = "absolute", ndraws = 200, seed = 1)
+  )
+  expect_true(all(is.finite(hi$summary$surv_median)))
+  expect_true(all(is.finite(hi$summary$hi_median)))
 })
 
 test_that("predict_heat_injury errors on an unsupported time unit", {

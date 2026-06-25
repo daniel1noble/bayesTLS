@@ -128,13 +128,17 @@ level (LT50), or any numeric in \verb{(0, 1)} for a custom threshold.
 
 When \code{lethal = TRUE} it \emph{also} returns \strong{T_crit}, the rate-multiplier
 critical temperature: for each posterior draw,
-\verb{T_crit = CTmax + z * log10(r* / 100)}, with \verb{r*} drawn uniformly on the
-\code{log10} scale across \code{TC_rate_range}. The pooled posterior thus carries
-both parameter uncertainty (in \code{CTmax} and \code{z}) and operational uncertainty
-in the choice of damage-rate floor. The default range \code{c(0.1, 1)} \%
-HI per hour brackets the empirical breakpoints found by Faber et al. (2026)
-and Jørgensen et al. (2021) across taxa as different as \emph{Drosophila suzukii}
-and \emph{Lemna gibba}.
+\verb{T_crit = CTmax_1hr + z * log10(r* / 100)}, with \verb{r*} drawn uniformly on the
+\code{log10} scale across \code{TC_rate_range}. T_crit is anchored on the 1-hour CTmax
+(\code{CTmax_1hr}), not the CTmax at \code{t_ref}, so it is invariant to the reporting
+reference \code{t_ref}. The pooled posterior thus carries both parameter
+uncertainty (in \code{CTmax_1hr} and \code{z}) and operational uncertainty in the
+choice of damage-rate floor. The default range \code{c(0.1, 1)} \% HI per hour is
+the package's own operational range for the rate at which net heat damage
+begins to accrue. Faber et al. (2026) and Jørgensen et al. (2021) report
+that the critical temperature itself does not converge across taxa as
+different as \emph{Drosophila suzukii} and \emph{Lemna gibba}, which motivates
+propagating this operational uncertainty rather than fixing a single rate.
 
 T_crit only makes physical sense for \strong{lethal-endpoint} data — proportion-
 or count-based survival under a damage-accumulation interpretation. For

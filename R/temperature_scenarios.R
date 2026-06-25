@@ -13,23 +13,27 @@
 #' representing the canonical validation scenarios:
 #'
 #' - `flat` — constant `baseline` temperature for `n_hours` hours.
-#' - `single_spike` — flat baseline with one hour at `spike_temp` placed at
-#'    each of `spike_times_single` (default one spike).
-#' - `multi_spike` — flat baseline with one hour at `spike_temp` placed at
-#'    each of `spike_times_multi` (default three spikes).
+#' - `single_spike` — flat baseline with one time step (`dt_hours` wide) at
+#'    `spike_temp` placed at each of `spike_times_single` (default one spike).
+#' - `multi_spike` — flat baseline with one time step (`dt_hours` wide) at
+#'    `spike_temp` placed at each of `spike_times_multi` (default three spikes).
 #' - `diurnal` — multi-day diurnal cycle with day-to-day variation in peak
 #'    temperature and small hourly fluctuations on top. Useful as a stand-in
 #'    for a natural thermal regime where some days exceed `T_crit` and accrue
 #'    injury while others stay below.
 #'
-#' For a single 1-hour spike, the analytical dose is
-#' \eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}} % LT50-dose. Setting
-#' `spike_temp = CTmax_1hr` therefore delivers ~100% LT50-dose per spike — a
-#' calibration target for `predict_heat_injury()` validation.
+#' Each spike is one time step (`dt_hours`) wide, so the analytical dose it
+#' delivers is the instantaneous rate times the step width,
+#' \eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}\cdot dt_{hours}} % LT50-dose.
+#' With the default `dt_hours = 1` this reduces to
+#' \eqn{100\cdot 10^{(T_{spike}-CT_{max,1hr})/z}}, so setting
+#' `spike_temp = CTmax_1hr` delivers ~100% LT50-dose per spike — a calibration
+#' target for `predict_heat_injury()` validation. For `dt_hours != 1` the dose
+#' scales by `dt_hours`.
 #'
 #' @param baseline    Numeric. Constant baseline temperature (°C). Default 20.
-#' @param spike_temp  Numeric. Temperature of each one-hour spike (°C).
-#'                    Default 30.
+#' @param spike_temp  Numeric. Temperature of each spike (°C); each spike is one
+#'                    time step (`dt_hours`) wide. Default 30.
 #' @param n_hours     Integer. Total length of each trace, in hours. Default 96.
 #' @param dt_hours    Numeric. Time step, in hours. Default 1 (hourly).
 #' @param spike_times_single Integer vector. Hours at which the single-spike
@@ -59,7 +63,9 @@
 #'                    trace is reproducible. Default 1L.
 #' @return A named list of four tibbles (`flat`, `single_spike`, `multi_spike`,
 #'         `diurnal`), each with columns `time` (numeric, hours from start)
-#'         and `temp` (°C).
+#'         and `temp` (°C). Note the traces differ in length: `flat`,
+#'         `single_spike`, and `multi_spike` span `n_hours` (default 96) while
+#'         `diurnal` spans `diurnal_n_days * 24` (default 168) hours.
 #' @examples
 #' scens <- make_temperature_scenarios()
 #' lapply(scens, head)
@@ -154,7 +160,7 @@ make_temperature_scenarios <- function(baseline    = 20,
 
 #' Analytical heat-injury accumulation along a temperature trace
 #'
-#' Implements the classical HI integral exactly (Equation 7 of the manuscript),
+#' Implements the classical HI integral exactly (Equation 8 of the manuscript),
 #' given known TDT parameters. Use this as the **truth** that
 #' [predict_heat_injury()] should recover when fed the same trace and a model
 #' fit whose posterior is consistent with `(z, CTmax_1hr, T_c)`.

@@ -155,6 +155,11 @@ tdt_parameter_table <- function(workflow, by = NULL) {
   sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
 
   summary_row <- function(x, name) {
+    # Non-finite per-draw values (e.g. +/-Inf z/CTmax from a near-zero midpoint
+    # slope) are set to NA before quantiling, matching tls_local_z() in
+    # R/tls_engine.R. Otherwise na.rm = TRUE would propagate +/-Inf into the
+    # reported bounds and could corrupt the median.
+    x[!is.finite(x)] <- NA_real_
     q <- stats::quantile(x, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
     tibble::tibble(parameter = name, median = q[2], lower = q[1], upper = q[3])
   }
@@ -199,8 +204,9 @@ tdt_parameter_table <- function(workflow, by = NULL) {
 #'
 #' @param workflow A fitted `bayes_tls` workflow returned by [fit_4pl()].
 #' @param ... Further arguments passed to [brms::bayes_R2()].
-#' @return A one-row tibble with columns `estimate`, `est_error`, `lower`
-#'   (2.5%), and `upper` (97.5%).
+#' @return A one-row tibble with columns `estimate`, `est_error`, `lower`, and
+#'   `upper` (the lower and upper credible bounds, 2.5% and 97.5% by default;
+#'   controlled by `probs` passed via `...`).
 #' @seealso [brms::bayes_R2()], [diagnose_tdt_fit()]
 #' @examples
 #' \dontrun{
@@ -216,6 +222,11 @@ bayes_R2_tls <- function(workflow, ...) {
   r   <- brms::bayes_R2(fit, ...)
   # brms::bayes_R2() returns a 1-row matrix with columns
   # Estimate / Est.Error / Q2.5 / Q97.5 (the quantile labels track `probs`).
+  # This wrapper reshapes that summary; passing summary = FALSE via ... yields a
+  # raw draws matrix without those columns, which this function cannot summarise.
+  if (is.null(dim(r)) || !"Estimate" %in% colnames(r))
+    stop("bayes_R2_tls() needs the summarised output of brms::bayes_R2(); ",
+         "do not pass summary = FALSE.", call. = FALSE)
   cn  <- colnames(r)
   qlo <- grep("^Q", cn)[1]
   qhi <- grep("^Q", cn)[length(grep("^Q", cn))]

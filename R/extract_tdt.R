@@ -85,6 +85,12 @@ resolve_target_surv <- function(target_surv) {
 #'         column is a character label), `summary` (quantile summary by
 #'         temperature), `target_surv` (the label), `time_multiplier`,
 #'         `output_time_unit`.
+#' @examples
+#' \dontrun{
+#' wf  <- fit_4pl(std)
+#' crv <- derive_tdt_curve(wf, temp_grid = c(38, 40, 42))  # relative LT curve
+#' crv$summary
+#' }
 #' @export
 derive_tdt_curve <- function(workflow,
                              temp_grid,
@@ -205,7 +211,6 @@ derive_tdt_curve <- function(workflow,
 #'                         or a numeric in `(0, 1)`.
 #' @param ndraws           Posterior draws to use; `NULL` (default) uses the
 #'                         full posterior. Pass an integer to subsample.
-#'                         Default 1000.
 #' @param probs            Quantile probabilities. Default `c(0.025, 0.5, 0.975)`.
 #' @param seed             Optional integer seeding the draw subsample for
 #'                         reproducibility. `NULL` (default) leaves the RNG alone.
@@ -216,11 +221,19 @@ derive_tdt_curve <- function(workflow,
 #'         column is a character label), `summary` (quantile summary),
 #'         `exposure_duration`, `target_surv` (the label), `target_mode`,
 #'         `target_prob`. A grouped fit adds the moderator column(s).
+#' @examples
+#' \dontrun{
+#' wf <- fit_4pl(std)
+#' # Temperature giving the relative midpoint threshold after a 60-unit exposure:
+#' tt <- derive_temperature_for_duration(wf, exposure_duration = 60,
+#'                                        temp_grid = seq(36, 44, by = 0.1))
+#' tt$summary
+#' }
 #' @export
 derive_temperature_for_duration <- function(workflow,
                                             exposure_duration,
                                             temp_grid,
-                                            target_surv = "absolute",
+                                            target_surv = "relative",
                                             ndraws      = NULL,
                                             probs       = c(0.025, 0.5, 0.975),
                                             seed        = NULL,
@@ -411,13 +424,17 @@ derive_z <- function(workflow,
 #'
 #' When `lethal = TRUE` it *also* returns **T_crit**, the rate-multiplier
 #' critical temperature: for each posterior draw,
-#' `T_crit = CTmax + z * log10(r* / 100)`, with `r*` drawn uniformly on the
-#' `log10` scale across `TC_rate_range`. The pooled posterior thus carries
-#' both parameter uncertainty (in `CTmax` and `z`) and operational uncertainty
-#' in the choice of damage-rate floor. The default range `c(0.1, 1)` %
-#' HI per hour brackets the empirical breakpoints found by Faber et al. (2026)
-#' and Jørgensen et al. (2021) across taxa as different as *Drosophila suzukii*
-#' and *Lemna gibba*.
+#' `T_crit = CTmax_1hr + z * log10(r* / 100)`, with `r*` drawn uniformly on the
+#' `log10` scale across `TC_rate_range`. T_crit is anchored on the 1-hour CTmax
+#' (`CTmax_1hr`), not the CTmax at `t_ref`, so it is invariant to the reporting
+#' reference `t_ref`. The pooled posterior thus carries both parameter
+#' uncertainty (in `CTmax_1hr` and `z`) and operational uncertainty in the
+#' choice of damage-rate floor. The default range `c(0.1, 1)` % HI per hour is
+#' the package's own operational range for the rate at which net heat damage
+#' begins to accrue. Faber et al. (2026) and Jørgensen et al. (2021) report
+#' that the critical temperature itself does not converge across taxa as
+#' different as *Drosophila suzukii* and *Lemna gibba*, which motivates
+#' propagating this operational uncertainty rather than fixing a single rate.
 #'
 #' T_crit only makes physical sense for **lethal-endpoint** data — proportion-
 #' or count-based survival under a damage-accumulation interpretation. For

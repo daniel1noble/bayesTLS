@@ -33,7 +33,9 @@ ts_ci(
 }
 \value{
 For \code{"delta"}, a list with \code{z} and \code{CTmax_1hr}, each
-\code{list(point, lower, upper, lower_t, upper_t, se)}, plus \code{df_resid}.
+\code{list(point, lower, upper, lower_t, upper_t, se)}, plus \code{df_resid}. As in
+\code{\link[=ts_stage2]{ts_stage2()}}, the \code{CTmax_1hr} block reports CTmax at \code{t_ref} despite its
+name (the two coincide at the default \code{t_ref = 60}).
 For \code{"mvn"}, a list with \code{summary_ci} (z/CTmax/T_crit bounds) and
 \code{curve_ci} (per-\code{temp_grid} line band).
 }

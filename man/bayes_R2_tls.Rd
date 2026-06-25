@@ -12,8 +12,9 @@ bayes_R2_tls(workflow, ...)
 \item{...}{Further arguments passed to \code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}}.}
 }
 \value{
-A one-row tibble with columns \code{estimate}, \code{est_error}, \code{lower}
-(2.5\%), and \code{upper} (97.5\%).
+A one-row tibble with columns \code{estimate}, \code{est_error}, \code{lower}, and
+\code{upper} (the lower and upper credible bounds, 2.5\% and 97.5\% by default;
+controlled by \code{probs} passed via \code{...}).
 }
 \description{
 A thin tidy wrapper around \code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}} for a fitted \code{bayes_tls}

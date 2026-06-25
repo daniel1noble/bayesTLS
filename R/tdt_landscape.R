@@ -12,8 +12,12 @@
 #' @param workflow      Fitted `bayes_tls`.
 #' @param temp_grid     Numeric vector of temperatures (°C). Default: 120
 #'                      equally spaced values across the training-data range.
-#' @param duration_grid Numeric vector of durations. Default: 120 log-spaced
-#'                      values across the training-data range.
+#' @param duration_grid Numeric vector of durations. Default: 120 equally
+#'                      spaced values across the training-data range. A linear
+#'                      (rather than log-spaced) default keeps the grid regular
+#'                      on the linear duration axis that [plot_tdt_landscape()]
+#'                      uses by default, so the survival surface renders without
+#'                      uneven-raster artefacts.
 #' @param ndraws        Posterior draws to use; `NULL` (default) uses the full
 #'                      posterior. Pass an integer to subsample for speed.
 #' @param probs         Quantile probabilities. Default `c(0.025, 0.5, 0.975)`.
@@ -42,8 +46,7 @@ derive_tdt_landscape <- function(workflow,
   }
   if (is.null(duration_grid)) {
     drange        <- range(data$duration, na.rm = TRUE)
-    duration_grid <- 10 ^ seq(log10(drange[1]), log10(drange[2]),
-                              length.out = 120)
+    duration_grid <- seq(drange[1], drange[2], length.out = 120)
   }
 
   predict_survival_curves(

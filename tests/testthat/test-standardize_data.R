@@ -94,6 +94,36 @@ test_that("standardize_data proportion path produces a Beta-ready frame", {
   expect_equal(max(std$survival), 0.999)
 })
 
+test_that("proportion path records proportion_eps in metadata; count path does not", {
+  raw <- make_raw()
+  raw$fvfm <- c(0, 0.2, 0.5, 0.95, 1, 0.3, 0.6, 0.8, 0.1, 0.4, 0.7, 0.9)
+  std_p <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                            proportion = "fvfm", proportion_eps = 0.005)
+  expect_equal(attr(std_p, "tdt_meta")$proportion_eps, 0.005)
+
+  std_c <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                            n_total = "n", n_surv = "alive")
+  expect_null(attr(std_c, "tdt_meta")$proportion_eps)
+})
+
+test_that("proportion path warns when overwriting an unrelated `survival` column", {
+  raw <- make_raw()
+  raw$fvfm     <- c(0.1, 0.2, 0.5, 0.95, 0.4, 0.3, 0.6, 0.8, 0.1, 0.4, 0.7, 0.9)
+  raw$survival <- "unrelated"                  # pre-existing, not the source
+  expect_warning(
+    std <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+                            proportion = "fvfm"),
+    "overwrites the existing `survival` column")
+  expect_equal(std$survival, pmin(pmax(raw$fvfm, 0.001), 0.999))
+
+  # No warning when the proportion source *is* `survival`.
+  raw2 <- make_raw()
+  raw2$survival <- c(0.1, 0.2, 0.5, 0.95, 0.4, 0.3, 0.6, 0.8, 0.1, 0.4, 0.7, 0.9)
+  expect_no_warning(
+    standardize_data(raw2, temp = "temperature_C", duration = "exposure_h",
+                     proportion = "survival"))
+})
+
 test_that("standardize_data proportion path needs no n_total and rejects mixing", {
   raw <- make_raw()
   raw$fvfm <- 0.5

@@ -3,6 +3,24 @@
 # `lethal = TRUE` returns a sensible T_crit. Set RUN_BRMS_TESTS=true to
 # enable. Without that, the file becomes a no-op.
 
+# Fast tier (no brms fit): the exported TDT-family functions must share the
+# documented `target_surv = "relative"` default. derive_temperature_for_duration
+# previously defaulted to "absolute" while its own docs said "relative", silently
+# returning a different quantity to users calling the primitive directly.
+test_that("TDT-family functions all default to target_surv = 'relative'", {
+  fns <- list(
+    extract_tdt                     = extract_tdt,
+    derive_z                        = derive_z,
+    derive_tdt_curve                = derive_tdt_curve,
+    derive_temperature_for_duration = derive_temperature_for_duration
+  )
+  for (nm in names(fns)) {
+    default <- formals(fns[[nm]])$target_surv
+    expect_identical(default, "relative",
+                     info = paste(nm, "target_surv default"))
+  }
+})
+
 test_that("extract_tdt recovers z and CTmax_1hr from simulated truth", {
   skip_unless_brms()
 

@@ -60,6 +60,16 @@
 #'   `tls_z()`, `tls_ctmax()` and `tls_tcrit()` convenience wrappers).
 #' @return A `tls` object: `$summary` (per-group, per-quantity median + interval),
 #'   `$draws` (per-group, per-quantity posterior draws), and `$meta`.
+#' @details
+#' **Scope vs [extract_tdt()].** `tls()` derives `z`/`CTmax` from the
+#' least-squares slope of the per-draw log10(LT)-versus-temperature line across
+#' `temp_grid`, i.e. a regression-slope summary of the LT curve. With
+#' `target_surv = "absolute"` (or a numeric `p`) the underlying LT curve can be
+#' bent, and this slope summary then differs from [extract_tdt()], which uses a
+#' local-`z` pooling / true inversion of the curve. The two engines coincide
+#' only in the relative/linear case (`target_surv = "relative"`, the default),
+#' where log10(LT) is linear in temperature; treat the absolute-mode `tls()`
+#' output as a linear approximation, not as an inversion-based estimate.
 #' @examples
 #' \dontrun{
 #' tls(joint_sex_fit, by = "sex", lethal = TRUE, temp_mean = 36.1)  # z, CTmax, T_crit per sex
@@ -143,6 +153,7 @@ tls <- function(object, by = NULL, params = "all",
   tc <- newdata[[temp]]
   log_tref <- log10(t_ref / time_multiplier)
   summ <- list(); drw <- list()
+  allna_groups <- character(0)   # groups whose z/CTmax draws are all non-finite
   for (g in unique(newdata$.grp)) {
     cols <- which(newdata$.grp == g)
     w    <- tc[cols] - mean(tc[cols])
@@ -156,6 +167,7 @@ tls <- function(object, by = NULL, params = "all",
       # down the whole tls() call. The raw draws (Inf/NaN included) are still
       # returned in `$draws`.
       vf <- v[is.finite(v)]
+      if (!length(vf)) allna_groups <<- union(allna_groups, as.character(g))
       qs <- if (length(vf))
               stats::quantile(vf, probs[c(1, 3)], names = FALSE) else c(NA_real_, NA_real_)
       s <- data.frame(quantity = q,
@@ -179,6 +191,14 @@ tls <- function(object, by = NULL, params = "all",
                           log10(TC_rate_range[2] / 100))
       add("Tcrit", ct1 + z * u)
     }
+  }
+
+  if (length(allna_groups)) {
+    warning("tls(): all z/CTmax draws were non-finite for group(s) ",
+            paste(allna_groups, collapse = ", "),
+            "; their summary rows are NA (e.g. a near-zero LS slope or a ",
+            "single-temperature group). Do not read these as valid estimates.",
+            call. = FALSE)
   }
 
   out <- list(

@@ -89,6 +89,28 @@ test_that("phi prior present for beta-binomial, omitted when prior_phi = NULL", 
     make_4pl_priors(dd, ctmax = ~ 1, prior_phi = NULL))$class == "phi"))
 })
 
+test_that("bare cell-means (0 + G) emits no redundant global 'b' prior", {
+  # Every coefficient already has a per-level prior, so the global mean-zero
+  # `b` prior would be redundant and brms warns about it (CI = error-on=warning).
+  p <- as.data.frame(make_4pl_priors(dd, ctmax = ~ 0 + life_stage,
+                                     z = ~ 0 + life_stage))
+  for (nlp in c("CTmaxdev", "logz", "lowraw", "upraw", "logk")) {
+    has_global <- any(p$nlpar == nlp & p$coef == "" & p$class == "b")
+    expect_false(has_global)
+  }
+})
+
+test_that("cell-means with extra terms keeps the global mean-zero 'b' prior", {
+  # An interaction/slope term is not covered by the per-level priors, so the
+  # global mean-zero `b` prior must remain.
+  p <- as.data.frame(make_4pl_priors(
+    dd, ctmax = ~ 0 + life_stage + temp_c:life_stage, z = ~ 0 + life_stage))
+  expect_true(any(p$nlpar == "CTmaxdev" & p$coef == "" & p$class == "b"))
+  # treatment coding still carries the global prior (covers contrasts)
+  pt <- as.data.frame(make_4pl_priors(dd, ctmax = ~ life_stage, z = ~ life_stage))
+  expect_true(any(pt$nlpar == "logz" & pt$coef == "" & pt$class == "b"))
+})
+
 test_that("direct prior object is complete/valid for brms (every coef covered)", {
   f <- make_4pl_formula(ctmax = ~ 0 + life_stage, z = ~ 0 + life_stage)
   p <- make_4pl_priors(dd, ctmax = ~ 0 + life_stage, z = ~ 0 + life_stage)

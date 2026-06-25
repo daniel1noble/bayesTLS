@@ -53,6 +53,24 @@ test_that("tls() params/lethal switches and summary shape", {
   expect_true(all(c("quantity", ".draw", "value") %in% names(all3$draws)))
 })
 
+test_that("tls() warns and NAs the summary when a group's z/CTmax draws are all non-finite", {
+  skip_unless_brms()
+  wf  <- load_fixture_workflow()
+  fit <- get_brmsfit(wf)
+  # A single-temperature grid makes the LS slope 0/0 (NaN) -> z = -1/NaN non-finite
+  # for every draw, so the group's summary must be NA and a naming warning fired.
+  nd  <- data.frame(grp = factor("solo"),
+                    temp_c = mean(fit$data$temp_c))
+
+  expect_warning(
+    out <- tls(wf, by = "grp", newdata = nd, params = "z", mode = "relative"),
+    "non-finite.*solo|solo.*non-finite"
+  )
+  expect_true(all(is.na(out$summary$median[out$summary$quantity == "z"])))
+  # Raw draws are still returned (non-finite, not silently dropped).
+  expect_true(all(!is.finite(out$draws$value[out$draws$quantity == "z"])))
+})
+
 test_that("tls() per-group machinery: a moderator the model ignores gives identical z", {
   skip_unless_brms()
   wf  <- load_fixture_workflow()

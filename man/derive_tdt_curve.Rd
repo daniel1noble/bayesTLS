@@ -73,3 +73,10 @@ then \code{approx()} through \code{p}.
 This is the \strong{horizontal} read of the survival surface: fix a survival
 threshold, read off the time required to reach it at each temperature.
 }
+\examples{
+\dontrun{
+wf  <- fit_4pl(std)
+crv <- derive_tdt_curve(wf, temp_grid = c(38, 40, 42))  # relative LT curve
+crv$summary
+}
+}

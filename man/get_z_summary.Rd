@@ -10,7 +10,8 @@ get_z_summary(et)
 \item{et}{The list returned by \code{\link[=extract_tdt]{extract_tdt()}}.}
 }
 \value{
-A tibble with columns \code{z_median}, \code{z_lower}, \code{z_upper}.
+A tibble with columns \code{z_median}, \code{z_lower}, \code{z_upper} (plus the
+moderator column(s) for a grouped fit).
 }
 \description{
 Pulls the z summary table from an \code{\link[=extract_tdt]{extract_tdt()}} result — the headline

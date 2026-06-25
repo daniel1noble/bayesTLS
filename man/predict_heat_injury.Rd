@@ -36,7 +36,8 @@ meaningful anchor for dose accounting.}
 
 \item{T_c}{Optional damage-accumulation threshold (°C). When
 supplied, the damage rate is forced to zero at
-\code{temp <= T_c} (matches Equation 7 of the manuscript).
+\code{temp <= T_c} (matches the heat-injury integral,
+Equation 8 of the manuscript).
 Default \code{NULL} lets the rate fall naturally with T.}
 
 \item{trace_unit}{Time unit of the trace's \code{time} column: one of

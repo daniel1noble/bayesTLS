@@ -167,23 +167,27 @@ test_that("plot_survival_curves overlays observed points only when provided", {
 # ========================= plot_tdt_landscape ==============================
 
 fake_landscape <- function() {
-  # Evenly spaced grid (geom_raster wants even intervals) with survival that
-  # spans the full 0-1 range, so the 0.25/0.5/0.75 contours all exist.
+  # Log-spaced duration grid (the derive_tdt_landscape() default) on a linear
+  # axis: this is the real default the plot must render. geom_tile handles the
+  # irregular spacing; geom_raster would mis-place every cell. Survival spans
+  # the full 0-1 range so the 0.25/0.5/0.75 contours all exist.
   grid <- expand.grid(temp = seq(30, 38, length.out = 12),
-                      duration = seq(0.5, 30, length.out = 12))
+                      duration = 10^seq(log10(0.5), log10(30), length.out = 12))
   grid$survival_median <- plogis(8 - 0.4 * grid$duration - 0.5 * (grid$temp - 30))
   list(summary = tibble::as_tibble(grid))
 }
 
-test_that("plot_tdt_landscape builds a raster heatmap of survival with contours", {
+test_that("plot_tdt_landscape builds a tile heatmap of survival with contours", {
   lsp <- fake_landscape()
   p   <- plot_tdt_landscape(lsp)
-  expect_s3_class(p$layers[[1]]$geom, "GeomRaster")
+  # geom_tile (not geom_raster) so the log-spaced default duration grid renders
+  # without the "uneven raster intervals" shift.
+  expect_s3_class(p$layers[[1]]$geom, "GeomTile")
   expect_s3_class(p$layers[[2]]$geom, "GeomContour")
-  # geom_contour over a fill raster emits a benign "fill dropped" message (the
+  # geom_contour over a fill tile emits a benign "fill dropped" message (the
   # contour stat ignores fill); it occurs in real use too and is not a bug.
   bd <- suppressWarnings(built(p))
-  # One raster cell per grid row.
+  # One tile cell per grid row.
   expect_equal(nrow(bd$data[[1]]), nrow(lsp$summary))
   # Contours are drawn at exactly the requested survival levels (and they exist
   # because the synthetic surface spans 0-1).

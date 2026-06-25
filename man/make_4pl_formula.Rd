@@ -36,7 +36,12 @@ response-scale asymptote interval. Defaults to
 \item{family}{brms family. Default \code{beta_binomial(link = "identity")}.
 Pass \code{binomial(link = "identity")} for the simpler
 no-overdispersion case, or \code{brms::Beta(link = "identity")}
-for a continuous proportion response.}
+for a continuous proportion response. The count families
+(\code{binomial}, \code{beta_binomial}) require \code{link = "identity"}
+— the 4PL produces a probability directly, so any other
+link would double-transform it (an error is thrown). A
+known family name passed as a string (e.g. \code{"binomial"})
+is coerced to its identity-link constructor.}
 
 \item{response_var}{Response column name for a \code{Beta} (continuous
 proportion) fit. Ignored for count families. Default
@@ -92,10 +97,19 @@ for finer per-parameter control. Errors in direct mode
 \code{CTmax}/\code{z} are the relative-threshold quantities;
 \code{"absolute"} bakes the asymmetry correction
 \eqn{C(T) = (1/k)\log((up-p)/(p-low))} into \code{mid} so
-they are the absolute (\code{p}-survival) quantities.}
+they are the absolute (\code{p}-survival) quantities. The
+disjoint-bounds reparam splits the asymptotes at the
+bounds' midpoint, so \code{"absolute"} is only well defined
+for \code{p} \emph{near that midpoint} (with the default bounds
+\verb{[0, 1]} the achievable range is roughly \verb{(0.499, 0.501)}); other LTx values (LT60, LT90, ...) must be
+obtained from a \code{"relative"} fit plus
+\code{\link[=extract_tdt]{extract_tdt()}}/\code{\link[=tls]{tls()}} with \verb{target_surv = }, which
+inverts the fitted surface post hoc for any \code{p}.}
 
 \item{p}{Survival fraction defining the absolute threshold.
-Default \code{0.5}.}
+Default \code{0.5}. Only meaningful when \code{threshold = "absolute"}, and (see \code{threshold}) only achievable for
+\code{p} near the bounds' midpoint -- use the relative
+threshold + \code{target_surv} for any other LTx.}
 
 \item{log10_tref}{\code{log10} of the reference exposure (in the model's time
 unit) at which \code{CTmax} is defined. Default \code{0} (one time

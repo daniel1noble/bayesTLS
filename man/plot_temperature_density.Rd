@@ -13,7 +13,7 @@ with \verb{$draws} and \verb{$summary} from \code{\link[=extract_tdt]{extract_td
 \item{truth}{Optional numeric scalar: a true value to mark with a
 dashed vertical line.}
 
-\item{x_label}{X-axis label. Default \code{"Temperature (degC)"}.}
+\item{x_label}{X-axis label. Default \code{"Temperature (°C)"}.}
 }
 \value{
 A ggplot object.

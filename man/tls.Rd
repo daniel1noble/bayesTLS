@@ -114,6 +114,17 @@ are evaluated at a moderator x temperature grid with
 the same posterior draws (so they are mutually consistent and \code{T_crit} pairs
 \code{CTmax} and \code{z} per draw).
 }
+\details{
+\strong{Scope vs \code{\link[=extract_tdt]{extract_tdt()}}.} \code{tls()} derives \code{z}/\code{CTmax} from the
+least-squares slope of the per-draw log10(LT)-versus-temperature line across
+\code{temp_grid}, i.e. a regression-slope summary of the LT curve. With
+\code{target_surv = "absolute"} (or a numeric \code{p}) the underlying LT curve can be
+bent, and this slope summary then differs from \code{\link[=extract_tdt]{extract_tdt()}}, which uses a
+local-\code{z} pooling / true inversion of the curve. The two engines coincide
+only in the relative/linear case (\code{target_surv = "relative"}, the default),
+where log10(LT) is linear in temperature; treat the absolute-mode \code{tls()}
+output as a linear approximation, not as an inversion-based estimate.
+}
 \examples{
 \dontrun{
 tls(joint_sex_fit, by = "sex", lethal = TRUE, temp_mean = 36.1)  # z, CTmax, T_crit per sex

@@ -15,10 +15,11 @@ ts_stage2(
 \arguments{
 \item{stage1}{Output of \code{\link[=ts_stage1]{ts_stage1()}}.}
 
-\item{t_ref}{Reference exposure duration for CTmax (minutes). Default 60.}
+\item{t_ref}{Reference exposure duration for CTmax (minutes). Default 60.
+Must be > 0.}
 
 \item{time_multiplier}{Multiplier from the Stage-1 duration unit to minutes
-(e.g. 60 if durations are in hours). Default 1.}
+(e.g. 60 if durations are in hours). Default 1. Must be > 0.}
 
 \item{TC_rate_range}{Length-2 HI-rate range (\% per hour) for T_crit.}
 
@@ -29,13 +30,22 @@ simulation's looser rule).}
 \value{
 \code{list(fit, summary)}; \code{fit} is \code{NULL} if fewer than 3 valid Stage-1
 estimates remain. \code{summary} has \code{intercept}, \code{slope_T}, \code{z}, \code{CTmax_1hr},
-\code{T_crit}, \code{r_squared}, \code{n_stage1}, \code{n_excluded}.
+\code{T_crit}, \code{r_squared}, \code{n_stage1}, \code{n_excluded}. Note that despite its name
+\code{CTmax_1hr} reports CTmax at \code{t_ref} (the two coincide at the default
+\code{t_ref = 60}); the 1 h anchor used for \code{T_crit} is computed separately and
+is invariant to \code{t_ref}.
 }
 \description{
 Regresses Stage-1 \code{log10(LT50)} on assay temperature by ordinary least
 squares and derives the classical quantities. \code{z = -1/slope};
 \code{CTmax(t_ref) = (log10(t_ref) - intercept) / slope}; \code{T_crit} follows the
-rate-multiplier definition, \code{CTmax + z * mean(log10(TC_rate_range/100))}.
+rate-multiplier definition, \verb{CTmax(1h) + z * mean(log10(TC_rate_range/100))}.
+}
+\details{
+The Stage-2 regression is \strong{unweighted} ordinary least squares: it ignores
+the Stage-1 standard errors (\code{se_log10_lt50}) by design. This is the
+generated-regressor bias the manuscript demonstrates, so \code{se_log10_lt50} is
+exposed for diagnostics only and is not propagated into the Stage-2 quantities.
 }
 \examples{
 d <- data.frame(
