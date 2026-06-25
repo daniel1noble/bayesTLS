@@ -246,6 +246,15 @@ The functions in `bayesTLS` chain together as a single pipeline with the followi
 
 Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to the snow gum leaf PSII and *Drosophila* datasets.
 
+```{r function-map}
+#| label: fig-function-map
+#| echo: false
+#| fig-cap: "Core user-facing `bayesTLS` function map. Solid arrows show the main Bayesian workflow from data standardisation through model fitting and posterior-derived TLS quantities. Report/access functions are object-specific: `get_4pl_est()` reads the fitted `fit_4pl()` workflow, `get_tls_est()` reads a `tls()` object, and the `extract_tdt()` accessors read an `extract_tdt()` object. Prediction functions also take the fitted workflow, while plotting functions visualise outputs from the report/access or prediction branches. Dashed arrows show optional or advanced routes, including manual `brms` input, model-specification helpers, diagnostics, derivation primitives and the classical two-stage comparison path."
+#| out-width: "100%"
+
+knitr::include_graphics(here::here("output", "figs", "bayesTLS_function_map.png"))
+```
+
 ## *Description of Functions* {#sec-function-tour}
 
 #### *Core functions*
