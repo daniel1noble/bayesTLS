@@ -72,7 +72,7 @@ clock_to_minutes <- function(x) {
     # turned c(0.5, 720) into 0.5 min, not 720 min).
     if (length(nona) && all(nona >= 0 & nona <= 1)) {
       message("clock_to_minutes(): all numeric values are in [0, 1]; ",
-              "treating them as Excel day-fractions (× 1440 min). ",
+              "treating them as Excel day-fractions (\u00d7 1440 min). ",
               "If they are already minutes, pass them as values > 1 or ",
               "convert with as.numeric() first.")
       return(x * 24 * 60)
