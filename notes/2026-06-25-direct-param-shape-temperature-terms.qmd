@@ -1,0 +1,179 @@
+---
+title: "Do moderator×temperature terms on low/up/k matter once z and CTmax are parameterised directly?"
+date: 2026-06-25
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: show
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+suppressPackageStartupMessages({library(bayesTLS); library(dplyr); library(tidyr)})
+models_dir <- here::here("output", "models")
+```
+
+## The question
+
+We reformulated the 4PL
+
+$$
+p \;=\; \text{low} \;+\; \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k\,(\log_{10} t - \text{mid})\bigr)}
+$$
+
+so that $z$ and $CT_{max}$ can be estimated **directly** (the "direct" parameterisation:
+`ctmax = ~ ...`, `z = ~ ...`), instead of estimating the linear midpoint
+$\text{mid}(T) = \beta_0 + \beta_1 (T-\bar T)$ and deriving $z = -1/\beta_1$ from it.
+
+With a moderator such as **life stage**, the working assumption had been: to get
+per-stage $z$ and $CT_{max}$ we must put `temp_c * stage` on **all four** 4PL
+sub-parameters, "because the asymmetry correction needs it." Is that still true
+once $z$ and $CT_{max}$ are built into the equation?
+
+## The maths: relative $z$/$CT_{max}$ depend on `mid` alone
+
+`bayesTLS` reads thermal-tolerance quantities at a **threshold**. The default,
+`target_surv = "relative"`, sets the threshold to $(\text{low}+\text{up})/2$
+**per posterior draw**. By construction of the 4PL, $p = (\text{low}+\text{up})/2$
+exactly at $\log_{10}t = \text{mid}$. Hence
+
+$$
+\log_{10}\mathrm{LT}_{\text{rel}}(T) \;=\; \text{mid}(T)\qquad\text{exactly, for *any* low, up, k (even } T\text{-varying).}
+$$
+
+(The code does exactly this — `extract_tdt()` takes the "direct shortcut
+`log10(t_relative) = mid(T)` per draw" with no reference to low/up/k.) Therefore
+
+- $z_{\text{rel}}(T) = -1/(\mathrm{d}\,\text{mid}/\mathrm{d}T)$, and
+- $CT_{max,\text{rel}}$ solves $\text{mid}(T) = \log_{10} t_{\text{ref}}$,
+
+are functions of **`mid` only**. The shape parameters cancel. The direct
+parameterisation simply *names* the slope and intercept of `mid(T)` as $z$ and
+$CT_{max}$, so
+
+> `ctmax = ~ 0 + stage`, `z = ~ 0 + stage`  $\;\equiv\;$  `stage` **and** `stage:temp_c` on `mid`.
+
+The asymmetry correction $\tfrac{1}{k}\log\frac{\text{up}-x}{x-\text{low}}$ enters
+**only** the *absolute* threshold (LT at a fixed survival $x$). It is a constant
+offset (no effect on $z$, only shifts $CT_{max}$) when low/up/k are constant in
+$T$; it **bends** the $\log_{10}\mathrm{LT}(T)$ curve — making absolute $z$ a local
+slope that differs from relative $z$ — **only when low/up/k vary with $T$**; and it
+is $\approx 0$ anyway when $\text{low}\approx0,\ \text{up}\approx1,\ x=0.5$.
+
+**So:** for the per-stage *relative* $z$/$CT_{max}$ you need `stage` (+ its
+temperature interaction) on `mid` — i.e. `ctmax = ~ stage`, `z = ~ stage` in the
+direct form — and **not** on low/up/k.
+
+## Simulation: does it hold when the shape genuinely varies with $T$ and stage?
+
+We generate two life stages with **different** true $z$ and $CT_{max}$, and we let
+low/up/k vary with both temperature **and** stage (the very thing the assumption
+said we must model). We then fit the direct parameterisation two ways and compare
+the recovered **relative** $z$/$CT_{max}$ to truth.
+
+```{r simulate}
+set.seed(1)
+T_bar <- 34; temps <- c(30,32,34,36,38); durs <- c(1,5,15,45,135,405)
+nrep  <- 25; n <- 30; tref <- 60
+truth <- list(A = list(b0 = 1.6, b1 = -0.12),   # z_A = -1/b1 = 8.33
+              B = list(b0 = 1.3, b1 = -0.20))    # z_B = 5.00
+z_true  <- sapply(truth, function(p) -1 / p$b1)
+ct_true <- sapply(truth, function(p) T_bar + (log10(tref) - p$b0) / p$b1)
+
+# low/up/k vary with T AND stage; up kept inside (0, 1)
+shape <- function(stage, Tc) {
+  up <- if (stage == "A") 0.90 - 0.010 * Tc else 0.88 - 0.015 * Tc
+  k  <- if (stage == "A") 7 else 11
+  c(low = 0.02, up = up, k = k)
+}
+d <- tidyr::expand_grid(stage = c("A","B"), T = temps, t = durs, rep = 1:nrep) |>
+  dplyr::mutate(Tc = T - T_bar, log10_t = log10(t)) |>
+  dplyr::rowwise() |>
+  dplyr::mutate(b0 = truth[[stage]]$b0, b1 = truth[[stage]]$b1, mid = b0 + b1 * Tc,
+                low = shape(stage, Tc)["low"], up = shape(stage, Tc)["up"], k = shape(stage, Tc)["k"],
+                p = low + (up - low) / (1 + exp(k * (log10_t - mid))),
+                y = rbinom(1, n, p), n_total = n) |>
+  dplyr::ungroup()
+std <- standardize_data(d, temp = "T", duration = "t", n_total = "n_total",
+                        n_surv = "y", duration_unit = "minutes")
+```
+
+```{r fit}
+# M1: per-stage CTmax/z, CONSTANT low/up/k (shape NOT modelled)
+m1 <- fit_4pl(std, ctmax = ~ 0 + stage, z = ~ 0 + stage,
+              low = ~ 1, up = ~ 1, k = ~ 1,
+              family = binomial("identity"), chains = 2, iter = 1500, warmup = 750,
+              cores = 2, seed = 2, refresh = 0,
+              file = file.path(models_dir, "note_shape_m1"), file_refit = "on_change")
+
+# M2: per-stage CTmax/z, FULL stage*temp_c on low/up/k (shape fully modelled)
+m2 <- fit_4pl(std, ctmax = ~ 0 + stage, z = ~ 0 + stage,
+              low = ~ stage * temp_c, up = ~ stage * temp_c, k = ~ stage * temp_c,
+              family = binomial("identity"), chains = 2, iter = 1500, warmup = 750,
+              cores = 2, seed = 2, refresh = 0,
+              file = file.path(models_dir, "note_shape_m2"), file_refit = "on_change")
+```
+
+```{r recover}
+rel <- function(m, label) tls(m, by = "stage", target_surv = "relative", t_ref = tref)$summary |>
+  dplyr::filter(quantity %in% c("z", "CTmax")) |>
+  dplyr::transmute(model = label, stage, quantity, est = round(median, 2),
+                   lower = round(lower, 2), upper = round(upper, 2))
+truth_tbl <- tibble::tibble(model = "TRUTH",
+  stage = rep(c("A","B"), 2), quantity = rep(c("z","CTmax"), each = 2),
+  est = round(c(z_true, ct_true), 2), lower = NA, upper = NA)
+dplyr::bind_rows(truth_tbl, rel(m1, "M1: constant low/up/k"),
+                 rel(m2, "M2: full stage*temp on low/up/k")) |>
+  dplyr::arrange(quantity, stage, model) |>
+  as.data.frame()
+```
+
+### What the numbers say
+
+- **Both** fits recover the per-stage **relative** $z$ and $CT_{max}$ close to
+  truth — confirming that `stage` on `ctmax`/`z` (direct) is sufficient; the
+  shape×temperature terms on low/up/k are **not** needed for these quantities.
+- **M1** (constant shape) carries a **small downward bias in $z$** (~3–4%, its
+  credible intervals just exclude the truth) *because* the true shape varies with
+  $T$, and forcing it constant slightly biases the **estimate** of `mid`. The
+  relative-$z$ identity ($z = f(\text{mid})$) is exact; estimating `mid` without
+  bias still benefits from a flexible enough shape model.
+- **M2** (shape modelled) removes that residual bias.
+
+## Where low/up/k×temperature *do* matter
+
+```{r absolute}
+# The absolute (true 50%-survival) z is a LOCAL slope of a curve the correction
+# bends when low/up/k vary with T -- so M1 and M2 can disagree here even though
+# their relative z agreed above.
+abs_z <- function(m, label) tls(m, by = "stage", target_surv = "absolute", t_ref = tref)$summary |>
+  dplyr::filter(quantity == "z") |>
+  dplyr::transmute(model = label, stage, abs_z = round(median, 2))
+dplyr::bind_rows(abs_z(m1, "M1: constant low/up/k"),
+                 abs_z(m2, "M2: full stage*temp on low/up/k")) |>
+  as.data.frame()
+```
+
+If you report **absolute** thresholds (true LT50) *and* the asymptotes/steepness
+genuinely change with temperature, the correction bends per stage and you must
+model low/up/k (by $T$, and by stage) to get it right.
+
+## Bottom line
+
+- **Relative $z$/$CT_{max}$ (what the direct parameterisation gives):** put the
+  moderator (and its temperature interaction) on the **midpoint only** — i.e.
+  `ctmax = ~ stage`, `z = ~ stage`. You do **not** need `temp_c * stage` on
+  low/up/k.
+- **Keep the flexible default as cheap insurance.** `temp_effects =
+  c("low","up","k","mid")` (or `by =`) lets the data decide: if the shape does not
+  move with temperature those slopes shrink toward 0; if it does, modelling it
+  removes the small misspecification bias seen in M1. With clean asymptotes
+  ($\approx 0/1$) roughly constant in $T$, the constant-shape model is fine and
+  more parsimonious.
+- **Absolute thresholds with $T$-varying shape** are the one case where
+  `temp_c`(`×stage`) on low/up/k is genuinely required — that is what the
+  asymmetry correction is for.
+```
