@@ -295,6 +295,8 @@ tdt_function_tour <- tibble::tribble(
   "Accessors",        "get_tcrit_summary()",                "Posterior summary (median + 95% CrI) of T_crit from an `extract_tdt(lethal = TRUE)` output.",
   "Accessors",        "get_tls_draws()",                    "Per-draw z, CTmax and (lethal) T_crit merged on `.draw` into one tibble (joins within group for grouped fits), so the quantities keep their joint pairing for contrasts and bivariate plots.",
   "Accessors",        "get_tls_summary()",                  "Tidy combined posterior summary (the summary companion to `get_tls_draws()`): one row per quantity (z, CTmax, Tcrit) x group with median + 95% CrI, matching the shape `tls()` returns.",
+  "Accessors",        "get_tls_est()",                      "Draws or summary of any or all TLS quantities (z, CTmax, T_crit) from a `tls()` object; tidy-long and group-aware. The `tls`-object companion to `get_tls_draws()` / `get_tls_summary()` (which take an `extract_tdt()` output).",
+  "Accessors",        "get_4pl_est()",                      "Draws or summary of the natural-scale 4PL parameters (low, up, k, mid) from a fitted workflow; the 4PL-shape counterpart to `get_tls_est()`. Wraps `tdt_parameter_table()` (summary) / `extract_4pl_pars()` (draws).",
   "Accessors",        "get_surv_draws()",                   "Per-draw posterior of survival probability from `predict_survival_curves()`.",
   "Accessors",        "get_hi_draws()",                     "Per-draw posterior of heat-injury integrals from `predict_heat_injury()`.",
   "Diagnostics",      "diagnose_tdt_fit()",                 "Rhat / ESS / divergences / treedepth, with pass-fail flags.",

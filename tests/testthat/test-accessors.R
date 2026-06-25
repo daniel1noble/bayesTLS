@@ -281,3 +281,24 @@ test_that("get_tls_est pulls summary/draws and filters params from a tls object"
   expect_error(get_tls_est(list(z = 1, CTmax = 2)), "must be a `tls` object")
   expect_error(get_tls_est(fake, "summary", "nope"), "No matching")
 })
+
+
+test_that("get_tls_est passes grouped columns through and filters per group", {
+  g <- structure(list(
+    summary = tibble::tibble(species = rep(c("A", "B"), each = 3),
+       quantity = rep(c("z", "CTmax", "Tcrit"), 2),
+       median = 1:6, lower = 0:5, upper = 2:7),
+    draws = tibble::tibble(species = rep(c("A", "B"), each = 4),
+       quantity = rep(c("z", "CTmax"), 4), .draw = rep(1:2, 4), value = as.numeric(1:8)),
+    meta = list()), class = c("tls", "list"))
+  expect_true("species" %in% names(get_tls_est(g, "summary")))
+  expect_equal(nrow(get_tls_est(g, "summary")), 6L)
+  expect_equal(nrow(get_tls_est(g, "summary", "CTmax")), 2L)   # one CTmax row per group
+  expect_true("species" %in% names(get_tls_est(g, "draws", "z")))
+})
+
+test_that("get_4pl_est validates `what` and requires a fitted workflow", {
+  expect_error(get_4pl_est(list(fit = NULL), "nope"))               # match.arg
+  expect_error(get_4pl_est(list(fit = NULL), "summary"), "fit")     # has_fit guard
+  expect_error(get_4pl_est(list(fit = NULL), "draws"), "fit")
+})

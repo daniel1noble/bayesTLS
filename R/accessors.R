@@ -288,6 +288,44 @@ get_tls_est <- function(x, what = c("summary", "draws"), params = NULL) {
   tibble::as_tibble(out)
 }
 
+#' Posterior estimates of the natural-scale 4PL parameters (draws or summary)
+#'
+#' The 4PL-shape companion to [get_tls_est()]. Returns the posterior of the
+#' natural-scale 4PL curve parameters from a fitted [fit_4pl()] workflow, as
+#' either per-draw values or a median + 95% credible-interval summary, per
+#' moderator group. Whereas [get_tls_est()] operates on a [tls()] object and
+#' returns the derived TLS quantities (z, CTmax, Tcrit), this operates on the
+#' fitted workflow and returns the raw curve parameters those quantities are
+#' derived from. A thin wrapper: `"summary"` calls [tdt_parameter_table()],
+#' `"draws"` calls [extract_4pl_pars()].
+#'
+#' @param workflow A fitted [fit_4pl()] workflow (`workflow$fit` not `NULL`).
+#' @param what `"summary"` (default; one row per parameter with median + 95% CrI,
+#'   via [tdt_parameter_table()] -- this also includes the derived `z` slope row)
+#'   or `"draws"` (per-draw `low`, `up`, `k`, `mid_int`, `mid_temp`, via
+#'   [extract_4pl_pars()]).
+#' @param by Optional moderator column(s) to group by, passed through. `NULL`
+#'   (default) uses the fit's own grouping for a grouped fit, else one group.
+#' @return A tibble (plus the moderator column(s) for a grouped fit): for
+#'   `"summary"`, one row per parameter with median and credible bounds; for
+#'   `"draws"`, one row per posterior draw with `low`, `up`, `k`, `mid_int`,
+#'   `mid_temp` (and `.draw`).
+#' @seealso [get_tls_est()] for the derived TLS quantities; [tdt_parameter_table()]
+#'   and [extract_4pl_pars()], which this wraps.
+#' @examples
+#' \dontrun{
+#' wf <- fit_4pl(standardize_data(my_data, temp = "temp", duration = "time",
+#'                                n_total = "n", n_dead = "dead"))
+#' get_4pl_est(wf, "summary")                 # low/up/k/mid median + 95% CrI
+#' get_4pl_est(wf, "draws", by = "species")   # per-draw params, per group
+#' }
+#' @export
+get_4pl_est <- function(workflow, what = c("summary", "draws"), by = NULL) {
+  what <- match.arg(what)
+  if (what == "summary") tdt_parameter_table(workflow, by = by)
+  else extract_4pl_pars(workflow, by = by)
+}
+
 #' Posterior draws of heat-injury trajectory
 #'
 #' Long-format tibble of per-draw HI, dose, survival and mortality at every
