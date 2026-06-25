@@ -157,15 +157,15 @@ This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) frame
 
 Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (in preparation). A flexible modelling framework for estimating thermal tolerance and sensitivity.
 
-The supplement is broken into two parts. The first, introducing readers to the `bayesTLS` R package and showing how it can be used. We apply the package to simulated data and also a series of case studies. The second part, shows extended simulation results associated with the main manuscript and provides the code to reproduce the figures in the main manuscript. 
+The supplement has two parts. The first introduces the `bayesTLS` R package using simulated data and empirical case studies. The second reports the extended simulation results and provides the code used to reproduce the main manuscript figures.
 
 # **Introduction to `bayesTLS` R Package**
 
-We make use of the **`bayesTLS`** R package included with this project, and show how it can be used. The package fits the 4PL model, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$), with posterior uncertainty. It can also fit, direct models for $z$ and $CT_{max_{1hr}}$, which means one can model differences in groups or estimate random effects for $z$ and $CT_{max_{1hr}}$ directly, making interpretation and inference quite easy. We show this form of direct parameterization as well. **`bayesTLS`** also uses these models (estimates of $z$, $CT_{max_{1hr}}$) to predict heat-injury accumulation and survival under arbitrary temperature time series, optionally incorporating a Sharpe-Schoolfield repair kernel [@arnold2025]. 
+We use the **`bayesTLS`** R package included with this project. The package fits 4PL models, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty, and can estimate $z$ and $CT_{max_{1hr}}$ directly so group differences and random effects are easy to interpret. It also predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally with a Sharpe-Schoolfield repair kernel [@arnold_thermal_2025].
 
 All the data used throughout the manuscript and supplement are already preloaded into **`bayesTLS`**, so are easily accessible. 
 
-The **`bayesTLS`** package is also complimented by the **`freqTLS`** package, which uses frequentist approaches to fit the same models. It has advantages of being faster which can help with large datasets, but generally yields similar results without the need for priors. For the purpose of this tutorial, we demonstrate **`bayesTLS`**. Bayesian approaches have major benefits with respect to error propagation should estimates or predictions wish to use the full posterior. 
+The **`bayesTLS`** package is complemented by **`freqTLS`**, which fits the same models in a frequentist likelihood framework. `freqTLS` is faster and useful for large datasets, while `bayesTLS` is useful when posterior draws are needed for uncertainty propagation. This tutorial focuses on **`bayesTLS`**.
 
 To access the `bayesTLS` R package, install it once from GitHub. Installing
 `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
@@ -314,6 +314,37 @@ tdt_function_tour <- tibble::tribble(
 
 tinytable::tt(tdt_function_tour, escape = TRUE)
 ```
+
+## *Empirical model specifications used in the manuscript* {#sec-empirical-model-specs}
+
+The manuscript case studies all use the same 4PL response surface, but we fit it in the parameterisation that makes each biological comparison easiest to read. In the default **midpoint** parameterisation, temperature enters the midpoint directly,
+
+$$
+\text{mid}_{ij} = \beta_0 + \beta_1(T_{ij} - \bar T) + \mathbf{x}_{ij}^{\top}\boldsymbol{\gamma} + b_j,
+$$ {#eq-supp-midpoint-model}
+
+so relative-threshold $z$ and $CT_{max}$ are derived from the fitted midpoint line. In the **direct** parameterisation, the same midpoint is written in terms of $CT_{max}$ and $z$:
+
+$$
+\begin{aligned}
+\text{mid}_{ij}(T) &= \log_{10} t_{\text{ref}} + \frac{CT_{max,ij}(t_{\text{ref}}) - T_{ij}}{z_{ij}},\\
+CT_{max,ij}(t_{\text{ref}}) &= \alpha_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\alpha} + b_j,\\
+\log z_{ij} &= \zeta_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\zeta} + u_j .
+\end{aligned}
+$$ {#eq-supp-direct-model}
+
+Here $\mathbf{x}_{ij}$ contains fixed covariates such as species, oxygen treatment, recovery condition or sex, while $b_j$ and $u_j$ denote optional group-level effects. Direct fits place random effects inside the relevant `ctmax =` or `z =` formula; midpoint fits place them on `mid` or through an explicit `mid =` formula. In both parameterisations, `bayesTLS` constrains the lower and upper asymptotes to disjoint intervals and estimates the steepness parameter on a positive scale. Temperature effects can also be included on the asymptotes and steepness where the data support them.
+
+We fit the empirical examples below with the Bayesian `bayesTLS` implementation through `brms` and Stan because posterior draws make uncertainty propagation through `tls()` and `predict_heat_injury()` straightforward. The same likelihoods can also be fit in a frequentist likelihood framework with `freqTLS`; for the same data and parameterisation these fits should give similar point estimates, with uncertainty propagated by the Delta method or parametric bootstrap.
+
+The manuscript examples use the following model specifications:
+
+- **Cereal aphids**: lethal survival counts were fit with a beta-binomial 4PL, placing species directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + species`, `z = ~ 0 + species`). No random effects were included. The fitted species-specific posterior was then projected under the unmodified Wuhan May-June 2016 air-temperature trace with `predict_heat_injury(by = "species")`.
+- **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). No random effects were included.
+- **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood. Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with a plant-level random intercept on $CT_{max}$ (`ctmax = ~ 0 + recovery + (1 | plant)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
+- **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. The main mortality summaries use the absolute LT50 threshold and a 4-hour reference exposure; the heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the Ørsted et al. NicheMapR workflow.
+
+The exact formulas, priors, sampler settings and diagnostics are shown in the code chunks for each case study. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
 # **A Tutorial with Simulations**
 
@@ -773,7 +804,7 @@ psc_bin <- predict_survival_curves(
   ndraws = 200
 )
 
-plot_survival_curves(psc_bin, observed = std_bin) +
+plot_survival_curves(psc_bin, observed = std_bin, log_time = TRUE) +
   ggplot2::scale_x_log10() +
   ggplot2::labs(x = expression(exposure~time~(min)))
 ```
@@ -1312,9 +1343,10 @@ Now we apply the same `extract_tdt()` call as in @sec-joint-derive — there is 
 # threshold here: with temperature effects on up/k the log10(LT50) curve is bent,
 # so its local z varies with T and the asymmetry correction must be evaluated per
 # draw. (The relative threshold reads mid(T), which is linear and would give a
-# constant z that cannot match the bent truth.)
+# constant z that cannot match the bent truth.) z_local = TRUE additionally
+# returns the per-temperature local z(T) used below.
 et_ext <- extract_tdt(wf_ext, target_surv = "absolute", t_ref = 60, time_multiplier = 1,
-                      ndraws = 1000, lethal = TRUE)
+                      ndraws = 1000, z_local = TRUE)
 ```
 
 @tbl-extract-ext compares the three classical TDT quantities from `extract_tdt()` to the analytical truth derived above.
@@ -1323,23 +1355,15 @@ et_ext <- extract_tdt(wf_ext, target_surv = "absolute", t_ref = 60, time_multipl
 #| label: tbl-extract-ext
 #| tbl-cap: "Classical TDT quantities from `extract_tdt(target_surv = \"absolute\")` on the T-varying fit, compared against analytical truth. Under the absolute threshold the single-summary $z$ is the per-draw **local** $z(T)$ of the bent $\\log_{10}\\text{LT50}(T)$ curve, pooled (averaged) over the assay temperatures; the truth row reports the mean of the analytical local $z(T)$ at those temperatures. $CT_{max_{1hr}}$ comes from direct inversion of the fitted 4PL at 60 min per draw, including the per-draw asymmetry correction."
 
-# Format extracted TDT quantities for the extended simulation fit.
+# Format extracted TDT quantities for the extended simulation fit (z and CTmax;
+# T_crit is omitted here -- it is the rate-multiplier prediction demonstrated in
+# the tutorial, not the focus of this bent-curve recovery check).
 tibble::tibble(
-  Quantity     = c("z (°C)",
-                   "CTmax at 1 hr (°C)",
-                   "T_crit (°C)"),
-  Truth        = c(round(true_mean_local_z, 3),
-                   round(true_CTmax_1hr, 3),
-                   NA_real_),  # T_crit truth involves r* integration; see below
-  Median       = c(et_ext$z$summary$z_median,
-                   et_ext$CTmax$summary$temp_median,
-                   et_ext$T_crit$summary$temp_median),
-  Lower        = c(et_ext$z$summary$z_lower,
-                   et_ext$CTmax$summary$temp_lower,
-                   et_ext$T_crit$summary$temp_lower),
-  Upper        = c(et_ext$z$summary$z_upper,
-                   et_ext$CTmax$summary$temp_upper,
-                   et_ext$T_crit$summary$temp_upper)
+  Quantity     = c("z (°C)", "CTmax at 1 hr (°C)"),
+  Truth        = c(round(true_mean_local_z, 3), round(true_CTmax_1hr, 3)),
+  Median       = c(et_ext$z$summary$z_median,   et_ext$CTmax$summary$temp_median),
+  Lower        = c(et_ext$z$summary$z_lower,    et_ext$CTmax$summary$temp_lower),
+  Upper        = c(et_ext$z$summary$z_upper,    et_ext$CTmax$summary$temp_upper)
 ) |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
@@ -1373,37 +1397,21 @@ plot_tdt_curve(et_ext$lt50_curve) +
 Posterior $\text{LT50}(T)$ curve (median + 95% CrI, blue) recovered by `derive_tdt_curve()` from the T-varying fit, with the analytical truth overlaid (dashed black). The curve is visibly bent rather than straight in $T$, and the posterior tracks the truth.
 :::
 
-We can also drop down to the per-draw level and compute a *local* $z(T)$ at each assay temperature from the same `et_ext$lt50_curve` posterior — a finite difference of $\log_{10}\text{LT50}$ around $T$ per draw, summarised across draws (@fig-local-z-ext).
+We do not need to hand-roll this: `extract_tdt(..., z_local = TRUE)` returns the per-draw **local** $z(T)$ at each assay temperature directly, in `et_ext$z$local` (a `$draws` slot plus a per-temperature `$summary`). We use that summary below (@fig-local-z-ext).
 
 ```{r local-z-ext}
 #| label: local-z-ext
 #| echo: true
 #| code-fold: show
 
-# Derive local z across the temperature range in the extended example.
-# Finite-difference local z at each assay T, per posterior draw, derived
-# from et_ext$lt50_curve (the same per-draw LT50(T) curve extract_tdt
-# already computed for the OLS).
-half_step <- 0.5
-
-local_z_summary <- purrr::map_dfr(temps, function(T_at) {
-  z_per_draw <- et_ext$lt50_curve$draws |>
-    dplyr::group_by(.draw) |>
-    dplyr::summarise(
-      z_local = -1 / ((stats::approx(temp, log10(duration_out),
-                                     xout = T_at + half_step)$y -
-                       stats::approx(temp, log10(duration_out),
-                                     xout = T_at - half_step)$y) /
-                      (2 * half_step)),
-      .groups = "drop"
-    )
-  q <- stats::quantile(z_per_draw$z_local, c(0.025, 0.5, 0.975),
-                       na.rm = TRUE, names = FALSE)
-  tibble::tibble(T_at           = T_at,
-                 z_local_median = q[2],
-                 z_local_lower  = q[1],
-                 z_local_upper  = q[3])
-})
+# Per-temperature local z(T) straight from extract_tdt(z_local = TRUE).
+# et_ext$z$local$summary has columns temp / z_median / z_lower / z_upper; we
+# rename to the names the figure below expects and join the analytical truth.
+local_z_summary <- et_ext$z$local$summary |>
+  dplyr::transmute(T_at           = temp,
+                   z_local_median = z_median,
+                   z_local_lower  = z_lower,
+                   z_local_upper  = z_upper)
 
 local_z_summary |>
   dplyr::left_join(
@@ -1544,10 +1552,6 @@ Posterior heat-injury accumulation (top) and predicted survival fraction (bottom
 
 By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_median, 1), 0)`% (95% CI: `r round(tail(hi$summary$hi_lower, 1), 0)`% to `r round(tail(hi$summary$hi_upper, 1), 0)`%), and median predicted survival is `r round(tail(hi$summary$surv_median, 1), 2)` (95% CI: `r round(tail(hi$summary$surv_lower, 1), 2)` to `r round(tail(hi$summary$surv_upper, 1), 2)`).
 
-#### Why are the credible bands so wide?
-
-The posterior bands are wide relative to the precision in @tbl-tls-recovery because the rate multiplier, $10^{(T - CT_{max,1hr})/z}$, is exponential. A 1 °C shift in $CT_{max_{1hr}}$ multiplies per-hour HI by $10^{1/z}$, which is approximately `r round(10^(1 / true_z), 2)`-fold for the simulated $z \approx `r round(true_z, 1)`$ °C. Across a 5-day integral, such differences accumulate. A two-stage projection based only on point estimates hides this uncertainty; the joint posterior makes it visible.
-
 ### Validation: recovering known doses {#sec-hi-validation}
 
 Before trusting `predict_heat_injury()` on real field data, we validate it against analytical truth on three reference traces with known dosing structure. `make_temperature_scenarios()` builds the traces; `planted_dose_from_trace()` implements the classical HI integral (Equation 7) directly given known `z` and `CTmax_1hr`. Posterior medians from `predict_heat_injury()` should sit near the analytical truth, and the 95% credible intervals should cover it.
@@ -1679,7 +1683,7 @@ The joint fit recovers the OCLTT direction @saruhashi2026 report: hyperoxia rais
 #| code-fold: show
 
 psc_zf <- predict_survival_curves(wf_zf)
-plot_survival_curves(psc_zf, observed = zf_std)
+plot_survival_curves(psc_zf, observed = zf_std, log_time = TRUE)
 ```
 
 # **Case Study 2: Cereal aphids — comparing three species** {#sec-aphids}
@@ -1747,24 +1751,27 @@ Our per-species estimates fall inside the ranges Li et al. report (their Table 1
 #| code-fold: show
 
 psc_aphid <- predict_survival_curves(wf_aphid)
-plot_survival_curves(psc_aphid, observed = aphid_std)
+plot_survival_curves(psc_aphid, observed = aphid_std, log_time = TRUE)
 ```
 
 ## Heat injury across species under a field temperature trace {#sec-aphid-hi}
 
-With the per-species TDT surface in hand, `predict_heat_injury()` accumulates damage along an hourly field temperature trace and converts it to predicted survival. We use hourly 2 m air temperature for Wuhan (the hottest of Li et al.'s three Chinese wheat sites) over summer 2016, re-sourced from the Open-Meteo ERA5 archive and shipped with the package (built by `data-raw/fetch_aphid_temp_trace.R`). The trace is used **unmodified** — no warming offset — and `by = "species"` projects all three species at once, demonstrating multi-group heat injury. Li et al. drew their trace from a different weather product and used their own TDT parameters, so this reproduces the *shape* of their Fig. 2 within our posterior framework rather than its exact values.
+With the per-species TDT surface in hand, `predict_heat_injury()` accumulates damage along an hourly field temperature trace and converts it to predicted survival. We use hourly 2 m air temperature for Wuhan (the hottest of Li et al.'s three Chinese wheat sites), May–June 2016, re-sourced from the Open-Meteo ERA5 archive and shipped with the package (built by `data-raw/fetch_aphid_temp_trace.R`). We restrict the window to May–June so the injury scale stays readable — over the full May–August record the most heat-vulnerable species (*M. dirhodum*, the lowest $T_{crit}$) accrues injury into the tens of thousands of percent of an $LT_{50}$ dose. The trace is used **unmodified** (no warming offset), and `by = "species"` projects all three species at once, demonstrating multi-group heat injury. Li et al. drew their trace from a different weather product and used their own TDT parameters, so this reproduces the early-season *shape* of their Fig. 2 within our posterior framework rather than its exact values.
 
 ```{r aphid-hi}
 #| label: fig-aphid-hi
-#| fig-cap: "Multi-group heat-injury projection. Cumulative heat injury (100% = one LT50 dose) and predicted survival for the three aphid species under the unmodified Wuhan summer-2016 hourly temperature trace, from a single `predict_heat_injury(by = \"species\")` call."
+#| fig-cap: "Multi-group heat-injury projection. Cumulative heat injury (100% = one LT50 dose) and predicted survival for the three aphid species under the unmodified Wuhan May–June 2016 hourly temperature trace, from a single `predict_heat_injury(by = \"species\")` call."
 #| echo: true
 #| code-fold: show
 
-# Hourly (time, temp) trace per city ships in inst/extdata; take Wuhan.
+# Hourly (time, temp) trace per city ships in inst/extdata; take Wuhan, trimmed
+# to May-June (over the full May-Aug record the most vulnerable species runs to
+# ~tens of thousands of % of an LT50 dose, swamping the axis -- see prose).
 aphid_trace <- readr::read_csv(
   here::here("inst", "extdata", "data_temp_trace_aphid_summer2016.csv"),
   show_col_types = FALSE) |>
-  dplyr::filter(city == "Wuhan") |>
+  dplyr::filter(city == "Wuhan",
+                as.integer(format(datetime, "%m")) <= 6) |>   # May-June only
   dplyr::transmute(time = time_h, temp = temp_c)        # hours, degrees C
 
 aphid_hi <- predict_heat_injury(aphid_trace, wf_aphid, target_surv = "relative",
@@ -1781,7 +1788,7 @@ plot_heat_injury(aphid_hi)
   dplyr::select(species, surv_median, surv_lower, surv_upper)
 ```
 
-The accumulated injury and end-of-season survival differ across species in line with their thermal limits, and the same single call would map the south-to-north climate gradient (Wuhan hottest, Beijing coolest) onto a corresponding gradient in projected survival — the link Li et al. draw between thermal tolerance and field abundance.
+The accumulated injury and end-of-window survival differ across species in line with their thermal limits, and the same single call would map the south-to-north climate gradient (Wuhan hottest, Beijing coolest) onto a corresponding gradient in projected survival — the link Li et al. draw between thermal tolerance and field abundance.
 
 # **Case Study 3: Snow gum leaf PSII — light vs dark recovery** {#sec-leaves}
 
@@ -1920,7 +1927,7 @@ The joint fit reproduces the direction @arnold_psii_2026 report: 90 min of post-
 #| code-fold: show
 
 psc_leaf <- predict_survival_curves(wf_leaf)
-plot_survival_curves(psc_leaf, observed = leaf_std) +
+plot_survival_curves(psc_leaf, observed = leaf_std, log_time = TRUE) +
   ggplot2::labs(x = "Exposure duration (minutes)",
                 y = "Retained PSII function")
 ```
@@ -3444,11 +3451,16 @@ For the fly we use the shaded hourly **microclimate** trace from the
 Ørsted et al. (2024) NicheMapR workflow (Rennes, France; June–August 2018;
 Zenodo record 10821572) and predict HI for each sex with and without damage
 repair. For the aphids we use the **unmodified** hourly air-temperature trace
-for Wuhan — the hottest of @li2023's three Chinese wheat sites (summer 2016,
+for Wuhan — the hottest of @li2023's three Chinese wheat sites (May–June 2016,
 Open-Meteo ERA5; shipped with the package) — and project all three species at
 once with a single `predict_heat_injury(by = "species")` call. The aphid trace
 crosses each species' $T_{crit}$ without any warming offset, so it is used as
-observed.
+observed. We show the May–June window because, over the full May–August record,
+the most heat-vulnerable species (*M. dirhodum*, the lowest $T_{crit}$) accrues
+heat injury into the tens of thousands of percent of an $LT_{50}$ dose, which
+swamps the axis; May–June keeps the scale readable and is the window in which the
+repair model still keeps the two more tolerant species (*R. padi*, *S. avenae*)
+alive.
 
 Repair is modelled with an **illustrative Sharpe–Schoolfield kernel that is not
 empirically fitted** — it shows the *qualitative* effect of repair, not a
@@ -3523,10 +3535,15 @@ fTc  <- mean(c(Tc_F, Tc_M))
 ## Aphids (d-f): UNMODIFIED hourly Wuhan air-temperature trace (no warming
 ## offset), all three species projected at once with by = "species". Per-species
 ## T_crit comes from the aphid fit; repair uses the same illustrative kernel.
+## Trimmed to May-June: over the full May-Aug record the heat injury for the most
+## vulnerable species (M. dirhodum, lowest T_crit) runs to ~28000% of an LT50 dose,
+## swamping the axis; May-June keeps it readable and spans the window in which the
+## repair model still protects the two more tolerant species (R. padi, S. avenae).
 aphid_trace <- readr::read_csv(
   here::here("inst", "extdata", "data_temp_trace_aphid_summer2016.csv"),
   show_col_types = FALSE) |>
-  dplyr::filter(city == "Wuhan") |>
+  dplyr::filter(city == "Wuhan",
+                as.integer(format(datetime, "%m")) <= 6) |>   # May-June only
   dplyr::transmute(time = time_h, temp = temp_c,
                    datetime = as.POSIXct(sub("T", " ", as.character(datetime)), tz = "UTC"))
 aphid_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
@@ -3558,7 +3575,7 @@ saveRDS(list(fly = fdat, fly_trace = fly_trace, fly_Tc = fTc,
 
 ```{r}
 #| label: fig-ms-fig5-heat-injury
-#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and the unmodified hourly air-temperature trace for the aphids (Wuhan, summer 2016; Li et al. 2023, Open-Meteo ERA5) — with the relative-threshold $T_{crit}$ (dotted; per species for the aphids). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
+#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and the unmodified hourly air-temperature trace for the aphids (Wuhan, May–June 2016; Li et al. 2023, Open-Meteo ERA5) — with the relative-threshold $T_{crit}$ (dotted; per species for the aphids). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with $r_{ref}=0.03$ LT50-dose h$^{-1}$ at the reference temperature; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
