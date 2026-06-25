@@ -90,11 +90,12 @@ test_that("phi prior present for beta-binomial, omitted when prior_phi = NULL", 
 })
 
 test_that("bare cell-means (0 + G) emits no redundant global 'b' prior", {
-  # Every coefficient already has a per-level prior, so the global mean-zero
-  # `b` prior would be redundant and brms warns about it (CI = error-on=warning).
+  # The cell-means-coded parameters (ctmax/z -> CTmaxdev/logz) get per-level
+  # priors, so a global mean-zero `b` prior would be redundant. low/up/k are not
+  # cell-means coded here, so they keep their default slope priors (a global b).
   p <- as.data.frame(make_4pl_priors(dd, ctmax = ~ 0 + life_stage,
                                      z = ~ 0 + life_stage))
-  for (nlp in c("CTmaxdev", "logz", "lowraw", "upraw", "logk")) {
+  for (nlp in c("CTmaxdev", "logz")) {
     has_global <- any(p$nlpar == nlp & p$coef == "" & p$class == "b")
     expect_false(has_global)
   }

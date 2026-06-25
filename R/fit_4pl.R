@@ -617,7 +617,7 @@ get_brmsfit <- function(workflow) {
 validate_4pl_family <- function(family) {
   if (is.character(family) && length(family) == 1L) {
     ctor <- switch(family,
-                   "binomial"      = brms::binomial,
+                   "binomial"      = stats::binomial,
                    "beta_binomial" = brms::beta_binomial,
                    "beta"          = brms::Beta,
                    "Beta"          = brms::Beta,

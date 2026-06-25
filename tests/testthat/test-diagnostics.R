@@ -83,7 +83,7 @@ test_that("tdt_parameter_table's per-draw guard drops non-finite z/CTmax before 
   # corrupt the median). summary_row() is a local closure, so we replicate its
   # guarded quantile path on a fixture mid_temp draw vector containing a
   # near-zero slope, matching tls_local_z() in R/tls_engine.R.
-  mid_temp <- c(-2, -1.5, -1, 1e-300, 1, 1.5, 2)  # one ~zero slope -> -Inf z
+  mid_temp <- c(-2, -1.5, -1, 0, 1, 1.5, 2)  # one exactly-zero slope -> -Inf z
   z <- -1 / mid_temp
   expect_true(any(!is.finite(z)))                  # the offending draw exists
 
