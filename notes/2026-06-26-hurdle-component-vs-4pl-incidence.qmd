@@ -1,0 +1,113 @@
+---
+title: "Is the hurdle component just a 0/1 model? Could a 4PL do that part?"
+date: 2026-06-26
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## The question
+
+In the *D. suzukii* productivity model we use a **hurdle** family
+(`hurdle_gamma` / `hurdle_lognormal`) with two linear predictors:
+
+```r
+prod_form <- brms::bf(prod ~ logd * temp_c * sex,   # mu: clutch size | reproduced
+                      hu   ~ logd * temp_c * sex)   # hu: P(zero offspring)
+```
+
+Daniel asked: *isn't the hurdle component just a 0/1 (Bernoulli) model? Couldn't
+we use the same 4PL for that part?*
+
+**Yes to both.** The hurdle part is a binary model, and it is exactly the 4PL
+with the asymptotes pinned at 0 and 1.
+
+## What the hurdle component is
+
+In brms's hurdle families the response is split into two pieces:
+
+- **`hu`** — a **Bernoulli / logistic** model for the probability of a *zero*
+  (here, producing no offspring). Default link is **logit**. So
+  $\operatorname{logit} P(\text{zero}) = \text{linear in } (\log_{10}d,\ T,\ \text{sex},\ \text{interactions})$,
+  and $P(\text{reproduce}) = 1 - P(\text{zero})$.
+- **`mu`** — the positive part (Gamma or log-normal) for *how many* offspring,
+  among flies that reproduced.
+
+So the hurdle component **is** a 0-vs-nonzero model. Our productivity code reads
+the reproduction LT50 straight off this logit:
+$\log_{10}d_{50}(T) = -\,(I + T\,t)/(D + DT\,t)$ — the point where
+$P(\text{reproduce}) = 0.5$ — then takes its temperature slope for $z$ and its
+crossing of $\log_{10}60$ for $CT_{max,1h}$.
+
+## Why that logistic *is* a 4PL with fixed asymptotes
+
+Our survival 4PL (identity link, disjoint-bounds reparameterisation) is
+
+$$
+p = \text{low} + \frac{\text{up}-\text{low}}{1+\exp\!\big(k(\log_{10}d - \text{mid})\big)} .
+$$
+
+Set $\text{low}=0$ and $\text{up}=1$ and it collapses to the **two-parameter
+logistic**
+
+$$
+p = \frac{1}{1+\exp\!\big(k(\log_{10}d - \text{mid})\big)}
+  = \operatorname{inv\_logit}\!\big(-k(\log_{10}d - \text{mid})\big),
+$$
+
+which is exactly a logistic regression with slope $-k$ and intercept
+$k\cdot\text{mid}$ on the $\log_{10}d$ axis. The hurdle's `hu` is this same curve
+(modelling the *zero* probability), with the slope and midpoint made linear in
+temperature via the `logd * temp_c` interaction.
+
+So **reproduction incidence is a dose-response curve in log-time, just like
+survival** — and the same `tls()`/`extract_tdt()` machinery applies. The only
+thing the 4PL adds over the hurdle's logit is **free asymptotes**.
+
+```{r}
+#| label: logit-vs-4pl
+#| message: false
+#| fig-cap: "P(reproduce) vs log-exposure. The hurdle's logit (2PL) is forced to run 1 -> 0; a 4PL frees the asymptotes (here a 12% never-reproduce floor and a 4% always-fail ceiling). When the asymptotes sit near 0/1 the two curves coincide, so the incidence z/CTmax match."
+#| fig-width: 6
+#| fig-height: 3.4
+suppressPackageStartupMessages(library(ggplot2))
+logd <- seq(0, 3, length.out = 200)
+k <- 6; mid <- 1.8
+two_pl  <- plogis(-k * (logd - mid))                       # logit / 2PL: 1 -> 0
+four_pl <- 0.04 + (0.88 - 0.04) / (1 + exp(k * (logd - mid)))  # free asymptotes
+d <- rbind(
+  data.frame(logd, p = two_pl,  model = "Hurdle logit (2PL): asymptotes 0/1"),
+  data.frame(logd, p = four_pl, model = "4PL: free asymptotes (0.04, 0.88)")
+)
+ggplot(d, aes(logd, p, colour = model)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0.5, linetype = 3) +
+  labs(x = expression(log[10]~"exposure"), y = "P(reproduce)", colour = NULL) +
+  theme_classic(base_size = 12) + theme(legend.position = "top")
+```
+
+## When to use which
+
+| | Hurdle logit (`hu`, current) | 4PL for incidence |
+|---|---|---|
+| Asymptotes | fixed at 0 and 1 | free (`low`, `up`) |
+| Both parts in one fit? | **yes** — zero-model + count-model together | no; fit incidence like survival, count part separately (or a custom non-linear hurdle `hu`) |
+| z / CTmax | read off the logit 50% point | same `tls()`/`extract_tdt()` machinery |
+| Best when | a (near-)0/1 incidence curve **and** you want clutch size from the same model | a real floor/ceiling exists (e.g. a fraction never reproduces regardless of exposure) |
+
+For the fly data the incidence asymptotes are close to 0/1, so the logit and a
+4PL give essentially the same incidence $z$/$CT_{max}$ — the simpler hurdle-logit
+is adequate **and** it returns clutch size in the same joint fit, which is the
+reason to use the hurdle family in the first place.
+
+## Bottom line
+
+- The hurdle component is a Bernoulli (0 vs >0) logistic model; it is the 4PL
+  with `low = 0`, `up = 1`.
+- A 4PL could model reproduction incidence directly (and would be preferable if
+  the asymptotes are not 0/1), with the identical TDT extraction.
+- We keep the hurdle's logit because it bundles incidence and clutch size in one
+  model and the asymptotes here are ~0/1, so nothing is lost.
+
+See also: [[project_beta_binomial_link_choice]], [[project_z_ctmax_derivation]].

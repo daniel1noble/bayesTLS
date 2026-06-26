@@ -228,11 +228,32 @@ integrate `"varying"` as opt-in. Key conceptual point for the manuscript: under
 the *relative* threshold shape affects only the survival mapping; an *absolute*
 target is required for shape to influence dose accumulation.
 
-**Open validation gap (close before any manuscript use of `"varying"`).** The
-Phase-3 numbers are point estimates from planted parameters. Need an end-to-end
-**posterior-propagated** comparison on a real fitted curve with a genuine
-`up`/`k` temperature slope, to see how much the constant↔varying gap survives
-once posterior uncertainty is included.
+**Validation gap — CLOSED (posterior-propagated, real fits).** Bent-curve DGP
+(`up`↓, `k`↑ with T) at near-flat/moderate/strong, fit with default `fit_4pl()`,
+paired `constant` vs `varying` on the same 1500 draws; ground truth = the bent
+4PL integrated through the varying scheme (per-draw trust anchor: matches
+`predict_heat_injury(shape="varying")` exactly). Results:
+(A) *distinguishability* — paired survival-difference CrI excludes 0 in 9/18
+cells (0/6 near-flat, 5/6 moderate, 4/6 strong); relative-threshold ΔHI = 0
+everywhere, absolute-threshold ΔHI excludes 0 at moderate/strong.
+(B) *accuracy* — `varying` covers true survival 18/18 (bias ≤ 0.018);
+`constant` MISSES in 9/18 (all moderate/strong; bias up to +0.12 / −0.06).
+Confirms the plan: keep `"constant"` default; `"varying"` matters only when up/k
+slopes are genuinely identified (CrI excludes 0) AND the trace makes hot
+excursions, for survival (any threshold) or absolute-threshold HI.
+
+**Caveats (do not over-read).** (i) The ground truth uses the *same* integration
+scheme `"varying"` implements, so "varying covers 18/18" is a parameter-recovery
+coverage statement (good identifiability in a rich 5×6×30×30, φ=5 design), NOT
+proof of unbiasedness vs an independent forward count simulator — the decision-
+relevant, non-circular half is the *constant misspecification bias*. (ii) Single
+seed per strength → realisation-specific, not a calibrated coverage rate (the
+9/18 is illustrative). (iii) Identifiability is design-dependent; sparser/noisier
+data shrink shape toward flat and push the difference back under posterior noise
+— that boundary is unmapped. A multi-replicate study + an independent
+agent-based mortality simulator is the stronger external check **before any
+manuscript claim** recommending `"varying"`.
+See `notes/2026-06-26-shape-varying-posterior-validation.qmd` (worktree).
 
 **Doc drift to fix in `ms/` (separate pass, not done):** `supplement.qmd:307`
 function-map row still describes the old `extract_4pl_pars` output
