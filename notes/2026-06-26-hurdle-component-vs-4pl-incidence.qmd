@@ -110,4 +110,20 @@ reason to use the hurdle family in the first place.
 - We keep the hurdle's logit because it bundles incidence and clutch size in one
   model and the asymptotes here are ~0/1, so nothing is lost.
 
+## Reading it off the posterior (`prod_post`): `b_` vs `b_hu_`
+
+A hurdle-Gamma fit is two models in one, so `posterior::as_draws_df()` returns
+two families of coefficients, told apart by the column-name prefix:
+
+- **`b_hu_...`** — the **hurdle** part: the logistic model for $P(\text{zero
+  offspring})$, i.e. *whether* a fly reproduces (the binary / incidence part,
+  the simplified 4PL above). `prod_eff("b_hu_", ...)` reads these for the
+  incidence $z$/$CT_{max}$.
+- **`b_...`** — the **Gamma** (`mu`) part: clutch size among flies that *did*
+  reproduce (the count / magnitude part). `prod_eff("b_", ...)` reads these for
+  the duration-sensitivity $b(T)$.
+
+brms fits both parts simultaneously; the main distributional parameter (`mu`)
+gets plain `b_` names and the hurdle parameter (`hu`) gets `b_hu_` names.
+
 See also: [[project_beta_binomial_link_choice]], [[project_z_ctmax_derivation]].

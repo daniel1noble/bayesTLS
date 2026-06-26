@@ -1,0 +1,244 @@
+---
+title: "Where reproduction *z* and CTmax come from: the math behind the hurdle TDT extractor"
+date: 2026-06-26
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## The question
+
+In the *D. suzukii* productivity section of the supplement (chunk `dros-prod-tdt`,
+function `hurd_tdt()`) we read a thermal-death-time $z$ and $CT_{max}$ straight off
+the **hurdle** (reproduce / don't-reproduce) part of a hurdle-Gamma model, using
+three short closed forms:
+
+```r
+logd50(t) = -(I + T*t) / (D + DT*t)                       # the 50% time
+z_at(t)   = (D + DT*t)^2 / (T*D - I*DT)                   # local sensitivity
+ctmax     = Tbar - (I + L_ref*D) / (T + L_ref*DT)         # 1-hour CTmax
+```
+
+Daniel asked: *where does this math come from — why does this give us $z$ and
+$CT_{max}$?* This note derives all three from scratch and validates them
+numerically against the fitted model.
+
+See also the companion note
+[[2026-06-26-hurdle-component-vs-4pl-incidence]] (why the hurdle part is a 4PL
+with the asymptotes pinned at 0 and 1).
+
+## The model we are reading off
+
+The hurdle component is a **logistic (yes/no) model for whether a fly produces
+any offspring**. For one sex, its linear predictor is a tilted plane in two
+variables — $\log_{10}$ exposure time and centred temperature:
+
+$$
+\eta(\ell, t) \;=\; I + T\,t + D\,\ell + DT\,(\ell\,t),
+$$
+
+where
+
+- $\ell = \log_{10}(\text{exposure duration in minutes})$ — the dose axis,
+- $t = \tau - \bar{T}$ — temperature centred on the mean assay temperature $\bar T$
+  (so $t = 0$ at the mean, $\tau$ is the actual temperature),
+- $I, T, D, DT$ are the four posterior coefficients `sex_coefs()` returns:
+  intercept, temperature effect, duration effect, and the duration $\times$
+  temperature interaction (`b_hu_Intercept`, `b_hu_temp_c`, `b_hu_logd`,
+  `b_hu_logd:temp_c`, plus the matching `:sexM` terms for males).
+
+`brms` models the probability of a **zero**, so
+
+$$
+P(\text{no offspring}) = \operatorname{logit}^{-1}(\eta),
+\qquad
+P(\text{reproduce}) = \operatorname{logit}^{-1}(-\eta).
+$$
+
+## Step 1 — the 50% time, $\log_{10}d_{50}$
+
+The natural halfway mark is the exposure at which half the flies still
+reproduce: $P(\text{reproduce}) = 0.5$. A logistic equals $0.5$ **exactly when its
+input is zero**, so we set $\eta = 0$ and solve for $\ell$, collecting the $\ell$
+terms on one side:
+
+$$
+I + T\,t + D\,\ell + DT\,(\ell\,t) = 0
+\;\Longrightarrow\;
+\ell\,(D + DT\,t) = -(I + T\,t)
+\;\Longrightarrow\;
+\ell_{50}(t) = -\frac{I + T\,t}{D + DT\,t}.
+$$
+
+That is the first formula: the $\log_{10}$ of the exposure time that halves
+reproduction, as a function of temperature.
+
+## Step 2 — $z$, the thermal sensitivity
+
+$z$ is the TDT "**how many degrees for a 10-fold change in tolerated time**"
+number. On the thermal-death-time plot ($\log_{10}$ time on the $y$-axis,
+temperature on the $x$-axis) the line slopes down, and $z$ is defined so the line
+falls by **one** $\log_{10}$ unit — a factor of ten in time — every $z$ degrees:
+
+$$
+z(t) \;=\; -\frac{1}{\,\mathrm{d}\ell_{50}/\mathrm{d}t\,}.
+$$
+
+(Because $t = \tau - \bar T$, a derivative in $t$ equals a derivative in the
+absolute temperature $\tau$, so $z$ is per actual degree.)
+
+Differentiate $\ell_{50}(t) = -(I + T t)/(D + DT\,t)$ with the quotient rule. The
+key simplification: **the two terms that carry $t$ cancel** in the numerator:
+
+$$
+\frac{\mathrm{d}\ell_{50}}{\mathrm{d}t}
+= -\frac{T(D + DT\,t) - (I + T t)\,DT}{(D + DT\,t)^2}
+= -\frac{\overbrace{TD + T\,DT\,t - I\,DT - T\,DT\,t}^{=\,TD - I\,DT}}{(D + DT\,t)^2}
+= -\frac{TD - I\,DT}{(D + DT\,t)^2}.
+$$
+
+Take $-1$ over that. The minus from the derivative and the minus in $z = -1/(\cdot)$
+**cancel**, leaving a positive expression:
+
+$$
+\boxed{\,z(t) = \dfrac{(D + DT\,t)^2}{T D - I\,DT}\,}.
+$$
+
+Two things worth noting:
+
+- **Sign care.** The denominator is $T D - I\,DT$, in that order. Writing it the
+  other way round ($I\,DT - T D$) would flip the sign of every $z$. The code has
+  it right (`cc$T * cc$D - cc$I * cc$DT`).
+- **$z$ depends on $t$.** Because duration and temperature interact ($DT \neq 0$),
+  the TDT line is gently *curved* rather than perfectly straight, so its slope —
+  and therefore $z$ — drifts a little across the temperature range. That is why
+  `hurd_tdt()` evaluates $z(t)$ at each assay temperature (`vapply(tc, z_at, …)`)
+  and averages them (`rowMeans`) — the "mean local $z$ over the assay range."
+
+## Step 3 — $CT_{max}$ at one hour
+
+$CT_{max}(1\,\text{h})$ is the temperature hot enough that a **one-hour exposure
+already drops reproduction to 50%**. So: at what temperature does $\ell_{50}$ equal
+$\log_{10}(60\ \text{min})$? Set $\ell_{50}(t) = L_{\text{ref}}$ (with
+$L_{\text{ref}} = \log_{10} 60$) and solve for $t$:
+
+$$
+-\frac{I + T t}{D + DT\,t} = L_{\text{ref}}
+\;\Longrightarrow\;
+-(I + T t) = L_{\text{ref}}(D + DT\,t)
+\;\Longrightarrow\;
+-I - L_{\text{ref}} D = t\,(T + L_{\text{ref}} DT).
+$$
+
+So the centred temperature is $t^\star = -(I + L_{\text{ref}} D)/(T + L_{\text{ref}} DT)$.
+Add the mean temperature back to land on the real scale:
+
+$$
+\boxed{\,CT_{max} = \bar T - \dfrac{I + L_{\text{ref}} D}{T + L_{\text{ref}} DT}\,},
+\qquad L_{\text{ref}} = \log_{10} 60 .
+$$
+
+This is the code's `tbar - (cc$I + log10_tref*cc$D)/(cc$T + log10_tref*cc$DT)`.
+
+## Why $z$ is averaged but $CT_{max}$ is a single solve
+
+$CT_{max}$ is **one point** — there is exactly one temperature where the 50%-time
+crosses one hour — so we solve for it directly, with a unique closed form
+regardless of the curvature. $z$ is a **slope**, and the line is slightly curved,
+so to report a single number we average the local slope over the temperatures we
+actually tested. Both quantities are computed for every posterior draw, so we get
+a full posterior for each, not just a point estimate.
+
+## Numerical validation
+
+Reproduce the headline values straight from the closed forms (these should match
+the supplement's incidence table: $z_F \approx 3.18$, $z_M \approx 2.88$,
+$CT_{max,F} \approx 36.10$, $CT_{max,M} \approx 36.48$).
+
+```{r}
+#| label: headline
+#| message: false
+#| warning: false
+library(bayesTLS)
+library(posterior)
+fit  <- readRDS(here::here("output", "models", "fit_dsuzukii_prod_hurdle_gamma.rds"))
+post <- as_draws_df(fit)
+data(dsuzukii)
+
+Tbar  <- mean(dsuzukii$temp)
+temps <- sort(unique(dsuzukii$temp))
+tc    <- temps - Tbar               # centred assay temperatures
+L_ref <- log10(60)                  # 1 hour, on the log10-minutes scale
+
+# Four hurdle coefficients for a given sex, per posterior draw (females = reference).
+coefs <- function(male) {
+  add <- function(nm) if (male) post[[nm]] else 0
+  list(I  = post[["b_hu_Intercept"]]  + add("b_hu_sexM"),
+       T  = post[["b_hu_temp_c"]]      + add("b_hu_temp_c:sexM"),
+       D  = post[["b_hu_logd"]]        + add("b_hu_logd:sexM"),
+       DT = post[["b_hu_logd:temp_c"]] + add("b_hu_logd:temp_c:sexM"))
+}
+
+# The three closed forms, vectorised over draws.
+z_at     <- function(cc, t) (cc$D + cc$DT * t)^2 / (cc$T * cc$D - cc$I * cc$DT)
+z_mean   <- function(cc) rowMeans(vapply(tc, function(t) z_at(cc, t), numeric(nrow(post))))
+ctmax_cf <- function(cc) Tbar - (cc$I + L_ref * cc$D) / (cc$T + L_ref * cc$DT)
+
+round(c(z_F     = median(z_mean(coefs(FALSE))),
+        z_M     = median(z_mean(coefs(TRUE))),
+        CTmax_F = median(ctmax_cf(coefs(FALSE))),
+        CTmax_M = median(ctmax_cf(coefs(TRUE)))), 2)
+```
+
+Now check the calculus independently, at the posterior-median female coefficients:
+$z$ from the closed form should match $z$ from a finite-difference slope of
+$\ell_{50}$, and the closed-form $CT_{max}$ should actually satisfy
+$\ell_{50} = \log_{10}60$.
+
+```{r}
+#| label: crosscheck
+#| message: false
+#| warning: false
+cm <- lapply(coefs(FALSE), median)
+I <- cm$I; T <- cm$T; D <- cm$D; DT <- cm$DT
+logd50 <- function(t) -(I + T * t) / (D + DT * t)
+
+# z: closed form vs central finite difference of logd50.
+h      <- 1e-4
+z_fd   <- sapply(tc, function(t) -1 / ((logd50(t + h) - logd50(t - h)) / (2 * h)))
+z_form <- sapply(tc, function(t) (D + DT * t)^2 / (T * D - I * DT))
+max_err_z <- max(abs(z_fd - z_form))
+
+# CTmax: does the closed-form value satisfy logd50 = log10(60)?
+ctmax     <- Tbar - (I + L_ref * D) / (T + L_ref * DT)
+err_ctmax <- abs(logd50(ctmax - Tbar) - L_ref)
+
+signif(c(max_err_z = max_err_z, err_ctmax = err_ctmax), 3)
+```
+
+Both errors are at the floating-point floor ($\sim 10^{-10}$ or smaller), so the
+closed forms are exact, not approximations.
+
+## Bottom line
+
+- The hurdle part is a logistic line in $\log_{10}$ time whose intercept and slope
+  shift with temperature.
+- **$\ell_{50}$** is where that line crosses zero (50% reproduce):
+  $-(I + T t)/(D + DT\,t)$.
+- **$z(t)$** is $-1$ over the slope of $\ell_{50}$ vs temperature; the algebra
+  collapses to $(D + DT\,t)^2/(TD - I\,DT)$, temperature-local because of the
+  duration $\times$ temperature interaction (so we average it over the assay range).
+- **$CT_{max}$** is the single temperature where $\ell_{50} = \log_{10}60$:
+  $\bar T - (I + L_{\text{ref}} D)/(T + L_{\text{ref}} DT)$.
+- Verified three independent ways (hand derivation, `sympy`, and a numeric check
+  against the fitted posterior); all signs are correct.
+
+## See also
+
+- `ms/supplement.qmd` — chunk `dros-prod-tdt` (`hurd_tdt()`, `mag_b()`,
+  `sex_coefs()`).
+- [[2026-06-26-hurdle-component-vs-4pl-incidence]] — the hurdle logit as a 4PL
+  with pinned asymptotes.
+- Memory: `project_z_ctmax_derivation` (the survival/relative-$z$ transforms),
+  `project_tcrit_definition`.
