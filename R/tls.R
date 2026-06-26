@@ -31,7 +31,10 @@
 #' @param mode,p **Deprecated**, superseded by `target_surv`. If supplied,
 #'   `mode = "relative"` maps to `target_surv = "relative"` and
 #'   `mode = "absolute"` (with `p`) to `target_surv = p`. Kept for back-compat.
-#' @param t_ref Reference exposure duration for `CTmax`, in minutes. Default 60.
+#' @param t_ref Reference exposure duration for `CTmax`, in minutes. If `NULL`
+#'   (default), inherit the fit's own reference exposure (`meta$t_ref`) and
+#'   report it via a message; a raw `brmsfit` with no recorded reference
+#'   falls back to 60.
 #'   Converted to the model's time scale via `time_multiplier`.
 #' @param time_multiplier Multiplier from the model's time unit to minutes.
 #'   `NULL` (default) derives it from a `bayes_tls` workflow's `duration_unit`
@@ -78,7 +81,7 @@
 #' @export
 tls <- function(object, by = NULL, params = "all",
                 target_surv = "relative",
-                t_ref = 60, time_multiplier = NULL,
+                t_ref = NULL, time_multiplier = NULL,
                 lethal = FALSE, TC_rate_range = c(0.1, 1),
                 temp = "temp_c", temp_mean = NULL, temp_grid = NULL,
                 re_formula = NA, lower = 0, upper = 1,
@@ -120,6 +123,9 @@ tls <- function(object, by = NULL, params = "all",
   } else {
     stop("`object` must be a bayes_tls workflow or a brmsfit.", call. = FALSE)
   }
+  # Inherit the fit's own reference exposure when t_ref is omitted (and announce
+  # it), so a fit done at e.g. 4 h is not silently read at the 60-min default.
+  t_ref <- tdt_resolve_t_ref(t_ref, meta)
   # t_ref is in output minutes; convert to the model's time scale (raw fits with
   # no duration_unit metadata default to time_multiplier = 1, i.e. model units).
   time_multiplier <- tdt_resolve_time_multiplier(time_multiplier, meta, "min")

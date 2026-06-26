@@ -451,7 +451,9 @@ derive_z <- function(workflow,
 #'                    `(low + up)/2` per draw, from `mid`), `"absolute"`
 #'                    (the 50 % LT50), or a numeric in `(0, 1)`.
 #' @param t_ref       Reference exposure duration for CTmax, in the
-#'                    `output_time_unit` (default `"min"`). Default 60.
+#'                    `output_time_unit` (default `"min"`). If `NULL` (the
+#'                    default), inherit the fit's own reference (`meta$t_ref`)
+#'                    and report it; raw fits with no reference fall back to 60.
 #' @param TC_rate_range Numeric length-2: HI-rate floor range, in % LT-dose
 #'                    per hour, used to derive T_crit (only when
 #'                    `lethal = TRUE`). Default `c(0.1, 1)`. Sampled uniformly
@@ -531,7 +533,7 @@ derive_z <- function(workflow,
 #' @export
 extract_tdt <- function(workflow,
                         target_surv      = "relative",
-                        t_ref            = 60,
+                        t_ref            = NULL,
                         TC_rate_range    = c(0.1, 1),
                         temp_grid        = NULL,
                         duration_grid    = NULL,
@@ -550,6 +552,10 @@ extract_tdt <- function(workflow,
       TC_rate_range[1] >= TC_rate_range[2])
     stop("TC_rate_range must be c(low, high) with 0 < low < high (% HI/hour).",
          call. = FALSE)
+
+  # Inherit the fit's own reference exposure when t_ref is omitted (and announce
+  # it), matching the model's reference rather than the 60-min default.
+  t_ref <- tdt_resolve_t_ref(t_ref, workflow$meta)
 
   # Resolve the model->output time multiplier from the workflow's duration_unit
   # when not supplied, so t_ref (in output units) is converted to model units

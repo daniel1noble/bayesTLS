@@ -232,6 +232,41 @@ tdt_resolve_time_multiplier <- function(time_multiplier, meta,
   mins_model / mins_output
 }
 
+#' Resolve the CTmax reference exposure for the TDT extractors
+#'
+#' `t_ref` is the reference exposure that `CTmax` is reported at. Because
+#' `CTmax` shifts with the reference time (by \eqn{z \cdot \log_{10}} of the
+#' ratio), reading a fit at a different `t_ref` than it was fitted with silently
+#' moves `CTmax` (while leaving `z`, which is reference-invariant, unchanged).
+#' When the caller does not supply `t_ref`, inherit the fit's own reference
+#' (`meta$t_ref`, in minutes) and announce it via a message; fall back to 60 min
+#' for raw fits that record no reference.
+#'
+#' @param t_ref Caller-supplied reference exposure (minutes) or `NULL`.
+#' @param meta A `bayes_tls` workflow's `meta` list (uses `t_ref`).
+#' @return Numeric reference exposure in minutes.
+#' @keywords internal
+tdt_resolve_t_ref <- function(t_ref, meta) {
+  if (!is.null(t_ref)) return(t_ref)
+  fit_tref <- meta$t_ref
+  if (!is.null(fit_tref) && is.finite(fit_tref)) {
+    message("`t_ref` not provided; defaulting to the model fit's reference ",
+            "exposure: ", format(fit_tref), " min (", tdt_format_hours(fit_tref),
+            "). Pass `t_ref` explicitly to read CTmax at a different reference.")
+    return(fit_tref)
+  }
+  message("`t_ref` not provided and the fit records no reference exposure; ",
+          "defaulting to 60 min (1 hour).")
+  60
+}
+
+# Pretty "<n> hour(s)" label for a duration given in minutes.
+tdt_format_hours <- function(minutes) {
+  h  <- minutes / 60
+  hr <- if (isTRUE(all.equal(h, round(h)))) format(round(h)) else format(round(h, 2))
+  paste0(hr, if (identical(hr, "1")) " hour" else " hours")
+}
+
 # --- grouped-fit detection ---------------------------------------------------
 # A direct/midpoint fit is "grouped" when CTmax/z (or mid) vary by a fixed
 # moderator. fit_4pl() records this coding-independently in meta$grouped, so

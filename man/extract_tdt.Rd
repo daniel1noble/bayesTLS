@@ -7,7 +7,7 @@
 extract_tdt(
   workflow,
   target_surv = "relative",
-  t_ref = 60,
+  t_ref = NULL,
   TC_rate_range = c(0.1, 1),
   temp_grid = NULL,
   duration_grid = NULL,
@@ -28,7 +28,9 @@ extract_tdt(
 (the 50 \% LT50), or a numeric in \verb{(0, 1)}.}
 
 \item{t_ref}{Reference exposure duration for CTmax, in the
-\code{output_time_unit} (default \code{"min"}). Default 60.}
+\code{output_time_unit} (default \code{"min"}). If \code{NULL} (the
+default), inherit the fit's own reference (\code{meta$t_ref})
+and report it; raw fits with no reference fall back to 60.}
 
 \item{TC_rate_range}{Numeric length-2: HI-rate floor range, in \% LT-dose
 per hour, used to derive T_crit (only when

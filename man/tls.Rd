@@ -12,7 +12,7 @@ tls(
   by = NULL,
   params = "all",
   target_surv = "relative",
-  t_ref = 60,
+  t_ref = NULL,
   time_multiplier = NULL,
   lethal = FALSE,
   TC_rate_range = c(0.1, 1),
@@ -54,7 +54,10 @@ separately (e.g. \code{"sex"}). \code{NULL} (default) pools to a single group.}
 for an absolute LT\code{p}. The default is \code{"relative"} so \code{tls()} and
 \code{\link[=extract_tdt]{extract_tdt()}} return the same z/CTmax for a given fit.}
 
-\item{t_ref}{Reference exposure duration for \code{CTmax}, in minutes. Default 60.
+\item{t_ref}{Reference exposure duration for \code{CTmax}, in minutes. If \code{NULL}
+(default), inherit the fit's own reference exposure (\code{meta$t_ref}) and
+report it via a message; a raw \code{brmsfit} with no recorded reference
+falls back to 60.
 Converted to the model's time scale via \code{time_multiplier}.}
 
 \item{time_multiplier}{Multiplier from the model's time unit to minutes.

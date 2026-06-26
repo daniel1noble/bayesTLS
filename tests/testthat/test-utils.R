@@ -76,6 +76,26 @@ test_that("tdt_resolve_time_multiplier derives from duration_unit, override hono
   expect_equal(out, 1)
 })
 
+test_that("tdt_resolve_t_ref inherits the fit's reference (with a message) unless supplied", {
+  # Explicit t_ref is returned unchanged and silently (the common case).
+  expect_silent(out <- tdt_resolve_t_ref(60, list(t_ref = 240)))
+  expect_equal(out, 60)
+  # Omitted t_ref inherits the fit's stored reference and announces it -- this is
+  # the footgun that read a 4 h fit at the 60 min default (CTmax off by z*log10(4)).
+  expect_message(out <- tdt_resolve_t_ref(NULL, list(t_ref = 240)),
+                 "model fit's reference exposure: 240 min \\(4 hours\\)")
+  expect_equal(out, 240)
+  # Raw fit with no recorded reference falls back to 60, also with a message.
+  expect_message(out <- tdt_resolve_t_ref(NULL, list()), "defaulting to 60 min")
+  expect_equal(out, 60)
+})
+
+test_that("tdt_format_hours renders singular/plural and fractional hours", {
+  expect_equal(tdt_format_hours(60),  "1 hour")
+  expect_equal(tdt_format_hours(240), "4 hours")
+  expect_equal(tdt_format_hours(90),  "1.5 hours")
+})
+
 test_that("clock_to_minutes handles common formats", {
   expect_equal(clock_to_minutes("08:30:00"), 510)
   expect_equal(suppressMessages(clock_to_minutes(0.5)), 720)
