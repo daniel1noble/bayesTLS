@@ -1,0 +1,248 @@
+---
+title: "Redesign: a faithful, model-agnostic 4PL parameter extractor"
+date: 2026-06-26
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 3
+---
+
+> Planning note (no code executed). Logs the design and blast radius before
+> touching `extract_4pl_pars()`. Decisions D1–D5 need sign-off before
+> implementation.
+
+## Problem
+
+`extract_4pl_pars()` is exported under a generic name but does a narrow,
+heat-injury-specific job: it evaluates `low`/`up`/`k` at `temp_c = 0` (the
+centring temperature) and **silently discards their temperature slopes**,
+keeping only `mid` as `T`-varying (`mid_int`, `mid_temp`). For a function named
+"extract the 4PL parameters" this violates least-astonishment, and it cannot
+serve the extended worked example (supplement §"temperature effects on every
+shape parameter"), whose whole point is recovering a *bent* curve where `up(T)`
+declines and `k(T)` rises.
+
+The capability we need already exists internally: `tls_eval_subpars()` +
+`tls_build_grid()` evaluate all four natural-scale sub-parameters per draw on any
+covariate grid (temperature × moderator levels), via
+`posterior_linpred(nlpar=, newdata=)` — model-agnostic, no coefficient-name
+parsing. It is simply not surfaced.
+
+## Goal (Daniel's framing)
+
+Each sub-parameter may be fit as `~ 1`, `~ temp_c`, or `~ temp_c * group` (and/or
+with random effects). A faithful extractor must return **all** of that structure
+for **every** sub-parameter, regardless of how the model was specified. The
+*summary* layer then decides what it consumes:
+
+| Summary quantity            | needs `mid` temp/group | needs `low`/`up`/`k` temp/group |
+|-----------------------------|:----------------------:|:-------------------------------:|
+| Relative `z`, `CTmax`, `Tcrit` | yes                 | **no** (asymptotes & `k` cancel; `log10 LT = mid`) |
+| Absolute `LT_p`, local `z(T)`, `CTmax` | yes         | **yes** (asymmetry term `log((up−p)/(p−low))/k` bends the curve) |
+| Heat-injury integral        | yes (`mid` drives dose) | **no** under the classical constant-shape assumption (today); only an *absolute*-target HI would need them |
+
+So the bug bites the **absolute** path and the **recovery-validation** example;
+relative summaries are unaffected, and `tls()`'s own absolute math already uses
+the grid faithfully (it is not broken — only the exposed extractor is).
+
+## Representation decision
+
+Two faithful representations were considered:
+
+- **(A) Raw coefficient draws** — per-`nlpar` linear-predictor coefficients
+  (`lowraw_Intercept`, `lowraw_temp_c`, `lowraw_groupB`, …). *Rejected as the
+  primary form*: lives on transformed scales (logit/log), has a variable column
+  set per model, and requires coefficient-name parsing — the exact brittleness
+  we are removing.
+- **(B) Natural-scale sub-parameters evaluated per draw on a covariate grid** —
+  `low(T, group)`, `up(T, group)`, `k(T, group)`, `mid(T, group)` via
+  `posterior_linpred`. *Chosen*: model-agnostic, interpretable, already
+  implemented, and crossing moderators is built in. Because temp effects are
+  linear on each link scale, a ≥2-point grid fully characterises any slope, so
+  downstream slope-based quantities (relative `z`) are still recoverable; a
+  coefficient view is not needed for that.
+
+### Proposed signature
+
+```r
+extract_4pl_pars(workflow,
+                 temps      = NULL,   # numeric vector; NULL -> observed assay temps
+                 by         = NULL,   # moderator col(s); NULL -> fit's moderators (all levels)
+                 re_formula = NA,
+                 ndraws     = NULL)
+# -> tibble(.draw, temp, <moderators...>, low, up, k, mid)   [natural scale, long]
+```
+
+The heat-injury constant-shape view (`low`, `up`, `k`, `mid_int`, `mid_temp` at
+`T_bar`) moves into an internal helper, e.g. `hi_pars(workflow, by)`, that the
+integral calls — so the constant-shape assumption is explicit and local, not the
+default behaviour of the public extractor.
+
+## What it affects (blast radius)
+
+1. **`extract_4pl_pars()`** (`R/predict_heat_injury.R:36`) — redesign to (B);
+   new args/return; roxygen rewrite.
+2. **Heat-injury integral** (`R/predict_heat_injury.R:263`,
+   `time_to_surv_threshold_4pl`) — add internal `hi_pars()` so HI behaviour is
+   byte-identical (decision **D1**).
+3. **`get_4pl_est()`** (`R/accessors.R:323`) — rewrap; decide on `temps=`/`by=`
+   passthrough.
+4. **`tdt_parameter_table()`** (`R/diagnostics.R:142`) — decide what a single
+   "parameter table" reports under `T`-varying shape (decision **D3**).
+5. **`tls()` / `tls_engine`** — *verify only*; relative uses the `mid` slope,
+   absolute already evaluates local `z(T)` on a moderator-crossed grid. Add a
+   regression test pinning the current absolute numbers.
+6. **Manuscript**:
+   - Supplement extended example (`ms/supplement.qmd:1315-1360`) — rewrite to one
+     `extract_4pl_pars(wf_ext, temps = temps)` call (the payoff). Re-render.
+   - Shrimp/zebrafish case study (`ms/case_studies_shrimp_zebrafish.qmd:756`) —
+     currently relies on the `T_bar` behaviour; update call + narrative.
+   - Function-map tables (`supplement.qmd:305,317`; `case_study:280`) — update
+     descriptions.
+7. **Tests** (`tests/testthat/`) — new coverage for every formula shape
+   (`~1`, `~temp_c`, `~temp_c*group`) on every sub-parameter × relative/absolute;
+   faithful recovery of known slopes/group effects; HI regression
+   (`test-predict_heat_injury.R:106` references the function).
+8. **NAMESPACE / README / docs** pointers.
+
+## Open decisions (need sign-off)
+
+- **D1 — HI integral shape handling.** *(recommend: add a `shape =
+  c("constant", "varying")` option; default `"constant"`)*. See
+  "Shape-varying HI" below — shape enters survival in two places, and the
+  survival *mapping* needs a principled (hazard-like) reformulation, not a
+  constant→vector swap. Default stays constant-shape (classical parallel-curve
+  assumption; what the current analytical validation pins). Internal `hi_pars()`
+  still supplies the constant view for `shape = "constant"`.
+- **D2 — default `temps`.** *(recommend: observed unique assay temps)* vs `T_bar`
+  only (closest to old) vs require explicit `temps`.
+- **D3 — `tdt_parameter_table()` / `get_4pl_est("summary")` under T-varying
+  shape.** *(recommend: keep the `T_bar` slice as the headline summary, clearly
+  documented; faithful per-temp draws come from `extract_4pl_pars()`)* vs per-temp
+  rows vs coefficient rows.
+- **D4 — also expose raw coefficient draws** (`coefs=`/`scale=`)? *(recommend:
+  defer; not needed for any current consumer).*
+- **D5 — naming** of the internal HI helper (`hi_pars()`?) and whether
+  `get_4pl_est()` gains `temps=`/`by=` passthrough.
+
+## Shape-varying HI (D1 detail)
+
+Shape (`low`, `up`, `k`) enters the heat-injury machinery in **two** distinct
+places, with different theoretical status:
+
+1. **Dose rate** — `dmg = 1 / tau`, `tau = time_to_surv_threshold_4pl()`. In
+   **relative** mode `tau = 10^{mid(T)}` (shape irrelevant); in **absolute**
+   mode `tau = 10^{mid + log((up−p)/(p−low))/k}`, so `low/up/k` enter. Today
+   they are the constant `T_bar` values.
+2. **Dose → survival mapping** — `survival_from_dose()` is a 4PL in
+   `log10(dose)` using `low/up/k`, in **both** modes. In `integrate_pars()`
+   these are `pars$low[i]/up[i]/k[i]`, **frozen at `T_bar` for the whole
+   trace** (`R/predict_heat_injury.R:303-313`). So even default *relative* HI
+   maps the survival fraction through one fixed shape — a real bias if the true
+   shape moves with `T`.
+
+**Why not a free flag.** The scalar-dose framework assumes the dose-response
+curves at different temperatures are **parallel** (same shape, only `mid`
+shifts) — that parallelism is what makes a single accumulated dose map uniquely
+to survival (tolerance-landscape assumption; Rezende, Jørgensen). If shape
+varies with `T`, the curves are non-parallel and re-mapping the cumulative dose
+through a step-local curve makes survival **path-dependent**: it can jump when
+`T` changes with no added exposure — an artifact the `irreversible_mortality`
+clamp only half-hides.
+
+**Proposed handling — `shape = c("constant", "varying")`, default `"constant"`.**
+
+- *Dose rate (easy / well-defined):* under `"varying"`, feed `low(T), up(T),
+  k(T)` into `tau`. `time_to_surv_threshold_4pl()` already vectorises over
+  `temp`; it just needs vector shape. Directly improves absolute-target HI.
+- *Survival mapping (needs reformulation):* under `"varying"`, do **not**
+  re-level survival by re-mapping the global dose each step. Instead accumulate
+  survival as a monotone state via an incremental update — each interval's
+  mortality increment comes from the *local* curve's slope-in-dose times the
+  dose added (a hazard-like step), so shape sets the *rate* of survival loss,
+  continuous and path-correct, and the sub-unit asymptotes are respected.
+  Connects to the injury-rate/hazard literature in the bib (Buckley 2025,
+  Faber 2026).
+
+**Validation gate (before `"varying"` is trusted/adopted).** Extend the existing
+analytical harness (`planted_dose_from_trace()` + the supplement validation
+table) with a **planted bent-curve trace** (shape genuinely varying with `T`)
+and confirm `shape = "varying"` recovers planted survival with the truth inside
+the CrI, and does so *better* than `"constant"` when shape moves — while
+`"constant"` remains unbiased when shape is flat. Report numbers neutrally; list
+confounders (path-dependence sensitivity, asymptote identifiability) not yet
+ruled out.
+
+## Sequencing
+
+1. Sign off D1–D5 (this note).
+2. Implement faithful `extract_4pl_pars()` + internal `hi_pars()`; keep HI
+   identical.
+3. Tests: all formula shapes × relative/absolute; HI regression; `tls()`
+   absolute regression.
+4. `devtools::test()` + `R CMD check`.
+5. Update `get_4pl_est()` / `tdt_parameter_table()` docs.
+6. Rewrite supplement extended chunk + shrimp CS + function-map tables;
+   re-render (ask first).
+
+## Findings — background dev run (2026-06-26)
+
+Implemented and tested in an isolated worktree (branch
+`worktree-agent-a2081387f75b42585`; not merged). Status: all phases green.
+
+**Implemented.** `extract_4pl_pars(workflow, temps = NULL, by = NULL, re_formula
+= NA, ndraws = NULL)` now returns long `(.draw, temp, <mods>, low, up, k, mid)`
+on the natural scale (surfaces `tls_eval_subpars`/`tls_build_grid`). Internal
+`hi_pars()` holds the old constant-shape `(low, up, k, mid_int, mid_temp)` view;
+`predict_heat_injury(shape = "constant")` (default) calls it. `shape = "varying"`
+feeds temperature-local `low(T)/up(T)/k(T)/mid(T)` into `tau` and uses an
+**incremental local-curve survival decrement** `ΔS_j = g(D_j; shape_j) −
+g(D_{j-1}; shape_j)` (both endpoints on the same step-j curve), accumulated as a
+monotone state — no path-dependent jump. `get_4pl_est()` gains `temps=`.
+`tdt_parameter_table()` unchanged (`T_bar` slice). man/ regenerated.
+
+**Verification.** Constant-shape HI output reproduced **byte-for-byte** (digest
+match, max abs diff 0) → no existing result moves. Default suite 564 pass / 0
+fail; brms-gated 891 pass / 0 fail (+51 new). Code logic + telescoping/path-
+independence invariant independently checked by hand (this session): flat shape →
+`survival[j]` telescopes exactly to the constant closed form `g(D_j)`.
+
+**Quantification (planted KNOWN params, single posterior point — no uncertainty
+propagation yet).**
+
+- Flat shape: varying ≡ constant to machine precision (sanity check passes).
+- **Relative threshold: `ΔHI = 0` between modes** — structural: relative
+  `tau = 10^{mid}` ignores `up/k`, so all divergence is in the survival mapping,
+  not dose accumulation.
+- **Absolute threshold: HI diverges** (its `tau` uses local `up/k`): up to ~7%
+  more dose at strong T-dependence (multi-spike: 565→605).
+- Survival divergence decomposes into a starting-asymptote offset `dS_init`
+  (= `up(T_1) − up(T_bar)`; 0.03 / 0.09 / 0.15 at low/mod/strong) and an
+  exposure-driven part `dS_exp` (grows with hot excursions, up to ≈0.07).
+- **Negligible** for weak slopes (`up` ≲ 0.01/°C, `k` ≲ 0.04) → `"constant"`
+  fine; **material** under moderate–strong shape with many hot spikes.
+
+**Decisions (now settled by evidence).** D1: default `shape = "constant"`,
+integrate `"varying"` as opt-in. Key conceptual point for the manuscript: under
+the *relative* threshold shape affects only the survival mapping; an *absolute*
+target is required for shape to influence dose accumulation.
+
+**Open validation gap (close before any manuscript use of `"varying"`).** The
+Phase-3 numbers are point estimates from planted parameters. Need an end-to-end
+**posterior-propagated** comparison on a real fitted curve with a genuine
+`up`/`k` temperature slope, to see how much the constant↔varying gap survives
+once posterior uncertainty is included.
+
+**Doc drift to fix in `ms/` (separate pass, not done):** `supplement.qmd:307`
+function-map row still describes the old `extract_4pl_pars` output
+(`mid_int`/`mid_temp` for the HI integral); that description now belongs to
+internal `hi_pars()`. `extract_4pl_pars()` returns `(low, up, k, mid)` per temp.
+
+## See also
+
+- `R/tls_engine.R` — `tls_eval_subpars()`, `tls_build_grid()` (the engine to
+  surface).
+- `R/predict_heat_injury.R` — current `extract_4pl_pars()` and the HI integral.
+- Supplement §"temperature effects on every shape parameter" — the worked
+  example this unblocks.
