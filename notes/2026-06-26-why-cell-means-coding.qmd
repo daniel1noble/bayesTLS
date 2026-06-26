@@ -1,0 +1,105 @@
+---
+title: "Why we default to cell-means coding (`0 + G`) in the direct 4PL"
+date: 2026-06-26
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## The question
+
+Throughout the supplement the direct fits are written with the intercept
+suppressed — `ctmax = ~ 0 + species`, `z = ~ 0 + oxygen`,
+`ctmax = ~ 0 + recovery + (1 | plant)`, etc. Do we *need* to suppress the
+intercept? Shouldn't `tls()` recover any per-group quantity regardless of how
+the linear predictor is coded?
+
+**Short answer:** we do not need it for identifiability or recovery — the user's
+instinct is correct. We default to it for *prior symmetry* and readability.
+
+## Cell-means vs treatment coding are the same model
+
+`~ 0 + G` (cell-means / one-hot) and `~ G` (treatment / reference) are two
+parameterisations of the *same* linear predictor. Both design matrices span the
+identical column space — the space of per-group means. Therefore:
+
+- the likelihood is identical,
+- the fitted values are identical,
+- `tls(by = "G")` recovers every per-group $CT_{max}$, $z$, $T_{crit}$ **and**
+  any between-group contrast from either coding.
+
+With flat / non-informative priors the two codings give bit-identical
+posteriors. Suppressing the intercept buys nothing at the likelihood level. The
+4PL is fully identified from the dose–response data either way.
+
+## Why we still default to `0 + G`: the priors are load-bearing
+
+The package does **not** use flat priors. `make_4pl_priors()`
+(`R/priors.R`) ships weakly-informative, coding-aware priors. A flat prior on
+the asymptotes produced 191 divergences (see
+`notes/2026-06-21-prior-sensitivity-direct-ctmax-z.qmd`), so the centred priors
+are doing real work.
+
+The relevant direct-mode priors:
+
+| sub-parameter | centre   | level SD | slope/contrast SD |
+|---------------|----------|----------|-------------------|
+| `CTmaxdev`    | 0        | 10       | 10                |
+| `logz`        | `log(3)` | 0.7      | 0.7               |
+
+`direct_par()` places the **centred** prior either on each factor *level*
+(cell-means) or on the *Intercept* (treatment), and a separate **mean-zero**
+prior on everything else (temperature slopes AND between-group contrasts).
+
+- Under **cell-means** (`0 + G`): every coefficient is an *absolute* group-level
+  parameter, so the same biologically-meaningful prior lands identically on
+  every group. Groups are symmetric a priori.
+- Under **treatment** coding: the intercept is the reference group's absolute
+  parameter; the rest are *contrasts*. The contrast prior is deliberately
+  centred on **zero** (not on `log(3)`), which keeps the per-group prior **mean**
+  coding-invariant and removes a `log(3)` shrinkage bias (otherwise the model is
+  told the between-group z-ratio "should" be ~3×).
+
+So treatment coding is not *wrong* — the package is built so it recovers
+approximately the same per-group answers. Cell-means is just the cleaner home
+for the priors.
+
+## The one cost of treatment coding: prior variance is not coding-invariant
+
+The prior **mean** is coding-invariant by construction; the prior **variance**
+is not. Under treatment coding a non-reference group's implied prior convolves
+the intercept SD and the contrast SD. For `logz`:
+
+$$
+\mathrm{SD}_{\text{non-ref}} = \sqrt{0.7^2 + 0.7^2} \approx 0.99
+\quad\text{vs}\quad 0.70 \ \text{under cell-means.}
+$$
+
+So treatment coding silently gives the reference group a tighter prior than the
+others — the groups are not symmetric a priori. And `normalize_cellmeans()` only
+rewrites single-factor formulas, so multi-factor models can't be auto-fixed.
+This is exactly why the docstring recommends `0 + G` for multi-group models.
+
+## Bottom line
+
+- **Needed for recovery?** No. Identifiability does not require it.
+- **Why default to it?** Symmetric, identical weakly-informative priors across
+  groups, plus `summary()` reads per-group directly (each group's $CT_{max}$/$z$
+  rather than reference + offsets).
+- With data-dominated fits (aphids, zebrafish) the posterior is essentially the
+  same either way.
+
+## Supplement wording flag
+
+`ms/supplement.qmd` (~line 1695) currently states cell-means "returns the
+**same** per-group estimates as treatment coding." That is exact only for the
+prior *mean*; the prior *variance* differs (the convolution above). For these
+fits the difference is immaterial, but the strictly defensible wording is
+"essentially the same per-group **point** estimates."
+
+## See also
+
+- `R/priors.R` — `make_4pl_priors()`, `direct_par()`, `cell_means_coefs()`.
+- `notes/2026-06-21-prior-sensitivity-direct-ctmax-z.qmd` — divergence /
+  prior-sensitivity evidence for the centred priors.
