@@ -1838,11 +1838,10 @@ plot_survival_curves(psc_aphid, observed = aphid_std, log_time = TRUE)
 
 However, with our model, we can now go one step further! @li2023 also measure across different ages. We can ask whether the heat sensitivity of each species varies across age too. Lets fit that model:
 
-
 ```{r aphid-fit}
 #| label: aphid-fit-age
 #| echo: true
-#| cache: false
+#| cache: true
 #| code-fold: show
 
 ## First, we need to go back. to the raw data and just include all ages, not just age 6.
@@ -1870,7 +1869,46 @@ summary(wf_aphid_age)
 
 There's a lot going on here, but what's important for us is to pay attention to the `ctmaxdev` and `logz` in the model because this shows us that tolerance and sensitivity vary across age differently across species, which is pretty cool! Lets have a look:
 
+```{r aphid-age-tls}
+#| label: tbl-aphid-age
+#| tbl-cap: "Per-species, per-age thermal-death-time parameters for the three cereal aphids from the age-extended joint 4PL (each species × age cell via `tls()` and `get_tls_est()`): thermal sensitivity $z$ and the 1-hour critical temperature $CT_{max,1h}$. Cells are the posterior median with 95% credible interval."
+#| echo: true
+#| code-fold: show
 
+aphid_age_tls <- tls(wf_aphid_age, by = c("species", "age"), lethal = TRUE)
+aphid_age_est <- get_tls_est(aphid_age_tls)
+
+# z and CTmax for every species x age cell: median [95% CI].
+aphid_age_tbl <- aphid_age_est |>
+  dplyr::filter(quantity %in% c("z", "CTmax")) |>
+  dplyr::mutate(
+    value    = format_interval(median, lower, upper, digits = 1),
+    quantity = factor(quantity, levels = c("z", "CTmax"),
+                      labels = c("z (°C)", "CTmax 1h (°C)")),
+    species  = dplyr::recode(species, M_dirhodum = "M. dirhodum",
+                             R_padi = "R. padi", S_avenae = "S. avenae"),
+    age      = factor(age, levels = c("2", "6", "12"))) |>
+  dplyr::select(species, age, quantity, value) |>
+  tidyr::pivot_wider(names_from = quantity, values_from = value) |>
+  dplyr::arrange(species, age) |>
+  dplyr::rename(Species = species, `Age (days)` = age)
+tinytable::tt(aphid_age_tbl)
+```
+
+```{r aphid-age-facts}
+#| echo: false
+ae <- function(sp, a, q) aphid_age_est$median[aphid_age_est$species == sp &
+                                              aphid_age_est$age == a & aphid_age_est$quantity == q]
+md_ct <- c(ae("M_dirhodum", "2", "CTmax"), ae("M_dirhodum", "12", "CTmax"))
+sa_ct <- c(ae("S_avenae",   "2", "CTmax"), ae("S_avenae",   "12", "CTmax"))
+md_z  <- c(ae("M_dirhodum", "2", "z"),     ae("M_dirhodum", "12", "z"))
+sa_z  <- c(ae("S_avenae",   "2", "z"),     ae("S_avenae",   "12", "z"))
+rp_z  <- c(ae("R_padi",     "2", "z"),     ae("R_padi",     "12", "z"))
+```
+
+Two patterns stand out (@tbl-aphid-age). **Heat tolerance rises with age in all three species**: the 1-hour $CT_{max}$ climbs from the youngest to the oldest aphids — from `r round(md_ct[1], 1)` to `r round(md_ct[2], 1)` °C in *M. dirhodum* and `r round(sa_ct[1], 1)` to `r round(sa_ct[2], 1)` °C in *S. avenae*, with a smaller rise in *R. padi* (which peaks at 6 days). The species ranking holds at every age — *R. padi* tolerates the highest temperatures and *M. dirhodum* the lowest.
+
+**Sensitivity, though, shifts with age in opposite directions across species.** A smaller $z$ means more sensitive — less warming is needed to cut survival time tenfold. *M. dirhodum* and *S. avenae* both grow more sensitive with age ($z$ falling from `r round(md_z[1], 1)` to `r round(md_z[2], 1)` and from `r round(sa_z[1], 1)` to `r round(sa_z[2], 1)` °C), whereas *R. padi* grows *less* sensitive ($z$ rising from `r round(rp_z[1], 1)` to `r round(rp_z[2], 1)` °C). Tolerance and sensitivity therefore do not track one another, and the age effect on sensitivity is itself species-specific.
 
 ## Heat injury across species under a field temperature trace {#sec-aphid-hi}
 
