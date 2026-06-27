@@ -1788,7 +1788,7 @@ wf_aphid <- fit_4pl(aphid_std,
 summary(wf_aphid)
 ```
 
-Overall, the model looks good and explains `r bayes_R2_tls(wf_aphid)[1]*100`% of variation [95% CI: `r bayes_R2_tls(wf_aphid)[3]*100` to `r bayes_R2_tls(wf_aphid)[4]*100`].
+Overall, the model looks good and explains `r round(bayes_R2_tls(wf_aphid)[1]*100, 1)`% of variation [95% CI: `r round(bayes_R2_tls(wf_aphid)[3]*100, 1)` to `r round(bayes_R2_tls(wf_aphid)[4]*100, 1)`].
 
 ## Per-species thermal limits and validation against Li et al. {#sec-aphid-extract}
 
@@ -3103,10 +3103,12 @@ library(patchwork)
 
 .theme_proj <- theme_classic(base_size = 11) +
   theme(strip.background = element_blank(),
-        strip.text       = element_text(face = "bold"),
+        strip.text       = element_text(face = "bold", size = 14),
+        axis.title       = element_text(size = 13),
+        axis.text        = element_text(size = 11),
         legend.position  = "bottom",
         legend.title     = element_blank(),
-        legend.text      = element_text(size = 9),
+        legend.text      = element_text(size = 12),
         panel.spacing    = unit(0.8, "lines"))
 
 .load_screened <- function(prefix) {
