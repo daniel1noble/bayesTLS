@@ -31,7 +31,7 @@ BUILD_MS  := $(BUILDROOT)/ms
 
 .PHONY: all clean build-clean \
         ms supp \
-        ms-html ms-docx ms-pdf \
+        ms-docx ms-pdf \
         supp-html supp-docx supp-pdf \
         sync-sources \
         osf-push osf-status \
@@ -111,8 +111,7 @@ SUPP_META_PDF      := --metadata-file _supp-pdf-overrides.yml
 DOCX_META := --metadata abstract="" --metadata abstract-title=""
 
 # ---- ms.qmd (manuscript) --------------------------------------------------
-ms: ms-html ms-docx ms-pdf
-ms-html: ; $(call RENDER,ms/ms.qmd,html,ms.html)
+ms: ms-docx ms-pdf
 ms-docx: ; $(call RENDER,ms/ms.qmd,docx,ms.docx,$(DOCX_META))
 ms-pdf:  ; $(call RENDER,ms/ms.qmd,pdf,ms.pdf)
 
