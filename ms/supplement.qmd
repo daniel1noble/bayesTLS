@@ -1775,13 +1775,14 @@ str(aphid_std)
 #| echo: true
 #| cache: false
 #| code-fold: show
+#| message: false
 
 # We'll fit the model, but there's not much evidence that logk varies across species so we'll keep it simple and just assume that is fairly constant but varies across temp. But, we'll keep the species*temp_c interactions on others in case we want to compute absolute measures. 
 wf_aphid <- fit_4pl(aphid_std, 
                     ctmax = ~ 0 + species, 
                         z = ~ 0 + species, 
                         k = ~ temp_c,
-                    t_ref = 60,
+                    t_ref = 60, silent = 2, refresh = 0,
                     file_refit = "on_change",
                     file       = file.path(models_dir, "aphid_species"))
 summary(wf_aphid)
@@ -1843,6 +1844,7 @@ However, with our model, we can now go one step further! @li2023 also measure ac
 #| echo: true
 #| cache: true
 #| code-fold: show
+#| message: false
 
 ## First, we need to go back. to the raw data and just include all ages, not just age 6.
 aphid_raw2 <- aphid_tdt |>
@@ -1861,9 +1863,9 @@ wf_aphid_age <- fit_4pl(aphid_stn2,
                         k = ~ temp_c,
                       low = ~species*temp_c,
                        up = ~species*temp_c,
-                    t_ref = 60,
+                    t_ref = 60, silent = 2, refresh = 0,
                     file_refit = "on_change",
-                    file       = file.path(models_dir, "aphid_species"))
+                    file       = file.path(models_dir, "aphid_species_age"))
 summary(wf_aphid_age)
 ```
 
