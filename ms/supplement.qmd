@@ -3775,13 +3775,15 @@ fig4_panel <- function(cs, glevels, ylabels, title, sci, tag,
   ggplot(d, aes(value, group, fill = group)) +
     geom_density_ridges(
       data = dplyr::filter(d, !as.character(quantity) %in% c("CTmax_1hr", "CTmax_4hr")),
+      aes(height = after_stat(ndensity)), stat = "density", adjust = 2.5,
       colour = "white", linewidth = .2, alpha = .9, scale = ridge_scale,
-      rel_min_height = .005
+      rel_min_height = .01
     ) +
     geom_density_ridges(
       data = dplyr::filter(d, as.character(quantity) %in% c("CTmax_1hr", "CTmax_4hr")),
+      aes(height = after_stat(ndensity)), stat = "density", adjust = 2.5,
       colour = "white", linewidth = .2, alpha = .9, scale = ridge_scale_ctmax,
-      rel_min_height = .005
+      rel_min_height = .01
     ) +
     geom_linerange(data = s, aes(y = group, xmin = lower, xmax = upper, colour = ci_col), inherit.aes = FALSE, linewidth = 1.3) +
     geom_point(data = s, aes(median, group, fill = group), inherit.aes = FALSE, shape = 21, colour = "black", size = 3.6, stroke = 0.7) +
@@ -3812,9 +3814,9 @@ fig4_A <- add_brackets(fig4_panel("Cereal aphids", sp_lv,
             setNames(c(paste0(imgH(aphid_trim["M_dirhodum"], 40), "<br>*M. dirhodum*"),
                        paste0(imgH(aphid_trim["S_avenae"],   38), "<br>*S. avenae*"),
                        paste0(imgH(aphid_trim["R_padi"],     38), "<br>*R. padi*")), sp_lv),
-            "Cereal aphids", "three species", "a)", texp = 0.72, xexp_r = 0.38, xexp_l = 0.30),
+            "Cereal aphids", "three species", "a)", texp = 0.50, xexp_r = 0.38, xexp_l = 0.30),
             "Cereal aphids", sp_lv, base = 0.30, step = 0.12, cbase = 0.55, cstep = 0.14)
-fig4_A <- ins(fig4_A, P("aphid_Mdirhodum_V2.png"), .44, .56, .69, .96)
+fig4_A <- ins(fig4_A, P("aphid_Mdirhodum_V2.png"), .41, .55, .66, .95)
 
 # b) Snow gum, dark vs light recovery. Icon enlarged ~30%.
 fig4_B <- add_brackets(fig4_panel("Snow gum leaf PSII", rec_lv,
