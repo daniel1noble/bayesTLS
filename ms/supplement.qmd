@@ -839,7 +839,7 @@ $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
 $$ {#eq-tcrit}
 
-The threshold one wishes to use is set by the `target_surv` argument (shared by `tls()` and `extract_tdt()`). The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates drifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
+The threshold one wishes to use is set by the `target_surv` argument (shared by `tls()` and `extract_tdt()`). The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates shifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
 
 **How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value: breakpoint analyses of $\log_{10}$(time-to-thermal-failure) against temperature place the critical temperature anywhere from roughly 27 to 40 °C depending on the assay and taxon (including *Drosophila suzukii* and *Lemna gibba*) [@faber2026]. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which we assume net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
@@ -2481,6 +2481,8 @@ tinytable::tt(tls_sex_table_abs, escape = TRUE)
 
 The two `tls()` calls reproduce the by-hand calculations: the relative-threshold summary (@tbl-dros-sex-joint) matches the relative columns of @tbl-dros-sex-byhand, and the absolute-threshold summary (@tbl-dros-sex-joint-abs) matches the absolute columns. Relative and absolute estimates barely differ here because the fitted asymptotes change little with temperature, so the asymmetry correction is nearly constant; `tls()` additionally returns $T_{crit}$, which is similar under both thresholds.
 
+#### Fitting a model to compare $z$ and $Ct_{max_{1hr}}$ between sexes directly - direct method
+
 Now, lets re-cast this model in the **direct** form and estimate $z$ and $CT_{max_{4hr}}$ for each of the sexes.
 
 ```{r}
@@ -3053,7 +3055,7 @@ Splitting reproduction into these two parts shows something a single fecundity c
 This section provides more detail on the simulation results from the
 various scenarios we explored to understand bias and coverage of *z*
 and $CT_{max}$. The main manuscript figures summarize the two
-shape-perturbing scenarios (drifting upper asymptote `up`, varying slope
+shape-perturbing scenarios (shifting upper asymptote `up`, varying slope
 `k`) and the bias results from the two partial-mortality sweeps.
 
 Here we document the remaining scenarios we explored: the strict-equivalence
@@ -3352,7 +3354,7 @@ Of the 1,000 datasets per cell, models in the two-stage analytical approach fail
   .rmse_table(cell_name = "n_reps")
 ```
 
-## *Coverage for drifting `up` across temperatures ($\beta_{up}$)*
+## *Coverage for shifting `up` across temperatures ($\beta_{up}$)*
 
 This complements the main-text $\beta_{up}$ bias sweep with the matching
 coverage panels.
@@ -3372,13 +3374,13 @@ Of the 1,000 datasets per cell, models in the two-stage analytical approach fail
 .d <- .load_screened("scen6") |>
   dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
 .plot_sweep_cov(.d, "sweep_x",
-                expression(beta[up]~"(percentage points / °C, drift of "*plain(up)*" with T)"),
+                expression(beta[up]~"(percentage points / °C, shift of "*plain(up)*" with T)"),
                 x_breaks = c(-0.019, -0.015, -0.010, -0.005))
 ```
 
 ```{r}
 #| label: tbl-sim-supp-scen6-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\beta_{up}$ drift sweep (Scen 6), by point estimator. $\\beta_{up}$ is the per-°C drift of the upper asymptote (percentage points per °C)."
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ across the $\\beta_{up}$ shift sweep (Scen 6), by point estimator. $\\beta_{up}$ is the per-°C shift of the upper asymptote (percentage points per °C)."
 #| warning: false
 #| message: false
 # Format the RMSE table for simulation scenario 6.
