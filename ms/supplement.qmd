@@ -3914,7 +3914,7 @@ Tc_M <- extract_tdt(wf_dros_mort_M, target_surv = "relative", t_ref = 60,
 ## Illustrative Sharpe–Schoolfield repair kernel (doses h^-1 at TREF; NOT fitted).
 fly_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
                    TL = 15 + 273.15, TH = 30 + 273.15,
-                   TREF = 25 + 273.15, r_ref = 0.03)
+                   TREF = 25 + 273.15, r_ref = 0.005)
 
 ND <- 150
 set.seed(123)  # reproducible posterior-draw subsample for both taxa
@@ -3958,7 +3958,7 @@ aphid_trace <- readr::read_csv(
                    datetime = as.POSIXct(sub("T", " ", as.character(datetime)), tz = "UTC"))
 aphid_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
                      TL = 15 + 273.15, TH = 35 + 273.15,
-                     TREF = 25 + 273.15, r_ref = 0.03)
+                     TREF = 25 + 273.15, r_ref = 0.005)
 aphid_Tc <- aphid_tls$summary |> dplyr::filter(quantity == "Tcrit") |>
   dplyr::transmute(species = as.character(species), Tc = median)
 aphid_rows <- list()
@@ -3985,7 +3985,7 @@ saveRDS(list(fly = fdat, fly_trace = fly_trace, fly_Tc = fTc,
 
 ```{r}
 #| label: fig-ms-fig6-heat-injury
-#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; Ørsted et al. 2024 Zenodo record 10821572) and the unmodified hourly air-temperature trace for the aphids (Wuhan, May–June 2016; Li et al. 2023, Open-Meteo ERA5) — with the relative-threshold $T_{crit}$ (dotted; per species for the aphids). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with an Arrhenius (uninhibited) rate scale $r_{ref}=0.03$ LT50-dose h$^{-1}$; it is not empirically fitted."
+#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR [@kearney2017] microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; @orsted_suzukii_2024) and the hourly air-temperature trace for the aphids (Wuhan, May–June 2016; @li2023, Open-Meteo ERA5 reanalysis) — with the critical temperature threshold $T_{crit}$ (dotted line). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with an Arrhenius (uninhibited) rate scale $r_{ref}=0.005$ LT50-dose h$^{-1}$; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
@@ -4011,17 +4011,17 @@ f6_tg  <- function(p, lab) p + labs(tag = lab) +
 # fly temperature panel (single Tcrit line)
 f6_temp1 <- function(tr, Tc, title, ylab) ggplot(tr, aes(datetime, temp)) +
   geom_line(colour = "grey45", linewidth = 0.3) +
-  geom_hline(yintercept = Tc, linetype = "dotted", colour = tcrit_col) +
+  geom_hline(yintercept = Tc, linetype = "dotted", colour = tcrit_col, linewidth = 0.9) +
   annotate("text", x = min(tr$datetime), y = Tc, label = "T[crit]", hjust = -0.1, vjust = -0.4,
-           size = 3.2, colour = tcrit_col, parse = TRUE) +
+           size = 3.7, colour = tcrit_col, fontface = "bold", parse = TRUE) +
   labs(y = ylab, x = NULL, title = title) + f6_xsc() + f6_thm +
   theme(axis.text.x = element_blank(), plot.title = element_markdown(face = "bold", size = 13, hjust = 0.5))
 # aphid temperature panel (per-species Tcrit lines)
 f6_tempA <- function(tr, tc_df, title, ylab) ggplot(tr, aes(datetime, temp)) +
   geom_line(colour = "grey45", linewidth = 0.3) +
-  geom_hline(data = tc_df, aes(yintercept = Tc, colour = species), linetype = "dotted", linewidth = 0.5, show.legend = FALSE) +
-  annotate("text", x = min(tr$datetime), y = max(tc_df$Tc), label = "T[crit]~(per~sp.)", hjust = -0.04, vjust = -0.5,
-           size = 3.0, colour = "grey25", parse = TRUE) +
+  geom_hline(data = tc_df, aes(yintercept = Tc, colour = species), linetype = "dotted", linewidth = 0.9, show.legend = FALSE) +
+  annotate("text", x = min(tr$datetime), y = max(tc_df$Tc), label = "T[crit]", hjust = -0.1, vjust = -0.5,
+           size = 3.7, colour = "grey15", fontface = "bold", parse = TRUE) +
   scale_colour_manual(values = sp_pal) +
   labs(y = ylab, x = NULL, title = title) + f6_xsc() + f6_thm +
   theme(axis.text.x = element_blank(), plot.title = element_markdown(face = "bold", size = 13, hjust = 0.5))
@@ -4056,8 +4056,8 @@ f6_ins_png <- function(p, png, l, b, r, t) p + inset_element(ggdraw() + draw_ima
 
 fly_hi   <- f6_ins(f6_tg(f6_hiF(fdat), "b)"), "dros_male_v2.svg", .02, .55, .34, .98)
 aphid_hi <- f6_ins_png(f6_tg(f6_hiA(adat), "e)"), "aphid_Mdirhodum_V2.png", .02, .46, .44, .99)
-col_f <- f6_tg(f6_temp1(fly_trace,  fTc,      "Vinegar fly (*D. suzukii*)", "Microclimate (°C)"), "a)") / fly_hi   / f6_tg(f6_survF(fdat), "c)")
-col_a <- f6_tg(f6_tempA(aphid_trace, aphid_Tc, "Cereal aphids (Wuhan)",      "Air temp (°C)"),     "d)") / aphid_hi / f6_tg(f6_survA(adat), "f)")
+col_f <- f6_tg(f6_temp1(fly_trace,  fTc,      "Vinegar fly (*D. suzukii*)", "Temperature (°C)"), "a)") / fly_hi   / f6_tg(f6_survF(fdat), "c)")
+col_a <- f6_tg(f6_tempA(aphid_trace, aphid_Tc, "Cereal aphids (Wuhan)",      "Temperature (°C)"),  "d)") / aphid_hi / f6_tg(f6_survA(adat), "f)")
 
 mk_leg <- function(p, which) {
   g <- p + theme(legend.position = "bottom", legend.title = element_blank())
@@ -4128,7 +4128,7 @@ case_contrasts$fly_ct <- .con(.cd$valueM - .cd$valueF)
 # with vs without the repair kernel) -- a downstream contrast the two-stage cannot
 # make. Aphids, per species, on the May-June Wuhan trace used in Fig 6.
 .repk <- list(TA = 14065, TAL = 50000, TAH = 100000, TL = 15 + 273.15,
-              TH = 35 + 273.15, TREF = 25 + 273.15, r_ref = 0.03)
+              TH = 35 + 273.15, TREF = 25 + 273.15, r_ref = 0.005)
 set.seed(7)
 .h0 <- predict_heat_injury(aphid_trace[, c("time", "temp")], wf_aphid, target_surv = "relative",
                            trace_unit = "hours", by = "species", ndraws = 400,
