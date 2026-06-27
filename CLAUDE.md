@@ -91,17 +91,17 @@ You are a biostatistician and biologist with strong mathematical and coding skil
 
 ### 8a. Render architecture (no book project)
 
-Two deliverables, each in HTML, DOCX, and PDF, produced via `make`:
+Two deliverables, produced via `make` — the manuscript (DOCX + PDF; **no HTML**) and the supplement (HTML, DOCX, PDF):
 
 | `make` target | Source              | Output                          |
 |---------------|---------------------|---------------------------------|
-| `make ms`     | `ms/ms.qmd`         | `_output/ms.{html,docx,pdf}`    |
+| `make ms`     | `ms/ms.qmd`         | `_output/ms.{docx,pdf}`         |
 | `make supp`   | `ms/supplement.qmd` | `_output/supp.{html,docx,pdf}`  |
-| `make all`    | both                | six outputs                     |
+| `make all`    | both                | five outputs                    |
 
 There is **no project-level `_quarto.yml`** — each `.qmd` carries its complete YAML so renders are fully independent. This avoids the TOC pollution and format conflicts that book mode caused.
 
-**HTML output must be self-contained (NON-NEGOTIABLE).** Every `.qmd` that renders to HTML — `ms.qmd`, `supplement.qmd`, case studies, and **all** `notes/*.qmd` — sets `embed-resources: true` as the first option under `format: html:`. This embeds CSS, JS, images, and plots as base64 so the `.html` is a single standalone file with no companion `*_files/` folder. Because renders are file-independent (no `_quarto.yml`/`_metadata.yml`), this lives in each file's own YAML, not a shared default. **Any new HTML `.qmd` must include it** — otherwise recipients who receive only the `.html` (not the `_files/` folder) see a broken document with missing plots/figures.
+**HTML output must be self-contained (NON-NEGOTIABLE).** Every `.qmd` that renders to HTML — `supplement.qmd`, case studies, and **all** `notes/*.qmd` (note: `ms.qmd` no longer renders HTML) — sets `embed-resources: true` as the first option under `format: html:`. This embeds CSS, JS, images, and plots as base64 so the `.html` is a single standalone file with no companion `*_files/` folder. Because renders are file-independent (no `_quarto.yml`/`_metadata.yml`), this lives in each file's own YAML, not a shared default. **Any new HTML `.qmd` must include it** — otherwise recipients who receive only the `.html` (not the `_files/` folder) see a broken document with missing plots/figures.
 
 **"S" labels for the supplement.** `supp.{html,docx,pdf}` get "Figure S1, Table S1, Equation S1, …" via crossref prefix overrides applied at the command line through `--metadata-file ms/_supp-overrides.yml`. Keeping the override out of `supplement.qmd`'s own YAML means it can't pollute future renders that pull in supplement content as content (e.g. via `{{< include >}}`).
 
