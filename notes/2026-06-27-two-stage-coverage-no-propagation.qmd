@@ -1,0 +1,101 @@
+---
+title: "Two-stage coverage does not require Stage-1 uncertainty propagation"
+date: 2026-06-27
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## Question
+
+In the two-stage TDT pipeline, Stage 1 fits a dose–response curve per assay
+temperature to get $\log_{10}t_{50}(T)$ point estimates (each with a sampling
+SE), and Stage 2 regresses those on temperature to read off $z = -1/\beta_1$ and
+$CT_{max}$. Patrice (comment c718 on the manuscript) suggested that, because our
+simulations "propagate uncertainty from the first to the second stage", our
+two-stage bias/coverage results are **conservative** (i.e. flattering to the
+two-stage), since practitioners rarely propagate.
+
+Is that right? **No — on two counts.**
+
+## Answer
+
+1. **Our simulations do not propagate Stage-1 uncertainty.** Stage 2 is an
+   *unweighted* OLS of the Stage-1 point estimates
+   (`scripts/simulations/sim_functions.R`, "Stage 2: unweighted OLS of
+   log10(LT50) on temperature"; `s2 <- lm(log10_LT50 ~ T)`). The $t_{50}$
+   estimates enter as fixed points — exactly the naive two-stage we critique.
+
+2. **You do not need to propagate Stage-1 uncertainty to recover nominal
+   coverage in Stage 2.** Under the strict-equivalence baseline (survival spans
+   0–1, no overdispersion, only the midpoint varies with $T$), unweighted OLS on
+   the $\log_{10}t_{50}$ point estimates is already well calibrated **once the
+   interval uses $t$-distribution quantiles**.
+
+## Why (mechanism)
+
+OLS does not ignore the Stage-1 sampling variance — it absorbs it into the
+**residual variance**. The fitted residual variance $s^2$ estimates the total
+scatter of the $\log_{10}t_{50}$ point estimates about the regression line,
+which *includes* their sampling variance. When the per-temperature estimates are
+approximately unbiased, homoscedastic and normal, and the mean structure is
+correct, the delta-method interval for $z$ / $CT_{max}$ built from
+`vcov(OLS)` with $t$ quantiles on $\mathrm{df} = n_T - 2$ residual degrees of
+freedom is calibrated.
+
+The one genuine small-sample pitfall is the **quantile**, not the propagation:
+TDT designs have very few assay temperatures ($n_T \approx 4$–$6$, so
+$\mathrm{df}\approx 2$–$4$), and using normal ($z$) quantiles instead of $t$
+quantiles gives anti-conservative intervals. That is a degrees-of-freedom
+correction, not an uncertainty-propagation step.
+
+Explicit Stage-1 propagation (weighted / measurement-error regression) only
+starts to matter when the Stage-1 SEs are strongly **heteroscedastic** across
+temperatures, or when the design is so sparse/short that the per-temperature
+$t_{50}$ are themselves biased — but in those regimes the two-stage point
+estimates are already off, so propagation would not rescue calibration anyway.
+
+## Evidence (already in the compendium)
+
+The strict-equivalence baseline simulation shows exactly this:
+
+- two-stage (unweighted OLS) with **$t$-quantiles** → little bias and
+  **near-nominal 95% coverage**, matching the joint 4PL;
+- the **same** two-stage with **normal ($z$) quantiles** → anti-conservative
+  coverage well below 0.95.
+
+(Manuscript *Simulation results*, first paragraph; Supplement §8.1 "Strict
+equivalence baseline" and §8.2.) No propagation is used anywhere in that result.
+
+## Where the two-stage actually fails
+
+The failures the paper demonstrates are **not** about missing propagation:
+
+- **likelihood misspecification** — binomial fit to overdispersed counts (fixed
+  by beta-binomial, §8.2);
+- **shape misspecification** — temperature-varying `up` / `k`, which *biases the
+  Stage-1 point estimates themselves* (Figs 2–3); propagation cannot fix a
+  biased point estimate;
+- **sparse / under-replicated / short-window designs** (Fig 4);
+- **normal vs $t$ quantiles** (a df correction).
+
+None of these is repaired by propagating Stage-1 SEs.
+
+## Implications
+
+- **c718 not incorporated** into the Discussion: the premise ("we propagated, so
+  results are conservative") is incorrect, and the inverse framing ("not
+  propagating miscalibrates") would also overstate propagation's role.
+- The manuscript is already internally consistent: the *Simulation results*
+  attribute the two-stage failures to shape/likelihood/design and the $z$-vs-$t$
+  quantile distinction, not to propagation.
+- The Introduction lists "rarely propagates uncertainty" as one general
+  limitation. The **inflated-$R^2$** consequence there is solid (treating Stage-1
+  point estimates as data ignores their sampling noise). The "can miscalibrate
+  inference on $z$ and $CT_{max}$" clause is hedged and defensible, but if we
+  want to avoid implying that *non-propagation* drives the demonstrated coverage
+  failures, it could be softened — open for Daniel/Patrice to decide.
+
+Related: [[project_pp_comments_round_2026-06-27]], two-stage SE-bias literature
+([[reference_lit_two_stage_bias]]).
