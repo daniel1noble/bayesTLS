@@ -347,7 +347,7 @@ In contrast, the two-stage approach resulted in biased *z* and $CT_{max_{1hr}}$,
 #| message: false
 #| fig-width: 9
 #| fig-height: 9.5
-#| fig-cap: "Simulation performance when the data-generating process violates classical TDT shape assumptions. Row labelled **'up varies with T'**: upper asymptote $\\text{up}$ declines 0.01 per °C from 0.92 at $T=34$ °C, with $\\text{low}=0.05$ and $k=8$ constant in $T$. Row labelled **'k varies with T'**: slope $k$ ranges from 7 at 30 °C to 9 at 38 °C, with $\\text{up}=0.92$ and $\\text{low}=0.05$ constant. Both rows use 5 replicate cups per (T × duration) cell, $N_{sim}=1000$ simulated datasets per row, and beta-binomial overdispersion ($\\phi=5$). Panel a): mean signed bias in $z$ (left column) and $CT_{max_{1hr}}$ (right column) with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE). Panel b): 95% interval coverage with the same column layout. Dashed lines mark zero bias and nominal coverage. Absolute-scale methods (`joint_4pl_abs` and all two-stage variants) are evaluated against the analytical absolute-50% truth; `joint_4pl` is evaluated against the relative midpoint truth. Two-stage normal- and t-quantile variants share point estimates and differ only in Stage-2 delta-method interval construction. 4PL = four-parameter log-logistic, BB = beta-binomial, bin = binomial, CI = credible interval."
+#| fig-cap: "Simulation performance when the data-generating process violates classical TDT shape assumptions. Row labelled **'up varies with T'**: upper asymptote $\\text{up}$ declines 0.01 per °C from 0.92 at $T=34$ °C, with $\\text{low}=0.05$ and $k=8$ constant in $T$. Row labelled **'k varies with T'**: slope $k$ ranges from 7 at 30 °C to 9 at 38 °C, with $\\text{up}=0.92$ and $\\text{low}=0.05$ constant. Both rows use 5 replicate vials per (T × duration) cell, $N_{sim}=1000$ simulated datasets per row, and beta-binomial overdispersion ($\\phi=5$). Panel a): mean signed bias in $z$ (left column) and $CT_{max_{1hr}}$ (right column) with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE). Panel b): 95% interval coverage with the same column layout. Dashed lines mark zero bias and nominal coverage. Two-stage Normal- and t-quantile variants share point estimates and differ only in Stage-2 delta-method interval construction. 4PL = four-parameter log-logistic, BB = beta-binomial, bin = binomial, CI = credible interval."
 
 library(dplyr)
 library(tidyr)
@@ -474,7 +474,7 @@ library(patchwork)
 #| message: false
 #| fig-width: 9
 #| fig-height: 7
-#| fig-cap: "Bias in $z$ and $CT_{max_{1hr}}$ as the partial-mortality regime is swept along two orthogonal axes. Row labelled **'up drifts with T (varying $\\beta_{up}$)'**: upper asymptote at $T = \\bar T$ fixed at $\\text{up}_0 = 0.92$, slope $\\beta_{up}$ varied across $\\{-0.005, -0.010, -0.015, -0.019\\}$ (change in proportion per °C), so $\\text{up}$ stays high at cool assays and declines progressively at hotter ones. Row labelled **'up is constant but reduced (varying $\\text{up}_0$)'**: $\\beta_{up} = 0$ (no temperature drift); the baseline level itself is swept across $\\{0.65, 0.75, 0.85, 0.95, 0.99\\}$, representing a constant fraction of the cohort that is never susceptible regardless of temperature. Both rows: $\\text{low}=0.05$, $k=8$, mid linear in $T$ with slope $-0.15$, beta-binomial likelihood ($\\phi=5$), $n_{reps}=5$, $N_{sim}=1000$ datasets per cell. Points are mean signed bias with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE); dashed lines mark zero bias. Left column: $z$; right column: $CT_{max_{1hr}}$. Only the four distinct point-estimate methods are shown: the two-stage Normal-CI and t-CI variants share point estimates within each Stage-1 family, so bias is identical between them; coverage differences appear in the supplementary writeup. The two failure signatures differ: drifting $\\text{up}$ tilts the Stage-2 slope (large $z$ bias, modest $CT_{max_{1hr}}$ bias); constant low $\\text{up}$ shifts the Stage-2 intercept (large $CT_{max_{1hr}}$ bias, with $z$ bias of opposite sign growing as $\\text{up}_0$ falls)."
+#| fig-cap: "Bias in $z$ and $CT_{max_{1hr}}$ under two departures from a full upper asymptote. Panel a) (upper asymptote varies): $\\beta_{up} = 0$ (no temperature-dependent shift), but the upper asymptote is held at a reduced level across all temperatures, so the maximum attainable survival is lower throughout the grid. Panel b) (upper asymptote shifts with temperature): the upper asymptote at $T = \\bar T$ is fixed at $\\text{up}_0 = 0.92$ while its per-°C shift ($\\beta_{up}$) is varied, so $\\text{up}$ stays high at cool assays and declines progressively at hotter ones. Both panels: $\\text{low}=0.05$, $k=8$, mid linear in $T$ with slope $-0.15$, beta-binomial likelihood ($\\phi=5$), $n_{reps}=5$, $N_{sim}=1000$ datasets per cell. Points are mean signed bias with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE); dashed lines mark zero bias. Left column: $z$; right column: $CT_{max_{1hr}}$. Only the four distinct point-estimate methods are shown: the two-stage Normal- and t-quantile variants share point estimates within each Stage-1 family, so bias is identical between them. Coverage differences are presented in the supplement for [panel a](https://daniel1noble.github.io/bayesTLS/#coverage-for-constant-but-reduced-up-textup_0) and [panel b](https://daniel1noble.github.io/bayesTLS/#coverage-for-drifting-up-across-temperatures-beta_up)."
 
 library(dplyr)
 library(tidyr)
@@ -538,8 +538,8 @@ library(patchwork)
 }
 
 .scen6 <- .load_screened("scen6") |>
-  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
-                sweep_label = "up drifts with T (varying beta_up, change in proportion / degC)")
+  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 10,
+                sweep_label = "up shifts with T (varying beta_up, percentage points / degC)")
 
 .scen7 <- .load_screened("scen7") |>
   dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
@@ -584,16 +584,16 @@ library(patchwork)
 }
 
 .p6 <- .build(.shape_fmt(.scen6),
-              x_label  = expression(beta[up]~"(change in proportion / °C, drift of "*plain(up)*" with T)"),
-              x_breaks = c(-0.019, -0.015, -0.010, -0.005)) +
-  ggtitle(expression("a) " * plain(up) * " drifts with T (varying " * beta[up] * ")"))
+              x_label  = "Temperature-dependent shift in upper asymptote (percentage points/°C)",
+              x_breaks = c(-1.9, -1.5, -1.0, -0.5)) +
+  ggtitle("b) Upper asymptote shifts with temperature")
 
 .p7 <- .build(.shape_fmt(.scen7),
-              x_label  = expression(up[0]~"(constant upper asymptote, all T)"),
+              x_label  = "Upper asymptote value",
               x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99)) +
-  ggtitle("b) up is constant but reduced (varying up_0)")
+  ggtitle("a) Upper asymptote varies")
 
-.p6 / .p7 + plot_layout(guides = "collect", heights = c(1, 1)) &
+.p7 / .p6 + plot_layout(guides = "collect", heights = c(1, 1)) &
   theme(legend.position = "bottom")
 ```
 
@@ -604,7 +604,7 @@ library(patchwork)
 #| message: false
 #| fig-align: center
 #| out-width: "100%"
-#| fig-cap: "Estimator performance under information-limited experimental designs — the conditions most common in real thermal-tolerance datasets. Panels a) and b) vary experimental design and replication: a full (5 temperatures × 6 durations) versus sparse (3 × 4) temperature–duration grid, crossed with 1, 3, or 5 replicate cups per cell. Panels c) and d) vary the maximum exposure duration (the longest assay window: 60, 120, 240, or 405 min) on the full grid with five replicates. Panels a) and c) show mean signed bias and panels b) and d) show 95% interval coverage for thermal sensitivity $z$ (left) and $CT_{max_{1hr}}$ (right). Points are Monte Carlo means with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE; bias MCSE: $\\text{SD}/\\sqrt{N}$; coverage MCSE: $\\sqrt{p(1-p)/N}$); dashed lines mark zero bias and nominal 0.95 coverage. Bias panels show the four distinct point estimators (the two-stage Normal- and *t*-CI variants share point estimates); coverage panels additionally distinguish the *t*-CI variants. All cells use a beta-binomial data-generating process ($\\phi=5$) with a fixed 4PL shape ($\\text{up}=0.92$, $\\text{low}=0.05$, $k=8$, midpoint linear in $T$); $N_{sim}=1000$ datasets per cell. The joint 4PL stays near-unbiased with near-nominal coverage across every design, whereas the two-stage estimators degrade sharply as designs become sparse, under-replicated, or short — most extremely at the 60-min cap, where two-stage coverage of $z$ falls below 0.05 even with the *t*-correction while the joint 4PL holds near 0.95. Full per-cell detail and RMSE are in the supplement."
+#| fig-cap: "Estimator performance across experimental designs. Panels a) and b) vary experimental design and replication: a full (5 temperatures × 6 durations) versus sparse (3 × 4) temperature–duration grid, crossed with 1, 3, or 5 replicate vials per cell. Panels c) and d) vary the maximum exposure duration (the longest assay window: 60, 120, 240, or 405 min) on the full grid with five replicates. Panels a) and c) show mean signed bias and panels b) and d) show 95% interval coverage for thermal sensitivity $z$ (left) and $CT_{max_{1hr}}$ (right). Points are Monte Carlo means with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE); dashed lines mark zero bias and nominal 0.95 coverage. Bias panels show the four distinct point estimators (the two-stage Normal- and *t*-CI variants share point estimates); coverage panels additionally distinguish the *t*-CI variants. All cells use a beta-binomial data-generating process ($\\phi=5$) with a fixed 4PL shape ($\\text{up}=0.92$, $\\text{low}=0.05$, $k=8$, midpoint linear in $T$); $N_{sim}=1000$ datasets per cell. Full per-cell detail and RMSE are in [the supplement](https://daniel1noble.github.io/bayesTLS/#experimental-design-impacts)."
 
 # Combined experimental-design figure (scen8 = design × replication; scen9 =
 # maximum exposure duration). Reads the per-simulation aggregates only — no
@@ -714,9 +714,9 @@ library(dplyr); library(tidyr); library(ggplot2); library(here); library(patchwo
 
 dir.create(here::here("output","figs"), recursive = TRUE, showWarnings = FALSE)
 ggsave(here::here("output","figs","fig_sim_design.png"), .fig_design,
-       width = 11, height = 8.5, dpi = 600, bg = "white")
+       width = 11, height = 10, dpi = 600, bg = "white")
 ggsave(here::here("output","figs","fig_sim_design.svg"), .fig_design,
-       width = 11, height = 8.5, bg = "white")
+       width = 11, height = 10, bg = "white")
 knitr::include_graphics(here::here("output","figs","fig_sim_design.png"))
 ```
 
