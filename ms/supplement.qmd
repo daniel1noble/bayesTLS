@@ -1698,7 +1698,7 @@ str(zf_std)
 
 ## Joint 4PL with oxygen on $CT_{max}$ and $z$ {#sec-zf-o2-fit}
 
-We fit $CT_{max}$ and $z$ directly as functions of `oxygen` using cell-means coding (`~ 0 + oxygen`), so each treatment gets its own coefficient and the asymptotes and steepness are shared. The `CTmax`/`z` priors are coding-aware, so this returns the same per-group estimates as treatment coding (`~ oxygen`) — cell-means simply reads most directly.
+We fit $CT_{max}$ and $z$ directly as functions of `oxygen` using cell-means coding (`~ 0 + oxygen`), so each treatment gets its own coefficient while the asymptotes and steepness are shared. This is a coding choice: treatment coding (`~ oxygen`) gives the same per-group estimates, but cell-means coding makes them easier to read from the model output.
 
 ```{r zfo2-fit}
 #| label: zfo2-fit
@@ -1706,7 +1706,10 @@ We fit $CT_{max}$ and $z$ directly as functions of `oxygen` using cell-means cod
 #| cache: false
 #| code-fold: show
 
-wf_zf <- fit_4pl(zf_std, ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen, t_ref = 60,
+wf_zf <- fit_4pl(zf_std,
+                  ctmax = ~ 0 + oxygen,
+                      z = ~ 0 + oxygen,
+                 t_ref = 60,
                  control    = list(adapt_delta = 0.95),
                  file_refit = "on_change",
                  file       = file.path(models_dir, "zf_oxygen_normhyper"))
@@ -1715,7 +1718,7 @@ summary(wf_zf)
 
 ## Per-treatment thermal limits and OCLTT check {#sec-zf-o2-extract}
 
-`tls(by = "oxygen")` derives $z$, $CT_{max_{1hr}}$ and $T_{crit}$ per treatment from the shared posterior, so each quantity carries full uncertainty and $T_{crit}$ pairs $CT_{max}$ and $z$ per draw.
+`tls(by = "oxygen")` derives $z$, $CT_{max_{1hr}}$ and $T_{crit}$ per treatment from the shared posterior, so each quantity carries full uncertainty. We sample the same draw so covariance between $T_{crit}$, $CT_{max}$ and $z$ is retained.
 
 ```{r zfo2-tls}
 #| label: zfo2-tls
@@ -1733,7 +1736,7 @@ zf_ctmax_norm  <- .zg("normoxia",  "CTmax");  zf_ctmax_hyper <- .zg("hyperoxia",
 zf_tcrit_norm  <- .zg("normoxia",  "Tcrit");  zf_tcrit_hyper <- .zg("hyperoxia", "Tcrit")
 ```
 
-The joint fit recovers the OCLTT direction @saruhashi2026 report: hyperoxia raises $CT_{max_{1hr}}$ to `r round(zf_ctmax_hyper, 1)` °C, above the normoxic `r round(zf_ctmax_norm, 1)` °C, and lifts $T_{crit}$ markedly (`r round(zf_tcrit_hyper, 1)` °C vs `r round(zf_tcrit_norm, 1)` °C) — added oxygen buys heat tolerance. Saruhashi et al. report this ordering qualitatively rather than as tabulated $z$/$CT_{max}$, so the validation here is the recovered *direction*, not a number-for-number match. (Normoxia's $z$ is wide — survival saturates over the tested durations — while hyperoxia's is tight; the $CT_{max}$/$T_{crit}$ ordering is the well-identified signal.)
+The joint fit recasts @saruhashi2026's OCLTT result as two linked components of the thermal tolerance landscape. Hyperoxia raises $CT_{max_{1hr}}$ to `r round(zf_ctmax_hyper, 1)` °C, above the normoxic `r round(zf_ctmax_norm, 1)` °C, and lifts $T_{crit}$ markedly (`r round(zf_tcrit_hyper, 1)` °C vs `r round(zf_tcrit_norm, 1)` °C). This confirms that hyperoxic water shifts the thermal limit upward. The model also estimates $z$ from the same response surface, asking a second biological question: does oxygen change how quickly tolerance time declines once temperatures are stressful? This distinction is useful because @saruhashi2026 conclude that oxygen effects depend on stress intensity and exposure duration. In these data, the strongest support is for the upward shift in $CT_{max_{1hr}}$ and $T_{crit}$ under hyperoxia, while the normoxic $z$ is less precise because survival plateaus across much of the tested duration range. The 4PL therefore does more than confirm that hyperoxia improves heat tolerance; it identifies which part of the OCLTT signal is well supported by the data (a higher thermal limit) and which part would require more duration information to estimate sharply (oxygen differences in thermal sensitivity).
 
 ```{r zfo2-survival}
 #| label: fig-zfo2-survival
@@ -2505,12 +2508,12 @@ joint_sex_direct <- fit_4pl(std_sex,
 summary(joint_sex_direct)
 
 
-# Now, lets get the ctmax and z estimates for each sex from the direct model. We specify t_ref here but if you don't list the argument it will warn you and inherit the t_ref from the model fit. 
+# Extract per-sex CTmax and z estimates from the direct model.
  direct_yls_dros <- tls(joint_sex_direct, by = "sex", target_surv = "absolute", t_ref = 60 * 4)
 direct_joint_sex <- get_tls_est(direct_yls_dros)
 ```
 
-Now, we can compare all the different models paramaterisations as well as to @orsted_suzukii_2024.
+Now, we can compare the different model parameterisations with @orsted_suzukii_2024.
 
 ```{r}
 #| label: tbl-dros-sex-compare
