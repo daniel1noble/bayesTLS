@@ -138,3 +138,6 @@ ms/case_studies_shrimp_zebrafish.qmd
 output/sim_twostage.zip
 data-raw/osf_manifest.json
 scripts/figures/build_manuscript_figures.R
+notes/2026-06-28-two-stage-vs-joint-aphids.qmd
+.gitignore
+notes/scripts/2026-06-28-ts-vs-joint-aphids.R
