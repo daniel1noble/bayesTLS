@@ -280,13 +280,13 @@ When the experimental design estimates upper and lower limits of the response (i
 More generally, the 4PL distinguishes between two related threshold definitions ([@fig-joint-4pl-conceptual]b). A *relative* threshold is defined by each curve's own midpoint, $p = (\text{up}+\text{low})/2$. On this scale, $\text{mid}(T)$ is exactly the relative $\log_{10}t_{50}$, so $z_\text{rel} = -1/\beta_1$ and $CT_{max,\text{rel}}$ is read directly from @eq-mid-temp. An *absolute* threshold instead asks when survival reaches a fixed probability, such as 50% survival, regardless of the fitted asymptotes. When the $\text{low}$ and $\text{up}$ asymptotes differ from 0 and 1, this absolute threshold no longer coincides with the midpoint and requires an asymmetry correction (see [Supplement Section 11](https://daniel1noble.github.io/bayesTLS/#derivation-of-the-correction-factors-for-threshold-summaries)):
 
 $$
-\log_{10} t_{50}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}},
+\log_{10} t_{50}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k}\ln\!\left(\tfrac{\text{up} - 0.5}{0.5 - \text{low}}\right),
 $$ {#eq-t50}
 
 The corresponding absolute $CT_{max}$ is obtained by applying the same correction on the temperature scale:
 
 $$
-CT_{max}(t_\text{ref}) \;=\; \bar{T} + \frac{\log_{10} t_\text{ref} - \beta_0}{\beta_1} \;-\; \frac{1}{\beta_1}\cdot\tfrac{1}{k}\log\!\tfrac{\text{up} - 0.5}{0.5 - \text{low}}.
+CT_{max}(t_\text{ref}) \;=\; \bar{T} + \frac{\log_{10} t_\text{ref} - \beta_0}{\beta_1} \;-\; \frac{1}{\beta_1}\cdot\tfrac{1}{k}\ln\!\left(\tfrac{\text{up} - 0.5}{0.5 - \text{low}}\right).
 $$ {#eq-ctmax-corrected}
 
 This distinction matters most when asymptotes or curve steepness vary with temperature. If the correction is constant across temperatures, absolute and relative $z$ are the same, although $CT_{max}$ may shift. If the correction changes with temperature, absolute $\log_{10}t_{50}$ is no longer parallel to the midpoint line, and $z_\text{abs}$ can differ from $z_\text{rel}$.
@@ -294,7 +294,7 @@ This distinction matters most when asymptotes or curve steepness vary with tempe
 The same logic applies to any fixed mortality threshold. For example, $\log_{10}t_{10}(T)$ is the time to 10% mortality (90% survival) and can identify the onset of population-level mortality, whereas $\log_{10}t_{90}(T)$ is the time to 90% mortality (10% survival) and is closer to population collapse. Any mortality threshold can be estimated by using the corresponding probability in the correction term:
 
 $$
-\log_{10} t_m(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\,\log\!\frac{\text{up} - (1-m/100)}{(1-m/100) - \text{low}},
+\log_{10} t_m(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\,\ln\!\left(\frac{\text{up} - (1-m/100)}{(1-m/100) - \text{low}}\right),
 $$ {#eq-LTx}
 
 Here, $m$ is the mortality percentage and $1-m/100$ is the corresponding survival probability used in the 4PL. Relative thresholds are useful when differences in asymptotes reflect baseline survival or incomplete response ranges. In contrast, absolute thresholds are useful when the biological question concerns a fixed survival or mortality probability. We therefore recommend reporting which threshold definition was used and, where asymptotes differ strongly among groups or temperatures, checking whether conclusions change under both definitions. In practice, there will often be little difference between relative and absolute summaries (i.e., *z* and $CT_{max}$), but this distinction is important nonetheless.
@@ -305,7 +305,7 @@ $$
 p \;=\; \text{low} \;+\; \frac{\text{up} - \text{low}}{1 + \exp\!\left(k\,\left[\log_{10} t - \log_{10} t_\text{ref} - \tfrac{CT_{max}(t_\text{ref}) - T}{z}\right]\right)}.
 $$ {#eq-4pl-direct}
 
-Now *z* (estimated on the log scale so it stays positive) and $CT_{max}$ are estimated parameters in their own right, rather than quantities recovered from @eq-mid-temp after fitting. @eq-4pl-direct uses the relative threshold (each curve's own midpoint); an absolute threshold is obtained by adding the midpoint-scale asymmetry correction of @eq-t50, $\frac{1}{k}\log\frac{\text{up} - 0.5}{0.5 - \text{low}}$, to $\text{mid}(T)$ before solving for $CT_{max}$. Again, temperature effects (and any interactions with moderators) should be included on $\text{low}$, $\text{up}$, and $k$ to correctly estimate absolute thresholds, but are only needed on $\text{mid}$ for relative thresholds.
+Now *z* (estimated on the log scale so it stays positive) and $CT_{max}$ are estimated parameters in their own right, rather than quantities recovered from @eq-mid-temp after fitting. @eq-4pl-direct uses the relative threshold (each curve's own midpoint); an absolute threshold is obtained by adding the midpoint-scale asymmetry correction of @eq-t50, $\frac{1}{k}\ln\!\left(\frac{\text{up} - 0.5}{0.5 - \text{low}}\right)$, to $\text{mid}(T)$ before solving for $CT_{max}$. Again, temperature effects (and any interactions with moderators) should be included on $\text{low}$, $\text{up}$, and $k$ to correctly estimate absolute thresholds, but are only needed on $\text{mid}$ for relative thresholds.
 
 A powerful aspect of the modelling approach described above is that uncertainty in all estimated quantities can be carried through the full analysis. The direct parameterisation (@eq-4pl-direct) opens up ways of modelling *z* and $CT_{max}$ that the two-stage approach cannot, while ensuring correct error propagation and inference. Each parameter in the model — `low`, `up`, `k`, `mid`, and, under @eq-4pl-direct, *z* and $CT_{max}$ — can be estimated separately for biologically meaningful strata (e.g., sex, population, species, treatment) by adding covariates and, where appropriate, random effects to the relevant parameter predictors (see @eq-empirical-direct below). This makes *a priori* tests of key hypotheses (e.g., do sexes or species differ significantly in *z* and $CT_{max}$?) and variance decomposition (e.g., how much variation in *z* and $CT_{max}$ arises across populations, species, or trials?) part of the model rather than a post-hoc comparison of fitted curves, all with correct inference. We fit the examples below in a Bayesian framework because posterior draws make uncertainty propagation straightforward, but the same likelihoods can also be fit in a frequentist framework, with uncertainty propagated by profiled likelihoods, the Delta method or parametric bootstrap.
 
@@ -741,7 +741,7 @@ $$
 \begin{aligned}
 \text{mid}_{ij}(T) &= \log_{10} t_{\text{ref}} + \frac{CT_{max,ij}(t_{\text{ref}}) - T_{ij}}{z_{ij}},\\
 CT_{max,ij}(t_{\text{ref}}) &= \alpha_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\alpha} + b_j,\\
-\log z_{ij} &= \zeta_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\zeta} + u_j .
+\ln z_{ij} &= \zeta_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\zeta} + u_j .
 \end{aligned}
 $$ {#eq-empirical-direct}
 

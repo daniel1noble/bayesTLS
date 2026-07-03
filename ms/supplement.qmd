@@ -381,7 +381,7 @@ true_params <- list(
 )
 ```
 
-The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. Savvy readers will note that this is technically relative $z$, but because our asymptotes are 0.03 and 0.97, despite these shifts from 0 and 1, we are still at a midpoint of 50% survival. So, in this case, they are the same. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\log\tfrac{\text{up} - 0.5}{0.5 - \ell} - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
+The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. Savvy readers will note that this is technically relative $z$, but because our asymptotes are 0.03 and 0.97, despite these shifts from 0 and 1, we are still at a midpoint of 50% survival. So, in this case, they are the same. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\ln\!\left(\tfrac{\text{up} - 0.5}{0.5 - \ell}\right) - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
 
 We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating parameters to provide reference values for the fitted models.
 
@@ -856,13 +856,13 @@ Returned quantities (e.g., $CT_{max,1hr}$ and $z$) inherit the same posterior, s
 
 ::: {.callout-note}
 
-The default `fit_4pl()` puts a `temp_c` slope on every 4PL sub-parameter, so $\ell$, $\text{up}$ and $k$ can each carry a linear effect of temperature in addition to the linear-mid term — when those slopes shrink to zero the model reduces to the constant-shape case. However, when the data carry a real temperature signal on any of the shape parameters, the asymmetry correction $\tfrac{1}{k(T)}\log\tfrac{\text{up}(T)-0.5}{0.5-\ell(T)}$ varies with $T$ and the resulting $\log_{10}\text{LT50}(T)$ curve is bent rather than straight:
+The default `fit_4pl()` puts a `temp_c` slope on every 4PL sub-parameter, so $\ell$, $\text{up}$ and $k$ can each carry a linear effect of temperature in addition to the linear-mid term — when those slopes shrink to zero the model reduces to the constant-shape case. However, when the data carry a real temperature signal on any of the shape parameters, the asymmetry correction $\tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T)-0.5}{0.5-\ell(T)}\right)$ varies with $T$ and the resulting $\log_{10}\text{LT50}(T)$ curve is bent rather than straight:
 
 $$
-\log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\log\!\tfrac{\text{up}(T) - 0.5}{0.5 - \ell(T)}.
+\log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T) - 0.5}{0.5 - \ell(T)}\right).
 $$ {#eq-lt50-tvarying}
 
-The correction factor is needed when calculating an 'absolute' threshold (e.g., 50% mortality - `target_surv = "absolute"`). Under an *absolute* threshold the asymmetry-correction term $\tfrac{1}{k(T)}\log\tfrac{\text{up}(T)-0.5}{0.5-\ell(T)}$ bends the curve when $\text{up}$, $\ell$ or $k$ carry $T$ effects; then a per-draw **local** $z(T) = -1/(\mathrm{d}\log_{10}\text{LT}_{0.5}/\mathrm{d}T)$ is computed at each assay temperature. The reported $z$ is the per-draw mean of those local values over the assay range — with the full per-temperature $z(T)$ available via `z_local = TRUE`.
+The correction factor is needed when calculating an 'absolute' threshold (e.g., 50% mortality - `target_surv = "absolute"`). Under an *absolute* threshold the asymmetry-correction term $\tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T)-0.5}{0.5-\ell(T)}\right)$ bends the curve when $\text{up}$, $\ell$ or $k$ carry $T$ effects; then a per-draw **local** $z(T) = -1/(\mathrm{d}\log_{10}\text{LT}_{0.5}/\mathrm{d}T)$ is computed at each assay temperature. The reported $z$ is the per-draw mean of those local values over the assay range — with the full per-temperature $z(T)$ available via `z_local = TRUE`.
 
 If using a 'relative threshold' (`target_surv = "relative"`) then the calculations do not require the correction factor. $CT_{max_{1hr}}$ is the temperature at which $\log_{10}\text{LT}(T)$ crosses $t_\text{ref}$, per draw. For $z$, under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is exactly linear, so $z = -1/\beta_1$ per draw.  The worked example in @sec-joint-extend demonstrates this with a simulation where `up` and $k$ carry strong $T$ effects.
 
@@ -1655,7 +1655,7 @@ $$
 \begin{aligned}
 \text{mid}_{ij}(T) &= \log_{10} t_{\text{ref}} + \frac{CT_{max,ij}(t_{\text{ref}}) - T_{ij}}{z_{ij}},\\
 CT_{max,ij}(t_{\text{ref}}) &= \alpha_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\alpha} + b_j,\\
-\log z_{ij} &= \zeta_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\zeta} + u_j .
+\ln z_{ij} &= \zeta_0 + \mathbf{x}_{ij}^{\top}\boldsymbol{\zeta} + u_j .
 \end{aligned}
 $$ {#eq-supp-direct-model}
 
@@ -4240,12 +4240,12 @@ $$
 
 **Step 6 — take natural logs of both sides:**
 $$
-\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}} \;=\; k\,\bigl(\log_{10}t_{50}(T) - \text{mid}(T)\bigr).
+\ln\!\left(\frac{\text{up} - 0.5}{0.5 - \text{low}}\right) \;=\; k\,\bigl(\log_{10}t_{50}(T) - \text{mid}(T)\bigr).
 $$
 
 **Step 7 — divide by $k$ and add $\text{mid}(T)$:**
 $$
-\log_{10}t_{50}(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.
+\log_{10}t_{50}(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\ln\!\left(\frac{\text{up} - 0.5}{0.5 - \text{low}}\right).
 $$ {#eq-supp-corr-lt50}
 
 Thus $\log_{10}t_{50}$ is the midpoint at that temperature plus a correction
@@ -4255,13 +4255,13 @@ that depends only on $(\text{low}, \text{up})$ and $k$, not on $T$. This is Eq.
 **Step 8 — substitute the temperature-dependent midpoint** from Eq. (3) of the
 manuscript:
 $$
-\log_{10}t_{50}(T) \;=\; \bigl[\beta_0 + \beta_1(T - \bar T)\bigr] \;+\; \frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.
+\log_{10}t_{50}(T) \;=\; \bigl[\beta_0 + \beta_1(T - \bar T)\bigr] \;+\; \frac{1}{k}\ln\!\left(\frac{\text{up} - 0.5}{0.5 - \text{low}}\right).
 $$
 
 **Step 9 — distribute and group all $T$-independent terms into an intercept
 $\alpha$:**
 $$
-\boxed{\quad\log_{10}t_{50}(T) \;=\; \alpha + \beta_1 T, \qquad \alpha \;=\; \beta_0 - \beta_1 \bar T \;+\; \frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.\quad}
+\boxed{\quad\log_{10}t_{50}(T) \;=\; \alpha + \beta_1 T, \qquad \alpha \;=\; \beta_0 - \beta_1 \bar T \;+\; \frac{1}{k}\ln\!\left(\frac{\text{up} - 0.5}{0.5 - \text{low}}\right).\quad}
 $$ {#eq-supp-tdt-line}
 
 This recovers the classical TDT relation: $\log_{10}t_{50}$ is linear in $T$.
@@ -4279,7 +4279,7 @@ $$
 
 Substituting the full $\alpha$ from @eq-supp-tdt-line and tidying:
 $$
-CT_{max}(t_{\text{ref}}) \;=\; \bar T \;+\; \frac{\log_{10}t_{\text{ref}} - \beta_0}{\beta_1} \;-\; \frac{1}{\beta_1}\cdot\frac{1}{k}\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}}.
+CT_{max}(t_{\text{ref}}) \;=\; \bar T \;+\; \frac{\log_{10}t_{\text{ref}} - \beta_0}{\beta_1} \;-\; \frac{1}{\beta_1}\cdot\frac{1}{k}\ln\!\left(\frac{\text{up} - 0.5}{0.5 - \text{low}}\right).
 $$ {#eq-supp-corr-ctmax}
 
 The first two terms are the *naive* $CT_{max}$: the temperature at which
@@ -4292,7 +4292,7 @@ shift when divided by the TDT slope. This is Eq. (5) of the manuscript.
 
 Replacing $p = 0.5$ with $p = x/100$ gives
 $$
-\log_{10}t_x(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\log\!\frac{\text{up} - x/100}{x/100 - \text{low}},
+\log_{10}t_x(T) \;=\; \text{mid}(T) \;+\; \frac{1}{k}\ln\!\left(\frac{\text{up} - x/100}{x/100 - \text{low}}\right),
 $$ {#eq-supp-corr-ltx}
 which reduces to @eq-supp-corr-lt50 when $x = 50$. The correction is still
 added to $\text{mid}(T)$; its sign is set by the ratio inside the log. For
@@ -4321,7 +4321,7 @@ When the experimental design anchors $\text{low} \approx 0$ and $\text{up}
 $$
 \frac{\text{up} - 0.5}{0.5 - \text{low}} \;\approx\; \frac{1 - 0.5}{0.5 - 0} \;=\; 1
 \quad\Longrightarrow\quad
-\log\!\frac{\text{up} - 0.5}{0.5 - \text{low}} \;\approx\; \log 1 \;=\; 0.
+\ln\!\left(\frac{\text{up} - 0.5}{0.5 - \text{low}}\right) \;\approx\; \ln 1 \;=\; 0.
 $$
 The correction then shrinks to zero and
 $\text{mid}(T)\approx\log_{10}t_{50}(T)$. This is the equivalence regime in

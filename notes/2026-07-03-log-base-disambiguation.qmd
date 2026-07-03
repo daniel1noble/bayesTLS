@@ -1,0 +1,81 @@
+---
+title: "Log base in the 4PL threshold equations: log₁₀ vs natural log"
+date: 2026-07-03
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## Question (from Shinichi's `ms_SN.docx` comments)
+
+Reviewing the manuscript equations, SN flagged the asymmetry-correction term and asked
+(comments #50–#52, #66):
+
+- "some brackets have been omitted?" — the correction argument had no parentheses.
+- "logup looks confusing log(up)??" — `\log\!\tfrac{\text{up}-0.5}{...}` renders as *logup*.
+- "log is always log10 or loge???" / "log = log10 or loge?" — is the bare `\log` base-10
+  or natural?
+
+Daniel's instinct was that all logs should be `log₁₀`. That is **half right**: the answer
+is that there are two distinct log families and they are *not* the same base.
+
+## Finding
+
+**1. Time / dose logs are log₁₀ (already correct).** `log₁₀ t`, `log₁₀ t₅₀`,
+`log₁₀ t_ref`, `mid`, `log₁₀ 60`, `z·log₁₀(r*/100)` all live on the base-10 exposure-time
+axis. These were already written `\log_{10}` and are unchanged.
+
+**2. The asymmetry-correction term is a natural log (ln), not log₁₀.** The term is
+$\frac{1}{k}\,\ln\!\left(\frac{\text{up}-p}{p-\text{low}}\right)$. Three independent
+confirmations:
+
+- **Model definition.** The 4PL denominator is $1+\exp\!\big(k(\log_{10}t-\text{mid})\big)$
+  — base $e$. Solving $p(t)=p^\*$ inverts the `exp`, which yields a **natural** log:
+  $$
+  p = \text{low} + \frac{\text{up}-\text{low}}{1+\exp(k(\log_{10}t-\text{mid}))}
+  \;\Rightarrow\;
+  \log_{10}t_{p} = \text{mid} + \tfrac{1}{k}\ln\!\Big(\tfrac{\text{up}-p}{p-\text{low}}\Big).
+  $$
+- **Code (ground truth for the published numbers).** `R/predict_heat_injury.R` computes
+  the correction with R's `log()` — natural log — e.g. line 98
+  `log((up - survival_target) / (survival_target - low))` and line 130
+  `c_target <- log((up - target_surv) / (target_surv - low)) / k`, then feeds it into
+  `exp(k * (log10(dose) + c_target))` (line 132).
+- **The supplement's own derivation already says so.** `supplement.qmd` Step 6 is literally
+  titled *"take natural logs of both sides"* — but then wrote the ambiguous `\log` symbol
+  next to all the `\log_{10}`, which is exactly what confused SN.
+
+So forcing everything to `log₁₀` would have made the equations inconsistent with both the
+fitted model and the code. Decision confirmed with Daniel 2026-07-03:
+**`\ln` (with parentheses) for the correction term; keep `\log_{10}` for time/dose.**
+
+**3. The `\log z` positivity link is also natural log.** `z` is fit on the log scale
+(`priors.R` uses `log(3)`; the formula uses `exp(logz)`), so `\log z_{ij}` → `\ln z_{ij}`.
+The base is immaterial to inference here (pure positivity transform); the change is for
+notational consistency only.
+
+### Sanity check (SN's own)
+When the design anchors low≈0, up≈1: $(\text{up}-0.5)/(0.5-\text{low}) = 0.5/0.5 = 1$ and
+$\ln 1 = 0$ — the correction vanishes and `mid(T) ≈ log₁₀ t₅₀(T)`. This is the
+strict-equivalence regime.
+
+## Edits made (2026-07-03)
+
+Every bare correction `\log` → `\ln\!\left(\dots\right)`; `\log z` → `\ln z`.
+
+- **`ms/ms.qmd`**: Eq. 4 (L283), Eq. 5 (L289), Eq. 6 / LTₘ (L297), the inline correction in
+  the direct-parameterisation paragraph (L308), and `\ln z_{ij}` in the empirical-direct
+  model Eq. 11 (L744).
+- **`ms/supplement.qmd`**: α definition (L384), the T-varying callout (L859, L862, L865),
+  the full step-by-step derivation (L4243, L4248, L4258, L4264, L4282), the LTₓ
+  generalisation (L4295), the "correction vanishes" block (L4324, incl. `\ln 1`), and
+  `\ln z_{ij}` (L1658).
+
+No numbers change — this is notation only; the code already used natural log.
+
+## Open / not done
+- Prose "estimated on the log scale so it stays positive" (ms L308) left as-is —
+  conventional phrasing, base immaterial for a positivity link.
+- Not yet re-rendered (ask-before-render norm). Need to confirm the `\ln\!\left(...\right)`
+  compiles cleanly in the ms + supp PDFs before declaring done.
