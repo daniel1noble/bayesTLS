@@ -14,6 +14,7 @@ authors:
   - name: "Shinichi Nakagawa"
     affiliations:
       - ref: ualberta
+      - ref: unsw
   - name: "Patrice Pottier"
     email: patrice.pottier@bioenv.gu.se
     corresponding: true
@@ -100,7 +101,7 @@ format:
         \AtBeginDocument{%
           \OldAuthor[1]{Daniel W.A. Noble\thanks{Corresponding author: \texttt{daniel.noble@anu.edu.au}}}%
           \OldAuthor[1]{Pieter A. Arnold}%
-          \OldAuthor[2]{Shinichi Nakagawa}%
+          \OldAuthor[2,4]{Shinichi Nakagawa}%
           \OldAuthor[3,4]{Patrice Pottier\thanks{Corresponding author: \texttt{patrice.pottier@bioenv.gu.se}}}%
           \affil[1]{Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia}%
           \affil[2]{Department of Biological Sciences, University of Alberta, Edmonton, Canada}%
@@ -120,7 +121,7 @@ execute:
 ---
 
 ::: {.content-visible when-format="docx"}
-**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Shinichi Nakagawa**^2^, **Patrice Pottier**^3,4,\*^
+**Daniel W.A. Noble**^1,\*^, **Pieter A. Arnold**^1^, **Shinichi Nakagawa**^2,4^, **Patrice Pottier**^3,4,\*^
 
 ^1^Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia.
 ^2^Department of Biological Sciences, University of Alberta, Edmonton, Canada.
