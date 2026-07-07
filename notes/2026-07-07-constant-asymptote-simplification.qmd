@@ -1,0 +1,268 @@
+---
+title: "Constant asymptotes for the zebrafish and aphid case studies: does simplifying an over-fit shape fix the biological-plausibility problems, and what does it cost?"
+author: "bayesTLS team"
+date: "2026-07-07"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    df-print: paged
+execute:
+  warning: false
+  message: false
+  eval: false
+---
+
+## Question
+
+Patrice flagged two biologically implausible features in the direct-mode joint
+4PL fits behind supplement Case Studies 1 (zebrafish × oxygen, @saruhashi2026)
+and 2 (cereal aphids × species, @li2023). Both trace to the same modelling
+choice: in the **direct** `CTmax`/`z` parameterisation, when `up`/`low` are left
+at their defaults they **inherit the group × temperature structure** of the
+`ctmax`/`z` formulas, so the upper and lower asymptotes are free to vary by group
+*and* by temperature. This note asks whether forcing **constant asymptotes**
+(`up = ~ 1, low = ~ 1`) removes the implausible behaviour, whether it moves the
+quantities of interest (`z`, `CTmax`, `T_crit`), and what it costs in predictive
+fit (LOO ELPD, `bayes_R2`).
+
+All numbers below are produced by
+`notes/scripts/2026-07-07-constant-asymptote.R`, which fits each case study
+**before** (current supplement spec) and **after** (identical spec **plus**
+`up = ~ 1, low = ~ 1`) with identical sampler settings and seed, and caches the
+result to `output/models/ca_results.rds` (fits: `output/models/ca_{zf,aphid}_{before,after}.rds`;
+all gitignored). Only the asymptote sub-model differs between before and after.
+
+```{r setup}
+res <- readRDS(here::here("output", "models", "ca_results.rds"))
+```
+
+## Pre-flight: what the default formulas expand to, and the override
+
+Confirmed by inspecting `fit_4pl(..., fit = FALSE)$formula$pforms` for each spec
+(no sampling needed):
+
+| Case study | sub-model | BEFORE (current spec) | AFTER (`up = ~ 1, low = ~ 1`) |
+|---|---|---|---|
+| Zebrafish | `lowraw` | `~ 0 + oxygen + temp_c:oxygen` | `~ 1` |
+| Zebrafish | `upraw`  | `~ 0 + oxygen + temp_c:oxygen` | `~ 1` |
+| Zebrafish | `logk`   | `~ 0 + oxygen + temp_c:oxygen` | `~ 0 + oxygen + temp_c:oxygen` (unchanged) |
+| Aphid | `lowraw` | `~ 0 + species + temp_c:species` | `~ 1` |
+| Aphid | `upraw`  | `~ 0 + species + temp_c:species` | `~ 1` |
+| Aphid | `logk`   | `~ temp_c` (explicit `k = ~ temp_c`) | `~ temp_c` (unchanged) |
+
+So the current fits do let the asymptotes vary by group **and** temperature —
+`resolve_shape()` in `R/fit_4pl.R` crosses the inherited cell-means moderator
+with `temp_c` (the `0 + G + temp_c:G` pattern). Passing explicit `up = ~ 1,
+low = ~ 1` overrides that inheritance and forces a single, temperature-constant
+asymptote pair (`lowraw ~ 1`, `upraw ~ 1`). We deliberately **left `logk`
+untouched** so the only change is on the asymptotes. Sampler: `cmdstanr`,
+4 chains × 4000 iterations, `seed = 123`, `adapt_delta = 0.95`,
+`silent = 2, refresh = 0`.
+
+**Sampler diagnostics.** Max R-hat ≤ 1.002 for all four fits. Divergences:
+zebrafish BEFORE 18/8000 (0.2 %), zebrafish AFTER 0, aphid BEFORE 0, aphid AFTER
+0. The handful of zebrafish-BEFORE divergences is consistent with the weakly
+identified hyperoxia asymptote; they clear entirely under constant asymptotes.
+
+## The two problems, restated against the data
+
+**Zebrafish.** In `zebrafish_o2` (diploid, normoxia + hyperoxia), the aggregated
+cells are:
+
+| oxygen | 26 °C | 38 °C | 39 °C | 40 °C |
+|---|---|---|---|---|
+| normoxia | 487/487 = 1.00 | 0.61 | 0.81 | 0.16 |
+| hyperoxia | **no rows** | 0.62 | 0.66 | 0.20 |
+
+Only normoxia has a 26 °C control (a 100 %-survival anchor); hyperoxia is
+anchored only by 38–40 °C, where survival is non-monotonic (39 °C ≥ 38 °C).
+Letting `up`/`low` vary by `oxygen × temp` leaves hyperoxia's upper asymptote
+**unidentified below 38 °C**.
+
+**Aphids.** Letting `up`/`low` vary by `species × temp` lets the lower asymptote
+(the long-exposure survival floor) drift with temperature. A floor that *rises*
+with temperature is biologically implausible (hotter should not raise the
+minimum survival), and that is what the fit does — see §Aphids.
+
+## Zebrafish: before vs after
+
+### Thermal-death-time quantities (`tls(by = "oxygen", lethal = TRUE)`)
+
+| oxygen | quantity | BEFORE median [95% CrI] | AFTER median [95% CrI] |
+|---|---|---|---|
+| normoxia  | z        | 5.94 [3.23, 8.87] | 5.37 [3.28, 7.92] |
+| normoxia  | CTmax_1h | 38.77 [38.27, 39.13] | 39.05 [38.67, 39.87] |
+| normoxia  | T_crit   | 24.05 [15.42, 30.83] | 25.81 [18.22, 31.29] |
+| hyperoxia | z        | 2.55 [2.07, 3.07] | 2.59 [2.08, 3.29] |
+| hyperoxia | CTmax_1h | 39.39 [39.19, 39.55] | 39.31 [39.08, 39.49] |
+| hyperoxia | T_crit   | **33.04 [31.09, 34.63]** | **32.85 [30.47, 34.53]** |
+
+**Reconciliation of the "runaway hyperoxia `T_crit`" symptom.** In this fit —
+which reproduces the cached supplement fit `zf_oxygen_normhyper.rds` to ~4
+decimal places (verified separately) — **hyperoxia's `T_crit` does not run
+away**: it is 33.0 °C [31.1, 34.6] before and 32.9 °C [30.5, 34.5] after, stable
+and internally consistent (`CTmax − 2.5·z = 39.4 − 6.4 ≈ 33`). The **wide**
+`T_crit` in these data is *normoxia's* (24.1 °C [15.4, 30.8]), and it stays wide
+after the simplification (25.8 °C [18.2, 31.3]) because it is driven by
+normoxia's poorly-identified `z` (5.9 [3.2, 8.9]) — a duration-coverage problem
+that constant asymptotes do **not** fix. So the specific "runaway for hyperoxia"
+framing is not what the current fit shows; the asymptote pathology is real but
+surfaces in the fitted **asymptote surface**, not in `T_crit` (next).
+
+### Natural-scale asymptotes per oxygen × temperature
+
+`up` = fitted survival as duration → 0; `low` = fitted survival as duration → ∞,
+read off the posterior with `posterior_epred` at extreme durations (`n_total = 1`).
+
+BEFORE (varies by oxygen × temp):
+
+| oxygen | temp | up [95% CrI] | low [95% CrI] |
+|---|---|---|---|
+| normoxia  | 26 | 0.998 [0.99, 1.00] | 0.001 [0.001, 0.05] |
+| hyperoxia | 26 | **0.799 [0.373, 0.999]** | 0.230 [0.001, 0.618] |
+| normoxia  | 38 | 0.984 | 0.339 [0.156, 0.469] |
+| normoxia  | 39 | 0.980 | 0.415 [0.209, 0.491] |
+| normoxia  | 40 | 0.975 | **0.459 [0.239, 0.497]** |
+| hyperoxia | 38–40 | 0.99 | 0.013–0.015 |
+
+Two implausible features are visible: (i) hyperoxia's **upper asymptote at
+26 °C is 0.80 with a 95 % CrI spanning [0.37, 0.9995]** — essentially
+unidentified, because there are no 26 °C hyperoxia data; and (ii) **normoxia's
+lower asymptote rises from 0.001 (26 °C) to 0.46 (40 °C)** — the model claims
+that at 40 °C an *infinite* exposure still leaves ~46 % alive, which is not
+credible.
+
+AFTER (constant): a single `up = 0.994 [0.983, 0.998]` and `low = 0.102 [0.006,
+0.294]` for every oxygen × temperature cell. Both implausible features are
+removed by construction.
+
+## Aphids: before vs after
+
+### Natural-scale lower asymptote rises with temperature (BEFORE)
+
+Lower asymptote `low` (long-exposure survival floor), posterior median, at the
+min and max assay temperatures:
+
+| species | low(34 °C) | low(40 °C) | Δ over 34→40 °C | up(34 °C) | up(40 °C) |
+|---|---|---|---|---|---|
+| M. dirhodum | 0.0074 | 0.0115 | +0.004 | 0.968 | 0.925 |
+| S. avenae   | 0.0041 | 0.0563 | +0.052 | 0.953 | 0.938 |
+| **R. padi** | **0.0013** | **0.346** | **+0.345** | 0.979 | 0.974 |
+
+The lower asymptote **rises with temperature for all three species**, most
+severely for *R. padi*: its survival floor climbs from ~0 at 34 °C to **0.35 at
+40 °C** [95 % CrI 0.229, 0.432], i.e. the fit asserts a 35 % survival floor at
+the hottest, most lethal temperature. This is the over-fit Patrice flagged.
+
+**Reconciliation of the "up non-monotonic for S. avenae" symptom.** In this fit
+the *upper* asymptote is **not** non-monotonic: it declines gently and
+monotonically with temperature for every species (S. avenae 0.953 → 0.938;
+M. dirhodum 0.968 → 0.925; R. padi 0.979 → 0.974). The clearly implausible
+pattern is the **rising lower asymptote**, not the upper one. (A mild decline in
+`up` is at least in the biologically expected direction; a rising `low` is not.)
+
+AFTER (constant): a single `up = 0.930 [0.880, 0.971]` and `low = 0.020 [0.006,
+0.045]` for all species and temperatures.
+
+### Thermal-death-time quantities (`tls(by = "species", lethal = TRUE)`)
+
+| species | quantity | BEFORE median [95% CrI] | AFTER median [95% CrI] |
+|---|---|---|---|
+| M. dirhodum | z        | 4.80 [4.54, 5.10] | 4.77 [4.53, 5.05] |
+| M. dirhodum | CTmax_1h | 35.16 [34.96, 35.34] | 35.17 [34.96, 35.36] |
+| M. dirhodum | T_crit   | 23.18 [20.56, 25.61] | 23.26 [20.71, 25.66] |
+| **R. padi** | z        | **3.34 [3.13, 3.62]** | **3.95 [3.69, 4.25]** |
+| R. padi     | CTmax_1h | 36.99 [36.90, 37.09] | 37.15 [37.04, 37.25] |
+| **R. padi** | T_crit   | **28.61 [26.80, 30.33]** | **27.29 [25.09, 29.28]** |
+| S. avenae   | z        | 3.60 [3.42, 3.80] | 3.62 [3.47, 3.79] |
+| S. avenae   | CTmax_1h | 36.50 [36.39, 36.60] | 36.51 [36.41, 36.60] |
+| S. avenae   | T_crit   | 27.51 [25.62, 29.28] | 27.48 [25.60, 29.22] |
+
+M. dirhodum and S. avenae are essentially unchanged (Δz ≤ 0.03 °C, ΔCTmax ≤ 0.02
+°C). The one species that moves is **R. padi** — exactly the one whose lower
+asymptote was over-fit: its `z` increases 3.34 → 3.95 °C (+18 %) and `T_crit`
+drops 28.6 → 27.3 °C (−1.3 °C). The implausible rising floor had been flattening
+R. padi's fitted `log10(LT)`–temperature line (raising the apparent `z`
+sensitivity / lowering `T_crit`); removing it changes the estimate materially.
+Whether the before or after R. padi estimate is "correct" is not decidable from
+fit alone, but the after estimate is not built on a 35 %-survival-at-40 °C floor.
+
+## Cost of simplifying: LOO ELPD and bayes_R2
+
+`brms::loo()` (worst Pareto-k: zebrafish 0.35/0.37, aphids 0.37/0.47 — all < 0.5,
+so LOO is reliable), before vs after:
+
+| case study | elpd_loo BEFORE | elpd_loo AFTER | elpd_diff (after − before) | ratio |
+|---|---|---|---|---|
+| Zebrafish | −288.8 (SE 17.2) | −296.0 (SE 17.7) | **−7.24 (SE 3.43)** | −2.1 SE |
+| Aphids    | −763.0 (SE 17.7) | −773.7 (SE 18.8) | **−10.72 (SE 8.92)** | −1.2 SE |
+
+`bayes_R2` is essentially unchanged: zebrafish 0.682 → 0.691; aphids 0.714 →
+0.695.
+
+Interpretation, stated flatly:
+
+- In **both** case studies the richer (temperature-varying-asymptote) model has
+  the **higher** LOO ELPD — dropping the asymptote-temperature terms costs some
+  predictive fit, in the same direction both times.
+- For the **aphids** the cost (−10.7 ± 8.9 ELPD, ≈ 1.2 SE) is **not
+  distinguishable from zero** at the LOO scale — consistent with the
+  asymptote-temperature terms being poorly identified, as expected.
+- For the **zebrafish** the cost (−7.2 ± 3.4 ELPD, ≈ 2.1 SE) is **modest but
+  more than noise** — so here the simplification is *not* free predictively. This
+  refutes the "negligible in both" expectation for the zebrafish. The gain the
+  richer model buys is mostly its ability to fit normoxia's rising lower
+  asymptote at 38–40 °C (in-sample flexibility that is itself biologically
+  implausible).
+- `bayes_R2` (in-sample) is uninformative about the difference here; LOO is the
+  relevant metric.
+
+## Recommendation
+
+The temperature-on-asymptote terms are, on both datasets, a poorly-identified,
+biologically-implausible part of the model: they let the long-exposure survival
+**floor rise with temperature** (all three aphid species; worst in *R. padi*,
+0.001 → 0.35) and leave an asymptote **unidentified where a group has no data**
+(hyperoxia's upper asymptote below 38 °C, 0.80 [0.37, 0.9995]). Forcing constant
+asymptotes (`up = ~ 1, low = ~ 1`) removes both by construction, leaves `z` /
+`CTmax` for well-behaved groups essentially unchanged, and only moves the one
+estimate (*R. padi* `z`/`T_crit`) that was demonstrably being driven by the
+over-fit floor. On predictive fit the simplification is free for the aphids
+(≈ 1.2 SE) and carries a small cost for the zebrafish (≈ 2.1 SE ELPD). On
+balance I would **adopt constant asymptotes for both case studies**, framed as
+Patrice suggested — diagnosing and simplifying an over-parameterised shape whose
+temperature terms the data cannot support — while noting the zebrafish's modest
+LOO cost and, separately, that the constant-asymptote fix does **not** address
+normoxia's imprecise `z`/`T_crit` (a duration-coverage limitation, not an
+asymptote one). Because it is a substantive change to two case-study models, log
+and confirm before editing the supplement; the survival-surface figures should
+be regenerated so the fitted curves reflect the constant asymptotes.
+
+## Confounders / caveats not yet ruled out
+
+- Only the **asymptotes** were simplified; `logk` was left group/temperature-
+  varying in both fits. A fuller simplification (`temp_effects` reduced further,
+  or `k = ~ 1`) was not tested here.
+- The "runaway hyperoxia `T_crit`" and "non-monotonic `up` for S. avenae"
+  descriptions are **not reproduced** by the current fits (which match the cached
+  supplement fits). Either they referred to an earlier package/data state, a
+  different extraction (e.g. absolute threshold or a wider `temp_grid`), or the
+  survival-surface plots rather than the `tls()` table. The asymptote-level
+  pathologies documented above *are* present.
+- `T_crit` uses random HI-rate draws and was extracted without a fixed `seed`,
+  so its medians carry ~0.05 °C Monte-Carlo noise (rounded to 0.1 °C here).
+- LOO compares out-of-sample density; it cannot see that a rising survival floor
+  is biologically wrong. The plausibility argument is separate from and not
+  overturned by the small ELPD gain of the richer model.
+
+## Reproducibility
+
+```{r repro}
+# Full analysis (fits reload from output/models/ca_*.rds if present):
+#   Rscript notes/scripts/2026-07-07-constant-asymptote.R
+# Results object:
+#   output/models/ca_results.rds  (gitignored)
+sessionInfo()
+```
