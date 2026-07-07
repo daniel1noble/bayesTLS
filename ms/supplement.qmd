@@ -1666,7 +1666,7 @@ We fit the empirical examples below with the Bayesian `bayesTLS` implementation 
 The manuscript examples use the following model specifications:
 
 - **Cereal aphids**: lethal survival counts were fit with a beta-binomial 4PL, placing species directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + species`, `z = ~ 0 + species`). No random effects were included. The fitted species-specific posterior was then projected under the unmodified Wuhan May-June 2016 air-temperature trace with `predict_heat_injury(by = "species")`.
-- **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). No random effects were included.
+- **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). No random effects were included. Because the design lacks a benign-temperature control for the hyperoxia treatment, we report $z$ and $CT_{max}$ but not $T_{crit}$ (`lethal = FALSE`).
 - **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood. Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with a plant-level random intercept on $CT_{max}$ (`ctmax = ~ 0 + recovery + (1 | plant)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
 - **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with Ørsted et al. uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model summary uses the relative midpoint threshold (also at a 4-hour reference to be more comparable to the study). The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the Ørsted et al. NicheMapR workflow.
 
@@ -1719,13 +1719,13 @@ summary(wf_zf)
 
 ## Per-treatment thermal limits and OCLTT check {#sec-zf-o2-extract}
 
-`tls(by = "oxygen")` derives $z$, $CT_{max_{1hr}}$ and $T_{crit}$ per treatment from the shared posterior, so each quantity carries full uncertainty. We sample the same draw so covariance between $T_{crit}$, $CT_{max}$ and $z$ is retained.
+`tls(by = "oxygen")` derives $z$ and $CT_{max_{1hr}}$ for each treatment from the shared posterior, so each quantity carries full uncertainty. We set `lethal = FALSE` and do not report $T_{crit}$ here because the design has toop few temperatures to estimate it correctly.
 
 ```{r zfo2-tls}
 #| label: zfo2-tls
 #| echo: true
 
-zf_tls <- tls(wf_zf, by = "oxygen", lethal = TRUE)
+zf_tls <- tls(wf_zf, by = "oxygen", lethal = FALSE)
 zf_tls$summary
 ```
 
@@ -1734,10 +1734,9 @@ zf_tls$summary
 .zg <- function(ox, q) zf_tls$summary$median[zf_tls$summary$oxygen == ox &
                                               zf_tls$summary$quantity == q]
 zf_ctmax_norm  <- .zg("normoxia",  "CTmax");  zf_ctmax_hyper <- .zg("hyperoxia", "CTmax")
-zf_tcrit_norm  <- .zg("normoxia",  "Tcrit");  zf_tcrit_hyper <- .zg("hyperoxia", "Tcrit")
 ```
 
-The joint fit recasts @saruhashi2026's OCLTT result as two linked components of the thermal tolerance landscape. Hyperoxia raises $CT_{max_{1hr}}$ to `r round(zf_ctmax_hyper, 1)` °C, above the normoxic `r round(zf_ctmax_norm, 1)` °C, and lifts $T_{crit}$ markedly (`r round(zf_tcrit_hyper, 1)` °C vs `r round(zf_tcrit_norm, 1)` °C). This confirms that hyperoxic water shifts the thermal limit upward. The model also estimates $z$ from the same response surface, asking a second biological question: does oxygen change how quickly tolerance time declines once temperatures are stressful? This distinction is useful because @saruhashi2026 conclude that oxygen effects depend on stress intensity and exposure duration. In these data, the strongest support is for the upward shift in $CT_{max_{1hr}}$ and $T_{crit}$ under hyperoxia, while the normoxic $z$ is less precise because survival plateaus across much of the tested duration range. The 4PL therefore does more than confirm that hyperoxia improves heat tolerance; it identifies which part of the OCLTT signal is well supported by the data (a higher thermal limit) and which part would require more duration information to estimate sharply (oxygen differences in thermal sensitivity).
+The joint fit recasts @saruhashi2026's OCLTT result as two linked components of the thermal tolerance landscape. Hyperoxia raises $CT_{max_{1hr}}$ to `r round(zf_ctmax_hyper, 1)` °C, above the normoxic `r round(zf_ctmax_norm, 1)` °C, confirming that hyperoxic water shifts the thermal limit upward. The model also estimates $z$ from the same response surface, asking a second biological question: does oxygen change how quickly tolerance time declines once temperatures are stressful? This distinction is useful because @saruhashi2026 conclude that oxygen effects depend on stress intensity and exposure duration. In these data, the strongest support is for the upward shift in $CT_{max_{1hr}}$ under hyperoxia, while the normoxic $z$ is less precise because survival plateaus across much of the tested duration range. The 4PL therefore does more than confirm that hyperoxia improves heat tolerance; it identifies which part of the OCLTT signal is well supported by the data (a higher thermal limit) and which part would require more duration information to estimate sharply (oxygen differences in thermal sensitivity).
 
 ```{r zfo2-survival}
 #| label: fig-zfo2-survival
