@@ -1863,13 +1863,16 @@ aphid_stn2 <- standardize_data(aphid_raw2, temp = "temp", duration = "duration_m
                               n_total = "n_total", n_surv = "n_surv",
                               duration_unit = "minutes")   # keeps `species`
 
-# We'll fit the model, but there's not much evidence that logk varies across species so we'll keep it simple and just assume that is fairly constant but varies across temp. But, we'll keep the species*temp_c interactions on others in case we want to compute absolute measures. However, we don't interact up, low with age as that seem excessive
+# As with the main species model, we constrain the asymptotes to be constant
+# to avoid overfitting. Species x age
+# enters the midpoint (so z and CTmax vary by species and age); k keeps a
+# temperature slope.
 wf_aphid_age <- fit_4pl(aphid_stn2, 
                     ctmax = ~ 1 + species*age, 
                         z = ~ 1 + species*age, 
                         k = ~ temp_c,
-                      low = ~species*temp_c,
-                       up = ~species*temp_c,
+                       up = ~ 1,
+                      low = ~ 1,
                     t_ref = 60, silent = 2, refresh = 0,
                     file_refit = "on_change",
                     file       = file.path(models_dir, "aphid_species_age"))
