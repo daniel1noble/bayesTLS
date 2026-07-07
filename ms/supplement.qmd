@@ -1780,11 +1780,15 @@ str(aphid_std)
 #| code-fold: show
 #| message: false
 
-# We'll fit the model, but there's not much evidence that logk varies across species so we'll keep it simple and just assume that is fairly constant but varies across temp. But, we'll keep the species*temp_c interactions on others in case we want to compute absolute measures. 
-wf_aphid <- fit_4pl(aphid_std, 
-                    ctmax = ~ 0 + species, 
-                        z = ~ 0 + species, 
+# Species enter the midpoint (so z and CTmax vary by species) with a temperature
+# slope on k, but we constrain the asymptotes to be constant (up = ~ 1, low = ~ 1).
+# Letting up/low vary by species x temperature overfits here
+wf_aphid <- fit_4pl(aphid_std,
+                    ctmax = ~ 0 + species,
+                        z = ~ 0 + species,
                         k = ~ temp_c,
+                       up = ~ 1,
+                      low = ~ 1,
                     t_ref = 60, silent = 2, refresh = 0,
                     file_refit = "on_change",
                     file       = file.path(models_dir, "aphid_species"))
