@@ -3926,10 +3926,11 @@ fly_trace <- orsted_micro |>
                    datetime = datetime_utc)
 
 ## Relative-threshold T_crit per group (matches the relative HI integration).
-Tc_F <- extract_tdt(wf_dros_mort_F, target_surv = "relative", t_ref = 60,
-                    lethal = TRUE, ndraws = 150)$T_crit$summary$temp_median
-Tc_M <- extract_tdt(wf_dros_mort_M, target_surv = "relative", t_ref = 60,
-                    lethal = TRUE, ndraws = 150)$T_crit$summary$temp_median
+## tls() and extract_tdt() return identical T_crit here; tls() is the standard extractor.
+Tc_F <- get_tls_est(tls(wf_dros_mort_F, target_surv = "relative", t_ref = 60,
+                        lethal = TRUE, ndraws = 150), "summary", "Tcrit")$median
+Tc_M <- get_tls_est(tls(wf_dros_mort_M, target_surv = "relative", t_ref = 60,
+                        lethal = TRUE, ndraws = 150), "summary", "Tcrit")$median
 
 ## Illustrative Sharpe–Schoolfield repair kernel (doses h^-1 at TREF; NOT fitted).
 ## TH sets the high-temperature decline: TH = 28 puts the repair optimum near
