@@ -3932,8 +3932,11 @@ Tc_M <- extract_tdt(wf_dros_mort_M, target_surv = "relative", t_ref = 60,
                     lethal = TRUE, ndraws = 150)$T_crit$summary$temp_median
 
 ## Illustrative Sharpe–Schoolfield repair kernel (doses h^-1 at TREF; NOT fitted).
+## TH sets the high-temperature decline: TH = 28 puts the repair optimum near
+## 26 C, comfortably below the D. suzukii T_crit (~29 C), rather than right at it.
+## TREF (25 C) is only the magnitude anchor for r_ref, not the optimum.
 fly_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
-                   TL = 15 + 273.15, TH = 30 + 273.15,
+                   TL = 15 + 273.15, TH = 28 + 273.15,
                    TREF = 25 + 273.15, r_ref = 0.005)
 
 ND <- 150
