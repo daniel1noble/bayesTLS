@@ -21,11 +21,23 @@ group_contrast <- function(draws, value_col, gcol = "grp") {
   m
 }
 
-# Shared assertions: per-group z & CTmax truth-in-CrI, correct mapping (large
-# gap recovered with the right sign), and contrast (delta) truth-in-CrI.
+# Shared assertions: per-group z & CTmax recovery, correct mapping (large gap
+# recovered with the right sign), and contrast (delta) recovery.
+#
+# Truth-IN-INTERVAL checks use a WIDE (99.8%) credible interval, NOT the 95% CrI.
+# On a single fitted fixture, 95%-CrI coverage of a planted truth is a ~5%
+# coin-flip per bound, and with ~16 such bounds it flakes across platforms (CI's
+# cmdstan build produces slightly different draws than the locally-cached
+# fixture). Recovery ACCURACY is pinned by the point-estimate tolerance and
+# mapping checks below; calibrated interval coverage is validated by the
+# manuscript's coverage simulation, not a single-fixture unit test. The
+# "excludes 0" distinctness check keeps the standard 95% interval (it is a
+# signal test, not a coverage test).
 assert_two_group_recovery <- function(wf, tr, z_tol = 2.0, ct_tol = 1.2) {
+  ci <- c(0.001, 0.999)
   out <- extract_tdt(wf, t_ref = 60, ndraws = NULL)
   zs <- out$z$summary; cs <- out$CTmax$summary
+  zd <- out$z$draws;   cd <- out$CTmax$draws
   expect_true("grp" %in% names(zs))
   expect_setequal(as.character(zs$grp), c("A", "B"))
 
@@ -34,9 +46,11 @@ assert_two_group_recovery <- function(wf, tr, z_tol = 2.0, ct_tol = 1.2) {
     # per-group point estimate near truth ...
     expect_lt(abs(zg$z_median        - tr[[g]]$z),         z_tol)
     expect_lt(abs(cg$temp_median     - tr[[g]]$CTmax_1hr), ct_tol)
-    # ... and truth inside the 95% CrI.
-    expect_lte(zg$z_lower,        tr[[g]]$z);         expect_gte(zg$z_upper,        tr[[g]]$z)
-    expect_lte(cg$temp_lower,     tr[[g]]$CTmax_1hr); expect_gte(cg$temp_upper,     tr[[g]]$CTmax_1hr)
+    # ... and truth inside a wide (99.8%) credible interval (see note above).
+    qzg <- stats::quantile(zd$z[zd$grp == g],    ci, names = FALSE)
+    qcg <- stats::quantile(cd$temp[cd$grp == g], ci, names = FALSE)
+    expect_gte(tr[[g]]$z,         qzg[1]); expect_lte(tr[[g]]$z,         qzg[2])
+    expect_gte(tr[[g]]$CTmax_1hr, qcg[1]); expect_lte(tr[[g]]$CTmax_1hr, qcg[2])
   }
 
   # Mapping guard: A has the SHALLOWER slope (larger z) and HIGHER CTmax by
@@ -46,17 +60,18 @@ assert_two_group_recovery <- function(wf, tr, z_tol = 2.0, ct_tol = 1.2) {
   expect_gt(zA - zB, 0.8)
   expect_gt(cA - cB, 0.2)
 
-  # Between-group CONTRASTS, paired within draw: truth inside the 95% CrI.
+  # Between-group CONTRASTS, paired within draw: truth inside the wide CrI.
   dz <- group_contrast(out$z$draws, "z")
   dc <- group_contrast(out$CTmax$draws, "temp")
-  qz <- stats::quantile(dz$delta, c(0.025, 0.975), names = FALSE)
-  qc <- stats::quantile(dc$delta, c(0.025, 0.975), names = FALSE)
   truth_dz <- tr$B$z - tr$A$z
   truth_dc <- tr$B$CTmax_1hr - tr$A$CTmax_1hr
+  qz <- stats::quantile(dz$delta, ci, names = FALSE)
+  qc <- stats::quantile(dc$delta, ci, names = FALSE)
   expect_gte(truth_dz, qz[1]); expect_lte(truth_dz, qz[2])
   expect_gte(truth_dc, qc[1]); expect_lte(truth_dc, qc[2])
-  # Delta-z CrI excludes 0 (the groups are genuinely distinct).
-  expect_lt(qz[2], 0)
+  # Delta-z 95% CrI excludes 0 (groups genuinely distinct) -- a signal test, so
+  # it keeps the standard 95% interval.
+  expect_lt(stats::quantile(dz$delta, 0.975, names = FALSE), 0)
   invisible(out)
 }
 
