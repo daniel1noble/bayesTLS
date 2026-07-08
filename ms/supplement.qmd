@@ -239,16 +239,16 @@ The functions in `bayesTLS` chain together as a single pipeline with the followi
 
 1. **Standardise** raw experimental data to a common column schema (`temp`, `duration`, `n_total`, `n_surv`, …). This step is important because it also stores meta-data about the centering temperatures used which ensures calculations are made correctly.
 2. **Fit** the joint Bayesian 4PL with the built-in `beta_binomial(link = "identity")` family and asymptote-bounded reparameterisation. We also have other families built in depending on the response variable distribution. 
-3. **Extract** $z$, $CT_{max}$ (at a chosen reference exposure) and, for lethal endpoints, $T_{crit}$ — all as transforms of the fitted posterior, with full uncertainty. `tls()` is the general extractor: it works on any fitted 4PL — the `fit_4pl()` workflow or a hand-coded `brms` model — and returns results **per moderator group** (`by =`, e.g. species, sex or oxygen treatment) as tidy-long summaries plus the underlying posterior draws. `tls()` and the workflow-specific `extract_tdt()` share one `target_surv` argument that sets the survival threshold the curve is read at — the relative midpoint (default), the absolute LT50, or any LT$x$ — and return the same quantities for a `fit_4pl()` fit.
+3. **Extract** $z$, $CT_{max}$ (at a chosen reference exposure) and, for lethal endpoints, $T_{crit}$ — all as transforms of the fitted posterior, with full uncertainty. `tls()` is the general extractor: it works on any fitted 4PL — the `fit_4pl()` workflow or a hand-coded `brms` model — and returns results **per moderator group** (`by =`, e.g. species, sex or oxygen treatment) as tidy-long summaries plus the underlying posterior draws. Its `target_surv` argument sets the survival threshold the curve is read at — the relative midpoint (default), the absolute LT50, or any LT$x$.
 4. **Predict** survival across a temperature × duration grid, and heat-injury accumulation with predicted survival under fluctuating field temperature traces — both group-aware (`by =`) and with optional damage repair.
 5. **Plot** each step — survival curves, tolerance landscapes and heat-injury trajectories — with a shared project theme so figures across the workflow read consistently.
 
-Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to the snow gum leaf PSII and *Drosophila* datasets.
+Every exported function is documented (`?fit_4pl`, etc.) and tested against known simulation truths. The supplement first demonstrates the pipeline in controlled simulations and then applies it to case studies.
 
 ```{r function-map}
 #| label: fig-function-map
 #| echo: false
-#| fig-cap: "Core user-facing `bayesTLS` function map. Solid arrows show the main Bayesian workflow from data standardisation through model fitting and posterior-derived TLS quantities. Report/access functions are object-specific: `get_4pl_est()` reads the fitted `fit_4pl()` workflow, `get_tls_est()` reads a `tls()` object, and the `extract_tdt()` accessors read an `extract_tdt()` object. Prediction functions also take the fitted workflow, while plotting functions visualise outputs from the report/access or prediction branches. Dashed arrows show optional or advanced routes, including manual `brms` input, model-specification helpers, diagnostics, derivation primitives and the classical two-stage comparison path."
+#| fig-cap: "Core user-facing `bayesTLS` function map. Solid arrows show the main Bayesian workflow from data standardisation through model fitting and posterior-derived TLS quantities. Report/access functions are object-specific: `get_4pl_est()` reads the fitted `fit_4pl()` workflow and `get_tls_est()` reads a `tls()` object. Prediction functions also take the fitted workflow, while plotting functions visualise outputs from the report/access or prediction branches. Dashed arrows show optional or advanced routes, including manual `brms` input, model-specification helpers, diagnostics, derivation primitives and the conventional two-stage approach."
 #| out-width: "100%"
 
 knitr::include_graphics(here::here("output", "figs", "bayesTLS_function_map.png"))
@@ -272,8 +272,7 @@ tdt_function_core <- tibble::tribble(
   ~Step,          ~Function,                     ~Purpose,
   "Standardise",  "standardize_data()",          "Reshape raw experimental data to the package schema (temp, duration, counts).",
   "Fit",          "fit_4pl()",                   "Fit the joint Bayesian 4PL in one call (builds priors and the brms formula internally). Compare moderator groups in one joint fit with `by = \"<moderator>\"` (midpoint) or `ctmax = ~ 0 + <moderator>` (direct CTmax/z).",
-  "Extract",      "extract_tdt()",               "Derive z, CTmax and (for lethal endpoints) T_crit from a `fit_4pl()` model, with full posterior uncertainty; per-group results for fits whose CTmax/z vary by a moderator (`by =`).",
-  "Extract",      "tls()",                       "Derive the same quantities per moderator group from ANY fitted 4PL, including hand-coded `brms` models (`by =`); `target_surv` picks the relative or absolute threshold.",
+  "Extract",      "tls()",                       "Derive z, CTmax and (for lethal endpoints) T_crit per moderator group from ANY fitted 4PL, including hand-coded `brms` models (`by =`); `target_surv` picks the relative or absolute threshold.",
   "Extract",      "get_tls_est()",               "Pull the derived TLS quantities (z, CTmax, T_crit) out of a `tls()` object as posterior draws or a median + 95% CrI summary -- any or all quantities, per group.",
   "Extract",      "get_4pl_est()",               "Pull the natural-scale 4PL parameters (low, up, k, mid) out of a fitted workflow as draws or a summary; the 4PL-shape counterpart to `get_tls_est()`.",
   "Predict",      "predict_survival_curves()",   "Posterior survival across a temperature x duration grid, with credible bands (per group via `by =`).",
@@ -306,15 +305,7 @@ tdt_function_tour <- tibble::tribble(
   "Inspection",       "extract_4pl_pars()",                 "Posterior draws of the natural-scale 4PL parameters: low, up and k, plus the midpoint intercept (mid_int, at the centring temperature T_bar) and temperature slope (mid_temp) — the latter suitable for the analytical heat-injury integral (per group via `by =`).",
   "Inspection",       "get_brmsfit()",                      "Return the underlying `brmsfit` object held inside a `bayes_tls` workflow (for bespoke brms post-processing).",
   "Inspection",       "print.tls()",                        "Compact print method for a `tls` object: shows the per-group TDT summary table.",
-  "Accessors",        "get_z_draws()",                      "Per-draw posterior of z from an `extract_tdt()` output.",
-  "Accessors",        "get_ctmax_draws()",                  "Per-draw posterior of CTmax_1hr from an `extract_tdt()` output.",
-  "Accessors",        "get_tcrit_draws()",                  "Per-draw posterior of T_crit from an `extract_tdt(lethal = TRUE)` output.",
-  "Accessors",        "get_z_summary()",                    "Posterior summary (median + 95% CrI) of z from an `extract_tdt()` output.",
-  "Accessors",        "get_ctmax_summary()",                "Posterior summary (median + 95% CrI) of CTmax from an `extract_tdt()` output.",
-  "Accessors",        "get_tcrit_summary()",                "Posterior summary (median + 95% CrI) of T_crit from an `extract_tdt(lethal = TRUE)` output.",
-  "Accessors",        "get_tls_draws()",                    "Per-draw z, CTmax and (lethal) T_crit merged on `.draw` into one tibble (joins within group for grouped fits), so the quantities keep their joint pairing for contrasts and bivariate plots.",
-  "Accessors",        "get_tls_summary()",                  "Tidy combined posterior summary (the summary companion to `get_tls_draws()`): one row per quantity (z, CTmax, Tcrit) x group with median + 95% CrI, matching the shape `tls()` returns.",
-  "Accessors",        "get_tls_est()",                      "Draws or summary of any or all TLS quantities (z, CTmax, T_crit) from a `tls()` object; tidy-long and group-aware. The `tls`-object companion to `get_tls_draws()` / `get_tls_summary()` (which take an `extract_tdt()` output).",
+  "Accessors",        "get_tls_est()",                      "Draws or summary of any or all TLS quantities (z, CTmax, T_crit) from a `tls()` object, merged on `.draw` so quantities keep their joint pairing; tidy-long and group-aware.",
   "Accessors",        "get_4pl_est()",                      "Draws or summary of the natural-scale 4PL parameters (low, up, k, mid) from a fitted workflow; the 4PL-shape counterpart to `get_tls_est()`. Wraps `tdt_parameter_table()` (summary) / `extract_4pl_pars()` (draws).",
   "Accessors",        "get_surv_draws()",                   "Per-draw posterior of survival probability from `predict_survival_curves()`.",
   "Accessors",        "get_hi_draws()",                     "Per-draw posterior of heat-injury integrals from `predict_heat_injury()`.",
@@ -327,7 +318,6 @@ tdt_function_tour <- tibble::tribble(
   "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` (the 50% LT50) or a numeric for another probability.",
   "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes, default the absolute 50% crossing; per group via `by =`).",
   "TDT quantities",   "derive_z()",                         "Thermal sensitivity z read directly from the posterior (relative: -1/slope of mid(T); absolute: pooled per-draw local z over assay temps); optional local z(T); per group via `by =`.",
-  "TDT quantities",   "extract_tdt()",                      "Bundled wrapper: z and CTmax always; T_crit opt-in via `lethal = TRUE` (rate-multiplier; lethal-endpoint data only). Same `target_surv` argument as the primitives above; per-group output for grouped fits (`by =`).",
   "TDT quantities",   "tls()",                              "One call returning z, CTmax and (when `lethal = TRUE`) T_crit per moderator group from ANY fitted 4PL, including hand-coded `brms` models. Evaluates each sub-parameter at a moderator x temperature grid via `posterior_linpred()`; `target_surv` selects the relative midpoint or absolute LT50 threshold.",
   "TDT quantities",   "tls_z()",                            "Convenience wrapper for `tls(params = \"z\")` — z only.",
   "TDT quantities",   "tls_ctmax()",                        "Convenience wrapper for `tls(params = \"ctmax\")` — CTmax only.",
@@ -830,7 +820,7 @@ Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overla
 
 ### *Deriving $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the posterior* {#sec-joint-derive}
 
-The classical TLS quantities are transformations of the fitted joint posterior. The general extractor `tls()` (used in the tutorial below) and `extract_tdt()` both return the first two quantities below, and the third when `lethal = TRUE`; they share the same `target_surv`, `t_ref` and `lethal` arguments:
+The classical TLS quantities are transformations of the fitted joint posterior. The general extractor `tls()` returns the first two quantities below, and the third when `lethal = TRUE`, via its `target_surv`, `t_ref` and `lethal` arguments:
 
 - **$z$** — thermal sensitivity is read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 3 of the manuscript, the midpoint–temperature relation). Under the relative threshold, $\log_{10}\text{LT}(T) = \text{mid}(T)$ and the derivative is simply the linear slope, so $z = -1/\beta_1$ exactly.
 - **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 h of exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
@@ -840,14 +830,14 @@ $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
 $$ {#eq-tcrit}
 
-The threshold one wishes to use is set by the `target_surv` argument (shared by `tls()` and `extract_tdt()`). The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates shifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
+The threshold one wishes to use is set by the `target_surv` argument of `tls()`. The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates shifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
 
 **How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value: breakpoint analyses of $\log_{10}$(time-to-thermal-failure) against temperature place the critical temperature anywhere from roughly 27 to 40 °C depending on the assay and taxon (including *Drosophila suzukii* and *Lemna gibba*) [@faber2026]. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which we assume net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
 ::: {.callout-warning}
 ## $T_{crit}$ is meaningful only for lethal-endpoint data
 
-The rate-multiplier $T_{crit}$ in @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data. It treats $T_{crit}$ as the temperature where damage begins to accumulate, and so can be used to make a prediction about $T_{crit}$. Users with lethal-endpoint data therefore set `lethal = TRUE` (in `tls()` or `extract_tdt()`) to additionally derive an *estimate* of $T_{crit}$; with `lethal = FALSE` the extractors return only $z$ and $CT_{max_{1hr}}$. Note that this is only a prediction and does not negate the need to follow up with empirical studies as validations [see @faber2026].
+The rate-multiplier $T_{crit}$ in @eq-tcrit interprets $z$ as the temperature sensitivity of *damage accumulation*, which is appropriate for lethal-endpoint dose-response data. It treats $T_{crit}$ as the temperature where damage begins to accumulate, and so can be used to make a prediction about $T_{crit}$. Users with lethal-endpoint data therefore set `lethal = TRUE` in `tls()` to additionally derive an *estimate* of $T_{crit}$; with `lethal = FALSE` it returns only $z$ and $CT_{max_{1hr}}$. Note that this is only a prediction and does not negate the need to follow up with empirical studies as validations [see @faber2026].
 
 For **sublethal** endpoints, fitted $z$ instead describes performance loss and can be very different from $z$ derived from lethal data. Substituting that value into @eq-tcrit can shift $T_{crit}$ substantially and produce unrealistic $T_{crit}$ estimates. For example, a smaller sublethal $z$ can produce a $T_{crit}$ several °C higher than the lethal estimate despite a similar $CT_{max_{1hr}}$. Interpreting $T_{crit}$ as an intersection between thermal-performance and thermal-death-time curves requires both lethal and sublethal data [@jorgensen_unifying_2021; @orsted_finding_2022; @faber2026].
 :::
@@ -866,7 +856,7 @@ The correction factor is needed when calculating an 'absolute' threshold (e.g., 
 
 If using a 'relative threshold' (`target_surv = "relative"`) then the calculations do not require the correction factor. $CT_{max_{1hr}}$ is the temperature at which $\log_{10}\text{LT}(T)$ crosses $t_\text{ref}$, per draw. For $z$, under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is exactly linear, so $z = -1/\beta_1$ per draw.  The worked example in @sec-joint-extend demonstrates this with a simulation where `up` and $k$ carry strong $T$ effects.
 
-Under `target_surv = "absolute"`, `extract_tdt()` includes the asymmetry-correction term automatically, evaluating it per draw from the same posterior of $\ell$, $\text{up}$ and $k$ so that any temperature-dependence of those parameters is propagated. The draws used to compute $z$ and $CT_{max_{1hr}}$ are subsampled once across all parameters, so the two quantities share draws — their correlation, and the joint pairing used for $T_{crit}$, is preserved.
+Under `target_surv = "absolute"`, `tls()` includes the asymmetry-correction term automatically, evaluating it per draw from the same posterior of $\ell$, $\text{up}$ and $k$ so that any temperature-dependence of those parameters is propagated. The draws used to compute $z$ and $CT_{max_{1hr}}$ are subsampled once across all parameters, so the two quantities share draws — their correlation, and the joint pairing used for $T_{crit}$, is preserved.
 
 :::
 
@@ -998,26 +988,24 @@ Under the binomial likelihood, the posterior SD for $z$ is `r sd_z_bin` °C and 
 
 The beta-binomial fit is slightly wider for both quantities (SD for $z$: `r sd_z_bb` °C; for $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ captures extra-binomial variation and propagates it into the derived quantities. A two-stage pipeline requires an additional bootstrap or delta-method calculation to achieve comparable propagation.
 
-For per-draw functions of *several* quantities at once, the wide-paired form — one row per draw, with the quantities as columns — is more convenient than the long `$draws` above. `extract_tdt()` returns the bundled posterior object (per-quantity slots, the LT50 curve, plus the `get_*()` accessors), and `get_tls_draws()` pulls $z$, $CT_{max_{1hr}}$ and $T_{crit}$ aligned on `.draw` into one tibble (an inner join, so the quantities keep their joint pairing — and join within group for grouped fits). That pairing is what lets a between-group contrast, a ratio, or a derived index be computed per draw with correctly-correlated uncertainty:
+For per-draw functions of *several* quantities at once, the wide-paired form — one row per draw, with the quantities as columns — is more convenient than the long `$draws` above. `get_tls_est(., "draws")` returns $z$, $CT_{max_{1hr}}$ and $T_{crit}$ draws longitudinally (in long form data) with each draw from the posterior indicated by the `.draw` column. Pivoting the data to wide keeps the quantities jointly paired (each row is one posterior draw). That pairing is what lets a between-group contrast, a ratio, or a derived index be computed per draw with correctly-correlated uncertainty:
 
 ```{r tls-draws-showcase}
 #| label: tls-draws-showcase
 #| echo: true
 #| code-fold: show
 
-# extract_tdt() -> bundled object; get_tls_draws() -> one row per draw with
-# z / CTmax / T_crit aligned on `.draw`. The merge is an inner join on `.draw`,
-# so the quantities stay jointly paired (a column-bind could not).
-et_bin <- extract_tdt(wf_bin, target_surv = "relative", t_ref = 60, lethal = TRUE, ndraws = 1000)
-d_bin  <- get_tls_draws(et_bin)
+# get_tls_est(., "draws") -> tidy-long draws; pivot to wide so each row is one
+# posterior draw with z / CTmax / T_crit as columns, jointly paired on `.draw`.
+tl_bin <- tls(wf_bin, target_surv = "relative", t_ref = 60, lethal = TRUE, ndraws = 1000)
+d_bin  <- get_tls_est(tl_bin, "draws") |>
+  tidyr::pivot_wider(names_from = quantity, values_from = value) |>
+  dplyr::rename(T_crit = Tcrit)
 head(d_bin)
 
-# get_tls_summary() is the summary companion -- it returns the same tidy table as
-# tls()$summary above (same quantities, same threshold). z and CTmax agree
-# exactly (both paths read the same posterior draws); T_crit agrees only in
-# distribution, since each path samples the r* floor independently, so its median
-# differs by Monte-Carlo error:
-get_tls_summary(et_bin)
+# The matching summary is get_tls_est(., "summary") -- the same tidy table as
+# tls()$summary above (same quantities, same threshold).
+get_tls_est(tl_bin, "summary")
 
 # z and CTmax co-vary in the posterior -- a relationship only visible on PAIRED
 # draws (summarising the two separately would erase it):
@@ -1139,7 +1127,7 @@ The midpoint and direct fits return the same $z$ and $CT_{max_{1hr}}$ to within 
 
 The default `fit_4pl()` places a `temp_c` slope on $\ell$, $\text{up}$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. Strictly speaking, this isn't necessary if you are interested in *relative* measures so long as they are on the midpoint. However, these are needed for *absolute* measures because of the need for the correction factor to adjust to the desired probability threshold. 
 
-Here, we test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with `up` declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `extract_tdt()` calls used above.
+Here, we test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with `up` declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `tls()` workflow used above.
 
 ```{r sim-data-ext}
 #| label: sim-data-ext
@@ -1361,45 +1349,55 @@ ext_param_long |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-Now we apply the same `extract_tdt()` call as in @sec-joint-derive — the workflow remains similar because `extract_tdt()` already inverts the fitted surface numerically per draw:
+We derive the TDT quantities as in @sec-joint-derive, but read at the **absolute** threshold. `tls()` inverts the fitted surface numerically per draw, so the same workflow handles the bent curve; for the per-temperature detail we call the `derive_z()` and `derive_tdt_curve()` primitives alongside it:
 
 ```{r extract-tdt-ext}
 #| label: extract-tdt-ext
 #| echo: true
 #| code-fold: show
 
-# Extract TDT quantities from the extended simulation fit. We use the ABSOLUTE
-# threshold here: with temperature effects on up/k the log10(LT50) curve is bent,
-# so its local z varies with T and the asymmetry correction must be evaluated per
-# draw. (The relative threshold reads mid(T), which is linear and would give a
-# constant z that cannot match the bent truth.) z_local = TRUE additionally
-# returns the per-temperature local z(T) used below.
-et_ext <- extract_tdt(wf_ext, target_surv = "absolute", t_ref = 60, time_multiplier = 1,
-                      ndraws = 1000, z_local = TRUE)
+# Extract TDT quantities from the extended simulation fit under the ABSOLUTE
+# threshold: with temperature effects on up/k the log10(LT50) curve is bent, so
+# its local z varies with T and the asymmetry correction is evaluated per draw.
+# (The relative threshold reads mid(T), which is linear and would give a constant
+# z that cannot match the bent truth.)
+#
+# tls() returns the pooled z and CTmax. For this bent-curve deep-dive we also call
+# two advanced primitives directly: derive_z() for the per-temperature local z(T),
+# and derive_tdt_curve() for the smooth LT50(T) curve.
+tl_ext    <- tls(wf_ext, target_surv = "absolute", t_ref = 60, time_multiplier = 1,
+                 ndraws = 1000)
+z_ext     <- derive_z(wf_ext, target_surv = "absolute", ndraws = 1000)
+curve_ext <- derive_tdt_curve(wf_ext, temp_grid = seq(min(temps), max(temps), length.out = 60),
+                              target_surv = "absolute", ndraws = 1000)
 ```
 
-@tbl-extract-ext compares the three classical TDT quantities from `extract_tdt()` to the analytical truth derived above.
+@tbl-extract-ext compares the extracted $z$ and $CT_{max_{1hr}}$ to the analytical truth derived above.
 
 ```{r extract-tdt-ext-table}
 #| label: tbl-extract-ext
-#| tbl-cap: "Classical TDT quantities from `extract_tdt(target_surv = \"absolute\")` on the T-varying fit, compared against analytical truth. Under the absolute threshold the single-summary $z$ is the per-draw **local** $z(T)$ of the bent $\\log_{10}\\text{LT50}(T)$ curve, pooled (averaged) over the assay temperatures; the truth row reports the mean of the analytical local $z(T)$ at those temperatures. $CT_{max_{1hr}}$ comes from direct inversion of the fitted 4PL at 60 min per draw, including the per-draw asymmetry correction."
+#| tbl-cap: "Classical TDT quantities from `tls(target_surv = \"absolute\")` on the T-varying fit, compared against analytical truth. Under the absolute threshold the single-summary $z$ is the per-draw **local** $z(T)$ of the bent $\\log_{10}\\text{LT50}(T)$ curve, pooled (averaged) over the assay temperatures; the truth row reports the mean of the analytical local $z(T)$ at those temperatures. $CT_{max_{1hr}}$ comes from direct inversion of the fitted 4PL at 60 min per draw, including the per-draw asymmetry correction."
 
 # Format extracted TDT quantities for the extended simulation fit (z and CTmax;
 # T_crit is omitted here -- it is the rate-multiplier prediction demonstrated in
 # the tutorial, not the focus of this bent-curve recovery check).
+# tls()$summary is tidy-long (quantity, median, lower, upper); pull z and CTmax.
+ext_sum    <- get_tls_est(tl_ext, "summary")
+z_ext_row  <- ext_sum[ext_sum$quantity == "z", ]
+ct_ext_row <- ext_sum[ext_sum$quantity == "CTmax", ]
 tibble::tibble(
   Quantity     = c("z (°C)", "CTmax at 1 hr (°C)"),
   Truth        = c(round(true_mean_local_z, 3), round(true_CTmax_1hr, 3)),
-  Median       = c(et_ext$z$summary$z_median,   et_ext$CTmax$summary$temp_median),
-  Lower        = c(et_ext$z$summary$z_lower,    et_ext$CTmax$summary$temp_lower),
-  Upper        = c(et_ext$z$summary$z_upper,    et_ext$CTmax$summary$temp_upper)
+  Median       = c(z_ext_row$median, ct_ext_row$median),
+  Lower        = c(z_ext_row$lower,  ct_ext_row$lower),
+  Upper        = c(z_ext_row$upper,  ct_ext_row$upper)
 ) |>
   tinytable::tt(digits = 3, escape = TRUE)
 ```
 
-Both posterior intervals cover their analytical truths. Under the absolute threshold the single-summary $z$ is the per-draw local $z(T)$ averaged over the assay temperatures; it recovers the truth (mean local $z$ = `r round(true_mean_local_z, 2)` °C; posterior median `r round(et_ext$z$summary$z_median, 2)` °C, 95% CrI [`r round(et_ext$z$summary$z_lower, 2)`, `r round(et_ext$z$summary$z_upper, 2)`] °C). Because the curve is bent, the *full* per-temperature local $z(T)$ profile varies across the assay range (examined below, and returned directly by `extract_tdt(target_surv = "absolute", z_local = TRUE)`) — unlike the relative threshold, which reads the linear $\text{mid}(T)$ and would give a single constant $z$. Direct 4PL inversion at the reference duration also recovers $CT_{max_{1hr}}$ (truth `r round(true_CTmax_1hr, 2)` °C; posterior median `r round(et_ext$CTmax$summary$temp_median, 2)` °C, 95% CrI [`r round(et_ext$CTmax$summary$temp_lower, 2)`, `r round(et_ext$CTmax$summary$temp_upper, 2)`] °C), with the asymmetry correction evaluated per draw rather than assumed constant in $T$.
+Both posterior intervals cover their analytical truths. Under the absolute threshold the single-summary $z$ is the per-draw local $z(T)$ averaged over the assay temperatures; it recovers the truth (mean local $z$ = `r round(true_mean_local_z, 2)` °C; posterior median `r round(z_ext_row$median, 2)` °C, 95% CrI [`r round(z_ext_row$lower, 2)`, `r round(z_ext_row$upper, 2)`] °C). Because the curve is bent, the *full* per-temperature local $z(T)$ profile varies across the assay range (examined below, and returned directly by `derive_z(target_surv = "absolute")$local_summary`) — unlike the relative threshold, which reads the linear $\text{mid}(T)$ and would give a single constant $z$. Direct 4PL inversion at the reference duration also recovers $CT_{max_{1hr}}$ (truth `r round(true_CTmax_1hr, 2)` °C; posterior median `r round(ct_ext_row$median, 2)` °C, 95% CrI [`r round(ct_ext_row$lower, 2)`, `r round(ct_ext_row$upper, 2)`] °C), with the asymmetry correction evaluated per draw rather than assumed constant in $T$.
 
-The bent $\log_{10}\text{LT50}(T)$ curve itself is the intermediate object both quantities are built from; it lives in `et_ext$lt50_curve` (the output of `derive_tdt_curve()`) and can be plotted directly (@fig-lt50-curve-ext).
+The bent $\log_{10}\text{LT50}(T)$ curve itself is produced by `derive_tdt_curve()` (here `curve_ext`) and can be plotted directly (@fig-lt50-curve-ext).
 
 ::: {#fig-lt50-curve-ext}
 
@@ -1416,7 +1414,7 @@ truth_overlay <- {
                                                numeric(1)))
 }
 
-plot_tdt_curve(et_ext$lt50_curve) +
+plot_tdt_curve(curve_ext) +
   ggplot2::geom_line(data = truth_overlay,
                      ggplot2::aes(x = temp, y = duration_median),
                      linetype = "dashed", colour = "black",
@@ -1426,17 +1424,17 @@ plot_tdt_curve(et_ext$lt50_curve) +
 Posterior $\text{LT50}(T)$ curve (median + 95% CrI, blue) recovered by `derive_tdt_curve()` from the model fit, with the analytical truth overlaid (dashed black). The curve is visibly bent rather than straight in $T$, and the posterior tracks the truth.
 :::
 
-We can easily visualize variation in $z$ with temperature. `extract_tdt(..., z_local = TRUE)` returns the per-draw **local** $z(T)$ at each assay temperature directly, in `et_ext$z$local` (a `$draws` slot plus a per-temperature `$summary`). We use that summary below (@fig-local-z-ext).
+We can easily visualize variation in $z$ with temperature. `derive_z(target_surv = "absolute")` returns the per-draw **local** $z(T)$ at each assay temperature directly, in `$local_draws` (per draw) and `$local_summary` (per temperature). We use that summary below (@fig-local-z-ext).
 
 ```{r local-z-ext}
 #| label: local-z-ext
 #| echo: true
 #| code-fold: show
 
-# Per-temperature local z(T) straight from extract_tdt(z_local = TRUE).
-# et_ext$z$local$summary has columns temp / z_median / z_lower / z_upper; we
+# Per-temperature local z(T) straight from derive_z(target_surv = "absolute").
+# z_ext$local_summary has columns temp / z_median / z_lower / z_upper; we
 # rename to the names the figure below expects and join the analytical truth.
-local_z_summary <- et_ext$z$local$summary |>
+local_z_summary <- z_ext$local_summary |>
   dplyr::transmute(T_at           = temp,
                    z_local_median = z_median,
                    z_local_lower  = z_lower,
@@ -1491,7 +1489,7 @@ ggplot2::ggplot(local_z_summary,
 Local $z(T)$ recovered from the per-draw $\log_{10}\text{LT50}(T)$ curve (blue median + 95% CrI), with the analytical truth overlaid (dashed black). Where the constant-shape simple-case fit would give the same $z$ at every assay temperature, here local $z$ varies with $T$ in lock-step with the bent $\log_{10}\text{LT50}(T)$ curve.
 :::
 
-The same `fit_4pl()` and `extract_tdt()` calls recover the bent $\log_{10}\text{LT50}(T)$ curve, average $z$ across the assay grid, and per-draw $CT_{max_{1hr}}$. Under the constant-shape truth in @sec-joint-derive, near-zero slopes on `up`, $\ell$, and $k$ reduce this calculation to the closed-form case.
+The same `fit_4pl()` fit, read through `tls()` and the `derive_*()` primitives, recovers the bent $\log_{10}\text{LT50}(T)$ curve, the assay-averaged $z$, and per-draw $CT_{max_{1hr}}$. Under the constant-shape truth in @sec-joint-derive, near-zero slopes on `up`, $\ell$, and $k$ reduce this calculation to the closed-form case.
 
 ### Heat injury accumulation and survival under a fluctuating trace
 
@@ -2685,7 +2683,7 @@ priors_coma_4pl <- make_4pl_priors(std_coma, ctmax = ~ sex, z = ~ sex,
 #| code-fold: show
 
 # Build the same sex-on-CTmax/z (direct) 4PL BY HAND with brms::bf() (rather
-# than fit_4pl(ctmax = ..., z = ...)) to show tls()/extract_tdt() work on ANY
+# than fit_4pl(ctmax = ..., z = ...)) to show tls() works on ANY
 # brms 4PL. mid is written as a derived term via nlf(), so tls() still reads it.
 coma_4pl_bf <- brms::bf(
   n_surv | trials(n_total) ~ low + (up - low) / (1 + exp(exp(logk) * (logd - mid))),  # Main 4PL
@@ -3621,7 +3619,7 @@ This figure compiles the joint Bayesian 4PL posterior distributions of the TDT q
 
 # Assemble the manuscript cross-case posterior-density figure from the four joint
 # 4PL case-study fits. Per-group z and CTmax draws come from the tidy-long tls()
-# output (aphids, leaf, zebrafish) or the per-sex extract_tdt() objects (fly).
+# output (aphids, leaf, zebrafish) or the per-sex tls() objects (fly).
 suppressPackageStartupMessages({
   library(ggplot2); library(dplyr); library(tibble); library(ggridges)
   library(patchwork); library(ggtext); library(cowplot); library(magick); library(here)
@@ -3916,8 +3914,7 @@ fly_trace <- orsted_micro |>
   dplyr::transmute(time = dplyr::row_number() - 1, temp = micro_temp_c,
                    datetime = datetime_utc)
 
-## Relative-threshold T_crit per group (matches the relative HI integration).
-## tls() and extract_tdt() return identical T_crit here; tls() is the standard extractor.
+## Relative-threshold T_crit per group via tls() (matches the relative HI integration).
 Tc_F <- get_tls_est(tls(wf_dros_mort_F, target_surv = "relative", t_ref = 60,
                         lethal = TRUE, ndraws = 150), "summary", "Tcrit")$median
 Tc_M <- get_tls_est(tls(wf_dros_mort_M, target_surv = "relative", t_ref = 60,
