@@ -17,7 +17,8 @@ predict_heat_injury(
   irreversible_mortality = TRUE,
   save_draws = FALSE,
   seed = NULL,
-  by = NULL
+  by = NULL,
+  shape = c("constant", "varying")
 )
 }
 \arguments{
@@ -79,6 +80,26 @@ reproducibility. \code{NULL} (default) leaves the RNG untouched.}
 returns the ungrouped result. A grouped fit runs the dose
 integral through each group's 4PL and \code{summary} gains the
 moderator column(s).}
+
+\item{shape}{How the 4PL asymptotes/steepness enter the dose integral.
+\code{"constant"} (default) holds \code{low}, \code{up}, \code{k} at the
+centring temperature \code{T_bar} and lets only the midpoint
+shift with temperature -- the classical constant-shape
+heat-injury assumption (via \code{\link[=hi_pars]{hi_pars()}}). \code{"varying"}
+feeds the temperature-local \code{low(T)}, \code{up(T)}, \code{k(T)}
+(and \code{mid(T)}) into both the damage rate and the
+dose→survival mapping (via \code{\link[=extract_4pl_pars]{extract_4pl_pars()}}). In
+\code{"varying"} mode survival is accumulated as a monotone
+state by an incremental decrement: each interval's
+mortality increment is the \emph{local} curve's drop in
+survival over the dose added that interval
+(\verb{g(D_j; shape_j) - g(D_\{j-1\}; shape_j)}), so the local
+shape sets the RATE of survival loss without re-mapping
+the global cumulative dose through a step-local curve
+(which would make survival jump when temperature changes
+with no added exposure). When the shape is flat in
+temperature the two modes coincide to numerical tolerance.
+See \code{vignette}-free note \code{notes/2026-06-26-shape-varying-heat-injury.qmd}.}
 }
 \value{
 A list with elements:

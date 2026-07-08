@@ -300,16 +300,21 @@ get_tls_est <- function(x, what = c("summary", "draws"), params = NULL) {
 #' `"draws"` calls [extract_4pl_pars()].
 #'
 #' @param workflow A fitted [fit_4pl()] workflow (`workflow$fit` not `NULL`).
-#' @param what `"summary"` (default; one row per parameter with median + 95% CrI,
-#'   via [tdt_parameter_table()] -- this also includes the derived `z` slope row)
-#'   or `"draws"` (per-draw `low`, `up`, `k`, `mid_int`, `mid_temp`, via
+#' @param what `"summary"` (default; one row per parameter with median + 95% CrI
+#'   at the centring temperature `T_bar`, via [tdt_parameter_table()] -- this
+#'   also includes the derived `z` slope row) or `"draws"` (per-draw natural-
+#'   scale `low`, `up`, `k`, `mid` at each assay temperature, via
 #'   [extract_4pl_pars()]).
 #' @param by Optional moderator column(s) to group by, passed through. `NULL`
 #'   (default) uses the fit's own grouping for a grouped fit, else one group.
+#' @param temps For `what = "draws"`, numeric vector of assay temperatures (°C)
+#'   to evaluate the curve parameters at, passed to [extract_4pl_pars()].
+#'   `NULL` (default) uses the fit's observed unique assay temperatures.
+#'   Ignored for `what = "summary"` (which always reports the `T_bar` slice).
 #' @return A tibble (plus the moderator column(s) for a grouped fit): for
-#'   `"summary"`, one row per parameter with median and credible bounds; for
-#'   `"draws"`, one row per posterior draw with `low`, `up`, `k`, `mid_int`,
-#'   `mid_temp` (and `.draw`).
+#'   `"summary"`, one row per parameter with median and credible bounds at
+#'   `T_bar`; for `"draws"`, one row per posterior draw × temperature with
+#'   `temp`, `low`, `up`, `k`, `mid` (and `.draw`).
 #' @seealso [get_tls_est()] for the derived TLS quantities; [tdt_parameter_table()]
 #'   and [extract_4pl_pars()], which this wraps.
 #' @examples
@@ -320,10 +325,11 @@ get_tls_est <- function(x, what = c("summary", "draws"), params = NULL) {
 #' get_4pl_est(wf, "draws", by = "species")   # per-draw params, per group
 #' }
 #' @export
-get_4pl_est <- function(workflow, what = c("summary", "draws"), by = NULL) {
+get_4pl_est <- function(workflow, what = c("summary", "draws"), by = NULL,
+                        temps = NULL) {
   what <- match.arg(what)
   if (what == "summary") tdt_parameter_table(workflow, by = by)
-  else extract_4pl_pars(workflow, by = by)
+  else extract_4pl_pars(workflow, temps = temps, by = by)
 }
 
 #' Posterior draws of heat-injury trajectory

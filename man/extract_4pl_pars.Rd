@@ -2,34 +2,73 @@
 % Please edit documentation in R/predict_heat_injury.R
 \name{extract_4pl_pars}
 \alias{extract_4pl_pars}
-\title{Per-draw 4PL parameters from a fitted workflow}
+\title{Per-draw natural-scale 4PL parameters from a fitted workflow}
 \usage{
-extract_4pl_pars(workflow, by = NULL)
+extract_4pl_pars(
+  workflow,
+  temps = NULL,
+  by = NULL,
+  re_formula = NA,
+  ndraws = NULL
+)
 }
 \arguments{
 \item{workflow}{Fitted \code{bayes_tls}.}
 
+\item{temps}{Numeric vector of assay temperatures (°C, uncentred) to
+evaluate the curve parameters at. \code{NULL} (default) uses the fit's observed
+unique assay temperatures.}
+
 \item{by}{Optional moderator column(s) for per-group parameters. \code{NULL}
-(default) uses the fit's moderators; a single-condition fit returns the
-ungrouped tibble. A grouped fit prepends the moderator column(s).}
+(default) uses the fit's moderators (all levels); a single-condition fit
+returns the ungrouped tibble. A grouped fit prepends the moderator
+column(s).}
+
+\item{re_formula}{Passed to \code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}}. \code{NA} (default)
+marginalises out group-level (random) effects so the result is a
+population-level curve; \code{NULL} conditions on the fitted random effects.}
+
+\item{ndraws}{Posterior draws to use; \code{NULL} (default) uses the full
+posterior. Pass an integer to subsample (the caller is responsible for
+\code{set.seed()} if a reproducible subsample is wanted).}
 }
 \value{
-A tibble with \verb{(.draw, low, up, k, mid_int, mid_temp)} columns
-(plus the moderator column(s) for a grouped fit), filtered to draws
-producing valid parameter values.
+A long tibble with \verb{(.draw, temp, low, up, k, mid)} columns (plus
+the moderator column(s) for a grouped fit, immediately after
+\code{.draw}), one row per draw × temperature × group, filtered to rows
+producing valid parameter values (\code{k > 0}, \code{up > low}, all finite).
+\code{temp} is the uncentred assay temperature (°C).
 }
 \description{
-Extracts \verb{(low, up, k, mid_int, mid_temp)} per posterior draw, suitable for
-the analytical heat-injury machinery. Temperature slopes on \code{lowraw},
-\code{upraw}, and \code{logk} are intentionally ignored — the heat-injury integral
-is evaluated under the classical assumption that the asymptotes and slope
-are constant in T (only the midpoint shifts). If those temp slopes are
-shrunk near zero by the data, this introduces no bias; otherwise it is the
-same approximation the classical HI framework makes.
+Faithfully extracts ALL FOUR natural-scale 4PL sub-parameters
+(\code{low}, \code{up}, \code{k}, \code{mid}) per posterior draw, at one or more assay
+temperatures and per moderator group, retaining whatever temperature and/or
+group structure each sub-parameter was fit with (\code{~ 1}, \code{~ temp_c},
+\code{~ temp_c * group}, random effects, …). It surfaces the shared TDT engine
+(\code{tls_eval_subpars()} over a \code{tls_build_grid()} temperature × moderator
+grid via \code{brms::posterior_linpred(nlpar=)}), so the result is
+parameterisation- and coding-agnostic — no coefficient-name parsing.
+}
+\details{
+\code{mid} is the natural-scale midpoint sub-parameter (the log10 time at the
+per-draw relative threshold) evaluated at each temperature; on an absolute
+fit it is still the bare \code{mid} nlpar (the asymmetry correction is applied
+downstream by the threshold-specific readers, not folded in here).
+
+This replaces the earlier constant-shape extractor that discarded the
+temperature slopes on \code{low}/\code{up}/\code{k}. The constant-in-T view the
+heat-injury integral needs (\verb{low, up, k} at the centring temperature plus
+a linear \code{mid_int}/\code{mid_temp}) now lives in the internal helper
+\code{\link[=hi_pars]{hi_pars()}}, which \code{\link[=predict_heat_injury]{predict_heat_injury()}} calls for \code{shape = "constant"}.
 }
 \examples{
 \dontrun{
-pars <- extract_4pl_pars(wf)
+pars <- extract_4pl_pars(wf)                 # observed temps, fit's groups
+extract_4pl_pars(wf, temps = c(30, 33, 36))  # at chosen temperatures
 head(pars)
 }
+}
+\seealso{
+\code{\link[=hi_pars]{hi_pars()}} for the constant-shape view used by the heat-injury
+integral; \code{\link[=get_4pl_est]{get_4pl_est()}} which wraps this for the \code{"draws"} view.
 }

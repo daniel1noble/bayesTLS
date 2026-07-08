@@ -10,42 +10,127 @@
 #      interval's own width (dose starts at zero at the first time point).
 #   5. Map cumulative dose back to predicted survival via the 4PL.
 
-#' Per-draw 4PL parameters from a fitted workflow
+#' Per-draw natural-scale 4PL parameters from a fitted workflow
 #'
-#' Extracts `(low, up, k, mid_int, mid_temp)` per posterior draw, suitable for
-#' the analytical heat-injury machinery. Temperature slopes on `lowraw`,
-#' `upraw`, and `logk` are intentionally ignored — the heat-injury integral
-#' is evaluated under the classical assumption that the asymptotes and slope
-#' are constant in T (only the midpoint shifts). If those temp slopes are
-#' shrunk near zero by the data, this introduces no bias; otherwise it is the
-#' same approximation the classical HI framework makes.
+#' Faithfully extracts ALL FOUR natural-scale 4PL sub-parameters
+#' (`low`, `up`, `k`, `mid`) per posterior draw, at one or more assay
+#' temperatures and per moderator group, retaining whatever temperature and/or
+#' group structure each sub-parameter was fit with (`~ 1`, `~ temp_c`,
+#' `~ temp_c * group`, random effects, …). It surfaces the shared TDT engine
+#' (`tls_eval_subpars()` over a `tls_build_grid()` temperature × moderator
+#' grid via `brms::posterior_linpred(nlpar=)`), so the result is
+#' parameterisation- and coding-agnostic — no coefficient-name parsing.
+#'
+#' `mid` is the natural-scale midpoint sub-parameter (the log10 time at the
+#' per-draw relative threshold) evaluated at each temperature; on an absolute
+#' fit it is still the bare `mid` nlpar (the asymmetry correction is applied
+#' downstream by the threshold-specific readers, not folded in here).
+#'
+#' This replaces the earlier constant-shape extractor that discarded the
+#' temperature slopes on `low`/`up`/`k`. The constant-in-T view the
+#' heat-injury integral needs (`low, up, k` at the centring temperature plus
+#' a linear `mid_int`/`mid_temp`) now lives in the internal helper
+#' [hi_pars()], which [predict_heat_injury()] calls for `shape = "constant"`.
 #'
 #' @param workflow Fitted `bayes_tls`.
+#' @param temps Numeric vector of assay temperatures (°C, uncentred) to
+#'   evaluate the curve parameters at. `NULL` (default) uses the fit's observed
+#'   unique assay temperatures.
 #' @param by Optional moderator column(s) for per-group parameters. `NULL`
-#'   (default) uses the fit's moderators; a single-condition fit returns the
-#'   ungrouped tibble. A grouped fit prepends the moderator column(s).
-#' @return A tibble with `(.draw, low, up, k, mid_int, mid_temp)` columns
-#'         (plus the moderator column(s) for a grouped fit), filtered to draws
-#'         producing valid parameter values.
+#'   (default) uses the fit's moderators (all levels); a single-condition fit
+#'   returns the ungrouped tibble. A grouped fit prepends the moderator
+#'   column(s).
+#' @param re_formula Passed to [brms::posterior_linpred()]. `NA` (default)
+#'   marginalises out group-level (random) effects so the result is a
+#'   population-level curve; `NULL` conditions on the fitted random effects.
+#' @param ndraws Posterior draws to use; `NULL` (default) uses the full
+#'   posterior. Pass an integer to subsample (the caller is responsible for
+#'   `set.seed()` if a reproducible subsample is wanted).
+#' @return A long tibble with `(.draw, temp, low, up, k, mid)` columns (plus
+#'         the moderator column(s) for a grouped fit, immediately after
+#'         `.draw`), one row per draw × temperature × group, filtered to rows
+#'         producing valid parameter values (`k > 0`, `up > low`, all finite).
+#'         `temp` is the uncentred assay temperature (°C).
+#' @seealso [hi_pars()] for the constant-shape view used by the heat-injury
+#'   integral; [get_4pl_est()] which wraps this for the `"draws"` view.
 #' @examples
 #' \dontrun{
-#' pars <- extract_4pl_pars(wf)
+#' pars <- extract_4pl_pars(wf)                 # observed temps, fit's groups
+#' extract_4pl_pars(wf, temps = c(30, 33, 36))  # at chosen temperatures
 #' head(pars)
 #' }
 #' @export
-extract_4pl_pars <- function(workflow, by = NULL) {
+extract_4pl_pars <- function(workflow, temps = NULL, by = NULL,
+                             re_formula = NA, ndraws = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
-  # Constant-in-T 4PL parameters for the heat-injury integral, read by evaluating
-  # posterior_linpred(nlpar=) at temp_c = 0 (low/up/k + midpoint intercept) and
-  # temp_c = 1 (for the linear midpoint slope) — parameterisation- and
-  # coding-agnostic, no coefficient-name parsing. The classical constant-shape
-  # assumption is preserved: low/up/k are read at temp_c = 0 only; mid is the one
-  # T-varying quantity (intercept + slope). For a direct absolute fit the nlf mid
-  # already folds in the (constant-shape) asymmetry correction, so it stays linear.
+  fit       <- get_brmsfit(workflow)
+  by        <- tdt_resolve_by(workflow, by)
+  temp_mean <- workflow$meta$temp_mean %||% 0
+
+  # Default to the fit's observed unique assay temperatures (uncentred °C).
+  if (is.null(temps)) {
+    temps <- sort(unique(fit$data$temp_c)) + temp_mean
+  }
+  temp_grid <- temps - temp_mean                       # centre for the engine
+
+  draw_ids <- if (is.null(ndraws)) NULL else tls_draw_ids(fit, ndraws)
+  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = temp_grid)
+  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative",
+                         re_formula = re_formula, draw_ids = draw_ids)
+
+  ndr <- nrow(sp$mid)
+  per_group <- lapply(unique(nd$.grp), function(g) {
+    gi <- which(nd$.grp == g)
+    # One block per (draw, temperature) cell in this group, in temp order.
+    blocks <- lapply(gi, function(col) {
+      tibble::tibble(
+        .draw = seq_len(ndr),
+        temp  = nd$temp_c[col] + temp_mean,
+        low   = sp$low[, col], up = sp$up[, col], k = sp$k[, col],
+        mid   = sp$mid[, col]
+      )
+    })
+    out <- dplyr::bind_rows(blocks)
+    out <- dplyr::filter(out,
+                         is.finite(low) & is.finite(up) & is.finite(k) &
+                         is.finite(mid) & k > 0 & up > low)
+    if (!is.null(by)) {
+      gcols <- nd[gi[1], by, drop = FALSE]
+      out <- cbind(gcols[rep(1, nrow(out)), , drop = FALSE], out, row.names = NULL)
+    }
+    out
+  })
+  tibble::as_tibble(dplyr::bind_rows(per_group))
+}
+
+#' Constant-shape 4PL parameters for the heat-injury integral (internal)
+#'
+#' The classical heat-injury integral is evaluated under the assumption that
+#' the asymptotes (`low`, `up`) and steepness (`k`) are constant in
+#' temperature and only the midpoint shifts. This helper returns exactly that
+#' view, per posterior draw and per moderator group: `low`, `up`, `k` read at
+#' the centring temperature (`temp_c = 0`, i.e. `T_bar`), plus a linear
+#' midpoint decomposed into intercept (`mid_int`, at `T_bar`) and slope
+#' (`mid_temp`, per °C). This is the per-draw input
+#' [predict_heat_injury()] uses for `shape = "constant"`.
+#'
+#' Reads `posterior_linpred(nlpar=)` at `temp_c = 0` (asymptotes + midpoint
+#' intercept) and `temp_c = 1` (for the linear midpoint slope), so it is
+#' parameterisation- and coding-agnostic. If the temperature slopes on
+#' `low`/`up`/`k` are shrunk near zero by the data this introduces no bias;
+#' otherwise it is the same approximation the classical HI framework makes
+#' (see `shape = "varying"` for the slope-aware alternative).
+#'
+#' @param workflow Fitted `bayes_tls`.
+#' @param by Resolved moderator column(s) (already through `tdt_resolve_by()`),
+#'   or `NULL` for a single-condition fit.
+#' @return A tibble with `(.draw, low, up, k, mid_int, mid_temp)` (plus the
+#'   moderator column(s) for a grouped fit), filtered to valid draws.
+#' @keywords internal
+hi_pars <- function(workflow, by = NULL) {
   fit <- get_brmsfit(workflow)
-  by  <- tdt_resolve_by(workflow, by)
   nd  <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1))
   sp  <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
 
@@ -64,6 +149,55 @@ extract_4pl_pars <- function(workflow, by = NULL) {
     out
   })
   dplyr::bind_rows(per_group)
+}
+
+#' Temperature-local 4PL curves per posterior draw (internal, for shape="varying")
+#'
+#' Evaluates the full natural-scale 4PL `low(T)`, `up(T)`, `k(T)`, `mid(T)` per
+#' posterior draw at a set of unique temperatures, retaining every sub-parameter's
+#' temperature/group structure (the slopes the constant-shape [hi_pars()] view
+#' drops). Returns per-draw × per-temperature matrices, keyed for fast lookup by
+#' the shape-varying heat-injury integrator: each trace point's temperature maps
+#' to a column, each posterior draw to a row.
+#'
+#' @param workflow Fitted `bayes_tls`.
+#' @param by Resolved moderator column(s), or `NULL` for a single-condition fit.
+#' @param temps_unique Numeric vector of unique (uncentred °C) temperatures to
+#'   evaluate the curves at -- typically `unique(trace$temp)`.
+#' @return A named list, one element per moderator group (named by the group
+#'   label, `"all"` when ungrouped). Each element is a list with:
+#'   `temps` (the input temperatures, in evaluation order), `.draw` (the
+#'   posterior draw indices kept after filtering invalid draws), and the
+#'   matrices `low`, `up`, `k`, `mid`, each `[length(.draw) × length(temps)]`.
+#'   A draw is kept only if ALL its cells are valid (finite, `k > 0`,
+#'   `up > low`) at every temperature, so the integrator never hits a partial
+#'   draw.
+#' @keywords internal
+hi_local_curves <- function(workflow, by = NULL, temps_unique) {
+  fit       <- get_brmsfit(workflow)
+  temp_mean <- workflow$meta$temp_mean %||% 0
+  temp_grid <- temps_unique - temp_mean
+  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = temp_grid)
+  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
+  ndr <- nrow(sp$mid)
+
+  out <- lapply(unique(nd$.grp), function(g) {
+    gi <- which(nd$.grp == g)
+    # Columns of nd for this group, ordered to match temps_unique.
+    ord <- gi[order(match(round(nd$temp_c[gi] + temp_mean, 6),
+                          round(temps_unique, 6)))]
+    low <- sp$low[, ord, drop = FALSE]; up <- sp$up[, ord, drop = FALSE]
+    k   <- sp$k[, ord, drop = FALSE];  mid <- sp$mid[, ord, drop = FALSE]
+    # Keep only draws valid at EVERY temperature (so no partial-draw traces).
+    ok <- apply(is.finite(low) & is.finite(up) & is.finite(k) & is.finite(mid) &
+                  (k > 0) & (up > low), 1, all)
+    list(temps = temps_unique, .draw = which(ok), grp = g,
+         low = low[ok, , drop = FALSE], up = up[ok, , drop = FALSE],
+         k = k[ok, , drop = FALSE],   mid = mid[ok, , drop = FALSE],
+         by_row = if (!is.null(by)) nd[gi[1], by, drop = FALSE] else NULL)
+  })
+  names(out) <- vapply(out, function(x) x$grp, character(1))
+  out
 }
 
 #' Analytical inverse 4PL: duration to reach a target survival at a given temperature
@@ -193,6 +327,25 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'                     returns the ungrouped result. A grouped fit runs the dose
 #'                     integral through each group's 4PL and `summary` gains the
 #'                     moderator column(s).
+#' @param shape        How the 4PL asymptotes/steepness enter the dose integral.
+#'                     `"constant"` (default) holds `low`, `up`, `k` at the
+#'                     centring temperature `T_bar` and lets only the midpoint
+#'                     shift with temperature -- the classical constant-shape
+#'                     heat-injury assumption (via [hi_pars()]). `"varying"`
+#'                     feeds the temperature-local `low(T)`, `up(T)`, `k(T)`
+#'                     (and `mid(T)`) into both the damage rate and the
+#'                     dose→survival mapping (via [extract_4pl_pars()]). In
+#'                     `"varying"` mode survival is accumulated as a monotone
+#'                     state by an incremental decrement: each interval's
+#'                     mortality increment is the *local* curve's drop in
+#'                     survival over the dose added that interval
+#'                     (`g(D_j; shape_j) - g(D_{j-1}; shape_j)`), so the local
+#'                     shape sets the RATE of survival loss without re-mapping
+#'                     the global cumulative dose through a step-local curve
+#'                     (which would make survival jump when temperature changes
+#'                     with no added exposure). When the shape is flat in
+#'                     temperature the two modes coincide to numerical tolerance.
+#'                     See `vignette`-free note `notes/2026-06-26-shape-varying-heat-injury.qmd`.
 #' @return A list with elements:
 #'   - `summary`: tibble with `time`, `temp`, and posterior median + 95%
 #'     CrI for `hi`, `survival`, and `mortality` at each time step (plus the
@@ -217,8 +370,10 @@ predict_heat_injury <- function(trace, workflow,
                                 irreversible_mortality      = TRUE,
                                 save_draws                  = FALSE,
                                 seed                        = NULL,
-                                by                          = NULL) {
+                                by                          = NULL,
+                                shape = c("constant", "varying")) {
 
+  shape <- match.arg(shape)
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
   if (nrow(trace) < 2L)
@@ -260,7 +415,7 @@ predict_heat_injury <- function(trace, workflow,
   dt_vec <- diff(trace$time) * to_hours(trace_unit)                          # trace -> hours
 
   by       <- tdt_resolve_by(workflow, by)
-  pars_all <- extract_4pl_pars(workflow, by = by)
+  pars_all <- hi_pars(workflow, by = by)
   # ndraws = NULL (default) uses the FULL posterior -- keeps the integral
   # consistent with the model and the other derivation functions; pass an
   # integer to subsample for speed on long traces.
@@ -322,9 +477,102 @@ predict_heat_injury <- function(trace, workflow,
     dplyr::bind_rows(pred_list)
   }
 
+  # ----- shape = "varying": temperature-LOCAL low/up/k/mid in the integral -----
+  # The local curves are evaluated once per group at the trace's unique temps;
+  # `curve$.draw` indexes the full posterior, so a sampled draw is matched by its
+  # .draw id. `tcol` maps each trace point to its temperature column.
+  temps_unique <- sort(unique(trace$temp))
+  tcol         <- match(trace$temp, temps_unique)
+  curves_by_grp <- if (shape == "varying")
+    hi_local_curves(workflow, by = by, temps_unique = temps_unique) else NULL
+
+  # Survival at cumulative dose D on a 4PL curve (low, up, k) anchored so that
+  # D = 1 hits the chosen threshold (relative midpoint, or absolute p). Same map
+  # as survival_from_dose(), vectorised over per-step (D, low, up, k). Used to
+  # form the LOCAL per-interval survival decrement g(D_j) - g(D_{j-1}) (both
+  # endpoints on the SAME local curve, so a temperature change adds no jump).
+  surv_at_dose <- function(D, low, up, k) {
+    D <- pmax(D, 1e-12)
+    if (is.character(ts_arg) && length(ts_arg) == 1L && ts_arg == "relative") {
+      c_t <- 0
+    } else {
+      ratio <- (up - ts_arg) / (ts_arg - low)
+      c_t   <- ifelse(is.finite(ratio) & ratio > 0, log(ratio) / k, NA_real_)
+    }
+    low + (up - low) / (1 + exp(k * (log10(D) + c_t)))
+  }
+
+  integrate_pars_varying <- function(pars, curve) {
+    # Row in the local-curve matrices for each sampled draw (matched by .draw id).
+    rmap <- match(pars$.draw, curve$.draw)
+    pred_list <- vector("list", nrow(pars))
+    for (i in seq_len(nrow(pars))) {
+      r <- rmap[i]
+      if (is.na(r)) next                      # draw dropped as invalid somewhere
+      lowT <- curve$low[r, tcol]; upT <- curve$up[r, tcol]
+      kT   <- curve$k[r, tcol];   midT <- curve$mid[r, tcol]
+
+      # Damage rate from the LOCAL curve: tau(T) via the natural-scale mid(T)
+      # (mid_int = mid(T), mid_temp = 0 -> mid evaluated exactly at each point),
+      # with the local low/up/k feeding the absolute-threshold inversion.
+      tau <- vapply(seq_len(n), function(j) time_to_surv_threshold_4pl(
+        temp = trace$temp[j], survival_target = ts_arg,
+        low = lowT[j], up = upT[j], k = kT[j],
+        mid_int = midT[j], mid_temp = 0, temp_mean = temp_mean), numeric(1))
+      dmg <- 1 / (tau * unit_h)
+      dmg[!is.finite(dmg)] <- 0
+      if (!is.null(T_c)) dmg[trace$temp <= T_c] <- 0
+
+      rep_rate <- if (repair) {
+        repair_rate_schoolfield(
+          temp_celsius = trace$temp,
+          TA = repair_pars$TA, TAL = repair_pars$TAL,
+          TAH = repair_pars$TAH, TL = repair_pars$TL,
+          TH = repair_pars$TH, TREF = repair_pars$TREF,
+          r_ref = repair_pars$r_ref)
+      } else rep(0, n)
+
+      dose <- numeric(n); survival <- numeric(n)
+      dose[1]     <- 0
+      survival[1] <- surv_at_dose(1e-12, lowT[1], upT[1], kT[1])   # = up at D->0
+      for (j in seq_len(n)[-1]) {
+        w     <- dt_vec[j - 1]
+        rep_j <- rep_rate[j - 1] * w
+        if (repair_scales_with_survival) rep_j <- rep_j * survival[j - 1] / upT[j]
+        new_dose <- max(0, dose[j - 1] + dmg[j - 1] * w - rep_j)
+        # Incremental survival decrement from the LOCAL curve over [D_{j-1}, D_j]:
+        # both doses evaluated on the SAME step-j curve, so the shape change
+        # contributes no discontinuity; the local slope-in-dose sets the rate of
+        # survival loss. When low/up/k are flat in T this telescopes EXACTLY to
+        # the constant-shape closed form g(D_n).
+        s_prev_local <- surv_at_dose(dose[j - 1], lowT[j], upT[j], kT[j])
+        s_new_local  <- surv_at_dose(new_dose,    lowT[j], upT[j], kT[j])
+        dec <- s_new_local - s_prev_local                  # <= 0 (dose increases)
+        if (!is.finite(dec)) dec <- 0
+        surv_raw    <- survival[j - 1] + dec
+        survival[j] <- if (irreversible_mortality) min(survival[j - 1], surv_raw) else surv_raw
+        survival[j] <- max(survival[j], 0)                 # respect the floor
+        dose[j]     <- new_dose
+      }
+      pred_list[[i]] <- data.frame(
+        .draw = pars$.draw[i], time = trace$time, temp = trace$temp,
+        dose = dose, hi = dose * 100, survival = survival, mortality = 1 - survival
+      )
+    }
+    dplyr::bind_rows(pred_list)
+  }
+
+  # Dispatch: pick the per-draw integrator for the requested shape. The grouped
+  # path selects the matching group's local curves by label.
+  run_integral <- function(pars, grp_label) {
+    if (shape == "constant") integrate_pars(pars)
+    else integrate_pars_varying(pars, curves_by_grp[[grp_label]])
+  }
+
   if (!is.null(seed)) set.seed(seed)   # reproducible posterior-draw subsample
   if (is.null(by)) {
-    draws <- integrate_pars(dplyr::slice_sample(pars_all, n = min(ndraws, nrow(pars_all))))
+    draws <- run_integral(
+      dplyr::slice_sample(pars_all, n = min(ndraws, nrow(pars_all))), "all")
     n_used <- min(ndraws, nrow(pars_all))
   } else {
     groups <- unique(pars_all[, by, drop = FALSE])
@@ -333,8 +581,12 @@ predict_heat_injury <- function(trace, workflow,
       gp     <- dplyr::inner_join(pars_all, groups[gi, , drop = FALSE], by = by)
       n_gi   <- min(ndraws, nrow(gp))
       per_group_n[gi] <<- n_gi
+      # Group label, built EXACTLY as tls_build_grid() builds its `.grp`
+      # (do.call(paste, c(<by columns>, sep = " / "))) so the varying-mode local
+      # curves -- keyed by that same `.grp` -- are matched for this group.
+      grp_label <- do.call(paste, c(groups[gi, by, drop = FALSE], sep = " / "))
       cbind(groups[gi, , drop = FALSE],
-            integrate_pars(dplyr::slice_sample(gp, n = n_gi)),
+            run_integral(dplyr::slice_sample(gp, n = n_gi), grp_label),
             row.names = NULL)
     }))
     # Report the actual clamped per-group count integrated, not the raw request.
@@ -363,7 +615,8 @@ predict_heat_injury <- function(trace, workflow,
     summary = summary,
     meta    = list(target_surv = ts$label, target_mode = ts$mode,
                    target_prob = ts$prob, T_c = T_c, repair = repair,
-                   repair_pars = repair_pars, ndraws = n_used, by = by)
+                   repair_pars = repair_pars, ndraws = n_used, by = by,
+                   shape = shape)
   )
   if (save_draws) out$draws <- draws
   out

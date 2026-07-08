@@ -111,6 +111,184 @@ load_bent_workflow <- function() {
                            file = fit_stub, file_refit = "never"))
 }
 
+# Shape-varying fixture: planted KNOWN temperature slopes on up/k/mid (low ~ 1),
+# fit with matching sub-parameter formulas (low ~ 1, up ~ temp_c, k ~ temp_c,
+# mid ~ temp_c). Used to check extract_4pl_pars() faithfully recovers the
+# per-temperature asymptotes/steepness the old constant-shape extractor dropped.
+# Carries attr "truth_shape". Cached at fixtures/sim_fit_shape_small.rds.
+load_fixture_workflow_shape <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  fit_path <- file.path(fixture_dir, "sim_fit_shape_small")
+
+  raw <- simulate_tdt_shape(seed = 101)
+  ts  <- attr(raw, "truth_shape")
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours", temp_mean = ts$T_bar)
+  wf <- fit_4pl(std, low = ~ 1, up = ~ temp_c, k = ~ temp_c, mid = ~ temp_c,
+                chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = fit_path, refresh = 0)
+  attr(wf, "truth_shape") <- ts
+  wf
+}
+
+# Grouped shape-varying fixture: two groups with DIFFERENT planted up/k/mid
+# slopes, fit with `~ temp_c * grp` on all four sub-parameters (via by = "grp").
+# Checks faithful per-group, per-temperature recovery of the asymptotes/steepness.
+# Carries attr "truth_shape_2group". Cached at fixtures/sim_fit_shape_grouped_small.rds.
+load_fixture_workflow_shape_grouped <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  fit_path <- file.path(fixture_dir, "sim_fit_shape_grouped_small")
+
+  # Both groups' up(T) stay strictly inside the [0, 1] upper bound across the
+  # assay temps WITH MARGIN (max planted up is 0.85 at the coldest temp), so the
+  # disjoint-bounds reparam does not clip and recovery is unbiased. The asymptote
+  # (up) and midpoint (mid) DIFFER by group (the per-group structure under test);
+  # the steepness k shares one common temperature slope across groups, because a
+  # three-way k x temp x group interaction is only weakly identifiable from a
+  # deliberately tiny fit and would shrink toward a common slope regardless. So
+  # up/mid recovery is asserted per group, k only in slope direction. Extra reps
+  # give each group enough data once the design is split in two.
+  tA <- list(low0 = 0.05, up0 = 0.85, up_slope = -0.015,
+             logk0 = log(6), logk_slope = 0.10, mid0 = 1.4, mid_slope = -0.18)
+  tB <- list(low0 = 0.04, up0 = 0.78, up_slope = -0.035,
+             logk0 = log(6), logk_slope = 0.10, mid0 = 1.1, mid_slope = -0.26)
+  a <- simulate_tdt_shape(seed = 201, truth = tA, n_rep = 12); a$grp <- "A"
+  b <- simulate_tdt_shape(seed = 202, truth = tB, n_rep = 12); b$grp <- "B"
+  raw <- rbind(a, b); raw$grp <- factor(raw$grp)
+  T_bar <- attr(a, "truth_shape")$T_bar
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours", temp_mean = T_bar)
+  wf <- fit_4pl(std, by = "grp",
+                chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = fit_path, refresh = 0)
+  temps <- attr(a, "truth_shape")$temps
+  attr(wf, "truth_shape_2group") <-
+    list(A = c(tA, list(T_bar = T_bar, temps = temps)),
+         B = c(tB, list(T_bar = T_bar, temps = temps)))
+  wf
+}
+
+# --- Pillar-2 two-group recovery fixtures (binomial & Beta families) ---------
+#
+# Each loader fits a tiny cached 2-group model with KNOWN, deliberately-distinct
+# per-group (z, CTmax). Carries attr "truth_2group". Direct (~ 0 + grp) and
+# midpoint (by = "grp") variants let the tests assert per-group truth-in-CrI,
+# the correct group->parameter mapping, between-group contrasts, and
+# direct == midpoint per-group agreement.
+
+# Pure-binomial direct fit (family = binomial, ctmax/z ~ 0 + grp).
+load_fixture_workflow_2group_binom_direct <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  raw <- simulate_tdt_2group_binom(seed = 20260626)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive", duration_unit = "hours")
+  wf <- fit_4pl(std, ctmax = ~ 0 + grp, z = ~ 0 + grp,
+                family = stats::binomial(link = "identity"),
+                chains = 2, iter = 1200, warmup = 600, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = file.path(fixture_dir, "sim_fit_2g_binom_direct"), refresh = 0)
+  attr(wf, "truth_2group") <- attr(raw, "truth_2group")
+  wf
+}
+
+# Pure-binomial MIDPOINT fit (by = "grp") on the SAME data, for direct==midpoint.
+load_fixture_workflow_2group_binom_mid <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  raw <- simulate_tdt_2group_binom(seed = 20260626)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive", duration_unit = "hours")
+  wf <- fit_4pl(std, by = "grp",
+                family = stats::binomial(link = "identity"),
+                chains = 2, iter = 1200, warmup = 600, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = file.path(fixture_dir, "sim_fit_2g_binom_mid"), refresh = 0)
+  attr(wf, "truth_2group") <- attr(raw, "truth_2group")
+  wf
+}
+
+# Beta continuous-proportion direct fit (family = Beta, ctmax/z ~ 0 + grp).
+load_fixture_workflow_2group_beta_direct <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  raw <- simulate_tdt_beta_2group(seed = 20260626)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          proportion = "y_prop", duration_unit = "hours")
+  wf <- fit_4pl(std, ctmax = ~ 0 + grp, z = ~ 0 + grp,
+                chains = 2, iter = 1200, warmup = 600, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = file.path(fixture_dir, "sim_fit_2g_beta_direct"), refresh = 0)
+  attr(wf, "truth_2group") <- attr(raw, "truth_2group")
+  wf
+}
+
+# --- Pillar-3 two-interacting-CONTINUOUS-moderator fixtures ------------------
+#
+# Direct fit ctmax = ~ x1*x2, z = ~ x1*x2 on the simulate_tdt_cont2() surfaces
+# (centred x1, x2). Carries attr "truth_cont2" (the planted a/zc coefficient
+# vectors). The interaction fixture plants a3/z3 != 0 (detectable interaction);
+# the null fixture plants a3 = z3 = 0 (interaction CrI must straddle 0).
+load_fixture_workflow_cont2 <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  raw <- simulate_tdt_cont2(seed = 303)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours", temp_mean = attr(raw, "truth_cont2")$T_bar)
+  wf <- fit_4pl(std, ctmax = ~ x1 * x2, z = ~ x1 * x2, t_ref = 60,
+                chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = file.path(fixture_dir, "sim_fit_cont2"), refresh = 0)
+  attr(wf, "truth_cont2") <- attr(raw, "truth_cont2")
+  wf
+}
+
+# Null companion: SAME design but a3 = z3 = 0 (no x1:x2 interaction planted).
+load_fixture_workflow_cont2_null <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  raw <- simulate_tdt_cont2(
+    a  = c(a0 = 1.0, a1 = 0.8, a2 = -0.5, a3 = 0),
+    zc = c(z0 = log(5), z1 = 0.15, z2 = -0.10, z3 = 0),
+    seed = 404)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours", temp_mean = attr(raw, "truth_cont2")$T_bar)
+  wf <- fit_4pl(std, ctmax = ~ x1 * x2, z = ~ x1 * x2, t_ref = 60,
+                chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file = file.path(fixture_dir, "sim_fit_cont2_null"), refresh = 0)
+  attr(wf, "truth_cont2") <- attr(raw, "truth_cont2")
+  wf
+}
+
+# Flat-shape fixture: asymptotes/steepness CONSTANT in temperature
+# (low ~ 1, up ~ 1, k ~ 1) with only the midpoint shifting (mid ~ temp_c). Used
+# to check that predict_heat_injury(shape = "varying") reduces EXACTLY to
+# shape = "constant" when there is no temperature structure on low/up/k.
+# Cached at fixtures/sim_fit_flatshape_small.rds.
+load_fixture_workflow_flatshape <- function() {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  fit_path <- file.path(fixture_dir, "sim_fit_flatshape_small")
+
+  raw <- simulate_tdt(seed = 20260512)   # default flat-shape DGP
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours")
+  fit_4pl(std, low = ~ 1, up = ~ 1, k = ~ 1, mid = ~ temp_c,
+          chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+          control = list(adapt_delta = 0.95, max_treedepth = 12),
+          file = fit_path, refresh = 0)
+}
+
 # Beta (continuous-proportion) fixture: standardize_data(proportion =) ->
 # fit_4pl(family = Beta(link = "identity")). Cached at
 # tests/testthat/fixtures/sim_fit_beta_small.rds.

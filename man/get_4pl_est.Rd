@@ -4,24 +4,30 @@
 \alias{get_4pl_est}
 \title{Posterior estimates of the natural-scale 4PL parameters (draws or summary)}
 \usage{
-get_4pl_est(workflow, what = c("summary", "draws"), by = NULL)
+get_4pl_est(workflow, what = c("summary", "draws"), by = NULL, temps = NULL)
 }
 \arguments{
 \item{workflow}{A fitted \code{\link[=fit_4pl]{fit_4pl()}} workflow (\code{workflow$fit} not \code{NULL}).}
 
-\item{what}{\code{"summary"} (default; one row per parameter with median + 95\% CrI,
-via \code{\link[=tdt_parameter_table]{tdt_parameter_table()}} -- this also includes the derived \code{z} slope row)
-or \code{"draws"} (per-draw \code{low}, \code{up}, \code{k}, \code{mid_int}, \code{mid_temp}, via
+\item{what}{\code{"summary"} (default; one row per parameter with median + 95\% CrI
+at the centring temperature \code{T_bar}, via \code{\link[=tdt_parameter_table]{tdt_parameter_table()}} -- this
+also includes the derived \code{z} slope row) or \code{"draws"} (per-draw natural-
+scale \code{low}, \code{up}, \code{k}, \code{mid} at each assay temperature, via
 \code{\link[=extract_4pl_pars]{extract_4pl_pars()}}).}
 
 \item{by}{Optional moderator column(s) to group by, passed through. \code{NULL}
 (default) uses the fit's own grouping for a grouped fit, else one group.}
+
+\item{temps}{For \code{what = "draws"}, numeric vector of assay temperatures (°C)
+to evaluate the curve parameters at, passed to \code{\link[=extract_4pl_pars]{extract_4pl_pars()}}.
+\code{NULL} (default) uses the fit's observed unique assay temperatures.
+Ignored for \code{what = "summary"} (which always reports the \code{T_bar} slice).}
 }
 \value{
 A tibble (plus the moderator column(s) for a grouped fit): for
-\code{"summary"}, one row per parameter with median and credible bounds; for
-\code{"draws"}, one row per posterior draw with \code{low}, \code{up}, \code{k}, \code{mid_int},
-\code{mid_temp} (and \code{.draw}).
+\code{"summary"}, one row per parameter with median and credible bounds at
+\code{T_bar}; for \code{"draws"}, one row per posterior draw × temperature with
+\code{temp}, \code{low}, \code{up}, \code{k}, \code{mid} (and \code{.draw}).
 }
 \description{
 The 4PL-shape companion to \code{\link[=get_tls_est]{get_tls_est()}}. Returns the posterior of the

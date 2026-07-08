@@ -142,3 +142,87 @@ test_that("predict_heat_injury errors on an unsupported time unit", {
                         trace_unit = "fortnights", ndraws = 5),
     "unsupported time unit")
 })
+
+test_that("predict_heat_injury rejects an unknown shape", {
+  wf <- fake_hi_workflow("hours")
+  expect_error(
+    predict_heat_injury(data.frame(time = c(0, 1), temp = 30), wf,
+                        ndraws = 5, shape = "nonlinear"),
+    "should be one of")
+})
+
+# ---------------------------------------------------------------------------
+# shape = "varying": temperature-LOCAL low/up/k/mid in the dose integral.
+# The CRITICAL invariant is that with a flat-in-T shape (low ~ 1, up ~ 1,
+# k ~ 1) the incremental local-curve survival decrement telescopes EXACTLY to
+# the constant-shape closed form, so the two modes must agree to numerical
+# tolerance. With genuine T-structure on the asymptotes/steepness the modes
+# diverge, and varying-mode survival must stay monotone.
+# ---------------------------------------------------------------------------
+
+test_that("shape='varying' reduces to 'constant' when low/up/k are flat in T", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_flatshape()
+  scens <- make_temperature_scenarios(baseline = 20, spike_temp = 30, n_hours = 96,
+                                      spike_times_single = 24,
+                                      spike_times_multi  = c(24, 48, 72))
+  for (tr in c("flat", "single_spike", "multi_spike")) {
+    for (mode in c("relative", "absolute")) {
+      hc <- predict_heat_injury(scens[[tr]], wf, target_surv = mode, T_c = 24,
+                                ndraws = 200, seed = 7, shape = "constant")$summary
+      hv <- predict_heat_injury(scens[[tr]], wf, target_surv = mode, T_c = 24,
+                                ndraws = 200, seed = 7, shape = "varying")$summary
+      expect_equal(hc$hi_median,   hv$hi_median,   tolerance = 1e-8,
+                   info = paste(tr, mode, "HI"))
+      expect_equal(hc$surv_median, hv$surv_median, tolerance = 1e-8,
+                   info = paste(tr, mode, "S"))
+    }
+  }
+})
+
+test_that("shape='varying' differs from 'constant' under genuine T-structure, and S is monotone", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_shape()        # up ~ temp_c, k ~ temp_c (declining/steepening)
+  # Hot spikes (above T_bar = 33) so the local asymptotes/steepness genuinely bite.
+  scens <- make_temperature_scenarios(baseline = 30, spike_temp = 38, n_hours = 96,
+                                      spike_times_multi = c(24, 48, 72))
+  hc <- predict_heat_injury(scens$multi_spike, wf, target_surv = "relative",
+                            T_c = 32, ndraws = 300, seed = 7, shape = "constant")
+  hv <- predict_heat_injury(scens$multi_spike, wf, target_surv = "relative",
+                            T_c = 32, ndraws = 300, seed = 7, shape = "varying")
+
+  # Varying-mode survival is monotone non-increasing.
+  expect_true(all(diff(hv$summary$surv_median) <= 1e-9))
+  # The two modes give a materially different final survival.
+  fc <- tail(hc$summary, 1); fv <- tail(hv$summary, 1)
+  expect_gt(abs(fc$surv_median - fv$surv_median), 1e-3)
+  expect_equal(hv$meta$shape, "varying")
+})
+
+test_that("shape='varying' does not jump survival when T changes with no added dose", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_shape()
+  # Below the damage threshold T_c everywhere: dose stays at zero, but T jumps
+  # around. Varying mode must hold survival flat (no path-dependent rebound/drop).
+  trace <- data.frame(time = 0:5, temp = c(20, 38, 22, 36, 24, 30))
+  hv <- predict_heat_injury(trace, wf, target_surv = "relative", T_c = 40,
+                            ndraws = 100, seed = 7, shape = "varying")$summary
+  expect_equal(hv$hi_median, rep(0, nrow(hv)))
+  expect_equal(max(hv$surv_median) - min(hv$surv_median), 0, tolerance = 1e-9)
+})
+
+test_that("shape='varying' integrates per group on a grouped fit", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_shape_grouped()
+  scens <- make_temperature_scenarios(baseline = 30, spike_temp = 37, n_hours = 72,
+                                      spike_times_multi = c(12, 36))
+  hv <- predict_heat_injury(scens$multi_spike, wf, target_surv = "relative",
+                            T_c = 32, ndraws = 150, seed = 7, shape = "varying")
+  expect_true("grp" %in% names(hv$summary))
+  expect_setequal(unique(as.character(hv$summary$grp)), c("A", "B"))
+  # Each group's varying survival is monotone.
+  for (g in c("A", "B")) {
+    sg <- hv$summary$surv_median[as.character(hv$summary$grp) == g]
+    expect_true(all(diff(sg) <= 1e-9), info = paste("group", g))
+  }
+})
