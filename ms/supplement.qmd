@@ -353,7 +353,7 @@ This tutorial uses simulated data to show how the Bayesian hierarchical 4PL reco
 ### *Simulating Data*
 #### Step 1 — Setting up parameters {#sec-sim-step1}
 
-We choose values that might be typical of a thermal mortality assay. The four parameters are the lower and upper asymptotes ($\ell, \text{up}$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value has a clear biological meaning (detailed in the code below).
+We choose values that might be typical of a thermal mortality assay. The four parameters are the lower and upper asymptotes ($\text{low}, \text{up}$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value has a clear biological meaning (detailed in the code below).
 
 ```{r sim-params}
 #| label: sim-params
@@ -362,7 +362,7 @@ We choose values that might be typical of a thermal mortality assay. The four pa
 
 # Define the generating parameters for the tutorial simulation.
 true_params <- list(
-  ell      = 0.03,   # 3% of individuals survive even at the longest exposures
+  low      = 0.03,   # 3% of individuals survive even at the longest exposures
   up       = 0.97,   # 97% are alive at very short exposures
   k        = 8,      # steepness of the survival drop on the log10(t) axis
   m_beta0  = 1.5,    # midpoint at the grand-mean temperature: ~31.6 min
@@ -371,7 +371,7 @@ true_params <- list(
 )
 ```
 
-The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. Savvy readers will note that this is technically relative $z$, but because our asymptotes are 0.03 and 0.97, despite these shifts from 0 and 1, we are still at a midpoint of 50% survival. So, in this case, they are the same. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\ln\!\left(\tfrac{\text{up} - 0.5}{0.5 - \ell}\right) - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
+The implied thermal sensitivity is $z = -1/\beta_1 \approx 6.7$ °C: a temperature change of this magnitude shifts LT50 by a factor of 10. Savvy readers will note that this is technically relative $z$, but because our asymptotes are 0.03 and 0.97, despite these shifts from 0 and 1, we are still at a midpoint of 50% survival. So, in this case, they are the same. The same parameters determine the uncentred TDT intercept $\alpha = \beta_0 + \tfrac{1}{k}\ln\!\left(\tfrac{\text{up} - 0.5}{0.5 - \text{low}}\right) - \beta_1\bar{T}$ and the 1-hour critical thermal limit $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$. We use these known values to assess how well the models are performing, but do a proper simulation in @sec-extendsims.
 
 We first calculate $\alpha$, $z$, and $CT_{max_{1hr}}$ from the generating parameters to provide reference values for the fitted models.
 
@@ -386,7 +386,7 @@ true_z      <- -1 / true_params$m_beta1
 # Convert the centred midpoint model to the original temperature scale.
 true_alpha  <- true_params$m_beta0 +
   (1 / true_params$k) *
-  log((true_params$up - 0.5) / (0.5 - true_params$ell)) -
+  log((true_params$up - 0.5) / (0.5 - true_params$low)) -
   true_params$m_beta1 * true_params$T_bar
 true_CTmax  <- (log10(60) - true_alpha) / true_params$m_beta1
 
@@ -418,8 +418,8 @@ design <- tidyr::expand_grid(
     log10_t = log10(t),
     T_c     = T - true_params$T_bar,                        # mean-centred T
     mid     = true_params$m_beta0 + true_params$m_beta1 * T_c,  # mid(T)
-    p_true  = true_params$ell +
-      (true_params$up - true_params$ell) /
+    p_true  = true_params$low +
+      (true_params$up - true_params$low) /
       (1 + exp(true_params$k * (log10_t - mid))),
     n = n_per_rep
   )
@@ -445,8 +445,8 @@ truth_grid <- tidyr::expand_grid(
     log10_t = log10(t),
     T_c     = T - true_params$T_bar,
     mid     = true_params$m_beta0 + true_params$m_beta1 * T_c,
-    p_true  = true_params$ell +
-      (true_params$up - true_params$ell) /
+    p_true  = true_params$low +
+      (true_params$up - true_params$low) /
       (1 + exp(true_params$k * (log10_t - mid)))
   )
 
@@ -626,17 +626,17 @@ Despite being a potential issue, it is also challenging to correctly propagate e
 
 ### *A joint Bayesian 4PL* {#sec-joint}
 
-Instead of fitting separate logistic curves and then regressing their LT50 estimates, the joint fit estimates $\ell$, $\text{up}$, $k$, $\beta_0$, and $\beta_1$ simultaneously from the raw counts. We use the same simulated data to derive $z$ and $CT_{max_{1hr}}$ directly from this model from the posteriors of these parameters.
+Instead of fitting separate logistic curves and then regressing their LT50 estimates, the joint fit estimates $\text{low}$, $\text{up}$, $k$, $\beta_0$, and $\beta_1$ simultaneously from the raw counts. We use the same simulated data to derive $z$ and $CT_{max_{1hr}}$ directly from this model from the posteriors of these parameters.
 
 #### Specifying the 4PL in `brms` {#sec-joint-spec}
 
 The model has two pieces. The first is the 4PL itself — probability as a function of $\log_{10}$ exposure time:
 
 $$
-p \;=\; \ell \;+\; \frac{\text{up} - \ell}{1 + \exp\!\bigl(k\,(\log_{10} t - \text{mid})\bigr)},
+p \;=\; \text{low} \;+\; \frac{\text{up} - \text{low}}{1 + \exp\!\bigl(k\,(\log_{10} t - \text{mid})\bigr)},
 $$ {#eq-supp-4pl}
 
-where $\ell$ and $\text{up}$ are the lower and upper asymptotes, $k$ is the slope on the $\log_{10} t$ axis, and $\text{mid}$ is the value of $\log_{10} t$ at which the curve crosses the midpoint between $\ell$ and $\text{up}$. The second piece lets the midpoint vary linearly with mean-centred temperature:
+where $\text{low}$ and $\text{up}$ are the lower and upper asymptotes, $k$ is the slope on the $\log_{10} t$ axis, and $\text{mid}$ is the value of $\log_{10} t$ at which the curve crosses the midpoint between $\text{low}$ and $\text{up}$. The second piece lets the midpoint vary linearly with mean-centred temperature:
 
 $$
 \text{mid} \;=\; \beta_0 + \beta_1\,(T - \bar{T}),
@@ -778,7 +778,7 @@ We assess recovery of true values by comparing posterior medians and 95% credibl
 truth <- tibble::tibble(
   Parameter = c("low (lower asymptote)", "up (upper asymptote)", "k (slope)",
                 "mid intercept (at T_bar)", "mid temp_c slope"),
-  Truth     = round(c(true_params$ell, true_params$up, true_params$k,
+  Truth     = round(c(true_params$low, true_params$up, true_params$k,
                       true_params$m_beta0, true_params$m_beta1), 3)
 )
 recovery_cell <- function(wf) tdt_parameter_table(wf) |>
@@ -846,17 +846,17 @@ Returned quantities (e.g., $CT_{max,1hr}$ and $z$) inherit the same posterior, s
 
 ::: {.callout-note}
 
-The default `fit_4pl()` puts a `temp_c` slope on every 4PL sub-parameter, so $\ell$, $\text{up}$ and $k$ can each carry a linear effect of temperature in addition to the linear-mid term — when those slopes shrink to zero the model reduces to the constant-shape case. However, when the data carry a real temperature signal on any of the shape parameters, the asymmetry correction $\tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T)-0.5}{0.5-\ell(T)}\right)$ varies with $T$ and the resulting $\log_{10}\text{LT50}(T)$ curve is bent rather than straight:
+The default `fit_4pl()` puts a `temp_c` slope on every 4PL sub-parameter, so $\text{low}$, $\text{up}$ and $k$ can each carry a linear effect of temperature in addition to the linear-mid term — when those slopes shrink to zero the model reduces to the constant-shape case. However, when the data carry a real temperature signal on any of the shape parameters, the asymmetry correction $\tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T)-0.5}{0.5-\text{low}(T)}\right)$ varies with $T$ and the resulting $\log_{10}\text{LT50}(T)$ curve is bent rather than straight:
 
 $$
-\log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T) - 0.5}{0.5 - \ell(T)}\right).
+\log_{10}\text{LT50}(T) \;=\; \beta_0 + \beta_1(T - \bar{T}) \;+\; \tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T) - 0.5}{0.5 - \text{low}(T)}\right).
 $$ {#eq-lt50-tvarying}
 
-The correction factor is needed when calculating an 'absolute' threshold (e.g., 50% mortality - `target_surv = "absolute"`). Under an *absolute* threshold the asymmetry-correction term $\tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T)-0.5}{0.5-\ell(T)}\right)$ bends the curve when $\text{up}$, $\ell$ or $k$ carry $T$ effects; then a per-draw **local** $z(T) = -1/(\mathrm{d}\log_{10}\text{LT}_{0.5}/\mathrm{d}T)$ is computed at each assay temperature. The reported $z$ is the per-draw mean of those local values over the assay range — with the full per-temperature $z(T)$ available via `z_local = TRUE`.
+The correction factor is needed when calculating an 'absolute' threshold (e.g., 50% mortality - `target_surv = "absolute"`). Under an *absolute* threshold the asymmetry-correction term $\tfrac{1}{k(T)}\ln\!\left(\tfrac{\text{up}(T)-0.5}{0.5-\text{low}(T)}\right)$ bends the curve when $\text{up}$, $\text{low}$ or $k$ carry $T$ effects; then a per-draw **local** $z(T) = -1/(\mathrm{d}\log_{10}\text{LT}_{0.5}/\mathrm{d}T)$ is computed at each assay temperature. The reported $z$ is the per-draw mean of those local values over the assay range — with the full per-temperature $z(T)$ available via `z_local = TRUE`.
 
 If using a 'relative threshold' (`target_surv = "relative"`) then the calculations do not require the correction factor. $CT_{max_{1hr}}$ is the temperature at which $\log_{10}\text{LT}(T)$ crosses $t_\text{ref}$, per draw. For $z$, under the relative threshold $\log_{10}\text{LT}(T) = \text{mid}(T)$ is exactly linear, so $z = -1/\beta_1$ per draw.  The worked example in @sec-joint-extend demonstrates this with a simulation where `up` and $k$ carry strong $T$ effects.
 
-Under `target_surv = "absolute"`, `tls()` includes the asymmetry-correction term automatically, evaluating it per draw from the same posterior of $\ell$, $\text{up}$ and $k$ so that any temperature-dependence of those parameters is propagated. The draws used to compute $z$ and $CT_{max_{1hr}}$ are subsampled once across all parameters, so the two quantities share draws — their correlation, and the joint pairing used for $T_{crit}$, is preserved.
+Under `target_surv = "absolute"`, `tls()` includes the asymmetry-correction term automatically, evaluating it per draw from the same posterior of $\text{low}$, $\text{up}$ and $k$ so that any temperature-dependence of those parameters is propagated. The draws used to compute $z$ and $CT_{max_{1hr}}$ are subsampled once across all parameters, so the two quantities share draws — their correlation, and the joint pairing used for $T_{crit}$, is preserved.
 
 :::
 
@@ -1125,7 +1125,7 @@ The midpoint and direct fits return the same $z$ and $CT_{max_{1hr}}$ to within 
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
-The default `fit_4pl()` places a `temp_c` slope on $\ell$, $\text{up}$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. Strictly speaking, this isn't necessary if you are interested in *relative* measures so long as they are on the midpoint. However, these are needed for *absolute* measures because of the need for the correction factor to adjust to the desired probability threshold. 
+The default `fit_4pl()` places a `temp_c` slope on $\text{low}$, $\text{up}$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. Strictly speaking, this isn't necessary if you are interested in *relative* measures so long as they are on the midpoint. However, these are needed for *absolute* measures because of the need for the correction factor to adjust to the desired probability threshold. 
 
 Here, we test recovery when the constant-shape assumption fails, we re-simulate beta-binomial data on the design in @sec-sim-step2 with `up` declining and $k$ increasing sharply with $T$. We then apply the same `fit_4pl()` and `tls()` workflow used above.
 
@@ -1145,7 +1145,7 @@ phi       <- 5
 
 # Set truth on the raw parameter scale used by fit_4pl().
 true_params_ext <- list(
-  ell_raw  = qlogis(0.05 / 0.49),                 # ell = 0.05
+  low_raw  = qlogis(0.05 / 0.49),                 # low = 0.05
   up_raw_0 = qlogis((0.92 - 0.51) / 0.49),        # up = 0.92 at T_bar
   up_raw_T = -0.60,                                # strong decline in up with T
   log_k_0  = log(8),                               # k = 8 at T_bar
@@ -1168,18 +1168,18 @@ design <- tidyr::expand_grid(
 
 sim_bb_ext <- design |>
   dplyr::mutate(
-    ell    = 0.49 * plogis(true_params_ext$ell_raw),
+    low    = 0.49 * plogis(true_params_ext$low_raw),
     up     = 0.51 + 0.49 * plogis(true_params_ext$up_raw_0 +
                                    true_params_ext$up_raw_T * T_c),
     k      = exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c),
     mid    = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c,
-    p_true = ell + (up - ell) / (1 + exp(k * (log10_t - mid))),
+    p_true = low + (up - low) / (1 + exp(k * (log10_t - mid))),
     p_draw = rbeta(dplyr::n(), p_true * phi, (1 - p_true) * phi),
     y      = rbinom(dplyr::n(), size = n, prob = p_draw)
   )
 ```
 
-Here the lower asymptote remains at $\ell = 0.05$, while `up` falls from `r round(0.51 + 0.49 * plogis(true_params_ext$up_raw_0 + true_params_ext$up_raw_T * (30 - true_params_ext$T_bar)), 2)` at $T = 30$ to `r round(0.51 + 0.49 * plogis(true_params_ext$up_raw_0 + true_params_ext$up_raw_T * (38 - true_params_ext$T_bar)), 2)` at $T = 38$, and $k$ rises from `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (30 - true_params_ext$T_bar)), 1)` to `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (38 - true_params_ext$T_bar)), 1)`. The extreme-temperature curves therefore differ in shape, not merely position (@fig-true-surface-ext).
+Here the lower asymptote remains at $\text{low} = 0.05$, while `up` falls from `r round(0.51 + 0.49 * plogis(true_params_ext$up_raw_0 + true_params_ext$up_raw_T * (30 - true_params_ext$T_bar)), 2)` at $T = 30$ to `r round(0.51 + 0.49 * plogis(true_params_ext$up_raw_0 + true_params_ext$up_raw_T * (38 - true_params_ext$T_bar)), 2)` at $T = 38$, and $k$ rises from `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (30 - true_params_ext$T_bar)), 1)` to `r round(exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * (38 - true_params_ext$T_bar)), 1)`. The extreme-temperature curves therefore differ in shape, not merely position (@fig-true-surface-ext).
 
 ::: {#fig-true-surface-ext}
 
@@ -1196,12 +1196,12 @@ truth_grid_ext <- tidyr::expand_grid(
   dplyr::mutate(
     log10_t = log10(t),
     T_c     = T - true_params_ext$T_bar,
-    ell     = 0.49 * plogis(true_params_ext$ell_raw),
+    low     = 0.49 * plogis(true_params_ext$low_raw),
     up      = 0.51 + 0.49 * plogis(true_params_ext$up_raw_0 +
                                    true_params_ext$up_raw_T * T_c),
     k       = exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c),
     mid     = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c,
-    p_true  = ell + (up - ell) / (1 + exp(k * (log10_t - mid)))
+    p_true  = low + (up - low) / (1 + exp(k * (log10_t - mid)))
   )
 
 ggplot2::ggplot() +
@@ -1236,15 +1236,15 @@ Before fitting, we compute the analytical targets: $\log_{10}\text{LT50}(T)$, lo
 # Derive the true TLS quantities for the extended simulation example.
 # True log10(LT50) at any T from the T-varying 4PL: solve p(log10_t) = 0.5
 # for log10_t. With the 4PL,
-#   log10_t = mid + (1/k) * log((up - 0.5) / (0.5 - ell))
+#   log10_t = mid + (1/k) * log((up - 0.5) / (0.5 - low))
 true_log10_LT50 <- function(T_value) {
   T_c <- T_value - true_params_ext$T_bar
-  ell <- 0.49 * plogis(true_params_ext$ell_raw)
+  low <- 0.49 * plogis(true_params_ext$low_raw)
   up  <- 0.51 + 0.49 * plogis(true_params_ext$up_raw_0 +
                               true_params_ext$up_raw_T * T_c)
   k   <- exp(true_params_ext$log_k_0 + true_params_ext$log_k_T * T_c)
   mid <- true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c
-  mid + (1 / k) * log((up - 0.5) / (0.5 - ell))
+  mid + (1 / k) * log((up - 0.5) / (0.5 - low))
 }
 
 # Local z(T) via central finite difference of true log10(LT50)(T). half_step
@@ -1295,11 +1295,11 @@ wf_ext <- fit_4pl(std_ext,
                   file_refit = "never")     # see fit-4pl-tutorial note above
 ```
 
-@tbl-ext-recovery reports recovery of the four 4PL sub-parameters on their natural scale at each assay temperature. The posterior keeps $\ell$ near $0.05$, while recovering the decline in `up` and increase in $k$ across the assay range.
+@tbl-ext-recovery reports recovery of the four 4PL sub-parameters on their natural scale at each assay temperature. The posterior keeps $\text{low}$ near $0.05$, while recovering the decline in `up` and increase in $k$ across the assay range.
 
 ```{r ext-recovery-table}
 #| label: tbl-ext-recovery
-#| tbl-cap: "Posterior recovery of the four 4PL sub-parameters on the natural scale at each assay temperature. The fit uses the disjoint-bounds reparameterisation ($\\ell$, $\\text{up}$ via inv_logit, $k$ via exp); raw posterior columns are transformed back to the biological scale before summarising. Posterior medians and 95% credible intervals are reported alongside the analytical truth."
+#| tbl-cap: "Posterior recovery of the four 4PL sub-parameters on the natural scale at each assay temperature. The fit uses the disjoint-bounds reparameterisation ($\\text{low}$, $\\text{up}$ via inv_logit, $k$ via exp); raw posterior columns are transformed back to the biological scale before summarising. Posterior medians and 95% credible intervals are reported alongside the analytical truth."
 
 # Format parameter recovery for the extended simulation example.
 ext_post  <- posterior::as_draws_df(get_brmsfit(wf_ext)) |> as.data.frame()
@@ -1312,7 +1312,7 @@ ext_param_long <- purrr::map_dfr(temps, function(T_value) {
   T_c_true <- T_value - true_params_ext$T_bar
 
   draws_at_T <- tibble::tibble(
-    ell = ext_bnds$low_min +
+    low = ext_bnds$low_min +
           stats::plogis(ext_post$b_lowraw_Intercept +
                         ext_post$b_lowraw_temp_c * T_c_fit) * ext_bnds$low_w,
     up  = ext_bnds$up_min  +
@@ -1323,7 +1323,7 @@ ext_param_long <- purrr::map_dfr(temps, function(T_value) {
   )
 
   truth_at_T <- tibble::tibble(
-    ell = 0.49 * plogis(true_params_ext$ell_raw),
+    low = 0.49 * plogis(true_params_ext$low_raw),
     up  = 0.51 + 0.49 * plogis(true_params_ext$up_raw_0 +
                                true_params_ext$up_raw_T * T_c_true),
     k   = exp(true_params_ext$log_k_0 +
@@ -1331,7 +1331,7 @@ ext_param_long <- purrr::map_dfr(temps, function(T_value) {
     mid = true_params_ext$m_beta0 + true_params_ext$m_beta1 * T_c_true
   )
 
-  purrr::map_dfr(c("ell", "up", "k", "mid"), function(p) {
+  purrr::map_dfr(c("low", "up", "k", "mid"), function(p) {
     q <- stats::quantile(draws_at_T[[p]], c(0.025, 0.5, 0.975),
                          na.rm = TRUE, names = FALSE)
     tibble::tibble(
@@ -1489,7 +1489,7 @@ ggplot2::ggplot(local_z_summary,
 Local $z(T)$ recovered from the per-draw $\log_{10}\text{LT50}(T)$ curve (blue median + 95% CrI), with the analytical truth overlaid (dashed black). Where the constant-shape simple-case fit would give the same $z$ at every assay temperature, here local $z$ varies with $T$ in lock-step with the bent $\log_{10}\text{LT50}(T)$ curve.
 :::
 
-The same `fit_4pl()` fit, read through `tls()` and the `derive_*()` primitives, recovers the bent $\log_{10}\text{LT50}(T)$ curve, the assay-averaged $z$, and per-draw $CT_{max_{1hr}}$. Under the constant-shape truth in @sec-joint-derive, near-zero slopes on `up`, $\ell$, and $k$ reduce this calculation to the closed-form case.
+The same `fit_4pl()` fit, read through `tls()` and the `derive_*()` primitives, recovers the bent $\log_{10}\text{LT50}(T)$ curve, the assay-averaged $z$, and per-draw $CT_{max_{1hr}}$. Under the constant-shape truth in @sec-joint-derive, near-zero slopes on `up`, $\text{low}$, and $k$ reduce this calculation to the closed-form case.
 
 ### Heat injury accumulation and survival under a fluctuating trace
 
@@ -1539,7 +1539,7 @@ ggplot2::ggplot(hi_trace, ggplot2::aes(time, temp)) +
 
 #### Posterior HI and survival via `predict_heat_injury()`
 
-`predict_heat_injury()` takes a temperature trace plus a fitted workflow, propagates the full posterior of $(\ell, \text{up}, k, \beta_0, \beta_1)$ through the HI integral, and returns the median and 95% credible band of cumulative HI and predicted survival at every time point. We supply `T_c` to enforce zero damage accumulation below the threshold (matching the heat-injury integral, Equation 8 of the manuscript). The model time units here are minutes (because `standardize_data()` was called with `duration_unit = "minutes"`), so the trace's `time` is in hours and damage rates are computed accordingly internally.
+`predict_heat_injury()` takes a temperature trace plus a fitted workflow, propagates the full posterior of $(\text{low}, \text{up}, k, \beta_0, \beta_1)$ through the HI integral, and returns the median and 95% credible band of cumulative HI and predicted survival at every time point. We supply `T_c` to enforce zero damage accumulation below the threshold (matching the heat-injury integral, Equation 8 of the manuscript). The model time units here are minutes (because `standardize_data()` was called with `duration_unit = "minutes"`), so the trace's `time` is in hours and damage rates are computed accordingly internally.
 
 ```{r hi-predict}
 #| label: hi-predict
@@ -2870,12 +2870,12 @@ Now, from the hurdle models posterior we can calculate $z$ and $CT_{max_{1hr}}$ 
 First, we are, statistically speaking, fitting the following model (using the notation in the `sex_coefs()` function above):
 
 $$
-\eta(\ell, t) \;=\; I + T\,t + D\,\ell + DT\,(\ell\,t),
+\eta(\text{low}, t) \;=\; I + T\,t + D\,\text{low} + DT\,(\text{low}\,t),
 $$
 
 where
 
-- $\ell = \log_{10}(\text{exposure duration in minutes})$ — the dose axis,
+- $\text{low} = \log_{10}(\text{exposure duration in minutes})$ — the dose axis,
 - $t = \tau - \bar{T}$ — temperature centred on the mean assay temperature $\bar T$
   (so $t = 0$ at the mean, $\tau$ is the actual temperature),
 - $I, T, D, DT$ are the four posterior coefficients `sex_coefs()` returns:
@@ -2891,13 +2891,13 @@ $$
 
 The natural halfway mark is the exposure at which half the flies still
 reproduce: $P(\text{reproduce}) = 0.5$. A logistic equals $0.5$ **exactly when its
-input is zero**, so we set $\eta = 0$ and solve for $\ell$, collecting the $\ell$
+input is zero**, so we set $\eta = 0$ and solve for $\text{low}$, collecting the $\text{low}$
 terms on one side:
 
 $$
-I + T\,t + D\,\ell + DT\,(\ell\,t) = 0
+I + T\,t + D\,\text{low} + DT\,(\text{low}\,t) = 0
 \;\Longrightarrow\;
-\ell\,(D + DT\,t) = -(I + T\,t)
+\text{low}\,(D + DT\,t) = -(I + T\,t)
 \;\Longrightarrow\;
 \ell_{50}(t) = -\frac{I + T\,t}{D + DT\,t}.
 $$
