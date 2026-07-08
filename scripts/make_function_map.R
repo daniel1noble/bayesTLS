@@ -105,24 +105,19 @@ draw_map <- function() {
       "make_4pl_formula()\nmake_4pl_priors()", fill = cols$optional,
       border = cols$grid, title_cex = 0.57, body_cex = 0.45, lty = 2)
 
-  box(5.6, 5.75, 1.75, 0.86, "tls()",
-      "general TLS extractor\nbayes_tls or brmsfit", fill = cols$extract)
-  box(5.6, 4.78, 1.75, 0.86, "extract_tdt()",
-      "workflow bundle\nz, CTmax, Tcrit, LT curve", fill = cols$extract)
+  box(5.6, 5.2, 1.9, 0.92, "tls()",
+      "z, CTmax, Tcrit\nfrom any bayes_tls or brmsfit", fill = cols$extract)
   box(5.6, 3.55, 2.05, 0.74, "advanced primitives",
       "derive_z()\nderive_tdt_curve()\nderive_temperature_for_duration()",
       fill = cols$optional, border = cols$grid, title_cex = 0.58,
       body_cex = 0.45, lty = 2)
-  box(5.6, 6.65, 1.45, 0.54, "manual brmsfit",
+  box(5.6, 6.42, 1.45, 0.5, "manual brmsfit",
       "optional input to tls()", fill = "white", border = cols$grid,
       title_cex = 0.55, body_cex = 0.43, lty = 2, font = 1)
 
-  box(8.1, 5.85, 2.2, 0.74, "get_tls_est()",
-      "tls object -> TLS summaries/draws", fill = cols$output,
+  box(8.1, 5.2, 2.2, 0.86, "get_tls_est()",
+      "tls object -> TLS\nsummaries or draws", fill = cols$output,
       title_cex = 0.64, body_cex = 0.47)
-  box(8.1, 4.85, 2.2, 0.74, "extract_tdt accessors",
-      "get_tls_summary()\nget_tls_draws()", fill = cols$output,
-      title_cex = 0.55, body_cex = 0.45)
 
   box(8.1, 3.55, 2.05, 0.76, "predict_survival_curves()",
       "static temp x duration grid", fill = cols$predict)
@@ -153,16 +148,13 @@ draw_map <- function() {
   arrow(2.68, 5.2, 2.72, 5.2)
   arrow(3.55, 5.87, 3.55, 5.68, lty = 2, col = cols$muted)
   arrow(3.55, 4.74, 3.55, 4.27)
-  arrow(4.38, 5.2, 4.70, 5.55)
-  arrow(4.38, 5.2, 4.70, 4.86)
-  arrow(5.6, 6.38, 5.6, 6.08, lty = 2, col = cols$muted)
-  arrow(5.6, 4.35, 5.6, 3.93, lty = 2, col = cols$muted)
-  arrow(6.48, 5.72, 7.00, 5.85)
-  arrow(6.48, 4.78, 7.00, 4.85)
+  arrow(4.38, 5.2, 4.66, 5.2)
+  arrow(5.6, 6.17, 5.6, 5.70, lty = 2, col = cols$muted)
+  arrow(5.6, 4.74, 5.6, 3.96, lty = 2, col = cols$muted)
+  arrow(6.56, 5.2, 7.00, 5.2)
   elbow_arrow(c(4.38, 4.55, 7.00, 7.08), c(4.78, 2.98, 2.98, 3.55))
   elbow_arrow(c(4.38, 4.65, 7.00, 7.08), c(4.62, 2.22, 2.22, 2.65))
-  arrow(9.20, 5.85, 10.38, 4.78)
-  arrow(9.20, 4.85, 10.38, 4.55)
+  arrow(9.20, 5.2, 10.38, 4.65)
   arrow(9.13, 3.55, 10.38, 4.30)
   arrow(9.13, 2.65, 10.38, 4.05)
   arrow(8.1, 2.15, 8.1, 2.27, lty = 2, col = cols$muted)
