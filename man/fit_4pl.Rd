@@ -101,7 +101,7 @@ moderator column-name shortcut applying the moderator to
 all four sub-parameters (\code{low}/\code{up}/\code{k}/\code{mid}) at once, so
 a per-group CTmax/z fit needs only \code{by = "<moderator>"}.
 Either records the moderator in \code{meta$group_vars}, so
-\code{\link[=extract_tdt]{extract_tdt()}} / \code{\link[=tls]{tls()}} auto-derive per-group quantities
+\code{\link[=tls]{tls()}} auto-derives per-group quantities
 with \verb{by = }. Both error in direct mode.}
 
 \item{threshold}{\code{"relative"} (default) or \code{"absolute"}; the threshold the
@@ -115,7 +115,7 @@ absolute \code{p} is only achievable \emph{near that midpoint}
 roughly \verb{(0.499, 0.501)}); \code{fit_4pl()} errors otherwise.
 For any other LTx (LT60, LT90, ...) or a sub-unit-bounded
 response, fit with \code{threshold = "relative"} and derive it
-afterwards via \code{\link[=extract_tdt]{extract_tdt()}}/\code{\link[=tls]{tls()}} with
+afterwards via \code{\link[=tls]{tls()}} with
 \verb{target_surv = }.}
 
 \item{t_ref}{Reference exposure for CTmax, in \strong{minutes} (default 60,
@@ -133,7 +133,7 @@ methods.
 \description{
 Wraps \code{\link[=make_4pl_formula]{make_4pl_formula()}} + \code{\link[=make_4pl_priors]{make_4pl_priors()}} + \code{\link[brms:brm]{brms::brm()}}. Returns
 a workflow object containing the fit, data, formula, prior, and metadata
-that downstream helpers (e.g. \code{\link[=extract_tdt]{extract_tdt()}}) read from.
+that downstream helpers (e.g. \code{\link[=tls]{tls()}}) read from.
 }
 \details{
 By default all four 4PL sub-parameters get a \code{temp_c} slope, and random

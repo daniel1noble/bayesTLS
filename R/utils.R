@@ -181,7 +181,7 @@ compute_4pl_bounds <- function(lower = 0, upper = 1,
 #'
 #' Maps a free-text duration/time unit (e.g. `"hours"`, `"min"`, `"s"`) to its
 #' length in minutes. Used to derive the model-to-output `time_multiplier` in
-#' [extract_tdt()] and [derive_tdt_curve()] from a workflow's `duration_unit`.
+#' [tls()] and [derive_tdt_curve()] from a workflow's `duration_unit`.
 #'
 #' @param unit Character scalar time-unit label.
 #' @return Numeric scalar: the unit's length in minutes.

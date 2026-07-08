@@ -1,7 +1,7 @@
 # `local` gate in tls_local_z() (engine pure-math layer): skipping the
 # per-temperature breakdown must not change the pooled z, and must only suppress
 # local_draws/local_summary. We feed SYNTHETIC logLT matrices evaluated at
-# grid -/+ h (no brms fit), which is exactly what derive_z()/extract_tdt() pass.
+# grid -/+ h (no brms fit), which is exactly what derive_z() passes.
 
 grid <- c(30, 33, 36, 39)
 Tbar <- 34.5

@@ -4,7 +4,7 @@
 # posterior_linpred(nlpar = "mid") returns the linear predictor for a midpoint
 # fit and the nlf-derived mid for a direct fit, so this engine is identically
 # parameterisation- and coding-agnostic. tls() and the single-condition readers
-# (extract_tdt, derive_z, derive_temperature_for_duration, tdt_parameter_table,
+# (derive_z, derive_temperature_for_duration, tdt_parameter_table,
 # extract_4pl_pars) all build on these helpers; the pure-math layer
 # (tls_local_z / tls_invert_logLT) operates on already-evaluated matrices so the
 # z/CTmax math stays fast-testable without a Stan fit.
@@ -184,8 +184,8 @@ tls_invert_logLT <- function(M, target, temp_grid) {
 }
 
 # Per-group z / CTmax / 1-hour-CTmax-anchor from logLT already evaluated on the
-# group's grid. This is the SINGLE derivation contract shared by extract_tdt()
-# and tls(), so the two are identical by construction: z is always the
+# group's grid. This is the SINGLE derivation contract used by tls() and the
+# kept derive_* readers, so results are identical by construction: z is always the
 # central-difference local z pooled over `z_grid` (tls_local_z; exact for a
 # linear relative midpoint, accurate for a bent absolute curve), and the CTmax /
 # 1-hour anchor use the exact closed form for a linear relative midpoint

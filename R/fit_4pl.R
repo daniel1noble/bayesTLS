@@ -98,7 +98,7 @@
 #'                       `[0, 1]` the achievable range is roughly `(0.499,
 #'                       0.501)`); other LTx values (LT60, LT90, ...) must be
 #'                       obtained from a `"relative"` fit plus
-#'                       [extract_tdt()]/[tls()] with `target_surv = `, which
+#'                       [tls()] with `target_surv = `, which
 #'                       inverts the fitted surface post hoc for any `p`.
 #' @param p              Survival fraction defining the absolute threshold.
 #'                       Default `0.5`. Only meaningful when `threshold =
@@ -243,7 +243,7 @@ make_4pl_formula <- function(random_effects = NULL,
              "threshold = \"relative\" (the per-draw midpoint, defined for any ",
              "bounds), or -- to get an LT%g (or any LTx) -- fit with the relative ",
              "threshold and derive it afterwards via ",
-             "extract_tdt()/tls(target_surv = %g), which inverts the fitted ",
+             "tls(target_surv = %g), which inverts the fitted ",
              "surface post hoc and works for any p."),
       p, bounds[1], bounds[2], b$midpoint, 100 * p, b$midpoint,
       b$low_max, b$up_min, 100 * p, p),
@@ -270,7 +270,7 @@ make_4pl_formula <- function(random_effects = NULL,
 #'
 #' Wraps [make_4pl_formula()] + [make_4pl_priors()] + [brms::brm()]. Returns
 #' a workflow object containing the fit, data, formula, prior, and metadata
-#' that downstream helpers (e.g. [extract_tdt()]) read from.
+#' that downstream helpers (e.g. [tls()]) read from.
 #'
 #' By default all four 4PL sub-parameters get a `temp_c` slope, and random
 #' intercepts attach to `mid` only. Use `temp_effects = "mid"` for the classical
@@ -326,7 +326,7 @@ make_4pl_formula <- function(random_effects = NULL,
 #'                       all four sub-parameters (`low`/`up`/`k`/`mid`) at once, so
 #'                       a per-group CTmax/z fit needs only `by = "<moderator>"`.
 #'                       Either records the moderator in `meta$group_vars`, so
-#'                       [extract_tdt()] / [tls()] auto-derive per-group quantities
+#'                       [tls()] auto-derives per-group quantities
 #'                       with `by = `. Both error in direct mode.
 #' @param threshold      `"relative"` (default) or `"absolute"`; the threshold the
 #'                       fitted CTmax/z refer to (direct mode only).
@@ -338,7 +338,7 @@ make_4pl_formula <- function(random_effects = NULL,
 #'                       roughly `(0.499, 0.501)`); `fit_4pl()` errors otherwise.
 #'                       For any other LTx (LT60, LT90, ...) or a sub-unit-bounded
 #'                       response, fit with `threshold = "relative"` and derive it
-#'                       afterwards via [extract_tdt()]/[tls()] with
+#'                       afterwards via [tls()] with
 #'                       `target_surv = `.
 #' @param t_ref          Reference exposure for CTmax, in **minutes** (default 60,
 #'                       i.e. one hour). Converted to the model's log10-time scale
@@ -444,7 +444,7 @@ fit_4pl <- function(data,
 
   # Reference exposure for CTmax (direct mode): t_ref is in minutes; place it on
   # the model's log10-time scale. log10_tref = log10(t_ref / minutes-per-unit).
-  # Use the SAME alias-aware unit mapping as extract_tdt()/derive_*(); a bespoke
+  # Use the SAME alias-aware unit mapping as tls()/derive_*(); a bespoke
   # switch() here silently fell back to tm = 1 for any non-canonical label
   # ("h", "hr", "Hours", ...), desynchronising log10_tref from the extractors.
   # The NULL-unit sentinel "model_units" keeps tm = 1 (no real time unit given).
@@ -490,7 +490,7 @@ fit_4pl <- function(data,
   # Fixed-effect moderators (e.g. species, life_stage) the fit varies over:
   # direct mode reads them off ctmax/z/up/low/k; midpoint mode off up/low/k/mid
   # plus the `by` shortcut. `grouped` is coding-independent, so the group-aware
-  # readers (extract_tdt(by=), tls(by=), ...) auto-derive per-group quantities
+  # readers (tls(by=), ...) auto-derive per-group quantities
   # under BOTH `~ 0 + G` and `~ 1 + G` instead of silently returning the
   # reference level.
   group_vars <- if (direct) direct_group_vars(ctmax, z, up, low, k)

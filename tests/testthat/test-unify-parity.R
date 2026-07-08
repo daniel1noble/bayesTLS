@@ -37,23 +37,6 @@ parity_workflows <- function() {
   wfs
 }
 
-test_that("unification did not move z / CTmax / T_crit (extract_tdt) on any fixture or case study", {
-  skip_unless_brms()
-  gp <- here::here("tests", "testthat", "fixtures", "golden_preunify.rds")
-  if (!file.exists(gp)) skip("local-only no-drift gate: golden_preunify.rds is gitignored and present only where the Step-0 snapshot was built (it pins the exact cached fits); skipped in CI / fresh checkouts.")
-  g <- readRDS(gp); wfs <- parity_workflows()
-
-  for (nm in names(wfs)) {
-    old <- g[[nm]]$extract
-    leth <- !is.null(old$T_crit)
-    new <- suppressMessages(extract_tdt(wfs[[nm]], ndraws = 1000, lethal = leth, seed = 1))
-    expect_lt(abs(new$z$summary$z_median        - old$z$summary$z_median),        1e-4)
-    expect_lt(abs(new$CTmax$summary$temp_median - old$CTmax$summary$temp_median), 1e-4)
-    if (leth)
-      expect_lt(abs(new$T_crit$summary$temp_median - old$T_crit$summary$temp_median), 0.05)
-  }
-})
-
 test_that("unification did not move tdt_parameter_table / derive_z / predict_survival_curves", {
   skip_unless_brms()
   gp <- here::here("tests", "testthat", "fixtures", "golden_preunify.rds")
@@ -84,9 +67,9 @@ test_that("unification did not move the grouped tls() case study (zebrafish per-
           n_total = "n_total", n_surv = "n_surv", duration_unit = "hours")
   zwf <- parity_wrap(readRDS(zfp), zs, du = "hours", group_vars = "life_stage")
   # Pin the threshold to "absolute": the golden snapshot was captured when tls()
-  # DEFAULTED to absolute. tls() now defaults to "relative" to match extract_tdt()
-  # (an intentional unification fix, not drift), so the no-drift check must
-  # request the same threshold the golden used.
+  # DEFAULTED to absolute. tls() now defaults to "relative" (the per-draw
+  # midpoint; an intentional unification fix, not drift), so the no-drift check
+  # must request the same threshold the golden used.
   new <- tls(zwf, by = "life_stage", lethal = TRUE, target_surv = "absolute",
              seed = 1)$summary
   m <- merge(new, g$zf_tls, by = c("life_stage", "quantity"), suffixes = c(".new", ".old"))

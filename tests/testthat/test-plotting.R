@@ -73,7 +73,7 @@ test_that("plot_repair_rate plots exactly the Schoolfield repair rate", {
 
 # ====================== plot_temperature_density ===========================
 
-# Synthetic extract_tdt()-style temperature posterior.
+# Synthetic derive_temperature_for_duration()-style temperature posterior.
 fake_temp_post <- function(center = 35, sd = 1.2, n = 4000) {
   set.seed(1)
   draws <- tibble::tibble(.draw = seq_len(n), temp = stats::rnorm(n, center, sd))

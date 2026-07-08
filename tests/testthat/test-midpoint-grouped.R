@@ -2,9 +2,8 @@
 # explicit moderator formulas (the counterpart to test-direct-grouped.R, which
 # covers the direct CTmax/z mode). A 2-group fit with a deliberately large
 # per-group z gap (A z=5.56, B z=3.33) confirms: (a) `by=` records the moderator
-# in meta$group_vars so extract_tdt() auto-groups; (b) per-group z/CTmax recover
-# truth; (c) the `by=` sugar fits the same model as the four explicit
-# `~ temp_c * grp` formulas; (d) extract_tdt(by=) agrees with tls(by=).
+# in meta$group_vars; (b) per-group z/CTmax recover truth via tls(by=); (c) the
+# `by=` sugar fits the same model as the four explicit `~ temp_c * grp` formulas.
 # Set RUN_BRMS_TESTS=true.
 
 fit_midpoint_by <- function(file_id, ..., seed = 1) {
@@ -21,7 +20,7 @@ fit_midpoint_by <- function(file_id, ..., seed = 1) {
   wf
 }
 
-test_that("midpoint by= records the moderator and auto-groups in extract_tdt()", {
+test_that("midpoint by= records the moderator and recovers per-group truth via tls()", {
   skip_unless_brms()
   wf <- fit_midpoint_by("sim_fit_mid_by_grp", by = "grp")
 
@@ -33,14 +32,14 @@ test_that("midpoint by= records the moderator and auto-groups in extract_tdt()",
     expect_match(deparse(wf$formula$pforms[[p]][[3]]), "temp_c \\* grp")
 
   tr  <- attr(wf, "truth_2group")
-  out <- extract_tdt(wf, t_ref = 60, ndraws = 1000)          # by = NULL -> auto
-  expect_true("grp" %in% names(out$z$summary))
-  expect_setequal(out$z$summary$grp, c("A", "B"))
+  out <- tls(wf, by = "grp", params = c("z", "ctmax"), t_ref = 60, ndraws = 1000,
+             temp_mean = wf$meta$temp_mean)$summary
+  gg  <- function(g, q) out$median[out$grp == g & out$quantity == q]
+  expect_true("grp" %in% names(out))
+  expect_setequal(out$grp, c("A", "B"))
 
-  zA <- out$z$summary$z_median[out$z$summary$grp == "A"]
-  zB <- out$z$summary$z_median[out$z$summary$grp == "B"]
-  cA <- out$CTmax$summary$temp_median[out$CTmax$summary$grp == "A"]
-  cB <- out$CTmax$summary$temp_median[out$CTmax$summary$grp == "B"]
+  zA <- gg("A", "z"); zB <- gg("B", "z")
+  cA <- gg("A", "CTmax"); cB <- gg("B", "CTmax")
   expect_lt(abs(zA - tr$A$z), 1.5)
   expect_lt(abs(zB - tr$B$z), 1.5)
   expect_gt(zA - zB, 1.0)                                    # large gap -> real mapping
@@ -54,23 +53,13 @@ test_that("midpoint by= sugar fits the same model as the four explicit formulas"
   wf_exp <- fit_midpoint_by("sim_fit_mid_explicit_grp",
                             low = ~ temp_c * grp, up = ~ temp_c * grp,
                             k   = ~ temp_c * grp, mid = ~ temp_c * grp)
-  z_by  <- extract_tdt(wf_by,  ndraws = NULL)$z$summary
-  z_exp <- extract_tdt(wf_exp, ndraws = NULL)$z$summary
+  z_by  <- tls(wf_by,  params = "z", by = "grp", ndraws = NULL,
+               temp_mean = wf_by$meta$temp_mean)$summary
+  z_exp <- tls(wf_exp, params = "z", by = "grp", ndraws = NULL,
+               temp_mean = wf_exp$meta$temp_mean)$summary
+  gm <- function(s, g) s$median[s$grp == g & s$quantity == "z"]
   for (gg in c("A", "B"))
-    expect_lt(abs(z_by$z_median[z_by$grp == gg] - z_exp$z_median[z_exp$grp == gg]), 0.3)
-})
-
-test_that("midpoint extract_tdt(by=) agrees with tls(by=) per group", {
-  skip_unless_brms()
-  wf <- fit_midpoint_by("sim_fit_mid_by_grp", by = "grp")
-  et <- extract_tdt(wf, t_ref = 60, ndraws = NULL)
-  tl <- tls(wf, by = "grp", params = c("z", "ctmax"), mode = "relative",
-            t_ref = 60, temp_mean = wf$meta$temp_mean)$summary
-  for (gg in c("A", "B")) {
-    z_et <- et$z$summary$z_median[et$z$summary$grp == gg]
-    z_tl <- tl$median[tl$grp == gg & tl$quantity == "z"]
-    expect_lt(abs(z_et - z_tl), 0.3)
-  }
+    expect_lt(abs(gm(z_by, gg) - gm(z_exp, gg)), 0.3)
 })
 
 test_that("explicit low/up/k moderator without mid warns about pooled z", {

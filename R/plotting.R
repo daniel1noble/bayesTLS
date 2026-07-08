@@ -258,20 +258,19 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
 #'
 #' Density plot of a per-draw temperature posterior, with a horizontal segment
 #' marking the 95% CrI and a point at the median. Useful for visualising
-#' [derive_temperature_for_duration()] output, or the `$CTmax` / `$T_crit`
-#' elements of [extract_tdt()].
+#' [derive_temperature_for_duration()] output.
 #'
-#' @param temp_post  Output of [derive_temperature_for_duration()] OR a list
-#'                   with `$draws` and `$summary` from [extract_tdt()].
+#' @param temp_post  Output of [derive_temperature_for_duration()]: a list with
+#'                   `$draws` (carrying a per-draw `temp` column) and `$summary`.
 #' @param truth      Optional numeric scalar: a true value to mark with a
 #'                   dashed vertical line.
 #' @param x_label    X-axis label. Default `"Temperature (°C)"`.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
-#' et <- extract_tdt(wf)
-#' plot_temperature_density(et$CTmax)
-#' plot_temperature_density(et$T_crit)
+#' tp <- derive_temperature_for_duration(wf, exposure_duration = 60,
+#'                                        temp_grid = seq(36, 44, by = 0.1))
+#' plot_temperature_density(tp)
 #' }
 #' @export
 plot_temperature_density <- function(temp_post, truth = NULL,

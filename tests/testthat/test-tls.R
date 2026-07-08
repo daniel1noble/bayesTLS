@@ -1,6 +1,7 @@
 # Accuracy tests for tls(). The brms-free block checks argument validation; the
 # gated block validates numerical correctness against the exact -1/beta1
-# identity, the simulation truth, and extract_tdt(), plus the per-group machinery.
+# identity and the simulation truth (z, CTmax, T_crit), plus the per-group
+# machinery, threshold edge cases and ndraws clamping.
 
 test_that("tls() validates arguments before touching a fit", {
   expect_error(tls(list(foo = 1)), "bayes_tls|brmsfit")
@@ -22,72 +23,70 @@ test_that("tls() relative z equals the exact -1/b_mid_temp_c identity and recove
   expect_equal(z_tls, tr$z, tolerance = 0.5)
 })
 
-test_that("tls() matches extract_tdt() for z and CTmax (relative and absolute)", {
+test_that("tls() recovers z and CTmax_1hr from simulated truth", {
   skip_unless_brms()
-  wf     <- load_fixture_workflow()
-  nd_all <- brms::ndraws(get_brmsfit(wf))
-  g <- function(s, q) s$median[s$quantity == q]
+  wf  <- load_fixture_workflow()
+  tr  <- truth_summary()
+  out <- tls(wf, params = c("z", "ctmax"), t_ref = 60, ndraws = 500)$summary
+  g   <- function(q, col) out[[col]][out$quantity == q]
 
-  for (m in c("relative", "absolute")) {
-    et <- extract_tdt(wf, target_surv = m, t_ref = 60, ndraws = nd_all)
-    tl <- tls(wf, params = c("z", "ctmax"), mode = m, t_ref = 60)$summary
-    expect_equal(g(tl, "z"),     et$z$summary$z_median,        tolerance = 0.05,
-                 info = paste("z,", m))
-    expect_equal(g(tl, "CTmax"), et$CTmax$summary$temp_median, tolerance = 0.1,
-                 info = paste("CTmax,", m))
-  }
+  # Posterior medians within tolerance of truth ...
+  expect_lt(abs(g("z", "median")     - tr$z),         1.5)
+  expect_lt(abs(g("CTmax", "median") - tr$CTmax_1hr), 1.0)
+  # ... and truth inside the 95% credible interval.
+  expect_lte(g("z", "lower"),     tr$z)
+  expect_gte(g("z", "upper"),     tr$z)
+  expect_lte(g("CTmax", "lower"), tr$CTmax_1hr)
+  expect_gte(g("CTmax", "upper"), tr$CTmax_1hr)
 })
 
-test_that("tls() and extract_tdt() share one engine: identical z/CTmax on a common grid", {
+test_that("tls(lethal = TRUE) returns a sensible T_crit below CTmax", {
   skip_unless_brms()
-  wf     <- load_fixture_workflow()
-  nd_all <- brms::ndraws(get_brmsfit(wf))
-  tbar   <- wf$meta$temp_mean
-  obs    <- sort(unique(wf$data$temp))          # extract_tdt pools z over these
-  gz  <- function(o) o$summary$median[o$summary$quantity == "z"]
-  gc  <- function(o) o$summary$median[o$summary$quantity == "CTmax"]
-  fin <- function(o, q) { d <- o$draws[o$draws$quantity == q, c(".draw", "value")]
-                          d[is.finite(d$value), ] }
+  wf  <- load_fixture_workflow()
+  tr  <- truth_summary()
+  out <- suppressMessages(
+    tls(wf, params = "all", t_ref = 60, ndraws = 500, lethal = TRUE))$summary
+  g   <- function(q, col) out[[col]][out$quantity == q]
 
-  # Common grid = observed assay temps for BOTH z-pooling and CTmax inversion, so
-  # a single tls() call matches a single extract_tdt() call for z AND CTmax. A
-  # revert to the old global least-squares slope would diverge on the (bent)
-  # absolute curve far beyond 1e-6.
-  for (m in c("relative", "absolute")) {
-    et <- extract_tdt(wf, target_surv = m, t_ref = 60, temp_grid = obs, ndraws = nd_all)
-    tl <- tls(wf, params = c("z", "ctmax"), target_surv = m, t_ref = 60,
-              temp_grid = obs - tbar)
-    expect_equal(gz(tl), et$z$summary$z_median,        tolerance = 1e-6,
-                 info = paste("z median,", m))
-    expect_equal(gc(tl), et$CTmax$summary$temp_median, tolerance = 1e-6,
-                 info = paste("CTmax median,", m))
-    # per-draw parity (all draws, in order -> aligned 1:1)
-    zt <- merge(fin(tl, "z"),     et$z$draws[c(".draw", "z")],        by = ".draw")
-    ct <- merge(fin(tl, "CTmax"), et$CTmax$draws[c(".draw", "temp")], by = ".draw")
-    expect_lt(max(abs(zt$value - zt$z)),    1e-6)
-    expect_lt(max(abs(ct$value - ct$temp)), 1e-6)
-  }
+  # With default TC_rate_range = c(0.1, 1) the T_crit median sits near
+  # CTmax_1hr - 2.5 * z (geometric mean of the log10(rate) range); the true
+  # T_crit median must fall inside the posterior 95% CrI, and below CTmax.
+  true_T_crit_median <- tr$CTmax_1hr - 2.5 * tr$z
+  expect_lt(g("Tcrit", "median"), g("CTmax", "median"))
+  expect_lte(g("Tcrit", "lower"), true_T_crit_median)
+  expect_gte(g("Tcrit", "upper"), true_T_crit_median)
+  # CrI width > 0.5 z (pooling over log10(r*) contributes ~1 z of spread).
+  expect_gt(g("Tcrit", "upper") - g("Tcrit", "lower"), 0.5 * tr$z)
 })
 
-test_that("tls(absolute) == extract_tdt(absolute) on a strongly bent curve (LS-slope-fix guard)", {
+test_that("an absolute target_surv outside the fitted asymptotes warns clearly", {
   skip_unless_brms()
-  wf   <- load_bent_workflow()                  # skips if the cached bent fit is absent
-  tbar <- wf$meta$temp_mean
-  obs  <- sort(unique(wf$data$temp))
-  et <- extract_tdt(wf, target_surv = "absolute", t_ref = 60, time_multiplier = 1,
-                    temp_grid = obs, ndraws = NULL)
-  tl <- tls(wf, params = c("z", "ctmax"), target_surv = "absolute", t_ref = 60,
-            time_multiplier = 1, temp_grid = obs - tbar)
-  gz <- tl$summary$median[tl$summary$quantity == "z"]
-  gc <- tl$summary$median[tl$summary$quantity == "CTmax"]
-  expect_equal(gz, et$z$summary$z_median,        tolerance = 1e-6)   # bent curve, still identical
-  expect_equal(gc, et$CTmax$summary$temp_median, tolerance = 1e-6)
-  zt <- merge(tl$draws[tl$draws$quantity == "z",     c(".draw", "value")],
-              et$z$draws[c(".draw", "z")], by = ".draw")
-  ct <- merge(tl$draws[tl$draws$quantity == "CTmax", c(".draw", "value")],
-              et$CTmax$draws[c(".draw", "temp")], by = ".draw")
-  expect_lt(max(abs(zt$value - zt$z),    na.rm = TRUE), 1e-6)
-  expect_lt(max(abs(ct$value - ct$temp), na.rm = TRUE), 1e-6)
+  wf <- load_fixture_workflow_grouped()   # survival spans ~[0.04, 0.97]
+  # 0.1 lies below the lower asymptote for some draws -> LT undefined there:
+  # a clear, reasoned warning instead of a bare "NaNs produced".
+  expect_warning(
+    tls(wf, by = "grp", target_surv = 0.1, ndraws = NULL,
+        temp_mean = wf$meta$temp_mean),
+    "outside the fitted curve's asymptotes")
+  # an in-range absolute threshold does not raise that warning
+  asymp_warn <- FALSE
+  withCallingHandlers(
+    tls(wf, by = "grp", target_surv = 0.5, ndraws = NULL,
+        temp_mean = wf$meta$temp_mean),
+    warning = function(w) {
+      if (grepl("asymptotes", conditionMessage(w))) asymp_warn <<- TRUE
+      invokeRestart("muffleWarning")
+    })
+  expect_false(asymp_warn)
+})
+
+test_that("derive_tdt_curve() clamps ndraws to the posterior size", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow()                 # ~1500 posterior draws
+  # Regression: relative-mode derive_tdt_curve() once passed ndraws straight to
+  # brms::posterior_linpred(), which errors when ndraws exceeds the posterior
+  # size. Requesting more draws than exist must clamp, not crash.
+  expect_no_error(derive_tdt_curve(wf, temp_grid = c(30, 34, 38), ndraws = 5000))
 })
 
 test_that("tls() params/lethal switches and summary shape", {

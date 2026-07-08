@@ -77,40 +77,6 @@ load_fixture_workflow_grouped <- function() {
   wf
 }
 
-# Strongly-bent-curve fixture: the supplement's @sec-joint-extend DGP -- `up`
-# declining and `k` rising with temperature, so the absolute-threshold
-# log10(LT) curve is genuinely bent (local z varies with T). Reconstructed from
-# the cached fit in output/models/ (gitignored -> present locally / where the
-# supplement was rendered, skipped in CI). Because file_refit = "never" loads the
-# cached posterior, the regenerated response values do not matter -- only the
-# deterministic temperature grid (temp_mean = 34) and metadata. Used to guard
-# tls() == extract_tdt() parity on the non-linear (inversion / local-z) path.
-load_bent_workflow <- function() {
-  fit_stub <- file.path(here::here("output", "models"),
-                        "sim_4pl_ext_betabin_DEFAULT_strong_v1")
-  if (!file.exists(paste0(fit_stub, ".rds")))
-    testthat::skip(paste0("bent-curve fit (", fit_stub,
-                          ".rds) absent; local-only (gitignored), skipped in CI."))
-  temps <- c(30, 32, 34, 36, 38); durations <- c(1, 5, 15, 45, 135, 405)
-  tp <- list(ell_raw = qlogis(0.05 / 0.49), up_raw_0 = qlogis((0.92 - 0.51) / 0.49),
-             up_raw_T = -0.60, log_k_0 = log(8), log_k_T = 0.30,
-             m_beta0 = 1.5, m_beta1 = -0.15, T_bar = 34)
-  set.seed(1)
-  d  <- expand.grid(T = temps, t = durations, rep = seq_len(30))
-  Tc <- d$T - tp$T_bar
-  ell <- 0.49 * plogis(tp$ell_raw)
-  up  <- 0.51 + 0.49 * plogis(tp$up_raw_0 + tp$up_raw_T * Tc)
-  k   <- exp(tp$log_k_0 + tp$log_k_T * Tc)
-  mid <- tp$m_beta0 + tp$m_beta1 * Tc
-  p   <- ell + (up - ell) / (1 + exp(k * (log10(d$t) - mid)))
-  d$n <- 30
-  d$y <- rbinom(nrow(d), 30, rbeta(nrow(d), p * 5, (1 - p) * 5))
-  std <- standardize_data(d, temp = "T", duration = "t", n_total = "n",
-                          n_surv = "y", duration_unit = "minutes")
-  suppressMessages(fit_4pl(std, chains = 4, iter = 2000, cores = 4, seed = 123,
-                           file = fit_stub, file_refit = "never"))
-}
-
 # Shape-varying fixture: planted KNOWN temperature slopes on up/k/mid (low ~ 1),
 # fit with matching sub-parameter formulas (low ~ 1, up ~ temp_c, k ~ temp_c,
 # mid ~ temp_c). Used to check extract_4pl_pars() faithfully recovers the

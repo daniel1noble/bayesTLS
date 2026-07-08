@@ -43,6 +43,6 @@ utils::globalVariables(c(
   "ell", "u", "ellraw", "uraw", "logk",
   # NSE references used in plotting helpers:
   "T_c", "duration_mid", "y_ci",
-  # additional NSE references in extract_tdt / plot_repair_rate:
+  # additional NSE references in plot_repair_rate:
   "CTmax", "repair_rate"
 ))

@@ -26,11 +26,10 @@ columns).
 \description{
 Pulls the posterior \code{draws} or the \code{summary} (median + 95\% credible interval)
 for any or all thermal-load-sensitivity quantities (\code{z}, \code{CTmax}, and, when the
-fit was extracted with \code{lethal = TRUE}, \code{Tcrit}) from a \code{\link[=tls]{tls()}} result. This is
-the accessor companion for \code{tls} objects, mirroring \code{\link[=get_tls_summary]{get_tls_summary()}} /
-\code{\link[=get_tls_draws]{get_tls_draws()}} for an \code{\link[=extract_tdt]{extract_tdt()}} result. Draws are returned in
-tidy-long form (\code{quantity}, \code{.draw}, \code{value}, plus any grouping column), so a
-posterior contrast is a join on \code{.draw} followed by a difference of \code{value}.
+fit was extracted with \code{lethal = TRUE}, \code{Tcrit}) from a \code{\link[=tls]{tls()}} result. Draws
+are returned in tidy-long form (\code{quantity}, \code{.draw}, \code{value}, plus any grouping
+column), so a posterior contrast is a join on \code{.draw} followed by a difference
+of \code{value}.
 }
 \examples{
 \dontrun{
@@ -42,6 +41,5 @@ zd  <- get_tls_est(est, "draws", "z")   # z draws, ready for a contrast
 }
 }
 \seealso{
-\code{\link[=tls]{tls()}}; \code{\link[=get_tls_summary]{get_tls_summary()}} and \code{\link[=get_tls_draws]{get_tls_draws()}} for an
-\code{\link[=extract_tdt]{extract_tdt()}} result.
+\code{\link[=tls]{tls()}}, which produces the object this reads.
 }

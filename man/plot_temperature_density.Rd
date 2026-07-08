@@ -7,8 +7,8 @@
 plot_temperature_density(temp_post, truth = NULL, x_label = "Temperature (°C)")
 }
 \arguments{
-\item{temp_post}{Output of \code{\link[=derive_temperature_for_duration]{derive_temperature_for_duration()}} OR a list
-with \verb{$draws} and \verb{$summary} from \code{\link[=extract_tdt]{extract_tdt()}}.}
+\item{temp_post}{Output of \code{\link[=derive_temperature_for_duration]{derive_temperature_for_duration()}}: a list with
+\verb{$draws} (carrying a per-draw \code{temp} column) and \verb{$summary}.}
 
 \item{truth}{Optional numeric scalar: a true value to mark with a
 dashed vertical line.}
@@ -21,13 +21,12 @@ A ggplot object.
 \description{
 Density plot of a per-draw temperature posterior, with a horizontal segment
 marking the 95\% CrI and a point at the median. Useful for visualising
-\code{\link[=derive_temperature_for_duration]{derive_temperature_for_duration()}} output, or the \verb{$CTmax} / \verb{$T_crit}
-elements of \code{\link[=extract_tdt]{extract_tdt()}}.
+\code{\link[=derive_temperature_for_duration]{derive_temperature_for_duration()}} output.
 }
 \examples{
 \dontrun{
-et <- extract_tdt(wf)
-plot_temperature_density(et$CTmax)
-plot_temperature_density(et$T_crit)
+tp <- derive_temperature_for_duration(wf, exposure_duration = 60,
+                                       temp_grid = seq(36, 44, by = 0.1))
+plot_temperature_density(tp)
 }
 }

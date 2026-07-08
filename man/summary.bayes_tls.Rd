@@ -26,7 +26,7 @@ The high-level workflow context (data shape, centred-temperature mean,
 asymptote bounds, random-effect grouping, draw count) is available via
 \code{\link[=print.bayes_tls]{print.bayes_tls()}}. For natural-scale 4PL parameters (\code{low}, \code{up},
 \code{k}, \code{z}), use \code{\link[=tdt_parameter_table]{tdt_parameter_table()}}. For the TDT quantities
-(\code{z}, \code{CTmax_1hr}, optionally \code{T_crit}), use \code{\link[=extract_tdt]{extract_tdt()}}.
+(\code{z}, \code{CTmax_1hr}, optionally \code{T_crit}), use \code{\link[=tls]{tls()}}.
 }
 \examples{
 \dontrun{

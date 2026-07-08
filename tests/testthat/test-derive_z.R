@@ -3,7 +3,7 @@
 # (posterior_linpred-sourced in production). We test it here on SYNTHETIC logLT
 # matrices built from known coefficients, so the closed-form identities are
 # checked deterministically without a Stan fit. End-to-end derive_z() on a real
-# fit is covered gated in test-extract_tdt.R / test-direct-fixture.R.
+# fit is covered gated in test-direct-fixture.R.
 
 # Closed-form log10 LT at temperature(s) for per-draw coefficient sets.
 synth_logLT <- function(temps, df, Tbar, bnd, mode = "relative", p = 0.5) {
@@ -87,4 +87,22 @@ test_that("tls_local_z absolute reduces to -1/b_mid_temp_c when shape is constan
 test_that("derive_z errors on an unfitted workflow", {
   wf <- structure(list(fit = NULL), class = "bayes_tls")
   expect_error(derive_z(wf), "Fit the model first")
+})
+
+# The TDT-family extractors must share the documented target_surv = "relative"
+# default: derive_temperature_for_duration once defaulted to "absolute" while its
+# own docs said "relative", silently returning a different quantity to users
+# calling the primitive directly.
+test_that("TDT-family functions all default to target_surv = 'relative'", {
+  fns <- list(
+    tls                             = tls,
+    derive_z                        = derive_z,
+    derive_tdt_curve                = derive_tdt_curve,
+    derive_temperature_for_duration = derive_temperature_for_duration
+  )
+  for (nm in names(fns)) {
+    default <- formals(fns[[nm]])$target_surv
+    expect_identical(default, "relative",
+                     info = paste(nm, "target_surv default"))
+  }
 })

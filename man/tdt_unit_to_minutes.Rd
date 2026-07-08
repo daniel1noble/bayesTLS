@@ -15,6 +15,6 @@ Numeric scalar: the unit's length in minutes.
 \description{
 Maps a free-text duration/time unit (e.g. \code{"hours"}, \code{"min"}, \code{"s"}) to its
 length in minutes. Used to derive the model-to-output \code{time_multiplier} in
-\code{\link[=extract_tdt]{extract_tdt()}} and \code{\link[=derive_tdt_curve]{derive_tdt_curve()}} from a workflow's \code{duration_unit}.
+\code{\link[=tls]{tls()}} and \code{\link[=derive_tdt_curve]{derive_tdt_curve()}} from a workflow's \code{duration_unit}.
 }
 \keyword{internal}

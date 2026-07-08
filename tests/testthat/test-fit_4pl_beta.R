@@ -16,16 +16,17 @@ test_that("fit_4pl recovers a known Beta truth and records the family", {
   expect_equal(wf$meta$link,   "identity")
   expect_false("n_total" %in% names(wf$data))
 
-  out <- extract_tdt(wf, t_ref = 60, ndraws = 500, lethal = FALSE)
+  out <- tls(wf, params = "all", t_ref = 60, ndraws = 500, lethal = FALSE)
+  g   <- function(q, col) out$summary[[col]][out$summary$quantity == q]
 
   # Posterior median within tolerance of truth and truth inside the 95% CrI.
-  expect_lt(abs(out$z$summary$z_median        - ts$z),         1.5)
-  expect_lt(abs(out$CTmax$summary$temp_median - ts$CTmax_1hr), 1.5)
-  expect_lte(out$z$summary$z_lower, ts$z)
-  expect_gte(out$z$summary$z_upper, ts$z)
+  expect_lt(abs(g("z", "median")     - ts$z),         1.5)
+  expect_lt(abs(g("CTmax", "median") - ts$CTmax_1hr), 1.5)
+  expect_lte(g("z", "lower"), ts$z)
+  expect_gte(g("z", "upper"), ts$z)
 
   # T_crit only makes sense for lethal endpoints; off by default here.
-  expect_null(out$T_crit)
+  expect_false("Tcrit" %in% out$summary$quantity)
   expect_false(out$meta$lethal)
 })
 

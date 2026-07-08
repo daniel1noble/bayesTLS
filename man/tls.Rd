@@ -48,11 +48,10 @@ separately (e.g. \code{"sex"}). \code{NULL} (default) pools to a single group.}
 \item{params}{Quantities to return: \code{"all"} (z, CTmax, and T_crit when
 \code{lethal = TRUE}), or a subset of \code{c("z", "ctmax", "tcrit")}.}
 
-\item{target_surv}{Survival threshold the LT curve is read at, shared with
-\code{\link[=extract_tdt]{extract_tdt()}}: \code{"relative"} (default; the per-draw midpoint
+\item{target_surv}{Survival threshold the LT curve is read at:
+\code{"relative"} (default; the per-draw midpoint
 \code{(low + up)/2}), \code{"absolute"} (literal LT50), or a numeric \code{p} in \verb{(0, 1)}
-for an absolute LT\code{p}. The default is \code{"relative"} so \code{tls()} and
-\code{\link[=extract_tdt]{extract_tdt()}} return the same z/CTmax for a given fit.}
+for an absolute LT\code{p}.}
 
 \item{t_ref}{Reference exposure duration for \code{CTmax}, in minutes. If \code{NULL}
 (default), inherit the fit's own reference exposure (\code{meta$t_ref}) and
@@ -121,22 +120,18 @@ the same posterior draws (so they are mutually consistent and \code{T_crit} pair
 \code{CTmax} and \code{z} per draw).
 }
 \details{
-\strong{Shared engine with \code{\link[=extract_tdt]{extract_tdt()}}.} \code{tls()} and \code{\link[=extract_tdt]{extract_tdt()}} derive
-\code{z}, \code{CTmax} and \code{T_crit} through the same internal engine, so on a common
-temperature grid they agree to numerical tolerance for every threshold. \code{z}
-is the central-difference local \code{z(T)} (negative reciprocal of the local
-slope of \code{log10(LT)} on temperature) pooled over \code{temp_grid}; \code{CTmax} is the
-per-draw temperature at which the fitted LT curve crosses \code{t_ref}, from the
-exact closed form when the relative midpoint is linear and from a true
-per-draw inversion of the (possibly bent) curve otherwise. Under
+\code{tls()} derives \code{z}, \code{CTmax} and \code{T_crit} from the same posterior draws, so
+on a common temperature grid they are mutually consistent for every
+threshold. \code{z} is the central-difference local \code{z(T)} (negative reciprocal of
+the local slope of \code{log10(LT)} on temperature) pooled over \code{temp_grid};
+\code{CTmax} is the per-draw temperature at which the fitted LT curve crosses
+\code{t_ref}, from the exact closed form when the relative midpoint is linear and
+from a true per-draw inversion of the (possibly bent) curve otherwise. Under
 \code{target_surv = "relative"} (the default) \code{log10(LT) = mid(T)} is linear, so
 \code{z} is constant in temperature and equals \code{-1 / b_mid_temp_c}; under an
 absolute threshold with temperature effects on the asymptotes or steepness
 the curve bends and both the local \code{z(T)} and the inversion account for it,
-with no linear approximation. The two functions differ only in defaults, not
-engine: \code{tls()} summarises \code{z} and \code{CTmax} on the single \code{temp_grid}, whereas
-\code{\link[=extract_tdt]{extract_tdt()}} pools \code{z} over the observed assay temperatures and inverts
-\code{CTmax} on a finer extended grid.
+with no linear approximation.
 }
 \examples{
 \dontrun{

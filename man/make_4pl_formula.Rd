@@ -103,7 +103,7 @@ bounds' midpoint, so \code{"absolute"} is only well defined
 for \code{p} \emph{near that midpoint} (with the default bounds
 \verb{[0, 1]} the achievable range is roughly \verb{(0.499, 0.501)}); other LTx values (LT60, LT90, ...) must be
 obtained from a \code{"relative"} fit plus
-\code{\link[=extract_tdt]{extract_tdt()}}/\code{\link[=tls]{tls()}} with \verb{target_surv = }, which
+\code{\link[=tls]{tls()}} with \verb{target_surv = }, which
 inverts the fitted surface post hoc for any \code{p}.}
 
 \item{p}{Survival fraction defining the absolute threshold.

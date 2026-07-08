@@ -1,7 +1,7 @@
 # Documentation for the case-study datasets shipped with bayesTLS.
 # The datasets are built from the raw CSVs in inst/extdata/ by
 # data-raw/make_datasets.R. Each is analysis-ready for the workflow
-# standardize_data() -> fit_4pl() -> extract_tdt().
+# standardize_data() -> fit_4pl() -> tls().
 
 #' Brown shrimp lethal thermal-death-time data
 #'

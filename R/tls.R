@@ -1,6 +1,5 @@
 # Generic, moderator-aware TDT extraction for arbitrary fitted 4PL models.
-# Unlike extract_tdt() (which targets the standard fit_4pl() workflow), tls()
-# evaluates the four 4PL sub-parameters at a user-defined moderator x
+# tls() evaluates the four 4PL sub-parameters at a user-defined moderator x
 # temperature grid via brms::posterior_linpred(nlpar = ), so it works on
 # hand-written brms models with moderators on ANY sub-parameter and arbitrary
 # random-effect structures. No coefficient names are parsed.
@@ -23,11 +22,10 @@
 #'   separately (e.g. `"sex"`). `NULL` (default) pools to a single group.
 #' @param params Quantities to return: `"all"` (z, CTmax, and T_crit when
 #'   `lethal = TRUE`), or a subset of `c("z", "ctmax", "tcrit")`.
-#' @param target_surv Survival threshold the LT curve is read at, shared with
-#'   [extract_tdt()]: `"relative"` (default; the per-draw midpoint
+#' @param target_surv Survival threshold the LT curve is read at:
+#'   `"relative"` (default; the per-draw midpoint
 #'   `(low + up)/2`), `"absolute"` (literal LT50), or a numeric `p` in `(0, 1)`
-#'   for an absolute LT`p`. The default is `"relative"` so `tls()` and
-#'   [extract_tdt()] return the same z/CTmax for a given fit.
+#'   for an absolute LT`p`.
 #' @param mode,p **Deprecated**, superseded by `target_surv`. If supplied,
 #'   `mode = "relative"` maps to `target_surv = "relative"` and
 #'   `mode = "absolute"` (with `p`) to `target_surv = p`. Kept for back-compat.
@@ -67,22 +65,18 @@
 #' @return A `tls` object: `$summary` (per-group, per-quantity median + interval),
 #'   `$draws` (per-group, per-quantity posterior draws), and `$meta`.
 #' @details
-#' **Shared engine with [extract_tdt()].** `tls()` and [extract_tdt()] derive
-#' `z`, `CTmax` and `T_crit` through the same internal engine, so on a common
-#' temperature grid they agree to numerical tolerance for every threshold. `z`
-#' is the central-difference local `z(T)` (negative reciprocal of the local
-#' slope of `log10(LT)` on temperature) pooled over `temp_grid`; `CTmax` is the
-#' per-draw temperature at which the fitted LT curve crosses `t_ref`, from the
-#' exact closed form when the relative midpoint is linear and from a true
-#' per-draw inversion of the (possibly bent) curve otherwise. Under
+#' `tls()` derives `z`, `CTmax` and `T_crit` from the same posterior draws, so
+#' on a common temperature grid they are mutually consistent for every
+#' threshold. `z` is the central-difference local `z(T)` (negative reciprocal of
+#' the local slope of `log10(LT)` on temperature) pooled over `temp_grid`;
+#' `CTmax` is the per-draw temperature at which the fitted LT curve crosses
+#' `t_ref`, from the exact closed form when the relative midpoint is linear and
+#' from a true per-draw inversion of the (possibly bent) curve otherwise. Under
 #' `target_surv = "relative"` (the default) `log10(LT) = mid(T)` is linear, so
 #' `z` is constant in temperature and equals `-1 / b_mid_temp_c`; under an
 #' absolute threshold with temperature effects on the asymptotes or steepness
 #' the curve bends and both the local `z(T)` and the inversion account for it,
-#' with no linear approximation. The two functions differ only in defaults, not
-#' engine: `tls()` summarises `z` and `CTmax` on the single `temp_grid`, whereas
-#' [extract_tdt()] pools `z` over the observed assay temperatures and inverts
-#' `CTmax` on a finer extended grid.
+#' with no linear approximation.
 #' @examples
 #' \dontrun{
 #' tls(joint_sex_fit, by = "sex", lethal = TRUE, temp_mean = 36.1)  # z, CTmax, T_crit per sex
@@ -99,11 +93,9 @@ tls <- function(object, by = NULL, params = "all",
                 ndraws = NULL, newdata = NULL,
                 probs = c(0.025, 0.5, 0.975), seed = NULL,
                 mode = NULL, p = NULL) {
-  # `mode`/`p` are superseded by `target_surv` (the same argument extract_tdt()
-  # uses); map them when supplied so existing calls keep working. target_surv
-  # defaults to "relative" to MATCH extract_tdt() -- tls() previously defaulted
-  # to absolute, so the two engines returned different headline z/CTmax for the
-  # same fit (the documented inconsistency this unifies).
+  # `mode`/`p` are superseded by `target_surv`; map them when supplied so
+  # existing calls keep working. target_surv defaults to "relative" (the
+  # per-draw midpoint threshold).
   if (!is.null(mode)) {
     mode <- match.arg(mode, c("absolute", "relative"))
     target_surv <- if (identical(mode, "relative")) "relative" else (p %||% 0.5)
@@ -156,20 +148,19 @@ tls <- function(object, by = NULL, params = "all",
   base_grid <- tls_build_grid(mdata, by = by, temp = temp,
                               temp_grid = temp_grid, newdata = newdata)
 
-  # tls() derives z / CTmax / T_crit through the SAME engine as extract_tdt()
-  # (tls_zct_draws): the central-difference local z pooled over the grid, and
-  # either the exact closed form (a linear relative midpoint) or a true per-draw
-  # inversion of the -- possibly bent -- absolute LT curve. To do that we
-  # evaluate logLT at, per group, temp_c = 0 (the closed-form midpoint anchor),
-  # the grid +/- h (local z), and the grid itself (the CTmax inversion). h is the
-  # same finite-difference step extract_tdt() uses. This replaces the earlier
+  # tls() derives z / CTmax / T_crit through the shared tls_zct_draws() engine:
+  # the central-difference local z pooled over the grid, and either the exact
+  # closed form (a linear relative midpoint) or a true per-draw inversion of the
+  # -- possibly bent -- absolute LT curve. To do that we evaluate logLT at, per
+  # group, temp_c = 0 (the closed-form midpoint anchor), the grid +/- h (local
+  # z), and the grid itself (the CTmax inversion). This replaces the earlier
   # single global least-squares slope, which was exact only for a linear
   # (relative) LT curve and a ~linear approximation of a bent (absolute) one.
   h          <- 1e-3
   log_tref   <- log10(t_ref / time_multiplier)        # CTmax target (model units)
   target_1hr <- log10(60   / time_multiplier)         # T_crit 1-hour anchor
   # A linear relative midpoint has a closed-form crossing; an absolute threshold
-  # or a `direct` fit is inverted numerically. Mirrors extract_tdt()'s switch.
+  # or a `direct` fit is inverted numerically.
   mid_rel_closed <- identical(mode, "relative") &&
     !identical(meta$parameterization %||% "midpoint", "direct")
 

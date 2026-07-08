@@ -64,7 +64,7 @@ print.bayes_tls <- function(x, ...) {
 #' asymptote bounds, random-effect grouping, draw count) is available via
 #' [print.bayes_tls()]. For natural-scale 4PL parameters (`low`, `up`,
 #' `k`, `z`), use [tdt_parameter_table()]. For the TDT quantities
-#' (`z`, `CTmax_1hr`, optionally `T_crit`), use [extract_tdt()].
+#' (`z`, `CTmax_1hr`, optionally `T_crit`), use [tls()].
 #'
 #' @param object A fitted `bayes_tls` workflow.
 #' @param ...    Passed through to [brms::summary.brmsfit()] (e.g.

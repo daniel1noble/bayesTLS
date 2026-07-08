@@ -2,7 +2,7 @@
 # guards are brms-free; the substantive checks use the cached fixture fit and
 # assert internal consistency (e.g. all_pass is exactly the conjunction of the
 # component flags) and cross-validate tdt_parameter_table()'s z against
-# extract_tdt(). Set RUN_BRMS_TESTS=true to enable the gated block.
+# tls(). Set RUN_BRMS_TESTS=true to enable the gated block.
 
 test_that("diagnose_tdt_fit and tdt_parameter_table reject an unfitted workflow", {
   expect_error(diagnose_tdt_fit(list(fit = NULL)),    "NULL")
@@ -70,10 +70,11 @@ test_that("tdt_parameter_table returns natural-scale parameters that obey their 
   expect_gte(low_med, b$low_min); expect_lte(low_med, b$low_min + b$low_w)
   expect_gte(up_med,  b$up_min);  expect_lte(up_med,  b$up_min  + b$up_w)
 
-  # The z row must agree with extract_tdt()'s z (both are -1 / b_mid_temp_c).
+  # The z row must agree with tls()'s z (both are -1 / b_mid_temp_c).
   z_tab <- val("^z ")
-  z_et  <- extract_tdt(wf, t_ref = 60, ndraws = 1000)$z$summary$z_median
-  expect_equal(z_tab, z_et, tolerance = 0.25)
+  z_tls <- tls(wf, params = "z", t_ref = 60, ndraws = 1000)$summary
+  z_tls <- z_tls$median[z_tls$quantity == "z"]
+  expect_equal(z_tab, z_tls, tolerance = 0.25)
 })
 
 test_that("tdt_parameter_table's per-draw guard drops non-finite z/CTmax before quantiling", {
