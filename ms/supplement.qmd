@@ -670,7 +670,7 @@ for (nm in c("lowraw", "upraw", "logk", "mid"))
 
 ::: {.callout-important}
 
-The default model puts a `temp_c` slope on all four 4PL sub-parameters and includes no random effects. How random effects are added depends on the parameterisation: in the **midpoint** parameterisation (used here) pass `random_effects = c("Date", "Tank", ...)` to `fit_4pl()` to place random intercepts on `mid`; in the **direct** CTmax/*z* parameterisation they instead go *inside* the `ctmax`/`z` formulas, e.g. `ctmax = ~ 0 + group + (1 | batch)`. The simulation here has no batch structure so we leave them off; the snow gum leaf case study below uses the direct form with a per-plant random intercept (`ctmax = ~ 0 + recovery + (1 | plant)`).
+The default model puts a `temp_c` slope on all four 4PL sub-parameters and includes no random effects. How random effects are added depends on the parameterisation (see the manuscript for differences). In the **midpoint** parameterisation (used here) pass `random_effects = c("Date", "Tank", ...)` to `fit_4pl()` to place random intercepts on `mid`. In the **direct** CTmax/*z* parameterisation they instead go *inside* the `ctmax`/`z` formulas, e.g. `ctmax = ~ 0 + group + (1 | batch)`. The simulation here has no batch structure so we leave them off.
 
 :::
 
@@ -824,7 +824,7 @@ The classical TLS quantities are transformations of the fitted joint posterior. 
 
 - **$z$** — thermal sensitivity is read directly from the posterior as $z = -1/(\mathrm{d}\log_{10}\text{LT}_{\text{threshold}}/\mathrm{d}T)$ per draw (Equation 3 of the manuscript, the midpoint–temperature relation). Under the relative threshold, $\log_{10}\text{LT}(T) = \text{mid}(T)$ and the derivative is simply the linear slope, so $z = -1/\beta_1$ exactly.
 - **$CT_{max_{1hr}}$** — temperature at which the threshold is reached after 1 h of exposure, obtained from the fitted 4PL at the reference time, per posterior draw.
-- **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature below which damage accumulates more slowly than a chosen rate floor. The damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
+- **$T_{crit}$** *(only when `lethal = TRUE`)* — the temperature at which heat injury starts to accumulate. By default, the damage rate at temperature $T$ in the TDT framework is $r(T) = 100 \cdot 10^{(T - CT_{max,1hr})/z}$ % LT50-dose per hour, so inverting for a chosen rate floor $r^*$ gives
 
 $$
 T_{crit}(r^*) \;=\; CT_{max,1hr} \;+\; z \cdot \log_{10}(r^* / 100).
@@ -832,7 +832,7 @@ $$ {#eq-tcrit}
 
 The threshold one wishes to use is set by the `target_surv` argument of `tls()`. The default, `"relative"`, evaluates at $(\text{low} + \text{up})/2$ per draw, which equals classical absolute 50% survival when asymptotes are 0 and 1 but accommodates shifting upper asymptotes (for example, background mortality unrelated to heat stress). Passing `target_surv = "absolute"` or any numeric value in $(0, 1)$ instead uses an absolute survival threshold. Because the simulated asymptotes are near 0 and 1, both definitions give essentially the same results here.
 
-**How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value: breakpoint analyses of $\log_{10}$(time-to-thermal-failure) against temperature place the critical temperature anywhere from roughly 27 to 40 °C depending on the assay and taxon (including *Drosophila suzukii* and *Lemna gibba*) [@faber2026]. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which we assume net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
+**How do we estimate $T_{crit}$?** Different $r^*$ values imply different $T_{crit}$ thresholds, and the literature does not converge on one value. Rather than fix one $r^*$, we adopt a plausible operational range — $r^* \in [0.1, 1]$ % HI per hour, the heat-injury rate at which we assume net damage begins to accrue — corresponding to approximately 100 to 1000 hours (about 4 to 42 days) of continuous exposure to reach $LT_{50}$. We integrate over a uniform prior on $\log_{10} r^*$ across this range. The resulting posterior for $T_{crit}$ includes parameter uncertainty in $CT_{max,1hr}$ and $z$ as well as operational uncertainty in $r^*$. Its median is $CT_{max,1hr} - 2.5 \cdot z$, corresponding to $r^* \approx 0.3$ % HI per hour.
 
 ::: {.callout-warning}
 ## $T_{crit}$ is meaningful only for lethal-endpoint data
@@ -988,32 +988,30 @@ Under the binomial likelihood, the posterior SD for $z$ is `r sd_z_bin` °C and 
 
 The beta-binomial fit is slightly wider for both quantities (SD for $z$: `r sd_z_bb` °C; for $CT_{max_{1hr}}$: `r sd_ct_bb` °C) because $\phi$ captures extra-binomial variation and propagates it into the derived quantities. A two-stage pipeline requires an additional bootstrap or delta-method calculation to achieve comparable propagation.
 
-For per-draw functions of *several* quantities at once, the wide-paired form — one row per draw, with the quantities as columns — is more convenient than the long `$draws` above. `get_tls_est(., "draws")` returns $z$, $CT_{max_{1hr}}$ and $T_{crit}$ draws longitudinally (in long form data) with each draw from the posterior indicated by the `.draw` column. Pivoting the data to wide keeps the quantities jointly paired (each row is one posterior draw). That pairing is what lets a between-group contrast, a ratio, or a derived index be computed per draw with correctly-correlated uncertainty:
+Sometimes we want to calculate a new quantity from several TLS estimates at once. For example, we might want a contrast, a ratio, or an index that uses $z$, $CT_{max_{1hr}}$ and $T_{crit}$ together. The important thing is to keep values from the same posterior draw together. `get_tls_est(., "draws")` returns the draws in long format, with `.draw` identifying which posterior draw each value came from. We pivot that table wider so each row is one draw and the matching $z$, $CT_{max_{1hr}}$ and $T_{crit}$ values sit side by side. Any calculation made row-by-row then keeps the uncertainty and correlations among these quantities intact:
 
 ```{r tls-draws-showcase}
 #| label: tls-draws-showcase
 #| echo: true
 #| code-fold: show
 
-# get_tls_est(., "draws") -> tidy-long draws; pivot to wide so each row is one
-# posterior draw with z / CTmax / T_crit as columns, jointly paired on `.draw`.
+# Start with draws in long format, then pivot wider so each row is one posterior
+# draw. This keeps z, CTmax and T_crit values from the same draw together.
 tl_bin <- tls(wf_bin, target_surv = "relative", t_ref = 60, lethal = TRUE, ndraws = 1000)
 d_bin  <- get_tls_est(tl_bin, "draws") |>
   tidyr::pivot_wider(names_from = quantity, values_from = value) |>
   dplyr::rename(T_crit = Tcrit)
 head(d_bin)
 
-# The matching summary is get_tls_est(., "summary") -- the same tidy table as
-# tls()$summary above (same quantities, same threshold).
+# The summary form is the same table shown by tls()$summary above.
 get_tls_est(tl_bin, "summary")
 
-# z and CTmax co-vary in the posterior -- a relationship only visible on PAIRED
-# draws (summarising the two separately would erase it):
+# z and CTmax co-vary across posterior draws.
 round(stats::cor(d_bin$z, d_bin$CTmax), 2)
 
-# Because they share a draw, derived per-draw quantities carry the joint
-# uncertainty. CTmax_1hr - 2.5*z is T_crit at the central rate (r* ~ 0.3% HI/h);
-# the full T_crit column is wider because it ALSO integrates the r* prior:
+# Row-by-row calculations preserve joint uncertainty. CTmax_1hr - 2.5*z is
+# T_crit at the central rate (r* ~ 0.3% HI/h); the full T_crit column is wider
+# because it also includes rate uncertainty.
 qs <- c(0.025, 0.5, 0.975)
 stats::quantile(d_bin$CTmax - 2.5 * d_bin$z, qs)   # paired z & CTmax, central rate
 stats::quantile(d_bin$T_crit,                qs)   # + rate uncertainty -> wider
@@ -1061,7 +1059,7 @@ All four estimators give similar point estimates for $z$ and $CT_{max_{1hr}}$, c
 
 #### One model, two parameterisations {#sec-compare-param}
 
-`fit_4pl()` defaults to the **midpoint** parameterisation: it estimates a linear midpoint $\text{mid}(T)$ and derives $z$ and $CT_{max}$ from its slope and intercept (Equation 3 of the manuscript, the midpoint–temperature relation). The **direct** parameterisation instead places `brms` non-linear parameters on $z$ and the $CT_{max}$ deviation themselves, requested by passing `ctmax = ~ 1` and `z = ~ 1`. The two are reparameterisations of one likelihood, so fitting the *same* simulated data both ways and extracting with `tls()` should return the same posterior for $z$ and $CT_{max_{1hr}}$.
+`fit_4pl()` can write the same model in two ways. The default **midpoint** version estimates how the curve midpoint changes with temperature, then `tls()` converts that slope into $z$ and $CT_{max}$. The **direct** version estimates $z$ and $CT_{max}$ inside the model itself; request it with `ctmax = ~ 1` and `z = ~ 1`. If the same data are fit with the same likelihood, the two versions should give the same $z$ and $CT_{max_{1hr}}$ estimates.
 
 ```{r fit-4pl-direct}
 #| label: fit-4pl-direct
@@ -1079,7 +1077,7 @@ wf_direct <- fit_4pl(std_bin,
                      file       = file.path(models_dir, "sim_4pl_direct"),
                      file_refit = "never")
 
-# Summarise the model. Note that we now have a new model that re-parameterises the 'midpoint' to directly model ctmax and z (on log scale to keep positive). Note that the mid value disappears
+# Summarise the direct model, where z and CTmax are modelled explicitly.
 summary(wf_direct)                    
 ```
 
@@ -1121,7 +1119,7 @@ param_equiv <- tibble::tibble(
 tinytable::tt(param_equiv, digits = 3, escape = TRUE)
 ```
 
-The midpoint and direct fits return the same $z$ and $CT_{max_{1hr}}$ to within Monte Carlo error, confirming they are two ways of writing one model. The midpoint form is the default because its linear $\text{mid}(T)$ makes $z$ a closed-form transform of a single slope (Equation 3 of the manuscript, the midpoint–temperature relation); the direct form is available when a prior or hypothesis is most naturally expressed on $z$ or $CT_{max}$ directly.
+The two fits give the same $z$ and $CT_{max_{1hr}}$ estimates, apart from small simulation noise. Use the midpoint form for most analyses because it is simple and stable. Use the direct form when you want to put a prior on $z$ or $CT_{max}$ directly, or when your main hypothesis is about those quantities.
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
@@ -1745,6 +1743,10 @@ The joint fit recasts @saruhashi2026's OCLTT result as two linked components of 
 psc_zf <- predict_survival_curves(wf_zf)
 plot_survival_curves(psc_zf, observed = zf_std, log_time = TRUE)
 ```
+
+
+We can also look at the thermal tolerance landscape:
+
 
 # **Case Study 2: Cereal aphids — comparing three species** {#sec-aphids}
 
