@@ -29,6 +29,11 @@ A ggplot object.
 Exposure-duration axis is linear by default; pass \code{log_time = TRUE} for the
 classical log-time TDT presentation.
 }
+\details{
+A grouped fit (a moderator on \code{CTmax}/\code{z}, e.g. \code{oxygen} or \code{species})
+produces one heatmap panel per group, mirroring \code{\link[=plot_survival_curves]{plot_survival_curves()}};
+a single-condition fit returns the one ungrouped heatmap.
+}
 \examples{
 \dontrun{
 lsp <- derive_tdt_landscape(wf)

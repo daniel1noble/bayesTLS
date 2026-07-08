@@ -207,6 +207,27 @@ test_that("plot_tdt_landscape log_time flips the duration axis and overlays obse
             length(plot_tdt_landscape(lsp)$layers))
 })
 
+test_that("plot_tdt_landscape facets into one heatmap panel per group for a grouped fit", {
+  lsp <- fake_landscape()
+  # Single-condition summary -> exactly one panel (no moderator column).
+  bd1 <- suppressWarnings(built(plot_tdt_landscape(lsp)))
+  expect_equal(length(unique(bd1$data[[1]]$PANEL)), 1L)
+
+  # A grouped derive_tdt_landscape() prepends the moderator column and stacks one
+  # block per level. The plot must split them into one heatmap panel each rather
+  # than overplotting both surfaces onto a single (temp, duration) tile grid.
+  g <- lsp$summary
+  lsp_g <- list(summary = tibble::as_tibble(rbind(
+    cbind(oxygen = "normoxia",  g),
+    cbind(oxygen = "hyperoxia", g))))
+  p_g <- plot_tdt_landscape(lsp_g)
+  expect_s3_class(p_g$facet, "FacetWrap")
+  bd2 <- suppressWarnings(built(p_g))
+  expect_equal(length(unique(bd2$data[[1]]$PANEL)), 2L)
+  # Each panel carries exactly one grid's worth of tiles (no overplot).
+  expect_equal(nrow(bd2$data[[1]]), 2L * nrow(g))
+})
+
 # ========================== plot_tdt_curve =================================
 
 fake_ltx <- function(target = "p=0.500", unit = "min", big = FALSE) {

@@ -212,6 +212,10 @@ plot_tdt_curve <- function(ltx,
 #' Exposure-duration axis is linear by default; pass `log_time = TRUE` for the
 #' classical log-time TDT presentation.
 #'
+#' A grouped fit (a moderator on `CTmax`/`z`, e.g. `oxygen` or `species`)
+#' produces one heatmap panel per group, mirroring [plot_survival_curves()];
+#' a single-condition fit returns the one ungrouped heatmap.
+#'
 #' @param landscape Output of [derive_tdt_landscape()].
 #' @param observed  Optional standardised data tibble to overlay.
 #' @param contours  Numeric vector of survival levels to draw contours at.
@@ -251,7 +255,10 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
       size = 2, stroke = 0.2
     )
   }
-  p
+  # Grouped fit: one heatmap panel per moderator level (as for
+  # plot_survival_curves); a no-op when the summary carries no moderator column.
+  tdt_facet_by_group(p, df, c("temp", "duration",
+                              "survival_lower", "survival_median", "survival_upper"))
 }
 
 #' Plot a posterior temperature density (e.g. CTmax or T_crit)
