@@ -1744,9 +1744,20 @@ psc_zf <- predict_survival_curves(wf_zf)
 plot_survival_curves(psc_zf, observed = zf_std, log_time = TRUE)
 ```
 
+We can also look at the whole thermal tolerance landscape — the posterior survival surface across temperature *and* exposure duration — for each oxygen level:
 
-We can also look at the thermal tolerance landscape:
+```{r zfo2-landscape}
+#| label: fig-zfo2-landscape
+#| fig-cap: "Zebrafish thermal tolerance landscape. Posterior-median survival probability across the temperature × exposure-duration plane for normoxia and hyperoxia. White contours mark the 25%, 50% and 75% survival isoclines, and observed cell proportions are overlaid (points). The rightward shift of the contours under hyperoxia is the higher $CT_{max_{1hr}}$ seen in the survival curves, now shown across the whole assayed surface."
+#| echo: true
+#| code-fold: show
 
+# Dense 2-D survival surface over temperature x duration; a grouped fit returns
+# one block per oxygen level, which plot_tdt_landscape() draws as one panel each.
+# (ndraws subsamples the posterior to keep the 120x120 grid which is quick to render.)
+zf_land <- derive_tdt_landscape(wf_zf, ndraws = 500)
+plot_tdt_landscape(zf_land, observed = zf_std)
+```
 
 # **Case Study 2: Cereal aphids — comparing three species** {#sec-aphids}
 
