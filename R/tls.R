@@ -48,7 +48,10 @@
 #'   for `CTmax`/`T_crit`. Taken from a `bayes_tls` workflow's metadata when
 #'   available; supply it for a raw `brmsfit`.
 #' @param temp_grid Temperatures (on the `temp` scale) at which the LT curve is
-#'   evaluated for the slope/crossing. Default: 11 points over the observed range.
+#'   evaluated: `z` is the local `z(T)` pooled over this grid and `CTmax` is the
+#'   per-draw crossing of `t_ref` inverted on it. Default: 11 points over the
+#'   observed range. For an absolute threshold, ensure the grid brackets the
+#'   `CTmax` crossing (extend it if `CTmax` falls outside the observed range).
 #' @param re_formula Passed to [brms::posterior_linpred()]; default `NA`
 #'   (population level). Include group-level terms (e.g. clone) for per-group draws.
 #' @param lower,upper Response bounds of the disjoint-bounds reparameterisation.
@@ -64,15 +67,22 @@
 #' @return A `tls` object: `$summary` (per-group, per-quantity median + interval),
 #'   `$draws` (per-group, per-quantity posterior draws), and `$meta`.
 #' @details
-#' **Scope vs [extract_tdt()].** `tls()` derives `z`/`CTmax` from the
-#' least-squares slope of the per-draw log10(LT)-versus-temperature line across
-#' `temp_grid`, i.e. a regression-slope summary of the LT curve. With
-#' `target_surv = "absolute"` (or a numeric `p`) the underlying LT curve can be
-#' bent, and this slope summary then differs from [extract_tdt()], which uses a
-#' local-`z` pooling / true inversion of the curve. The two engines coincide
-#' only in the relative/linear case (`target_surv = "relative"`, the default),
-#' where log10(LT) is linear in temperature; treat the absolute-mode `tls()`
-#' output as a linear approximation, not as an inversion-based estimate.
+#' **Shared engine with [extract_tdt()].** `tls()` and [extract_tdt()] derive
+#' `z`, `CTmax` and `T_crit` through the same internal engine, so on a common
+#' temperature grid they agree to numerical tolerance for every threshold. `z`
+#' is the central-difference local `z(T)` (negative reciprocal of the local
+#' slope of `log10(LT)` on temperature) pooled over `temp_grid`; `CTmax` is the
+#' per-draw temperature at which the fitted LT curve crosses `t_ref`, from the
+#' exact closed form when the relative midpoint is linear and from a true
+#' per-draw inversion of the (possibly bent) curve otherwise. Under
+#' `target_surv = "relative"` (the default) `log10(LT) = mid(T)` is linear, so
+#' `z` is constant in temperature and equals `-1 / b_mid_temp_c`; under an
+#' absolute threshold with temperature effects on the asymptotes or steepness
+#' the curve bends and both the local `z(T)` and the inversion account for it,
+#' with no linear approximation. The two functions differ only in defaults, not
+#' engine: `tls()` summarises `z` and `CTmax` on the single `temp_grid`, whereas
+#' [extract_tdt()] pools `z` over the observed assay temperatures and inverts
+#' `CTmax` on a finer extended grid.
 #' @examples
 #' \dontrun{
 #' tls(joint_sex_fit, by = "sex", lethal = TRUE, temp_mean = 36.1)  # z, CTmax, T_crit per sex
@@ -143,32 +153,75 @@ tls <- function(object, by = NULL, params = "all",
   }
 
   # --- build the moderator x temperature grid (shared engine) ----------------
-  newdata <- tls_build_grid(mdata, by = by, temp = temp,
-                            temp_grid = temp_grid, newdata = newdata)
+  base_grid <- tls_build_grid(mdata, by = by, temp = temp,
+                              temp_grid = temp_grid, newdata = newdata)
+
+  # tls() derives z / CTmax / T_crit through the SAME engine as extract_tdt()
+  # (tls_zct_draws): the central-difference local z pooled over the grid, and
+  # either the exact closed form (a linear relative midpoint) or a true per-draw
+  # inversion of the -- possibly bent -- absolute LT curve. To do that we
+  # evaluate logLT at, per group, temp_c = 0 (the closed-form midpoint anchor),
+  # the grid +/- h (local z), and the grid itself (the CTmax inversion). h is the
+  # same finite-difference step extract_tdt() uses. This replaces the earlier
+  # single global least-squares slope, which was exact only for a linear
+  # (relative) LT curve and a ~linear approximation of a bent (absolute) one.
+  h          <- 1e-3
+  log_tref   <- log10(t_ref / time_multiplier)        # CTmax target (model units)
+  target_1hr <- log10(60   / time_multiplier)         # T_crit 1-hour anchor
+  # A linear relative midpoint has a closed-form crossing; an absolute threshold
+  # or a `direct` fit is inverted numerically. Mirrors extract_tdt()'s switch.
+  mid_rel_closed <- identical(mode, "relative") &&
+    !identical(meta$parameterization %||% "midpoint", "direct")
+
+  groups   <- unique(base_grid$.grp)
+  grp_cols <- list(); aug_parts <- list(); offset <- 0L
+  for (g in groups) {
+    rows   <- which(base_grid$.grp == g)
+    tg     <- sort(unique(base_grid[[temp]][rows]))   # centred grid temperatures
+    L      <- length(tg)
+    modrow <- base_grid[rows[1], , drop = FALSE]      # moderators + filled columns
+    aug_tc <- c(0, tg - h, tg + h, tg)                # mid0 | minus | plus | ctmax
+    a         <- modrow[rep(1L, length(aug_tc)), , drop = FALSE]
+    a[[temp]] <- aug_tc
+    a$.grp    <- g
+    aug_parts[[length(aug_parts) + 1L]] <- a
+    grp_cols[[g]] <- list(
+      tg = tg, L = L,
+      mod   = if (is.null(by)) NULL else base_grid[rows[1], by, drop = FALSE],
+      mid0  = offset + 1L,
+      minus = offset + 1L + seq_len(L),
+      plus  = offset + 1L + L + seq_len(L),
+      ctmax = offset + 1L + 2L * L + seq_len(L))
+    offset <- offset + 1L + 3L * L
+  }
+  aug <- do.call(rbind, aug_parts)
+  rownames(aug) <- NULL
 
   # Reproducibility: seed the posterior_linpred draw subsample (when `ndraws` is
-  # set) and the T_crit rate draws below from one stream.
+  # set) and the T_crit rate draws below from one stream. The augmented grid adds
+  # rows, not draws, so the subsample -- and hence seeded T_crit -- is unchanged.
   if (!is.null(seed)) set.seed(seed)
 
   # --- evaluate sub-parameters at every grid row (shared engine) -------------
-  logLT <- tls_eval_subpars(fit, newdata, compute_4pl_bounds(lower, upper),
+  logLT <- tls_eval_subpars(fit, aug, compute_4pl_bounds(lower, upper),
                             nlpars = nlpars, re_formula = re_formula,
                             ndraws = ndraws, mode = mode, p = p)$logLT
+  np <- nrow(logLT)
+
+  want_z     <- "z"     %in% params
+  want_ctmax <- "ctmax" %in% params
+  want_tcrit <- "tcrit" %in% params
 
   # --- derive per-group quantities from the shared draws ---------------------
-  tc <- newdata[[temp]]
-  log_tref <- log10(t_ref / time_multiplier)
   summ <- list(); drw <- list()
   allna_groups <- character(0)   # groups whose z/CTmax draws are all non-finite
-  for (g in unique(newdata$.grp)) {
-    cols <- which(newdata$.grp == g)
-    w    <- tc[cols] - mean(tc[cols])
-    slope <- as.vector(logLT[, cols, drop = FALSE] %*% w / sum(w^2))   # per-draw LS slope
-    inter <- rowMeans(logLT[, cols, drop = FALSE]) - slope * mean(tc[cols])  # at temp = 0
-    gcols <- if (is.null(by)) NULL else newdata[cols[1], by, drop = FALSE]
+  for (g in groups) {
+    gi    <- grp_cols[[g]]
+    gcols <- gi$mod
     add <- function(q, v) {
-      # Summarise on the finite draws only. A near-zero LS slope sends z = -1/slope
-      # to +/-Inf and a single-temperature group sends it to NaN (0/0); without
+      # Summarise on the finite draws only. A near-flat LT curve sends
+      # z = -1/slope to +/-Inf, a curve that never crosses t_ref within the grid
+      # gives an NA CTmax, and a single-temperature group is NA'd below; without
       # this, stats::quantile() aborts ("missing values not allowed") and takes
       # down the whole tls() call. The raw draws (Inf/NaN included) are still
       # returned in `$draws`.
@@ -188,21 +241,44 @@ tls <- function(object, by = NULL, params = "all",
       summ[[length(summ) + 1L]] <<- s
       drw[[length(drw) + 1L]]   <<- d
     }
-    z <- -1 / slope
-    if ("z"     %in% params) add("z", z)
-    if ("ctmax" %in% params) add("CTmax", temp_mean + (log_tref - inter) / slope)
-    if ("tcrit" %in% params) {
-      ct1 <- temp_mean + (log10(60 / time_multiplier) - inter) / slope  # CTmax at 1 h
-      u   <- stats::runif(length(z), log10(TC_rate_range[1] / 100),
-                          log10(TC_rate_range[2] / 100))
-      add("Tcrit", ct1 + z * u)
+
+    if (gi$L < 2L) {
+      # A single-temperature grid cannot define a slope or bracket an inversion
+      # (the ill-posed case the old LS slope returned NaN for). NA the group and
+      # warn, rather than reporting a spurious single-point derivative.
+      z_full <- ctmax_full <- ct1_full <- rep(NA_real_, np)
+    } else {
+      # ctmax_grid on the ORIGINAL temperature scale, so the inverted CTmax is
+      # too (temp_mean is guaranteed non-NULL whenever CTmax / T_crit are asked).
+      ctmax_grid <- if (is.null(temp_mean)) gi$tg else gi$tg + temp_mean
+      zc <- tls_zct_draws(logLT[, gi$plus,  drop = FALSE],
+                          logLT[, gi$minus, drop = FALSE], h, gi$tg,
+                          logLT[, gi$ctmax, drop = FALSE], ctmax_grid,
+                          logLT[, gi$mid0],
+                          target = log_tref, target_1hr = target_1hr,
+                          Tbar = temp_mean, use_closed = mid_rel_closed,
+                          z_local = FALSE,
+                          want_ctmax = want_ctmax, want_ct1 = want_tcrit)
+      z_full <- rep(NA_real_, np)
+      z_full[zc$z$draws$.draw] <- zc$z$draws$z      # pooled per-draw z (NA where non-finite)
+      ctmax_full <- zc$ctmax %||% rep(NA_real_, np)
+      ct1_full   <- zc$ct1   %||% rep(NA_real_, np)
+    }
+
+    if (want_z)     add("z", z_full)
+    if (want_ctmax) add("CTmax", ctmax_full)
+    if (want_tcrit) {
+      u <- stats::runif(np, log10(TC_rate_range[1] / 100),
+                        log10(TC_rate_range[2] / 100))
+      add("Tcrit", ct1_full + z_full * u)
     }
   }
 
   if (length(allna_groups)) {
     warning("tls(): all z/CTmax draws were non-finite for group(s) ",
             paste(allna_groups, collapse = ", "),
-            "; their summary rows are NA (e.g. a near-zero LS slope or a ",
+            "; their summary rows are NA (e.g. a near-flat LT curve, a curve ",
+            "that never crosses t_ref within the temperature grid, or a ",
             "single-temperature group). Do not read these as valid estimates.",
             call. = FALSE)
   }

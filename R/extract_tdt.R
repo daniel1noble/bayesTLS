@@ -637,17 +637,18 @@ extract_tdt <- function(workflow,
     c_plus  <- gi[1 + Lz + seq_len(Lz)]
     c_ctmax <- gi[1 + 2L * Lz + seq_len(Lc)]
 
-    z_obj <- tls_local_z(sp$logLT[, c_plus, drop = FALSE],
-                         sp$logLT[, c_minus, drop = FALSE], h, z_temp_grid,
-                         local = isTRUE(z_local))
-
-    if (mid_rel_closed) {
-      slope   <- rowMeans((sp$logLT[, c_plus, drop = FALSE] -
-                           sp$logLT[, c_minus, drop = FALSE]) / (2 * h))
-      Tc <- Tbar + (target - sp$logLT[, c_mid0]) / slope   # exact closed-form
-    } else {
-      Tc <- tls_invert_logLT(sp$logLT[, c_ctmax, drop = FALSE], target, temp_grid)
-    }
+    # z, CTmax and the 1-hour CTmax anchor from the SAME engine tls() uses
+    # (tls_zct_draws) -- identical by construction. want_ct1 = lethal so the
+    # 1-hour anchor inversion runs only when T_crit is requested.
+    zc <- tls_zct_draws(sp$logLT[, c_plus,  drop = FALSE],
+                        sp$logLT[, c_minus, drop = FALSE], h, z_temp_grid,
+                        sp$logLT[, c_ctmax, drop = FALSE], temp_grid,
+                        sp$logLT[, c_mid0],
+                        target = target, target_1hr = target_1hr, Tbar = Tbar,
+                        use_closed = mid_rel_closed, z_local = isTRUE(z_local),
+                        want_ctmax = TRUE, want_ct1 = isTRUE(lethal))
+    z_obj <- zc$z
+    Tc    <- zc$ctmax
     cd <- tibble::tibble(.draw = seq_along(Tc), temp = Tc) |> dplyr::filter(is.finite(temp))
     cq <- stats::quantile(cd$temp, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
     ctmax <- list(draws = cd,
@@ -660,11 +661,8 @@ extract_tdt <- function(workflow,
       # CTmax at t_ref: the rate-multiplier offset is defined against CTmax_1hr,
       # so T_crit must be invariant to the reporting reference. extract_tdt
       # previously used CTmax at t_ref -> wrong T_crit for t_ref != 60. ct1 is
-      # computed the same way as the CTmax above, just at the 1 h target.
-      ct1 <- if (mid_rel_closed)
-        Tbar + (target_1hr - sp$logLT[, c_mid0]) / slope
-      else
-        tls_invert_logLT(sp$logLT[, c_ctmax, drop = FALSE], target_1hr, temp_grid)
+      # derived alongside CTmax above (tls_zct_draws), just at the 1 h target.
+      ct1 <- zc$ct1
       cd1 <- tibble::tibble(.draw = seq_along(ct1), CTmax_1hr = ct1) |>
         dplyr::filter(is.finite(CTmax_1hr))
       paired <- dplyr::inner_join(dplyr::select(z_obj$draws, .draw, z), cd1,

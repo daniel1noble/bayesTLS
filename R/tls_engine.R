@@ -182,3 +182,51 @@ tls_invert_logLT <- function(M, target, temp_grid) {
   }
   Tc
 }
+
+# Per-group z / CTmax / 1-hour-CTmax-anchor from logLT already evaluated on the
+# group's grid. This is the SINGLE derivation contract shared by extract_tdt()
+# and tls(), so the two are identical by construction: z is always the
+# central-difference local z pooled over `z_grid` (tls_local_z; exact for a
+# linear relative midpoint, accurate for a bent absolute curve), and the CTmax /
+# 1-hour anchor use the exact closed form for a linear relative midpoint
+# (`use_closed = TRUE`) or a true per-draw inversion of the bent LT curve
+# (tls_invert_logLT) otherwise. RNG-free -- the T_crit rate draws stay with the
+# caller so each keeps its own reproducibility contract.
+#
+# logLT_plus / logLT_minus : [ndraws x length(z_grid)] logLT at z_grid +/- h.
+# logLT_ctmax              : [ndraws x length(ctmax_grid)] logLT at ctmax_grid
+#                            (`ctmax_grid` on the ORIGINAL temperature scale, so
+#                            the returned CTmax is too).
+# mid0                     : [ndraws] logLT at temp_c = 0 (closed-form anchor).
+# target / target_1hr      : log10 reference exposures on the model time scale.
+# Tbar                     : temperature-centring constant (temp_mean).
+# want_ctmax / want_ct1    : compute the CTmax / 1-hour anchor (skipped, left
+#                            NULL, when a caller does not need them -- e.g.
+#                            tls(params = "z")).
+# Returns list(z = <tls_local_z output>, ctmax = <per-draw vector or NULL>,
+#              ct1 = <per-draw vector or NULL>).
+tls_zct_draws <- function(logLT_plus, logLT_minus, h, z_grid,
+                          logLT_ctmax, ctmax_grid, mid0,
+                          target, target_1hr, Tbar, use_closed,
+                          z_local = FALSE, want_ctmax = TRUE, want_ct1 = FALSE,
+                          probs = c(0.025, 0.5, 0.975)) {
+  z_obj <- tls_local_z(logLT_plus, logLT_minus, h, z_grid,
+                       probs = probs, local = isTRUE(z_local))
+  ctmax <- NULL; ct1 <- NULL
+  if (isTRUE(want_ctmax) || isTRUE(want_ct1)) {
+    if (isTRUE(use_closed)) {
+      # Linear relative midpoint: logLT(T) = mid(T) is exactly linear, so the
+      # t_ref crossing is closed-form. `slope` is the mean central-difference
+      # slope, which equals b_mid_temp_c for a linear midpoint.
+      slope <- rowMeans((logLT_plus - logLT_minus) / (2 * h))
+      if (isTRUE(want_ctmax)) ctmax <- Tbar + (target     - mid0) / slope
+      if (isTRUE(want_ct1))   ct1   <- Tbar + (target_1hr - mid0) / slope
+    } else {
+      # Bent absolute curve (or a `direct` fit): invert the fitted logLT surface
+      # per draw at the reference exposure.
+      if (isTRUE(want_ctmax)) ctmax <- tls_invert_logLT(logLT_ctmax, target,     ctmax_grid)
+      if (isTRUE(want_ct1))   ct1   <- tls_invert_logLT(logLT_ctmax, target_1hr, ctmax_grid)
+    }
+  }
+  list(z = z_obj, ctmax = ctmax, ct1 = ct1)
+}
