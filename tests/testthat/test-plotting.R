@@ -164,21 +164,23 @@ test_that("plot_survival_curves overlays observed points only when provided", {
   expect_equal(length(plot_survival_curves(pr, observed = obs)$layers), 3L)
 })
 
-test_that("plot_survival_curves clip_to_observed restricts each temp's curve to its observed durations", {
+test_that("clip_to_observed (default TRUE) restricts each temp's curve to its observed durations", {
   pr  <- fake_pred()  # temps 30/34/38 x durations 0.5/1/2/4
   obs <- tibble::tibble(temp = c(30, 30, 38, 38),
                         duration = c(0.5, 1, 2, 4),
                         survival = c(0.9, 0.8, 0.5, 0.2))
-  cd <- plot_survival_curves(pr, observed = obs, clip_to_observed = TRUE)$data
-  # temp 30 clipped to [0.5, 1]; temp 38 to [2, 4]; temp 34 (no observed) intact.
+  # Default clips per (temp): temp 30 -> [0.5, 1]; temp 38 -> [2, 4]; temp 34
+  # (no observed cell) left intact.
+  cd <- plot_survival_curves(pr, observed = obs)$data
   expect_setequal(cd$duration[cd$temp == 30], c(0.5, 1))
   expect_setequal(cd$duration[cd$temp == 38], c(2, 4))
   expect_setequal(cd$duration[cd$temp == 34], c(0.5, 1, 2, 4))
-  # Default keeps the full prediction grid for every temperature.
-  full <- plot_survival_curves(pr)$data
+  # No observed supplied -> no clip (no error), full grid.
+  no_obs <- plot_survival_curves(pr)$data
+  expect_setequal(no_obs$duration[no_obs$temp == 30], c(0.5, 1, 2, 4))
+  # Explicit FALSE keeps the full grid even with observed.
+  full <- plot_survival_curves(pr, observed = obs, clip_to_observed = FALSE)$data
   expect_setequal(full$duration[full$temp == 30], c(0.5, 1, 2, 4))
-  # Clipping needs observed data to define the ranges.
-  expect_error(plot_survival_curves(pr, clip_to_observed = TRUE), "observed")
 })
 
 # ========================= plot_tdt_landscape ==============================
@@ -245,6 +247,19 @@ test_that("plot_tdt_landscape facets into one heatmap panel per group for a grou
   expect_equal(nrow(bd2$data[[1]]), 2L * nrow(g))
 })
 
+test_that("plot_tdt_landscape clips to the observed temp x duration box (default)", {
+  lsp <- fake_landscape()
+  obs <- tibble::tibble(temp = c(32, 36), duration = c(1, 10), survival = c(0.6, 0.3))
+  cd  <- plot_tdt_landscape(lsp, observed = obs)$data     # default clip = TRUE
+  expect_true(all(cd$temp >= 32 & cd$temp <= 36))
+  expect_true(all(cd$duration >= 1 & cd$duration <= 10))
+  # No observed / explicit FALSE -> full grid.
+  expect_equal(nrow(plot_tdt_landscape(lsp)$data), nrow(lsp$summary))
+  expect_equal(nrow(plot_tdt_landscape(lsp, observed = obs,
+                                       clip_to_observed = FALSE)$data),
+               nrow(lsp$summary))
+})
+
 # ========================== plot_tdt_curve =================================
 
 fake_ltx <- function(target = "p=0.500", unit = "min", big = FALSE,
@@ -302,6 +317,15 @@ test_that("plot_tdt_curve clamps the y-axis to 48 h only when the band exceeds i
 test_that("plot_tdt_curve carries the output time unit into the axis label", {
   expect_match(plot_tdt_curve(fake_ltx(unit = "hours"), panels = "linear")$labels$y,
                "hours")
+})
+
+test_that("plot_tdt_curve clips its temperature axis to observed (default) when observed supplied", {
+  ltx <- fake_ltx()  # temp seq(30, 38, by = 1)
+  obs <- tibble::tibble(temp = c(33, 36), duration = c(10, 10), survival = c(0.5, 0.5))
+  cd  <- plot_tdt_curve(ltx, panels = "linear", observed = obs)$data
+  expect_true(all(cd$temp >= 33 & cd$temp <= 36))
+  # No observed -> full temperature range retained.
+  expect_equal(range(plot_tdt_curve(ltx, panels = "linear")$data$temp), c(30, 38))
 })
 
 test_that("plot_tdt_curve facets grouped LT curves instead of pooling them", {

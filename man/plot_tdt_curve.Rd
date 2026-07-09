@@ -4,7 +4,13 @@
 \alias{plot_tdt_curve}
 \title{Plot a posterior LT_x curve}
 \usage{
-plot_tdt_curve(ltx, panels = c("both", "linear", "log"), colour = "#146C7C")
+plot_tdt_curve(
+  ltx,
+  panels = c("both", "linear", "log"),
+  colour = "#146C7C",
+  observed = NULL,
+  clip_to_observed = TRUE
+)
 }
 \arguments{
 \item{ltx}{Output of \code{\link[=derive_tdt_curve]{derive_tdt_curve()}}.}
@@ -12,6 +18,16 @@ plot_tdt_curve(ltx, panels = c("both", "linear", "log"), colour = "#146C7C")
 \item{panels}{One of \code{"both"} (default), \code{"linear"}, or \code{"log"}.}
 
 \item{colour}{Line/ribbon colour. Default \code{"#146C7C"}.}
+
+\item{observed}{Optional standardised data tibble (from
+\code{\link[=standardize_data]{standardize_data()}}). Only used, together with
+\code{clip_to_observed}, to trim the temperature axis.}
+
+\item{clip_to_observed}{Logical. If \code{TRUE} (the default) and \code{observed} is
+supplied, each group's curve is drawn only over its
+observed assay-temperature range (the temperature grid is
+chosen by \code{\link[=derive_tdt_curve]{derive_tdt_curve()}}, so this only trims a grid
+drawn wider than the data). A no-op without \code{observed}.}
 }
 \value{
 A ggplot object (single panel) or patchwork composition (two panels).

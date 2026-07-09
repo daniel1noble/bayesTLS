@@ -8,7 +8,8 @@ plot_tdt_landscape(
   landscape,
   observed = NULL,
   contours = c(0.25, 0.5, 0.75),
-  log_time = FALSE
+  log_time = FALSE,
+  clip_to_observed = TRUE
 )
 }
 \arguments{
@@ -21,6 +22,13 @@ Default \code{c(0.25, 0.5, 0.75)}.}
 
 \item{log_time}{Logical. If \code{TRUE}, exposure-duration y-axis is log10.
 Default \code{FALSE} (linear).}
+
+\item{clip_to_observed}{Logical. If \code{TRUE} (the default) and \code{observed} is
+supplied, each group's heatmap is restricted to the observed
+temperature and exposure-duration extent (a per-group
+bounding box), so the surface is not drawn beyond the data.
+A no-op when \code{observed} is not supplied. Set \code{FALSE} for the
+full grid.}
 }
 \value{
 A ggplot object.

@@ -46,12 +46,13 @@ theme_tdt <- function(base_size = 13) {
 #'                  Default `"Survival probability"`; set to e.g.
 #'                  `"Retained PSII function"` for a continuous-proportion (Beta)
 #'                  endpoint where the response is not survival.
-#' @param clip_to_observed Logical. If `TRUE` (requires `observed`), each
-#'                  temperature/group curve is drawn only over the exposure
-#'                  durations actually observed for that cell, rather than the
-#'                  full prediction grid. Useful when the design tests much
-#'                  shorter durations at hotter temperatures, so curves are not
-#'                  extrapolated far beyond their data. Default `FALSE`.
+#' @param clip_to_observed Logical. If `TRUE` (the default) and `observed` is
+#'                  supplied, each temperature/group curve is drawn only over the
+#'                  exposure durations actually observed for that cell, rather
+#'                  than the full prediction grid — so curves are not
+#'                  extrapolated far beyond their data (e.g. designs that test
+#'                  much shorter exposures at hotter temperatures). A no-op when
+#'                  `observed` is not supplied. Set `FALSE` to draw the full grid.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -64,25 +65,14 @@ plot_survival_curves <- function(pred, observed = NULL,
                                  log_time = FALSE,
                                  palette  = "viridis",
                                  response_label = "Survival probability",
-                                 clip_to_observed = FALSE) {
-  df <- pred$summary
-  # Optionally restrict each temperature's (and group's) fitted curve to the
-  # duration range actually observed for that cell, so the curve is not drawn
-  # far beyond its data (e.g. designs that expose for much shorter times at
-  # hotter temperatures). Cells with no matching observed data are left intact.
-  if (isTRUE(clip_to_observed)) {
-    if (is.null(observed))
-      stop("`clip_to_observed = TRUE` requires `observed`.", call. = FALSE)
-    std <- c("temp", "duration", "survival_lower", "survival_median", "survival_upper")
-    key <- intersect(c(setdiff(names(df), std), "temp"), names(observed))
-    rng <- dplyr::summarise(
-      dplyr::group_by(observed, dplyr::across(dplyr::all_of(key))),
-      .dmin = min(duration, na.rm = TRUE), .dmax = max(duration, na.rm = TRUE),
-      .groups = "drop")
-    df <- dplyr::left_join(df, rng, by = key)
-    df <- df[is.na(df$.dmin) | (df$duration >= df$.dmin & df$duration <= df$.dmax), ]
-    df$.dmin <- NULL
-    df$.dmax <- NULL
+                                 clip_to_observed = TRUE) {
+  df  <- pred$summary
+  std <- c("temp", "duration", "survival_lower", "survival_median", "survival_upper")
+  # By default restrict each (group x temperature) curve to its observed duration
+  # range so curves are not drawn far beyond the data (e.g. designs that test much
+  # shorter exposures at hotter temperatures). A no-op when `observed` is absent.
+  if (isTRUE(clip_to_observed) && !is.null(observed)) {
+    df <- tdt_clip_axis(df, observed, std, "duration", by_extra = "temp")
   }
   p <- ggplot2::ggplot(df, ggplot2::aes(x = duration, y = survival_median,
                                         colour = factor(temp),
@@ -127,6 +117,39 @@ tdt_facet_by_group <- function(p, df, standard) {
   if (length(gcols)) p + ggplot2::facet_wrap(stats::reformulate(gcols)) else p
 }
 
+# Restrict a prediction/summary `df` to the observed data extent along one `axis`
+# ("duration" or "temp"), grouping by the moderator columns (`df` minus
+# `standard`) plus any `by_extra` columns. Two clip granularities:
+#   * by_extra = "temp"  -> per (group x temperature) range (discrete observed
+#                           temperatures, e.g. plot_survival_curves durations);
+#   * by_extra = character() -> per-group range only (a bounding box; used for
+#                           the continuous landscape grid and the TDT-curve
+#                           temperature axis, whose grids are not the observed
+#                           values themselves).
+# Rows in cells with no matching observed data are kept intact. Base R (no
+# tidy-eval) so it is dependency-light and robust.
+tdt_clip_axis <- function(df, observed, standard, axis, by_extra = character()) {
+  if (!(axis %in% names(observed)) || !(axis %in% names(df))) return(df)
+  gcols <- setdiff(names(df), standard)
+  key   <- intersect(c(gcols, by_extra), names(observed))
+  ov    <- observed[is.finite(observed[[axis]]), , drop = FALSE]
+  if (nrow(ov) == 0L) return(df)
+  if (length(key)) {
+    mkid <- function(d) do.call(paste, c(lapply(key, function(k) as.character(d[[k]])),
+                                         list(sep = "\r")))
+    oid <- mkid(ov)
+    lo  <- tapply(ov[[axis]], oid, min)
+    hi  <- tapply(ov[[axis]], oid, max)
+    did <- mkid(df)
+    dlo <- lo[did]; dhi <- hi[did]
+  } else {
+    dlo <- rep(min(ov[[axis]]), nrow(df))
+    dhi <- rep(max(ov[[axis]]), nrow(df))
+  }
+  keep <- is.na(dlo) | (df[[axis]] >= dlo & df[[axis]] <= dhi)
+  df[keep, , drop = FALSE]
+}
+
 #' Plot a posterior LT_x curve
 #'
 #' Plots posterior median +/- 95% CrI of the duration to reach `target_surv`
@@ -149,6 +172,14 @@ tdt_facet_by_group <- function(p, df, standard) {
 #' @param ltx           Output of [derive_tdt_curve()].
 #' @param panels        One of `"both"` (default), `"linear"`, or `"log"`.
 #' @param colour        Line/ribbon colour. Default `"#146C7C"`.
+#' @param observed      Optional standardised data tibble (from
+#'                      [standardize_data()]). Only used, together with
+#'                      `clip_to_observed`, to trim the temperature axis.
+#' @param clip_to_observed Logical. If `TRUE` (the default) and `observed` is
+#'                      supplied, each group's curve is drawn only over its
+#'                      observed assay-temperature range (the temperature grid is
+#'                      chosen by [derive_tdt_curve()], so this only trims a grid
+#'                      drawn wider than the data). A no-op without `observed`.
 #' @return A ggplot object (single panel) or patchwork composition (two panels).
 #' @examples
 #' \dontrun{
@@ -163,9 +194,19 @@ tdt_facet_by_group <- function(p, df, standard) {
 #' @export
 plot_tdt_curve <- function(ltx,
                            panels = c("both", "linear", "log"),
-                           colour = "#146C7C") {
+                           colour = "#146C7C",
+                           observed = NULL,
+                           clip_to_observed = TRUE) {
   panels <- match.arg(panels)
   df <- ltx$summary
+  # By default restrict each group's curve to its observed assay-temperature
+  # range (the temperature grid is user-supplied to derive_tdt_curve(), so this
+  # only trims a grid drawn wider than the data). A no-op without `observed`.
+  if (isTRUE(clip_to_observed) && !is.null(observed)) {
+    df <- tdt_clip_axis(df, observed,
+                        c("target_surv", "temp", "duration_lower",
+                          "duration_median", "duration_upper"), "temp")
+  }
 
   target_raw <- unique(df$target_surv)
   target_mode <- ltx$target_mode %||% NA_character_
@@ -259,6 +300,12 @@ plot_tdt_curve <- function(ltx,
 #'                  Default `c(0.25, 0.5, 0.75)`.
 #' @param log_time  Logical. If `TRUE`, exposure-duration y-axis is log10.
 #'                  Default `FALSE` (linear).
+#' @param clip_to_observed Logical. If `TRUE` (the default) and `observed` is
+#'                  supplied, each group's heatmap is restricted to the observed
+#'                  temperature and exposure-duration extent (a per-group
+#'                  bounding box), so the surface is not drawn beyond the data.
+#'                  A no-op when `observed` is not supplied. Set `FALSE` for the
+#'                  full grid.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -268,8 +315,17 @@ plot_tdt_curve <- function(ltx,
 #' @export
 plot_tdt_landscape <- function(landscape, observed = NULL,
                                contours = c(0.25, 0.5, 0.75),
-                               log_time = FALSE) {
-  df <- landscape$summary
+                               log_time = FALSE,
+                               clip_to_observed = TRUE) {
+  df  <- landscape$summary
+  std <- c("temp", "duration", "survival_lower", "survival_median", "survival_upper")
+  # By default restrict each group's heatmap to the observed temperature x
+  # duration extent (per-group bounding box; the grid is continuous, so this
+  # clips to the observed range). A no-op when `observed` is absent.
+  if (isTRUE(clip_to_observed) && !is.null(observed)) {
+    df <- tdt_clip_axis(df, observed, std, "temp")
+    df <- tdt_clip_axis(df, observed, std, "duration")
+  }
   p <- ggplot2::ggplot(df, ggplot2::aes(x = temp, y = duration,
                                         fill = survival_median)) +
     ggplot2::geom_tile() +

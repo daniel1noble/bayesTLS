@@ -337,7 +337,7 @@ tdt_function_tour <- tibble::tribble(
   "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
   "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace (per group via `by =`).",
   "Heat injury",      "repair_rate_schoolfield()",          "Sharpe-Schoolfield repair TPC (Kelvin internally).",
-  "Plotting",         "plot_survival_curves()",             "Posterior curves with observed proportion overlay; `clip_to_observed = TRUE` limits each temperature/group curve to its observed duration range.",
+  "Plotting",         "plot_survival_curves()",             "Posterior curves with observed proportion overlay; by default each curve is clipped to its observed duration range (`clip_to_observed`).",
   "Plotting",         "plot_tdt_curve()",                   "LT_x curve on a log-time axis (classical TDT view), faceted automatically for grouped `derive_tdt_curve(by = ...)` output.",
   "Plotting",         "plot_tdt_landscape()",               "Survival heatmap with contour overlay.",
   "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95-percent CrI bar.",
@@ -1859,10 +1859,9 @@ Our per-species estimates fall inside the ranges @li2023 report (their Table 1: 
 #| code-fold: show
 
 psc_aphid <- predict_survival_curves(wf_aphid)
-# clip_to_observed keeps each temperature's curve within its tested duration
-# range (aphids were exposed for far shorter times at hotter temperatures).
-plot_survival_curves(psc_aphid, observed = aphid_std, log_time = TRUE,
-                     clip_to_observed = TRUE)
+# plot_survival_curves() clips each curve to its observed duration range by
+# default (aphids were exposed for far shorter times at hotter temperatures).
+plot_survival_curves(psc_aphid, observed = aphid_std, log_time = TRUE)
 ```
 
 We can also visualise the TDT curves.
