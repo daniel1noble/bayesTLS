@@ -1794,7 +1794,7 @@ str(aphid_std)
 # Species enter the midpoint (so z and CTmax vary by species) with a temperature
 # slope on k, but we constrain the asymptotes to be constant (up = ~ 1, low = ~ 1).
 # Letting up/low vary by species x temperature overfits here
-wf_aphid <- fit_4pl(aphid_std,
+ wf_aphid <- fit_4pl(aphid_std,
                     ctmax = ~ 0 + species,
                         z = ~ 0 + species,
                         k = ~ temp_c,
@@ -1808,7 +1808,7 @@ summary(wf_aphid)
 
 Overall, the model looks good and explains `r round(bayes_R2_tls(wf_aphid)[1]*100, 1)`% of variation [95% CI: `r round(bayes_R2_tls(wf_aphid)[3]*100, 1)` to `r round(bayes_R2_tls(wf_aphid)[4]*100, 1)`].
 
-## Per-species thermal limits and validation against Li et al. {#sec-aphid-extract}
+## Per-species thermal limits {#sec-aphid-extract}
 
 ```{r aphid-tls}
 #| label: tbl-aphid-tls
@@ -1855,7 +1855,17 @@ psc_aphid <- predict_survival_curves(wf_aphid)
 plot_survival_curves(psc_aphid, observed = aphid_std, log_time = TRUE)
 ```
 
-However, with our model, we can now go one step further! @li2023 also measure across different ages. We can ask whether the heat sensitivity of each species varies across age too. Lets fit that model:
+We can also visualise the TDT curves.
+
+```{r}
+#| label: fig-aphid-tdt
+#| fig-cap: "TDT Curves for each species"
+
+tdt_aphid <- derive_tdt_curve(wf_aphid, by = "species", temp_grid = seq(34, 40, by = 1))
+plot_tdt_curve(tdt_aphid)
+```
+
+However, with our model, we can now go one step further! @li2023 also measure across different ages. We can ask whether the heat sensitivity of each species varies across age too, estimating how sensitivity and tolerance change across age for each species. Lets fit that model:
 
 ```{r aphid-fit}
 #| label: aphid-fit-age
@@ -1891,7 +1901,6 @@ summary(wf_aphid_age)
 ```
 
 There's a lot going on here, but what's important for us is to pay attention to the `ctmaxdev` and `logz` in the model because this shows us that tolerance and sensitivity vary across age differently across species, which is pretty cool! Lets have a look:
-
 ```{r aphid-age-tls}
 #| label: tbl-aphid-age
 #| tbl-cap: "Per-species, per-age thermal-death-time parameters for the three cereal aphids from the age-extended joint 4PL (each species × age cell via `tls()` and `get_tls_est()`): thermal sensitivity $z$ and the 1-hour heat tolerance $CT_{max,1h}$. Cells are the posterior median with 95% credible interval."
