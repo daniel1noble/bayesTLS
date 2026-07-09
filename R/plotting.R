@@ -158,8 +158,8 @@ tdt_clip_axis <- function(df, observed, standard, axis, by_extra = character()) 
 #' panel (the classical TDT view where the relationship is near-linear with
 #' slope `-1/z`). Both panels share posterior draws.
 #'
-#' Grouped output from [derive_tdt_curve(by = ...)] is faceted automatically so
-#' each moderator level gets its own TDT curve panel.
+#' Grouped output from [derive_tdt_curve()] with `by = ...` is faceted
+#' automatically so each moderator level gets its own TDT curve panel.
 #'
 #' Internal y-axis behaviour: if the 95% credible interval of the LT_x curve
 #' extends above 48 hours (converted to `ltx$output_time_unit`), both panels'

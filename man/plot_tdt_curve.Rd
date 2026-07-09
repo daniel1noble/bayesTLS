@@ -40,8 +40,8 @@ panel (the classical TDT view where the relationship is near-linear with
 slope \code{-1/z}). Both panels share posterior draws.
 }
 \details{
-Grouped output from \link{derive_tdt_curve(by = ...)} is faceted automatically so
-each moderator level gets its own TDT curve panel.
+Grouped output from \code{\link[=derive_tdt_curve]{derive_tdt_curve()}} with \code{by = ...} is faceted
+automatically so each moderator level gets its own TDT curve panel.
 
 Internal y-axis behaviour: if the 95\% credible interval of the LT_x curve
 extends above 48 hours (converted to \code{ltx$output_time_unit}), both panels'
