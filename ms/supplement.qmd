@@ -144,11 +144,15 @@ execute:
 remotes::install_github("daniel1noble/bayesTLS", force = TRUE)
 
 # Ensure the frequentist companion package (used in the freqTLS section) is
-# installed. It is NOT attached here because it shares function names with
-# bayesTLS; the freqTLS section attaches it once, at the end.
+# installed. It is called via `freqTLS::` and never attached, because it shares
+# function names with bayesTLS (fit_4pl, tls, predict_survival_curves, ...).
 if (!requireNamespace("freqTLS", quietly = TRUE)) {
   remotes::install_github("itchyshin/freqTLS")
 }
+# Defensive: if a reused R session already has freqTLS attached, detach it so the
+# bare bayesTLS functions used throughout are never masked. `freqTLS::` calls in
+# the freqTLS section still work unattached; harmless when it is not attached.
+while ("package:freqTLS" %in% search()) detach("package:freqTLS", unload = FALSE)
 
 # Load required packages.
 pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl, bayesTLS)
