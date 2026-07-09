@@ -4200,7 +4200,7 @@ saveRDS(case_contrasts, here::here("output", "data", "case_study_contrasts.rds")
 
 # **Fitting models with `freqTLS`** {#sec-freqtls}
 
-The companion package [`freqTLS`](https://github.com/itchyshin/freqTLS) fits the same models by maximum likelihood instead of MCMC, and mirrors the `bayesTLS` interface on purpose: `standardize_data()`, `fit_4pl()` and `tls()` take the same arguments and return the same tidy-long summaries — so the *same* code fits the model, only the package changes. We refit the three-species aphid model from Case Study 2 (@sec-aphids) and compare. Because `freqTLS` shares `bayesTLS`'s function names, load it **after** your `bayesTLS` analyses (or call it as `freqTLS::`); here it is the final step, so a plain `library()` is safe.
+The companion package [`freqTLS`](https://github.com/itchyshin/freqTLS) fits the same models by maximum likelihood instead of MCMC, and mirrors the `bayesTLS` interface on purpose: `standardize_data()`, `fit_4pl()` and `tls()` take the same arguments and return the same tidy-long summaries — so the *same* call fits the model, only the package changes. We refit the three-species aphid model from Case Study 2 (@sec-aphids) and compare. Because `freqTLS` deliberately shares `bayesTLS`'s function names, we call it with the `freqTLS::` prefix here so it never masks the `bayesTLS` functions used elsewhere in this supplement.
 
 ```{r freqtls-fit}
 #| label: freqtls-fit
@@ -4209,17 +4209,18 @@ The companion package [`freqTLS`](https://github.com/itchyshin/freqTLS) fits the
 #| message: false
 #| code-fold: show
 
-# Install once from GitHub:  remotes::install_github("itchyshin/freqTLS")
-library(freqTLS)
+# freqTLS is installed from GitHub: remotes::install_github("itchyshin/freqTLS").
+# We call it with the freqTLS:: prefix (rather than library(freqTLS)) so it does
+# not mask the identically named bayesTLS functions used elsewhere.
 
 # The SAME fit_4pl() call as Case Study 2 — fit by maximum likelihood, not MCMC.
-fit_aphid_freq <- fit_4pl(aphid_std,
-                          ctmax = ~ 0 + species, z = ~ 0 + species,
-                          k = ~ temp_c, up = ~ 1, low = ~ 1,
-                          t_ref = 60, family = beta_binomial_tls())
+fit_aphid_freq <- freqTLS::fit_4pl(aphid_std,
+                                   ctmax = ~ 0 + species, z = ~ 0 + species,
+                                   k = ~ temp_c, up = ~ 1, low = ~ 1,
+                                   t_ref = 60, family = freqTLS::beta_binomial_tls())
 
 # Per-species z and CTmax, extracted exactly as with bayesTLS.
-freq_sum <- tls(fit_aphid_freq, by = "species")$summary
+freq_sum <- freqTLS::tls(fit_aphid_freq, by = "species")$summary
 freq_sum
 ```
 
