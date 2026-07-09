@@ -266,11 +266,11 @@ test_that("plot_tdt_curve returns two panels by default and single panels on req
 
 test_that("plot_tdt_curve renders the target-survival label for each label style", {
   expect_match(plot_tdt_curve(fake_ltx("p=0.500"), panels = "linear")$labels$y,
-               "50% survival")
+               "50% absolute survival")
   expect_match(plot_tdt_curve(fake_ltx("(low+up)/2"), panels = "linear")$labels$y,
-               "low \\+ up")
+               "relative survival")
   expect_match(plot_tdt_curve(fake_ltx("0.1"), panels = "linear")$labels$y,
-               "10% survival")
+               "10% absolute survival")
 })
 
 test_that("plot_tdt_curve clamps the y-axis to 48 h only when the band exceeds it", {

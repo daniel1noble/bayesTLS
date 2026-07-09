@@ -143,20 +143,24 @@ plot_tdt_curve <- function(ltx,
   df <- ltx$summary
 
   target_raw <- unique(df$target_surv)
-  target_lab <- if (length(target_raw) == 1L &&
-                    is.character(target_raw) &&
-                    target_raw == "(low+up)/2") {
-    "(low + up) / 2 survival"
+  target_mode <- ltx$target_mode %||% NA_character_
+  is_relative <- identical(target_mode, "relative") ||
+    (length(target_raw) == 1L && is.character(target_raw) &&
+       target_raw == "(low+up)/2")
+  target_lab <- if (is_relative) {
+    "relative survival"
   } else {
     # Try the legacy numeric path first; fall back to the raw label if the
     # column carries an "p=X.XXX" string from resolve_target_surv().
-    num <- suppressWarnings(as.numeric(target_raw))
+    num <- ltx$target_prob %||% suppressWarnings(as.numeric(target_raw))
+    if (!is.finite(num) && length(target_raw) == 1L &&
+        is.character(target_raw) && grepl("^p=", target_raw)) {
+      num <- suppressWarnings(as.numeric(sub("^p=", "", target_raw)))
+    }
     if (length(num) == 1L && is.finite(num)) {
-      paste0(round(100 * num), "% survival")
-    } else if (length(target_raw) == 1L && is.character(target_raw) &&
-               grepl("^p=", target_raw)) {
-      paste0(round(100 * as.numeric(sub("^p=", "", target_raw))),
-             "% survival")
+      paste0(round(100 * num), "% absolute survival")
+    } else if (identical(target_mode, "absolute")) {
+      "absolute survival"
     } else {
       paste0("survival = ", target_raw)
     }
