@@ -1,0 +1,85 @@
+---
+title: "freqTLS ↔ bayesTLS equivalence (aphid case study)"
+author: "Project team"
+date: 2026-07-08
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: show
+---
+
+## Question
+
+Does the frequentist companion package
+[`freqTLS`](https://github.com/itchyshin/freqTLS) recover the same thermal-tolerance
+estimates as `bayesTLS` when handed the *same* model on the *same* data? This backs
+the new supplement section **"Fitting models with `freqTLS`"** (`{#sec-freqtls}`) and the
+one-sentence claim in the supplement introduction.
+
+## Approach
+
+Refit the Case Study 2 cereal-aphid model — `CTmax ~ 0 + species`, `z ~ 0 + species`,
+`k ~ temp_c`, asymptotes fixed (`up = ~1`, `low = ~1`), `beta_binomial` family with
+identity link, `t_ref = 60` — in both packages, then compare per-species $z$ and
+$CT_{max,1h}$. `bayesTLS` gives posterior median [95% CrI]; `freqTLS` gives the ML
+estimate [95% profile-likelihood interval].
+
+The code shown here is `eval: false`; the **live, rendered** version is the supplement
+section. These are the values validated on 2026-07-08.
+
+```r
+# freqTLS mirrors the bayesTLS API. It exports the same names, so call via `::`
+# (do NOT attach it) and it takes the identical fit_4pl() specification.
+fit_aphid_freq <- freqTLS::fit_4pl(
+  aphid_std,
+  ctmax = ~ 0 + species, z = ~ 0 + species,
+  k = ~ temp_c, up = ~ 1, low = ~ 1,
+  t_ref = 60, family = freqTLS::beta_binomial_tls()
+)
+freq_aphid <- freqTLS::tls(fit_aphid_freq, by = "species")  # z + CTmax, profile CIs
+```
+
+## Result (validated 2026-07-08)
+
+| Species      | Quantity        | bayesTLS (median [95% CrI]) | freqTLS (ML [95% profile]) |
+|--------------|-----------------|-----------------------------|-----------------------------|
+| M. dirhodum  | z               | 4.77 [4.53, 5.05]           | 4.75 [4.52, 5.02]           |
+| M. dirhodum  | CTmax, 1 h      | 35.17 [34.96, 35.36]        | 35.22 [35.01, 35.39]        |
+| R. padi      | z               | 3.95 [3.69, 4.25]           | 3.97 [3.70, 4.25]           |
+| R. padi      | CTmax, 1 h      | 37.15 [37.04, 37.25]        | 37.17 [37.06, 37.28]        |
+| S. avenae    | z               | 3.62 [3.47, 3.79]           | 3.61 [3.46, 3.77]           |
+| S. avenae    | CTmax, 1 h      | 36.51 [36.41, 36.60]        | 36.53 [36.43, 36.62]        |
+
+Maximum point-estimate discrepancy across all six cells: **0.04 °C**. Intervals
+essentially coincide. They agree because the data are informative and the priors weak,
+so the `bayesTLS` posterior is likelihood-dominated — the ML estimate sits at the
+posterior mode and the profile interval tracks the credible interval.
+
+## Gotchas (non-obvious, for anyone extending this)
+
+1. **Match the family.** The aphid `bayesTLS` fit is `beta_binomial(link = "identity")`.
+   The `freqTLS` equivalent is `family = freqTLS::beta_binomial_tls()`. A `binomial`
+   fit would not be the same likelihood and should not be expected to match.
+2. **`lethal = TRUE` (T_crit) is bootstrap-based in `freqTLS` and did not converge**
+   on this fit (`extract_tdt(): Too few converged bootstrap replicates (0)`), whereas
+   `z`/`CTmax` come from profile likelihood and are cheap and stable. The equivalence
+   demo therefore compares `z` and `CTmax` only (`lethal = FALSE`). Revisit with a
+   larger `nboot`/different resampling if a T_crit comparison is ever wanted.
+3. **`freqTLS` masks `bayesTLS`.** It exports the same names (`fit_4pl`, `tls`,
+   `standardize_data`, `plot_survival_curves`, and even `extract_tdt`) and registers
+   `print.tls`, overwriting bayesTLS's. Keep `freqTLS` **unattached** and use
+   `freqTLS::`; unqualified `tls()`/`get_tls_est()` then still resolve to `bayesTLS`
+   (verified).
+4. **Label after joining on raw codes.** Indexing a named label vector by a *factor*
+   (`sp_lab[species]`) uses the factor's integer codes, not its names, silently
+   permuting rows. Join the two packages' outputs on `as.character(species)`/
+   `as.character(quantity)` first, then apply labels.
+
+## Render dependency
+
+`freqTLS` is a **render-only** dependency of `ms/supplement.qmd` (not of the R package):
+`R CMD check` never touches `ms/`, and neither CI workflow renders the supplement, so it
+is deliberately **not** in `DESCRIPTION`. The section installs it with a guarded
+`remotes::install_github("itchyshin/freqTLS")` (mirroring the in-document `bayesTLS`
+install), so a fresh clone still renders.
