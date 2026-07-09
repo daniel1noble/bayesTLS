@@ -29,15 +29,17 @@ The code shown here is `eval: false`; the **live, rendered** version is the supp
 section. These are the values validated on 2026-07-08.
 
 ```r
-# freqTLS mirrors the bayesTLS API. It exports the same names, so call via `::`
-# (do NOT attach it) and it takes the identical fit_4pl() specification.
-fit_aphid_freq <- freqTLS::fit_4pl(
+# freqTLS mirrors the bayesTLS API, so the SAME fit_4pl()/tls() calls work. It is
+# attached at the very end of the tutorial (nothing after uses bayesTLS), so the
+# bare calls resolve to freqTLS.
+library(freqTLS)
+fit_aphid_freq <- fit_4pl(
   aphid_std,
   ctmax = ~ 0 + species, z = ~ 0 + species,
   k = ~ temp_c, up = ~ 1, low = ~ 1,
-  t_ref = 60, family = freqTLS::beta_binomial_tls()
+  t_ref = 60, family = beta_binomial_tls()
 )
-freq_aphid <- freqTLS::tls(fit_aphid_freq, by = "species")  # z + CTmax, profile CIs
+freq_sum <- tls(fit_aphid_freq, by = "species")$summary   # z + CTmax, profile CIs
 ```
 
 ## Result (validated 2026-07-08)
@@ -68,9 +70,13 @@ posterior mode and the profile interval tracks the credible interval.
    larger `nboot`/different resampling if a T_crit comparison is ever wanted.
 3. **`freqTLS` masks `bayesTLS`.** It exports the same names (`fit_4pl`, `tls`,
    `standardize_data`, `plot_survival_curves`, and even `extract_tdt`) and registers
-   `print.tls`, overwriting bayesTLS's. Keep `freqTLS` **unattached** and use
-   `freqTLS::`; unqualified `tls()`/`get_tls_est()` then still resolve to `bayesTLS`
-   (verified).
+   `print.tls`, overwriting bayesTLS's. The tutorial keeps the code simple by
+   attaching it (`library(freqTLS)`) at the very end — the derivation section that
+   follows uses no bayesTLS functions, so bare `fit_4pl()`/`tls()` there safely mean
+   freqTLS, and the Bayesian estimates are reused from the earlier `aphid_est` object
+   (computed while bayesTLS was unmasked). If you need both packages live at once,
+   don't attach freqTLS — call it as `freqTLS::` (unqualified `tls()`/`get_tls_est()`
+   then still resolve to bayesTLS; verified).
 4. **Label after joining on raw codes.** Indexing a named label vector by a *factor*
    (`sp_lab[species]`) uses the factor's integer codes, not its names, silently
    permuting rows. Join the two packages' outputs on `as.character(species)`/
@@ -80,6 +86,7 @@ posterior mode and the profile interval tracks the credible interval.
 
 `freqTLS` is a **render-only** dependency of `ms/supplement.qmd` (not of the R package):
 `R CMD check` never touches `ms/`, and neither CI workflow renders the supplement, so it
-is deliberately **not** in `DESCRIPTION`. The section installs it with a guarded
-`remotes::install_github("itchyshin/freqTLS")` (mirroring the in-document `bayesTLS`
-install), so a fresh clone still renders.
+is deliberately **not** in `DESCRIPTION`. The hidden setup chunk installs it with a
+guarded `if (!requireNamespace("freqTLS", quietly = TRUE)) remotes::install_github("itchyshin/freqTLS")`
+(mirroring the in-document `bayesTLS` install), so a fresh clone still renders; the
+section itself just shows `library(freqTLS)` with the install as a comment.
