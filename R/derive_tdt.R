@@ -81,10 +81,13 @@ resolve_target_surv <- function(target_surv) {
 #'                         model and an hours model both give the correct result
 #'                         without manual tuning. Pass a value to override.
 #' @param output_time_unit Label for the output time unit. Default `"min"`.
+#' @param by               Optional moderator column(s) for per-group LT curves.
+#'                         `NULL` (default) uses the fit's recorded moderators;
+#'                         a single-condition fit returns one ungrouped curve.
 #' @return A list with `draws` (per-draw threshold durations; `target_surv`
 #'         column is a character label), `summary` (quantile summary by
-#'         temperature), `target_surv` (the label), `time_multiplier`,
-#'         `output_time_unit`.
+#'         temperature, plus moderator columns for grouped fits), `target_surv`
+#'         (the label), `time_multiplier`, `output_time_unit`, and `by`.
 #' @examples
 #' \dontrun{
 #' wf  <- fit_4pl(std)
@@ -99,7 +102,8 @@ derive_tdt_curve <- function(workflow,
                              ndraws           = NULL,
                              probs            = c(0.025, 0.5, 0.975),
                              time_multiplier  = NULL,
-                             output_time_unit = "min") {
+                             output_time_unit = "min",
+                             by               = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
@@ -115,21 +119,22 @@ derive_tdt_curve <- function(workflow,
   time_multiplier <- tdt_resolve_time_multiplier(time_multiplier, workflow$meta,
                                                  output_time_unit)
   ts <- resolve_target_surv(target_surv)
+  by <- tdt_resolve_by(workflow, by)
 
   if (ts$mode == "relative") {
     # Direct shortcut: log10(t_relative) = mid(T) per draw. No grid search.
-    nd <- new_tdt_grid(workflow, temps = temp_grid, durations = 1)
+    nd <- new_tdt_grid(workflow, temps = temp_grid, durations = 1, by = by)
     pp_mid <- brms::posterior_linpred(workflow$fit, newdata = nd,
                                        nlpar = "mid", re_formula = NA,
                                        ndraws = ndraws)
-    # pp_mid is [ndraws x length(temp_grid)] of log10(t) in model time units.
+    # pp_mid is [ndraws x nrow(nd)] of log10(t) in model time units.
     duration_model_mat <- 10 ^ pp_mid
 
-    draw_list <- vector("list", length(temp_grid))
-    for (i in seq_along(temp_grid)) {
-      t_i  <- temp_grid[i]
+    draw_list <- vector("list", nrow(nd))
+    for (i in seq_len(nrow(nd))) {
+      t_i  <- nd$temp[i]
       dmod <- duration_model_mat[, i]
-      draw_list[[i]] <- data.frame(
+      d <- data.frame(
         .draw            = seq_along(dmod),
         temp             = t_i,
         target_surv      = ts$label,
@@ -137,6 +142,10 @@ derive_tdt_curve <- function(workflow,
         duration_out     = dmod * time_multiplier,
         stringsAsFactors = FALSE
       )
+      if (!is.null(by)) {
+        d <- cbind(nd[rep(i, nrow(d)), by, drop = FALSE], d, row.names = NULL)
+      }
+      draw_list[[i]] <- d
     }
   } else {
     if (is.null(duration_grid)) {
@@ -145,17 +154,25 @@ derive_tdt_curve <- function(workflow,
                                 log10(drange[2] * 5),
                                 length.out = 350)
     }
-    nd   <- new_tdt_grid(workflow, temps = temp_grid, durations = duration_grid)
+    nd   <- new_tdt_grid(workflow, temps = temp_grid, durations = duration_grid,
+                         by = by)
     pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws,
                                    re_formula = NA)
-    draw_list <- vector("list", length(temp_grid))
-    for (i in seq_along(temp_grid)) {
-      t_i <- temp_grid[i]
-      idx <- nd$temp == t_i
+    if (is.null(by)) {
+      keys <- data.frame(.grp = "all", temp = unique(nd$temp),
+                         stringsAsFactors = FALSE)
+    } else {
+      keys <- unique(nd[, c(by, ".grp", "temp"), drop = FALSE])
+      rownames(keys) <- NULL
+    }
+    draw_list <- vector("list", nrow(keys))
+    for (i in seq_len(nrow(keys))) {
+      t_i <- keys$temp[i]
+      idx <- if (is.null(by)) nd$temp == t_i else nd$.grp == keys$.grp[i] & nd$temp == t_i
       thr <- threshold_x_by_draw(pred_mat = pred[, idx, drop = FALSE],
                                  x        = nd$duration[idx],
                                  target   = ts$prob)
-      draw_list[[i]] <- data.frame(
+      d <- data.frame(
         .draw            = seq_along(thr),
         temp             = t_i,
         target_surv      = ts$label,
@@ -163,14 +180,19 @@ derive_tdt_curve <- function(workflow,
         duration_out     = thr * time_multiplier,
         stringsAsFactors = FALSE
       )
+      if (!is.null(by)) {
+        d <- cbind(keys[rep(i, nrow(d)), by, drop = FALSE], d, row.names = NULL)
+      }
+      draw_list[[i]] <- d
     }
   }
 
   draws <- dplyr::bind_rows(draw_list) |>
     dplyr::filter(is.finite(duration_model), duration_model > 0)
 
+  group_vars <- c(if (!is.null(by)) by, "target_surv", "temp")
   summary <- draws |>
-    dplyr::group_by(target_surv, temp) |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) |>
     dplyr::summarise(
       duration_lower  = stats::quantile(duration_out, probs[1], na.rm = TRUE),
       duration_median = stats::quantile(duration_out, probs[2], na.rm = TRUE),
@@ -184,7 +206,8 @@ derive_tdt_curve <- function(workflow,
        target_mode      = ts$mode,
        target_prob      = ts$prob,
        time_multiplier  = time_multiplier,
-       output_time_unit = output_time_unit)
+       output_time_unit = output_time_unit,
+       by               = by)
 }
 
 #' Temperature at which survival equals a target after a fixed exposure

@@ -21,9 +21,13 @@
 #' @param ndraws        Posterior draws to use; `NULL` (default) uses the full
 #'                      posterior. Pass an integer to subsample for speed.
 #' @param probs         Quantile probabilities. Default `c(0.025, 0.5, 0.975)`.
+#' @param by            Optional moderator column(s) for per-group landscapes.
+#'                      `NULL` (default) uses the fit's moderators; a
+#'                      single-condition fit returns one ungrouped landscape.
 #' @return A list with the same shape as [predict_survival_curves()] (a
 #'         `summary` tibble with `temp`, `duration`, `survival_median`,
-#'         `survival_lower`, `survival_upper`, plus `draws_matrix` and `grid`).
+#'         `survival_lower`, `survival_upper`, plus any moderator columns for
+#'         grouped fits, `draws_matrix` and `grid`).
 #' @examples
 #' \dontrun{
 #' wf  <- fit_4pl(d, ...)
@@ -35,7 +39,8 @@ derive_tdt_landscape <- function(workflow,
                                  temp_grid     = NULL,
                                  duration_grid = NULL,
                                  ndraws        = NULL,
-                                 probs         = c(0.025, 0.5, 0.975)) {
+                                 probs         = c(0.025, 0.5, 0.975),
+                                 by            = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
 
@@ -54,6 +59,7 @@ derive_tdt_landscape <- function(workflow,
     temps     = temp_grid,
     durations = duration_grid,
     ndraws    = ndraws,
-    probs     = probs
+    probs     = probs,
+    by        = by
   )
 }

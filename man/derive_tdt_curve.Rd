@@ -12,7 +12,8 @@ derive_tdt_curve(
   ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
   time_multiplier = NULL,
-  output_time_unit = "min"
+  output_time_unit = "min",
+  by = NULL
 )
 }
 \arguments{
@@ -44,12 +45,16 @@ model and an hours model both give the correct result
 without manual tuning. Pass a value to override.}
 
 \item{output_time_unit}{Label for the output time unit. Default \code{"min"}.}
+
+\item{by}{Optional moderator column(s) for per-group LT curves.
+\code{NULL} (default) uses the fit's recorded moderators;
+a single-condition fit returns one ungrouped curve.}
 }
 \value{
 A list with \code{draws} (per-draw threshold durations; \code{target_surv}
 column is a character label), \code{summary} (quantile summary by
-temperature), \code{target_surv} (the label), \code{time_multiplier},
-\code{output_time_unit}.
+temperature, plus moderator columns for grouped fits), \code{target_surv}
+(the label), \code{time_multiplier}, \code{output_time_unit}, and \code{by}.
 }
 \description{
 Returns the per-draw duration at which population-level survival crosses

@@ -110,6 +110,9 @@ tdt_facet_by_group <- function(p, df, standard) {
 #' panel (the classical TDT view where the relationship is near-linear with
 #' slope `-1/z`). Both panels share posterior draws.
 #'
+#' Grouped output from [derive_tdt_curve(by = ...)] is faceted automatically so
+#' each moderator level gets its own TDT curve panel.
+#'
 #' Internal y-axis behaviour: if the 95% credible interval of the LT_x curve
 #' extends above 48 hours (converted to `ltx$output_time_unit`), both panels'
 #' y-axes are clamped to 48 hours so the readable part of the curve isn't
@@ -197,6 +200,11 @@ plot_tdt_curve <- function(ltx,
   if (apply_cap) {
     p_log <- p_log + ggplot2::coord_cartesian(ylim = c(NA, cap))
   }
+
+  standard_cols <- c("target_surv", "temp", "duration_lower",
+                     "duration_median", "duration_upper")
+  p_lin <- tdt_facet_by_group(p_lin, df, standard_cols)
+  p_log <- tdt_facet_by_group(p_log, df, standard_cols)
 
   if (panels == "linear") return(p_lin)
   if (panels == "log")    return(p_log)

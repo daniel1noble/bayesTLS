@@ -9,7 +9,8 @@ derive_tdt_landscape(
   temp_grid = NULL,
   duration_grid = NULL,
   ndraws = NULL,
-  probs = c(0.025, 0.5, 0.975)
+  probs = c(0.025, 0.5, 0.975),
+  by = NULL
 )
 }
 \arguments{
@@ -29,11 +30,16 @@ uneven-raster artefacts.}
 posterior. Pass an integer to subsample for speed.}
 
 \item{probs}{Quantile probabilities. Default \code{c(0.025, 0.5, 0.975)}.}
+
+\item{by}{Optional moderator column(s) for per-group landscapes.
+\code{NULL} (default) uses the fit's moderators; a
+single-condition fit returns one ungrouped landscape.}
 }
 \value{
 A list with the same shape as \code{\link[=predict_survival_curves]{predict_survival_curves()}} (a
 \code{summary} tibble with \code{temp}, \code{duration}, \code{survival_median},
-\code{survival_lower}, \code{survival_upper}, plus \code{draws_matrix} and \code{grid}).
+\code{survival_lower}, \code{survival_upper}, plus any moderator columns for
+grouped fits, \code{draws_matrix} and \code{grid}).
 }
 \description{
 Returns the posterior median (and 95\% credible band) of survival probability

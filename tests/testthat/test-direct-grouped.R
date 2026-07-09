@@ -64,6 +64,11 @@ test_that("plot helpers facet grouped output instead of pooling across groups", 
     derive_temperature_for_duration(wf, exposure_duration = 1, temp_grid = tg,
                                     by = "grp", seed = 1))
   expect_s3_class(td$facet, "FacetWrap")
+  ltx <- derive_tdt_curve(wf, temp_grid = c(33, 36), by = "grp", ndraws = 100)
+  expect_true("grp" %in% names(ltx$summary))
+  expect_setequal(unique(ltx$summary$grp), c("A", "B"))
+  p_ltx <- plot_tdt_curve(ltx, panels = "log")
+  expect_s3_class(p_ltx$facet, "FacetWrap")
 })
 
 test_that("grouped derived-quantity and survival draws carry grp (no .draw key collision)", {
@@ -79,6 +84,11 @@ test_that("grouped derived-quantity and survival draws carry grp (no .draw key c
                                                durations = c(1, 8), ndraws = 100))
   expect_true("grp" %in% names(sd))
   expect_equal(nrow(dplyr::distinct(sd, grp, temp, duration, .draw)), nrow(sd))
+
+  ltx <- derive_tdt_curve(wf, temp_grid = c(33, 36), by = "grp", ndraws = 100)
+  expect_true("grp" %in% names(ltx$draws))
+  expect_equal(nrow(dplyr::distinct(ltx$draws, grp, temp, target_surv, .draw)),
+               nrow(ltx$draws))
 })
 
 test_that("predict_survival_curves(by=) and predict_heat_injury(by=) return per-group output", {

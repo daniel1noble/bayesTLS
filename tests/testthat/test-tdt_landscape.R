@@ -32,6 +32,24 @@ test_that("default duration grid is linearly spaced (regular for geom_raster)", 
   expect_equal(stats::sd(diff(captured)), 0, tolerance = 1e-8)   # even (linear)
 })
 
+test_that("derive_tdt_landscape passes explicit grouping to the survival predictor", {
+  wf <- list(fit = TRUE, data = data.frame(temp = c(30, 40),
+                                           duration = c(1, 60),
+                                           grp = c("A", "B")))
+  captured_by <- NULL
+  testthat::with_mocked_bindings(
+    has_fit = function(...) TRUE,
+    predict_survival_curves = function(workflow, temps, durations, by, ...) {
+      captured_by <<- by
+      list(summary = NULL)
+    },
+    {
+      derive_tdt_landscape(wf, by = "grp")
+    }
+  )
+  expect_identical(captured_by, "grp")
+})
+
 test_that("derive_tdt_landscape builds a 120x120 grid spanning the data range", {
   skip_unless_brms()
   wf  <- load_fixture_workflow()

@@ -230,14 +230,28 @@ test_that("plot_tdt_landscape facets into one heatmap panel per group for a grou
 
 # ========================== plot_tdt_curve =================================
 
-fake_ltx <- function(target = "p=0.500", unit = "min", big = FALSE) {
+fake_ltx <- function(target = "p=0.500", unit = "min", big = FALSE,
+                     grouped = FALSE) {
   temp <- seq(30, 38, by = 1)
   med  <- 10^(3 - 0.15 * (temp - 30))            # falls with temperature
   upr  <- med * if (big) 50 else 1.5             # `big` pushes past the 48 h cap
-  list(summary = tibble::tibble(
-         target_surv = target, temp = temp,
-         duration_lower = med * 0.7, duration_median = med,
-         duration_upper = upr),
+  summary <- data.frame(target_surv = target, temp = temp,
+                        duration_lower = med * 0.7,
+                        duration_median = med,
+                        duration_upper = upr,
+                        check.names = FALSE)
+  if (isTRUE(grouped)) {
+    summary <- rbind(
+      data.frame(grp = "A", summary, check.names = FALSE),
+      data.frame(grp = "B",
+                 transform(summary,
+                           duration_lower = duration_lower * 1.25,
+                           duration_median = duration_median * 1.25,
+                           duration_upper = duration_upper * 1.25),
+                 check.names = FALSE)
+    )
+  }
+  list(summary = tibble::as_tibble(summary),
        output_time_unit = unit)
 }
 
@@ -271,4 +285,11 @@ test_that("plot_tdt_curve clamps the y-axis to 48 h only when the band exceeds i
 test_that("plot_tdt_curve carries the output time unit into the axis label", {
   expect_match(plot_tdt_curve(fake_ltx(unit = "hours"), panels = "linear")$labels$y,
                "hours")
+})
+
+test_that("plot_tdt_curve facets grouped LT curves instead of pooling them", {
+  p <- plot_tdt_curve(fake_ltx(grouped = TRUE), panels = "linear")
+  expect_s3_class(p$facet, "FacetWrap")
+  bd <- built(p)
+  expect_equal(length(unique(bd$data[[1]]$PANEL)), 2L)
 })
