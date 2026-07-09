@@ -46,6 +46,12 @@ theme_tdt <- function(base_size = 13) {
 #'                  Default `"Survival probability"`; set to e.g.
 #'                  `"Retained PSII function"` for a continuous-proportion (Beta)
 #'                  endpoint where the response is not survival.
+#' @param clip_to_observed Logical. If `TRUE` (requires `observed`), each
+#'                  temperature/group curve is drawn only over the exposure
+#'                  durations actually observed for that cell, rather than the
+#'                  full prediction grid. Useful when the design tests much
+#'                  shorter durations at hotter temperatures, so curves are not
+#'                  extrapolated far beyond their data. Default `FALSE`.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -57,8 +63,27 @@ theme_tdt <- function(base_size = 13) {
 plot_survival_curves <- function(pred, observed = NULL,
                                  log_time = FALSE,
                                  palette  = "viridis",
-                                 response_label = "Survival probability") {
+                                 response_label = "Survival probability",
+                                 clip_to_observed = FALSE) {
   df <- pred$summary
+  # Optionally restrict each temperature's (and group's) fitted curve to the
+  # duration range actually observed for that cell, so the curve is not drawn
+  # far beyond its data (e.g. designs that expose for much shorter times at
+  # hotter temperatures). Cells with no matching observed data are left intact.
+  if (isTRUE(clip_to_observed)) {
+    if (is.null(observed))
+      stop("`clip_to_observed = TRUE` requires `observed`.", call. = FALSE)
+    std <- c("temp", "duration", "survival_lower", "survival_median", "survival_upper")
+    key <- intersect(c(setdiff(names(df), std), "temp"), names(observed))
+    rng <- dplyr::summarise(
+      dplyr::group_by(observed, dplyr::across(dplyr::all_of(key))),
+      .dmin = min(duration, na.rm = TRUE), .dmax = max(duration, na.rm = TRUE),
+      .groups = "drop")
+    df <- dplyr::left_join(df, rng, by = key)
+    df <- df[is.na(df$.dmin) | (df$duration >= df$.dmin & df$duration <= df$.dmax), ]
+    df$.dmin <- NULL
+    df$.dmax <- NULL
+  }
   p <- ggplot2::ggplot(df, ggplot2::aes(x = duration, y = survival_median,
                                         colour = factor(temp),
                                         fill   = factor(temp))) +

@@ -164,6 +164,23 @@ test_that("plot_survival_curves overlays observed points only when provided", {
   expect_equal(length(plot_survival_curves(pr, observed = obs)$layers), 3L)
 })
 
+test_that("plot_survival_curves clip_to_observed restricts each temp's curve to its observed durations", {
+  pr  <- fake_pred()  # temps 30/34/38 x durations 0.5/1/2/4
+  obs <- tibble::tibble(temp = c(30, 30, 38, 38),
+                        duration = c(0.5, 1, 2, 4),
+                        survival = c(0.9, 0.8, 0.5, 0.2))
+  cd <- plot_survival_curves(pr, observed = obs, clip_to_observed = TRUE)$data
+  # temp 30 clipped to [0.5, 1]; temp 38 to [2, 4]; temp 34 (no observed) intact.
+  expect_setequal(cd$duration[cd$temp == 30], c(0.5, 1))
+  expect_setequal(cd$duration[cd$temp == 38], c(2, 4))
+  expect_setequal(cd$duration[cd$temp == 34], c(0.5, 1, 2, 4))
+  # Default keeps the full prediction grid for every temperature.
+  full <- plot_survival_curves(pr)$data
+  expect_setequal(full$duration[full$temp == 30], c(0.5, 1, 2, 4))
+  # Clipping needs observed data to define the ranges.
+  expect_error(plot_survival_curves(pr, clip_to_observed = TRUE), "observed")
+})
+
 # ========================= plot_tdt_landscape ==============================
 
 fake_landscape <- function() {

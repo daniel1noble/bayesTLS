@@ -9,7 +9,8 @@ plot_survival_curves(
   observed = NULL,
   log_time = FALSE,
   palette = "viridis",
-  response_label = "Survival probability"
+  response_label = "Survival probability",
+  clip_to_observed = FALSE
 )
 }
 \arguments{
@@ -29,6 +30,13 @@ hue scale.}
 Default \code{"Survival probability"}; set to e.g.
 \code{"Retained PSII function"} for a continuous-proportion (Beta)
 endpoint where the response is not survival.}
+
+\item{clip_to_observed}{Logical. If \code{TRUE} (requires \code{observed}), each
+temperature/group curve is drawn only over the exposure
+durations actually observed for that cell, rather than the
+full prediction grid. Useful when the design tests much
+shorter durations at hotter temperatures, so curves are not
+extrapolated far beyond their data. Default \code{FALSE}.}
 }
 \value{
 A ggplot object.
