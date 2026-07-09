@@ -277,7 +277,7 @@ tdt_function_core <- tibble::tribble(
   "Extract",      "get_4pl_est()",               "Pull the natural-scale 4PL parameters (low, up, k, mid) out of a fitted workflow as draws or a summary; the 4PL-shape counterpart to `get_tls_est()`.",
   "Predict",      "predict_survival_curves()",   "Posterior survival across a temperature x duration grid, with credible bands (per group via `by =`).",
   "Predict",      "predict_heat_injury()",       "Heat-injury accumulation and predicted survival under a fluctuating temperature trace (optional repair; per group via `by =`).",
-  "Plot",         "plot_tdt_curve()",            "Visualise the TDT (LT_x) curve on a log-time axis; companion `plot_*` functions cover each workflow step."
+  "Plot",         "plot_tdt_curve()",            "Visualise the TDT (LT_x) curve on a log-time axis; grouped curves are faceted automatically."
 )
 
 tinytable::tt(tdt_function_core, escape = TRUE)
@@ -313,9 +313,9 @@ tdt_function_tour <- tibble::tribble(
   "Diagnostics",      "tdt_parameter_table()",              "Posterior summary on the natural scale (low, up, k, mid, z; or low, up, k, CTmax, z for a direct fit), per group via `by =`.",
   "Diagnostics",      "bayes_R2_tls()",                     "Bayesian R^2 for a fitted `bayes_tls` workflow (posterior median + 95% CrI), a tidy wrapper around `brms::bayes_R2()`.",
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands (per group via `by =`).",
-  "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap.",
+  "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap (per group via `by =`).",
   "Predictions",      "summarise_observed_survival()",      "Observed survival mean and SE per (temp, duration) cell; an overlay for the plotted posterior curves.",
-  "TDT quantities",   "derive_tdt_curve()",                 "Time to the threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` (the 50% LT50) or a numeric for another probability.",
+  "TDT quantities",   "derive_tdt_curve()",                 "Time to threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` (the 50% LT50) or a numeric threshold. Per group via `by =`.",
   "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes, default the absolute 50% crossing; per group via `by =`).",
   "TDT quantities",   "derive_z()",                         "Thermal sensitivity z read directly from the posterior (relative: -1/slope of mid(T); absolute: pooled per-draw local z over assay temps); optional local z(T); per group via `by =`.",
   "TDT quantities",   "tls()",                              "One call returning z, CTmax and (when `lethal = TRUE`) T_crit per moderator group from ANY fitted 4PL, including hand-coded `brms` models. Evaluates each sub-parameter at a moderator x temperature grid via `posterior_linpred()`; `target_surv` selects the relative midpoint or absolute LT50 threshold.",
@@ -331,7 +331,7 @@ tdt_function_tour <- tibble::tribble(
   "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace (per group via `by =`).",
   "Heat injury",      "repair_rate_schoolfield()",          "Sharpe-Schoolfield repair TPC (Kelvin internally).",
   "Plotting",         "plot_survival_curves()",             "Posterior curves with observed proportion overlay.",
-  "Plotting",         "plot_tdt_curve()",                   "LT_x curve on a log-time axis (classical TDT view).",
+  "Plotting",         "plot_tdt_curve()",                   "LT_x curve on a log-time axis (classical TDT view), faceted automatically for grouped `derive_tdt_curve(by = ...)` output.",
   "Plotting",         "plot_tdt_landscape()",               "Survival heatmap with contour overlay.",
   "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95-percent CrI bar.",
   "Plotting",         "plot_temperature_scenarios()",       "Three traces stacked vertically.",
