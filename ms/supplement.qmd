@@ -143,6 +143,13 @@ execute:
 # Optional development reinstall:
 remotes::install_github("daniel1noble/bayesTLS", force = TRUE)
 
+# Ensure the frequentist companion package (used in the freqTLS section) is
+# installed. It is NOT attached here because it shares function names with
+# bayesTLS; the freqTLS section attaches it once, at the end.
+if (!requireNamespace("freqTLS", quietly = TRUE)) {
+  remotes::install_github("itchyshin/freqTLS")
+}
+
 # Load required packages.
 pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl, bayesTLS)
 
@@ -4191,7 +4198,7 @@ saveRDS(case_contrasts, here::here("output", "data", "case_study_contrasts.rds")
 
 # **Fitting models with `freqTLS`** {#sec-freqtls}
 
-The companion package [`freqTLS`](https://github.com/itchyshin/freqTLS) fits the same thermal-tolerance models by maximum likelihood rather than MCMC, and mirrors the `bayesTLS` interface on purpose: `standardize_data()`, `fit_4pl()` and `tls()` take the same arguments and return the same tidy-long summaries. To show the two agree, we refit the three-species cereal-aphid model from Case Study 2 (@sec-aphids) with `freqTLS`. Because `freqTLS` exports the same function names as `bayesTLS`, we call it with the `freqTLS::` prefix to keep the two unambiguous.
+The companion package [`freqTLS`](https://github.com/itchyshin/freqTLS) fits the same models by maximum likelihood instead of MCMC, and mirrors the `bayesTLS` interface on purpose: `standardize_data()`, `fit_4pl()` and `tls()` take the same arguments and return the same tidy-long summaries — so the *same* code fits the model, only the package changes. We refit the three-species aphid model from Case Study 2 (@sec-aphids) and compare. Because `freqTLS` shares `bayesTLS`'s function names, load it **after** your `bayesTLS` analyses (or call it as `freqTLS::`); here it is the final step, so a plain `library()` is safe.
 
 ```{r freqtls-fit}
 #| label: freqtls-fit
@@ -4200,70 +4207,52 @@ The companion package [`freqTLS`](https://github.com/itchyshin/freqTLS) fits the
 #| message: false
 #| code-fold: show
 
-# freqTLS lives on GitHub; install once. We do not attach it (that would mask the
-# identically named bayesTLS functions), and instead call it with `freqTLS::`.
-if (!requireNamespace("freqTLS", quietly = TRUE)) {
-  remotes::install_github("itchyshin/freqTLS")
-}
+# Install once from GitHub:  remotes::install_github("itchyshin/freqTLS")
+library(freqTLS)
 
-# The SAME model specification as the Bayesian aphid fit, estimated by maximum
-# likelihood instead of MCMC.
-fit_aphid_freq <- freqTLS::fit_4pl(
-  aphid_std,
-  ctmax = ~ 0 + species, z = ~ 0 + species,
-  k = ~ temp_c, up = ~ 1, low = ~ 1,
-  t_ref = 60, family = freqTLS::beta_binomial_tls()
-)
+# The SAME fit_4pl() call as Case Study 2 — fit by maximum likelihood, not MCMC.
+fit_aphid_freq <- fit_4pl(aphid_std,
+                          ctmax = ~ 0 + species, z = ~ 0 + species,
+                          k = ~ temp_c, up = ~ 1, low = ~ 1,
+                          t_ref = 60, family = beta_binomial_tls())
 
-# Per-species z and CTmax with profile-likelihood intervals.
-freq_aphid <- freqTLS::tls(fit_aphid_freq, by = "species")
-freq_aphid$summary
+# Per-species z and CTmax, extracted exactly as with bayesTLS.
+freq_sum <- tls(fit_aphid_freq, by = "species")$summary
+freq_sum
 ```
 
-The two packages return the same estimates and uncertainty. @tbl-freqtls-compare places them side by side.
+We already have the Bayesian estimates for these species from Case Study 2 (`aphid_est`). Stacking the two side by side shows they coincide (@tbl-freqtls-compare):
 
 ```{r tbl-freqtls-compare}
 #| label: tbl-freqtls-compare
 #| echo: true
 #| message: false
 #| code-fold: show
-#| tbl-cap: "Per-species thermal sensitivity ($z$) and 1-hour heat tolerance ($CT_{max,1h}$) for the three cereal aphids from the identical joint 4PL, estimated by `bayesTLS` (Bayesian: posterior median [95% credible interval]) and `freqTLS` (maximum likelihood: estimate [95% profile-likelihood interval]). All values in °C."
+#| tbl-cap: "Per-species thermal sensitivity ($z$) and 1-hour heat tolerance ($CT_{max,1h}$, °C) for the three aphids from the identical joint 4PL, estimated by `bayesTLS` (posterior median with 95% credible interval) and `freqTLS` (maximum-likelihood estimate with 95% profile-likelihood interval)."
 
-sp_lab  <- c(M_dirhodum = "M. dirhodum", R_padi = "R. padi", S_avenae = "S. avenae")
-q_lab   <- c(z = "z", CTmax = "CTmax, 1h")
-fmt_est <- function(m, l, u) sprintf("%.2f [%.2f, %.2f]", m, l, u)
+compare <- dplyr::bind_rows(bayesTLS = aphid_est, freqTLS = freq_sum, .id = "package") |>
+  dplyr::filter(quantity %in% c("z", "CTmax")) |>
+  dplyr::mutate(dplyr::across(c(median, lower, upper), \(x) round(x, 2))) |>
+  dplyr::arrange(species, quantity, package)
 
-# bayesTLS estimates for the same fit (wf_aphid, from Case Study 2).
-bayes_aphid <- get_tls_est(tls(wf_aphid, by = "species")) |>
-  dplyr::filter(quantity %in% c("z", "CTmax"))
-
-# Join on the raw codes (as character, never factor) so rows align, then label.
-freqtls_compare <- dplyr::inner_join(
-  dplyr::transmute(bayes_aphid,
-                   species = as.character(species), quantity = as.character(quantity),
-                   bayesTLS = fmt_est(median, lower, upper)),
-  dplyr::transmute(freq_aphid$summary,
-                   species = as.character(species), quantity = as.character(quantity),
-                   freqTLS = fmt_est(median, lower, upper)),
-  by = c("species", "quantity")
-) |>
-  dplyr::transmute(Species = sp_lab[species], Quantity = q_lab[quantity],
-                   bayesTLS, freqTLS) |>
-  dplyr::arrange(Species, Quantity)
-
-# Largest point-estimate discrepancy across all six cells (used in the text).
-freqtls_maxdiff <- dplyr::inner_join(
-  dplyr::transmute(bayes_aphid, species = as.character(species),
-                   quantity = as.character(quantity), b = median),
-  dplyr::transmute(freq_aphid$summary, species = as.character(species),
-                   quantity = as.character(quantity), f = median),
-  by = c("species", "quantity")
-) |> dplyr::summarise(m = max(abs(b - f))) |> dplyr::pull(m)
-
-tinytable::tt(freqtls_compare)
+tinytable::tt(compare)
 ```
 
-The maximum-likelihood estimates and profile-likelihood intervals from `freqTLS` match the Bayesian posterior medians and credible intervals from `bayesTLS` to within `r round(freqtls_maxdiff, 2)` °C across all six species-by-quantity estimates. The choice between the two is more about practical application. `freqTLS` is faster for large datasets and quicker for exploration, while `bayesTLS` retains the posterior draws needed to propagate uncertainty into derived quantities — group contrasts, heat-injury trajectories and $T_{crit}$ — as used throughout this supplement.
+```{r freqtls-maxdiff}
+#| label: freqtls-maxdiff
+#| echo: false
+
+# Largest point-estimate gap between the two packages (for the sentence below).
+freqtls_maxdiff <- dplyr::inner_join(
+  dplyr::transmute(dplyr::filter(aphid_est, quantity %in% c("z", "CTmax")),
+                   species = as.character(species), quantity = as.character(quantity), b = median),
+  dplyr::transmute(freq_sum, species = as.character(species),
+                   quantity = as.character(quantity), f = median),
+  by = c("species", "quantity")) |>
+  dplyr::summarise(m = max(abs(b - f))) |> dplyr::pull(m)
+```
+
+The two packages agree to within `r round(freqtls_maxdiff, 2)` °C on every estimate, with essentially identical intervals. The choice between them is practical: `freqTLS` is faster for large datasets and quick exploration, while `bayesTLS` retains the posterior draws needed to propagate uncertainty into derived quantities — group contrasts, heat-injury trajectories and $T_{crit}$ — as used throughout this supplement.
 
 # **Derivation of the correction factors for threshold summaries** {#sec-ms-derive}
 
