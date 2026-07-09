@@ -149,13 +149,25 @@ remotes::install_github("daniel1noble/bayesTLS", force = TRUE)
 if (!requireNamespace("freqTLS", quietly = TRUE)) {
   remotes::install_github("itchyshin/freqTLS")
 }
-# Defensive: if a reused R session already has freqTLS attached, detach it so the
-# bare bayesTLS functions used throughout are never masked. `freqTLS::` calls in
-# the freqTLS section still work unattached; harmless when it is not attached.
-while ("package:freqTLS" %in% search()) detach("package:freqTLS", unload = FALSE)
-
 # Load required packages.
 pacman::p_load(here, dplyr, tidyr, tibble, purrr, ggplot2, brms, posterior, tidybayes, tinytable, patchwork, pander, readxl, bayesTLS)
+
+# Reused-session safety. freqTLS shares many function names with bayesTLS
+# (fit_4pl, tls, predict_survival_curves, standardize_data, plot_*, ...). If a
+# reused R session has freqTLS attached, those would MASK bayesTLS and break the
+# bare calls used throughout this tutorial. We therefore (1) detach freqTLS if
+# present, and (2) pin bayesTLS's shared functions into the global environment so
+# bare calls ALWAYS resolve to bayesTLS regardless of what is attached (a
+# global-env binding shadows every attached package for top-level chunk code).
+# The freqTLS section calls `freqTLS::` explicitly and is unaffected.
+while ("package:freqTLS" %in% search()) detach("package:freqTLS", unload = FALSE)
+if (requireNamespace("freqTLS", quietly = TRUE)) {
+  .shared <- intersect(getNamespaceExports("bayesTLS"), getNamespaceExports("freqTLS"))
+  for (.fn in .shared) {
+    assign(.fn, get(.fn, envir = asNamespace("bayesTLS")), envir = globalenv())
+  }
+  rm(.fn, .shared)
+}
 
 # Register tinytable PDF dependencies even when table chunks are cached.
 invisible(tinytable::tt(data.frame(x = 1)))
