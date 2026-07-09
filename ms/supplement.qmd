@@ -2250,7 +2250,7 @@ We can see each model explains quite a bit of variance but not the >90% reported
 #| label: dros_chains
 #| echo: true
 #| include: false
-#| eval: false
+#| eval: true
 #| code-fold: show
 
 # Provide optional MCMC trace plots for the Drosophila mortality fits.
@@ -2440,7 +2440,7 @@ byhand_tbl <- tibble::tribble(
 tinytable::tt(byhand_tbl, escape = TRUE)
 ```
 
-Everything above - $z$, $CT_{max_{4hr}}$ and $T_{crit}$, at either the relative or the absolute threshold — can be calculated using a single `tls()` call on any custom `brms` 4PL: it evaluates each sub-parameter at the requested moderator grid with `posterior_linpred()` (just like you would predict with any brms object). Moderators on *any* 4PL parameter (and random effects) are handled automatically. We show both thresholds below.
+Everything above – $z$, $CT_{max_{4hr}}$ and $T_{crit}$, at either the relative or the absolute threshold — can be calculated using a single `tls()` call on any custom `brms` 4PL. It evaluates each sub-parameter at the requested moderator levels with `posterior_linpred()` (just like you would predict with any brms object). Moderators on *any* 4PL parameter (and random effects) are handled automatically. We show both thresholds below.
 
 ```{r}
 #| label: tls_sex
@@ -2517,7 +2517,7 @@ The two `tls()` calls reproduce the by-hand calculations: the relative-threshold
 
 #### Fitting a model to compare $z$ and $Ct_{max_{1hr}}$ between sexes directly - direct method
 
-Now, lets re-cast this model in the **direct** form and estimate $z$ and $CT_{max_{4hr}}$ for each of the sexes.
+Now, lets refit this model in the **direct** form and estimate $z$ and $CT_{max_{4hr}}$ for each of the sexes.
 
 ```{r}
 #| label: dros_direct
@@ -3279,7 +3279,7 @@ For this simulation, the data-generating curve spans the full survival range ($\
 
 We included this scenario to check whether the estimators agree when the classical two-stage assumptions are satisfied. As expected, all methods recovered $z$ and $CT_{max,1h}$ with little bias. The main difference was interval calibration: two-stage intervals based on Normal quantiles did not have nominal coverage, whereas the *t*-quantile delta-method intervals were close to the nominal 95% coverage. Here, it is important to recognise that we have ensured error from the two-stage pipeline is correctly propagated through the Delta method for comparison. However, in practice, error propagation is often ignored.
 
-Of the 1,000 datasets per cell, models in the two-stage analytical approach failed to fit or resulted in extreme bias — here and throughout, $|z|$ bias above 20 °C or $|CT_{max,1h}|$ bias above 10 °C, far outside any plausible value — for `r .sim_fail("scen1", "two_stage_bin")` binomial and `r .sim_fail("scen1", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen1", "joint_4pl")` for the joint 4PL, across the simulations. The overdispersion-corrected two-stage thus fails to converge on a sensible estimate even in this most benign scenario, whereas the joint 4PL does not.
+Of the 1,000 datasets per simulated scenario, models in the two-stage analytical approach failed to converge or resulted in extreme bias (i.e., $|z|$ bias above 20 °C or $|CT_{max,1h}|$ bias above 10 °C) for `r .sim_fail("scen1", "two_stage_bin")` binomial and `r .sim_fail("scen1", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits. In contrast, the joint 4PL failed in `r .sim_fail("scen1", "joint_4pl")` fits. 
 
 
 ```{r}
