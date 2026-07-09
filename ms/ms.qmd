@@ -201,7 +201,7 @@ zf_ct_hyper_ci <- g4ci("Zebrafish (oxygen)", "hyperoxia", "CTmax_1hr")
 
 # Calibrated case-study CONTRASTS + the repair effect, produced by the
 # `case-study-contrasts` chunk in ms/supplement.qmd (on the same posterior draws
-# as Figs 5-6). Fallbacks are the verified posterior values so this manuscript
+# as Figs 4-5). Fallbacks are the verified posterior values so this manuscript
 # renders independently. None of these is available under the two-stage pipeline.
 cc <- tryCatch(readRDS(here::here("output", "data", "case_study_contrasts.rds")),
                error = function(e) NULL)
@@ -214,9 +214,9 @@ if (is.null(cc)) cc <- list(
   sg_z  = c(med = -0.04, lo = -0.93, hi = 0.65, p = 0.91),
   fly_z = c(med = 0.12, lo = -0.20, hi = 0.45, p = 0.448),
   fly_ct = c(med = 0.03, lo = -0.15, hi = 0.20, p = 0.772),
-  aphid_repair = list(R_padi = c(med = 94.6, lo = 59.8, hi = 97.7),
-                      S_avenae = c(med = 81.1, lo = 63.8, hi = 88.4),
-                      M_dirhodum = c(med = 0, lo = 0, hi = 0)))
+  aphid_repair = list(R_padi = c(med = 4.77, lo = 0.28, hi = 24.03),
+                      S_avenae = c(med = 1.41, lo = 0.26, hi = 5.10),
+                      M_dirhodum = c(med = 0.0000069, lo = 0.00000035, hi = 0.000072)))
 # Display helpers: signed "x [lo, hi]", positive-magnitude version, pMCMC string, repair %.
 ci1  <- function(v) sprintf("%.1f [%.1f, %.1f]", v["med"], v["lo"], v["hi"])
 ci1a <- function(v) sprintf("%.1f [%.1f, %.1f]", abs(v["med"]), min(abs(v[c("lo", "hi")])), max(abs(v[c("lo", "hi")])))
