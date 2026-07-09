@@ -3905,7 +3905,7 @@ alive.
 Repair is modelled with an **illustrative Sharpe–Schoolfield kernel that is not
 empirically fitted** — it shows the *qualitative* effect of repair, not a
 calibrated rate. We set the Arrhenius (uninhibited) rate scale to
-$r_{ref}=0.03$ LT50-dose h$^{-1}$; the realised repair rate is a little below
+$r_{ref}=0.005$ LT50-dose h$^{-1}$; the realised repair rate is a little below
 this because the inactivation arms of the kernel suppress it. Bands are ±1 SE
 across posterior draws (not 95% credible intervals) to keep the exponential HI
 envelope readable.
@@ -4013,7 +4013,8 @@ adat <- dplyr::bind_rows(aphid_rows) |> dplyr::mutate(species = as.character(spe
 
 dir.create(here::here("output", "data"), recursive = TRUE, showWarnings = FALSE)
 saveRDS(list(fly = fdat, fly_trace = fly_trace, fly_Tc = fTc,
-             aphid = adat, aphid_trace = aphid_trace, aphid_Tc = aphid_Tc),
+             aphid = adat, aphid_trace = aphid_trace, aphid_Tc = aphid_Tc,
+             repair_pars = list(fly = fly_repair, aphid = aphid_repair)),
         here::here("output", "data", "fig5_hi_data.rds"))
 ```
 
@@ -4122,9 +4123,10 @@ knitr::include_graphics(here::here("output", "figs", "fig5_heat_injury.png"))
 #| message: false
 #| warning: false
 # Calibrated group contrasts and the repair effect, all computed on the SAME
-# posterior draws that produce Figs 5-6. These are the quantities the manuscript
-# Results highlight as impossible under the two-stage pipeline. Saved to
-# output/data/case_study_contrasts.rds so ms.qmd can cite them inline.
+# posterior draws that produce the manuscript case-study figures. These are the
+# quantities the manuscript Results highlight as impossible under the two-stage
+# pipeline. Saved to output/data/case_study_contrasts.rds so ms.qmd can cite them
+# inline.
 .pm  <- function(d) { d <- d[is.finite(d)]; 2 * min(mean(d > 0), mean(d < 0)) }
 .qci <- function(x) { x <- x[is.finite(x)]; stats::quantile(x, c(.5, .025, .975), names = FALSE) }
 .con <- function(d) { q <- .qci(d); c(med = q[1], lo = q[2], hi = q[3], p = .pm(d)) }
