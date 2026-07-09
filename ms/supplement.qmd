@@ -272,7 +272,7 @@ tdt_function_core <- tibble::tribble(
   ~Step,          ~Function,                     ~Purpose,
   "Standardise",  "standardize_data()",          "Reshape raw experimental data to the package schema (temp, duration, counts).",
   "Fit",          "fit_4pl()",                   "Fit the joint Bayesian 4PL in one call (builds priors and the brms formula internally). Compare moderator groups in one joint fit with `by = \"<moderator>\"` (midpoint) or `ctmax = ~ 0 + <moderator>` (direct CTmax/z).",
-  "Extract",      "tls()",                       "Derive z, CTmax and (for lethal endpoints `lethal = TRUE`) T_crit per moderator group from ANY fitted 4PL, including hand-coded `brms` models (`by =`). Relative threshold is default by any absolute threshold can be used by modifying `target_surv` (`relative`, `absolute`, or any numeric threshold)" ,
+  "Extract",      "tls()",                       "Derive z, CTmax and (for lethal endpoints `lethal = TRUE`) T_crit per moderator group from any fitted 4PL, including hand-coded `brms` models (`by =`). The default is the relative midpoint threshold; use `target_surv` for absolute LT50 or any numeric survival threshold.",
   "Extract",      "get_tls_est()",               "Pull the derived TLS quantities (z, CTmax, T_crit) out of a `tls()` object as posterior draws or a median + 95% CrI summary -- any or all quantities, per group.",
   "Extract",      "get_4pl_est()",               "Pull the natural-scale 4PL parameters (low, up, k, mid) out of a fitted workflow as draws or a summary; the 4PL-shape counterpart to `get_tls_est()`.",
   "Predict",      "predict_survival_curves()",   "Posterior survival across a temperature x duration grid, with credible bands (per group via `by =`).",
@@ -315,10 +315,10 @@ tdt_function_tour <- tibble::tribble(
   "Predictions",      "predict_survival_curves()",          "Survival curves on a temp x duration grid with credible bands (per group via `by =`).",
   "Predictions",      "derive_tdt_landscape()",             "Dense 2-D survival surface for a heatmap (per group via `by =`).",
   "Predictions",      "summarise_observed_survival()",      "Observed survival mean and SE per (temp, duration) cell; an overlay for the plotted posterior curves.",
-  "TDT quantities",   "derive_tdt_curve()",                 "Time to threshold survival across temperature. Default `target_surv = \"relative\"` (`(low + up)/2` per draw); pass `\"absolute\"` (the 50% LT50) or a numeric threshold. Per group via `by =`.",
-  "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration (same `target_surv` modes, default the absolute 50% crossing; per group via `by =`).",
+  "TDT quantities",   "derive_tdt_curve()",                 "Time to threshold survival across temperature. Default `target_surv = \"relative\"` reads the relative midpoint; pass `\"absolute\"` for the literal LT50 or a numeric survival threshold. Per group via `by =`.",
+  "TDT quantities",   "derive_temperature_for_duration()",  "Temperature at threshold survival for a fixed exposure duration. Uses the same `target_surv` modes as `derive_tdt_curve()` and defaults to the relative midpoint. Per group via `by =`.",
   "TDT quantities",   "derive_z()",                         "Thermal sensitivity z read directly from the posterior (relative: -1/slope of mid(T); absolute: pooled per-draw local z over assay temps); optional local z(T); per group via `by =`.",
-  "TDT quantities",   "tls()",                              "One call returning z, CTmax and (when `lethal = TRUE`) T_crit per moderator group from ANY fitted 4PL, including hand-coded `brms` models. Evaluates each sub-parameter at a moderator x temperature grid via `posterior_linpred()`; `target_surv` selects the relative midpoint or absolute LT50 threshold.",
+  "TDT quantities",   "tls()",                              "One call returning z, CTmax and (when `lethal = TRUE`) T_crit per moderator group from any fitted 4PL, including hand-coded `brms` models. Evaluates each sub-parameter at a moderator x temperature grid via `posterior_linpred()`; `target_surv` selects the relative midpoint or absolute LT50 threshold.",
   "TDT quantities",   "tls_z()",                            "Convenience wrapper for `tls(params = \"z\")` — z only.",
   "TDT quantities",   "tls_ctmax()",                        "Convenience wrapper for `tls(params = \"ctmax\")` — CTmax only.",
   "TDT quantities",   "tls_tcrit()",                        "Convenience wrapper for `tls(params = \"tcrit\", lethal = TRUE)` — T_crit only.",
@@ -1715,7 +1715,7 @@ summary(wf_zf)
 
 ## Per-treatment thermal limits and OCLTT check {#sec-zf-o2-extract}
 
-`tls(by = "oxygen")` derives $z$ and $CT_{max_{1hr}}$ for each treatment from the shared posterior, so each quantity carries full uncertainty. We set `lethal = FALSE` and do not report $T_{crit}$ here because the design has toop few temperatures to estimate it correctly.
+`tls(by = "oxygen")` derives $z$ and $CT_{max_{1hr}}$ for each treatment from the shared posterior, so each quantity carries full uncertainty. We set `lethal = FALSE` and do not report $T_{crit}$ here because the design has too few temperatures to estimate it correctly.
 
 ```{r zfo2-tls}
 #| label: zfo2-tls
