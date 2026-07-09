@@ -4230,10 +4230,15 @@ We already have the Bayesian estimates for these species from Case Study 2 (`aph
 #| code-fold: show
 #| tbl-cap: "Per-species thermal sensitivity ($z$) and 1-hour heat tolerance ($CT_{max,1h}$, °C) for the three aphids from the identical joint 4PL, estimated by `bayesTLS` (posterior median with 95% credible interval) and `freqTLS` (maximum-likelihood estimate with 95% profile-likelihood interval)."
 
-compare <- dplyr::bind_rows(bayesTLS = aphid_est, freqTLS = freq_sum, .id = "package") |>
+compare <- dplyr::bind_rows(bayesTLS = aphid_est, freqTLS = freq_sum, .id = "Package") |>
   dplyr::filter(quantity %in% c("z", "CTmax")) |>
-  dplyr::mutate(dplyr::across(c(median, lower, upper), \(x) round(x, 2))) |>
-  dplyr::arrange(species, quantity, package)
+  dplyr::transmute(
+    Package,
+    Species  = dplyr::recode(as.character(species), M_dirhodum = "M. dirhodum",
+                             R_padi = "R. padi", S_avenae = "S. avenae"),
+    Quantity = dplyr::recode(quantity, z = "z (°C)", CTmax = "CTmax, 1h (°C)"),
+    Estimate = format_interval(median, lower, upper, digits = 2)) |>
+  dplyr::arrange(Species, Quantity, Package)
 
 tinytable::tt(compare)
 ```
