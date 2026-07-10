@@ -9,7 +9,8 @@ plot_tdt_landscape(
   observed = NULL,
   contours = c(0.25, 0.5, 0.75),
   log_time = FALSE,
-  clip_to_observed = TRUE
+  clip_to_observed = TRUE,
+  facet_scales = c("auto", "fixed", "free", "free_x", "free_y")
 )
 }
 \arguments{
@@ -26,9 +27,16 @@ Default \code{FALSE} (linear).}
 \item{clip_to_observed}{Logical. If \code{TRUE} (the default) and \code{observed} is
 supplied, each group's heatmap is restricted to the observed
 temperature and exposure-duration extent (a per-group
-bounding box), so the surface is not drawn beyond the data.
-A no-op when \code{observed} is not supplied. Set \code{FALSE} for the
-full grid.}
+bounding box), so the surface is not drawn beyond the data;
+grouped panels use free axes to avoid plotting unsupported
+blank space. A no-op when \code{observed} is not supplied. Set
+\code{FALSE} for the full grid.}
+
+\item{facet_scales}{Facet scale behaviour for grouped landscapes. \code{"auto"}
+(default) uses free axes when \code{clip_to_observed = TRUE} and
+\code{observed} is supplied, otherwise fixed axes. Use \code{"fixed"}
+to force identical axes across groups, or any \code{facet_wrap()}
+scale option (\code{"free"}, \code{"free_x"}, \code{"free_y"}).}
 }
 \value{
 A ggplot object.

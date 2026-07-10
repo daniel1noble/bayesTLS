@@ -18,6 +18,16 @@ has_log_scale <- function(p, aes) {
 }
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+panel_axis_ranges <- function(p, axis = c("x", "y")) {
+  axis <- match.arg(axis)
+  bd <- built(p)
+  rng_name <- paste0(axis, ".range")
+  rng <- do.call(rbind, lapply(bd$layout$panel_params, `[[`, rng_name))
+  out <- cbind(bd$layout$layout, as.data.frame(rng))
+  names(out)[(ncol(out) - 1):ncol(out)] <- c("axis_min", "axis_max")
+  out
+}
+
 # ============================ theme_tdt ====================================
 
 test_that("theme_tdt returns a theme honouring base_size and bold axis titles", {
@@ -138,6 +148,18 @@ fake_pred <- function() {
   list(summary = tibble::as_tibble(grid))
 }
 
+fake_grouped_pred <- function() {
+  grid <- expand.grid(oxygen = c("normoxia", "hyperoxia"),
+                      temp = c(26, 38, 39),
+                      duration = c(10, 30, 60))
+  grid$survival_median <- plogis(5 - 0.04 * grid$duration -
+                                   0.6 * (grid$temp - 35) +
+                                   ifelse(grid$oxygen == "hyperoxia", 1, 0))
+  grid$survival_lower  <- pmax(0, grid$survival_median - 0.1)
+  grid$survival_upper  <- pmin(1, grid$survival_median + 0.1)
+  list(summary = tibble::as_tibble(grid))
+}
+
 test_that("plot_survival_curves encodes the survival summary and one line per temperature", {
   pr <- fake_pred()
   p  <- plot_survival_curves(pr)
@@ -170,17 +192,44 @@ test_that("clip_to_observed (default TRUE) restricts each temp's curve to its ob
                         duration = c(0.5, 1, 2, 4),
                         survival = c(0.9, 0.8, 0.5, 0.2))
   # Default clips per (temp): temp 30 -> [0.5, 1]; temp 38 -> [2, 4]; temp 34
-  # (no observed cell) left intact.
+  # has no observed cell and is dropped.
   cd <- plot_survival_curves(pr, observed = obs)$data
   expect_setequal(cd$duration[cd$temp == 30], c(0.5, 1))
   expect_setequal(cd$duration[cd$temp == 38], c(2, 4))
-  expect_setequal(cd$duration[cd$temp == 34], c(0.5, 1, 2, 4))
+  expect_false(any(cd$temp == 34))
   # No observed supplied -> no clip (no error), full grid.
   no_obs <- plot_survival_curves(pr)$data
   expect_setequal(no_obs$duration[no_obs$temp == 30], c(0.5, 1, 2, 4))
   # Explicit FALSE keeps the full grid even with observed.
   full <- plot_survival_curves(pr, observed = obs, clip_to_observed = FALSE)$data
   expect_setequal(full$duration[full$temp == 30], c(0.5, 1, 2, 4))
+})
+
+test_that("plot_survival_curves drops unsupported grouped temperature cells", {
+  pr <- fake_grouped_pred()
+  obs <- tibble::tibble(
+    oxygen = c("normoxia", "normoxia", "hyperoxia", "hyperoxia"),
+    temp = c(26, 26, 38, 38),
+    duration = c(10, 30, 30, 60),
+    survival = c(1, 1, 0.9, 0.5)
+  )
+  p <- plot_survival_curves(pr, observed = obs)
+  cd <- p$data
+  cells <- cd[, c("oxygen", "temp")]
+  expect_equal(nrow(unique(cells)), 2L)
+  expect_true(any(cd$oxygen == "normoxia" & cd$temp == 26))
+  expect_true(any(cd$oxygen == "hyperoxia" & cd$temp == 38))
+  expect_false(any(cd$oxygen == "hyperoxia" & cd$temp == 26))
+  expect_false(any(cd$oxygen == "normoxia" & cd$temp == 38))
+  expect_false(any(cd$temp == 39))
+  expect_setequal(cd$duration[cd$oxygen == "normoxia" & cd$temp == 26],
+                  c(10, 30))
+  expect_setequal(cd$duration[cd$oxygen == "hyperoxia" & cd$temp == 38],
+                  c(30, 60))
+
+  full <- plot_survival_curves(pr, observed = obs,
+                               clip_to_observed = FALSE)$data
+  expect_equal(nrow(unique(full[, c("oxygen", "temp")])), 6L)
 })
 
 # ========================= plot_tdt_landscape ==============================
@@ -203,9 +252,7 @@ test_that("plot_tdt_landscape builds a tile heatmap of survival with contours", 
   # without the "uneven raster intervals" shift.
   expect_s3_class(p$layers[[1]]$geom, "GeomTile")
   expect_s3_class(p$layers[[2]]$geom, "GeomContour")
-  # geom_contour over a fill tile emits a benign "fill dropped" message (the
-  # contour stat ignores fill); it occurs in real use too and is not a bug.
-  bd <- suppressWarnings(built(p))
+  bd <- built(p)
   # One tile cell per grid row.
   expect_equal(nrow(bd$data[[1]]), nrow(lsp$summary))
   # Contours are drawn at exactly the requested survival levels (and they exist
@@ -229,7 +276,7 @@ test_that("plot_tdt_landscape log_time flips the duration axis and overlays obse
 test_that("plot_tdt_landscape facets into one heatmap panel per group for a grouped fit", {
   lsp <- fake_landscape()
   # Single-condition summary -> exactly one panel (no moderator column).
-  bd1 <- suppressWarnings(built(plot_tdt_landscape(lsp)))
+  bd1 <- built(plot_tdt_landscape(lsp))
   expect_equal(length(unique(bd1$data[[1]]$PANEL)), 1L)
 
   # A grouped derive_tdt_landscape() prepends the moderator column and stacks one
@@ -241,7 +288,7 @@ test_that("plot_tdt_landscape facets into one heatmap panel per group for a grou
     cbind(oxygen = "hyperoxia", g))))
   p_g <- plot_tdt_landscape(lsp_g)
   expect_s3_class(p_g$facet, "FacetWrap")
-  bd2 <- suppressWarnings(built(p_g))
+  bd2 <- built(p_g)
   expect_equal(length(unique(bd2$data[[1]]$PANEL)), 2L)
   # Each panel carries exactly one grid's worth of tiles (no overplot).
   expect_equal(nrow(bd2$data[[1]]), 2L * nrow(g))
@@ -258,6 +305,40 @@ test_that("plot_tdt_landscape clips to the observed temp x duration box (default
   expect_equal(nrow(plot_tdt_landscape(lsp, observed = obs,
                                        clip_to_observed = FALSE)$data),
                nrow(lsp$summary))
+})
+
+test_that("plot_tdt_landscape clips grouped surfaces to each group's observed range", {
+  lsp <- fake_landscape()
+  g <- lsp$summary
+  lsp_g <- list(summary = tibble::as_tibble(rbind(
+    cbind(oxygen = "normoxia",  g),
+    cbind(oxygen = "hyperoxia", g))))
+  obs <- tibble::tibble(
+    oxygen = c("normoxia", "normoxia", "hyperoxia", "hyperoxia"),
+    temp = c(30, 38, 36, 38),
+    duration = c(0.5, 30, 0.5, 30),
+    survival = c(1, 0, 1, 0)
+  )
+  p <- plot_tdt_landscape(lsp_g, observed = obs)
+  cd <- p$data
+  expect_equal(range(cd$temp[cd$oxygen == "normoxia"]), c(30, 38))
+  expect_true(min(cd$temp[cd$oxygen == "hyperoxia"]) >= 36)
+  expect_equal(max(cd$temp[cd$oxygen == "hyperoxia"]), 38)
+  expect_true(p$facet$params$free$x)
+  expect_true(p$facet$params$free$y)
+  xr <- panel_axis_ranges(p, "x")
+  hyper_x <- unlist(xr[xr$oxygen == "hyperoxia", c("axis_min", "axis_max")])
+  norm_x <- unlist(xr[xr$oxygen == "normoxia", c("axis_min", "axis_max")])
+  expect_lt(diff(hyper_x), diff(norm_x))
+  expect_gt(xr$axis_min[xr$oxygen == "hyperoxia"],
+            xr$axis_min[xr$oxygen == "normoxia"])
+
+  p_fixed <- plot_tdt_landscape(lsp_g, observed = obs, facet_scales = "fixed")
+  expect_false(p_fixed$facet$params$free$x)
+  expect_false(p_fixed$facet$params$free$y)
+  xr_fixed <- panel_axis_ranges(p_fixed, "x")
+  expect_equal(unique(xr_fixed$axis_min), xr_fixed$axis_min[1])
+  expect_equal(unique(xr_fixed$axis_max), xr_fixed$axis_max[1])
 })
 
 # ========================== plot_tdt_curve =================================

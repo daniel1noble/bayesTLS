@@ -36,8 +36,10 @@ supplied, each temperature/group curve is drawn only over the
 exposure durations actually observed for that cell, rather
 than the full prediction grid — so curves are not
 extrapolated far beyond their data (e.g. designs that test
-much shorter exposures at hotter temperatures). A no-op when
-\code{observed} is not supplied. Set \code{FALSE} to draw the full grid.}
+much shorter exposures at hotter temperatures). Prediction
+cells with no matching observed temperature/group
+combination are dropped. A no-op when \code{observed} is not
+supplied. Set \code{FALSE} to draw the full grid.}
 }
 \value{
 A ggplot object.

@@ -51,8 +51,10 @@ theme_tdt <- function(base_size = 13) {
 #'                  exposure durations actually observed for that cell, rather
 #'                  than the full prediction grid — so curves are not
 #'                  extrapolated far beyond their data (e.g. designs that test
-#'                  much shorter exposures at hotter temperatures). A no-op when
-#'                  `observed` is not supplied. Set `FALSE` to draw the full grid.
+#'                  much shorter exposures at hotter temperatures). Prediction
+#'                  cells with no matching observed temperature/group
+#'                  combination are dropped. A no-op when `observed` is not
+#'                  supplied. Set `FALSE` to draw the full grid.
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -72,7 +74,8 @@ plot_survival_curves <- function(pred, observed = NULL,
   # range so curves are not drawn far beyond the data (e.g. designs that test much
   # shorter exposures at hotter temperatures). A no-op when `observed` is absent.
   if (isTRUE(clip_to_observed) && !is.null(observed)) {
-    df <- tdt_clip_axis(df, observed, std, "duration", by_extra = "temp")
+    df <- tdt_clip_axis(df, observed, std, "duration", by_extra = "temp",
+                        drop_unmatched = TRUE)
   }
   p <- ggplot2::ggplot(df, ggplot2::aes(x = duration, y = survival_median,
                                         colour = factor(temp),
@@ -112,9 +115,13 @@ plot_survival_curves <- function(pred, observed = NULL,
 
 # Facet a TDT plot by its grouping moderator column(s) when the data carries them
 # (a grouped predict_*/extract_* output); a no-op for single-condition data.
-tdt_facet_by_group <- function(p, df, standard) {
+tdt_facet_by_group <- function(p, df, standard, scales = "fixed") {
   gcols <- setdiff(names(df), standard)
-  if (length(gcols)) p + ggplot2::facet_wrap(stats::reformulate(gcols)) else p
+  if (length(gcols)) {
+    p + ggplot2::facet_wrap(stats::reformulate(gcols), scales = scales)
+  } else {
+    p
+  }
 }
 
 # Restrict a prediction/summary `df` to the observed data extent along one `axis`
@@ -126,9 +133,11 @@ tdt_facet_by_group <- function(p, df, standard) {
 #                           the continuous landscape grid and the TDT-curve
 #                           temperature axis, whose grids are not the observed
 #                           values themselves).
-# Rows in cells with no matching observed data are kept intact. Base R (no
-# tidy-eval) so it is dependency-light and robust.
-tdt_clip_axis <- function(df, observed, standard, axis, by_extra = character()) {
+# Rows in cells with no matching observed data are kept intact by default; set
+# `drop_unmatched = TRUE` when the caller needs exact observed cells only.
+# Base R (no tidy-eval) so it is dependency-light and robust.
+tdt_clip_axis <- function(df, observed, standard, axis, by_extra = character(),
+                          drop_unmatched = FALSE) {
   if (!(axis %in% names(observed)) || !(axis %in% names(df))) return(df)
   gcols <- setdiff(names(df), standard)
   key   <- intersect(c(gcols, by_extra), names(observed))
@@ -146,7 +155,11 @@ tdt_clip_axis <- function(df, observed, standard, axis, by_extra = character()) 
     dlo <- rep(min(ov[[axis]]), nrow(df))
     dhi <- rep(max(ov[[axis]]), nrow(df))
   }
-  keep <- is.na(dlo) | (df[[axis]] >= dlo & df[[axis]] <= dhi)
+  keep <- if (isTRUE(drop_unmatched)) {
+    !is.na(dlo) & df[[axis]] >= dlo & df[[axis]] <= dhi
+  } else {
+    is.na(dlo) | (df[[axis]] >= dlo & df[[axis]] <= dhi)
+  }
   df[keep, , drop = FALSE]
 }
 
@@ -303,9 +316,15 @@ plot_tdt_curve <- function(ltx,
 #' @param clip_to_observed Logical. If `TRUE` (the default) and `observed` is
 #'                  supplied, each group's heatmap is restricted to the observed
 #'                  temperature and exposure-duration extent (a per-group
-#'                  bounding box), so the surface is not drawn beyond the data.
-#'                  A no-op when `observed` is not supplied. Set `FALSE` for the
-#'                  full grid.
+#'                  bounding box), so the surface is not drawn beyond the data;
+#'                  grouped panels use free axes to avoid plotting unsupported
+#'                  blank space. A no-op when `observed` is not supplied. Set
+#'                  `FALSE` for the full grid.
+#' @param facet_scales Facet scale behaviour for grouped landscapes. `"auto"`
+#'                  (default) uses free axes when `clip_to_observed = TRUE` and
+#'                  `observed` is supplied, otherwise fixed axes. Use `"fixed"`
+#'                  to force identical axes across groups, or any `facet_wrap()`
+#'                  scale option (`"free"`, `"free_x"`, `"free_y"`).
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -316,7 +335,10 @@ plot_tdt_curve <- function(ltx,
 plot_tdt_landscape <- function(landscape, observed = NULL,
                                contours = c(0.25, 0.5, 0.75),
                                log_time = FALSE,
-                               clip_to_observed = TRUE) {
+                               clip_to_observed = TRUE,
+                               facet_scales = c("auto", "fixed", "free",
+                                                "free_x", "free_y")) {
+  facet_scales <- match.arg(facet_scales)
   df  <- landscape$summary
   std <- c("temp", "duration", "survival_lower", "survival_median", "survival_upper")
   # By default restrict each group's heatmap to the observed temperature x
@@ -329,7 +351,10 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
   p <- ggplot2::ggplot(df, ggplot2::aes(x = temp, y = duration,
                                         fill = survival_median)) +
     ggplot2::geom_tile() +
-    ggplot2::geom_contour(ggplot2::aes(z = survival_median),
+    ggplot2::geom_contour(data = df,
+                          ggplot2::aes(x = temp, y = duration,
+                                       z = survival_median),
+                          inherit.aes = FALSE,
                           breaks = contours,
                           colour = "white", alpha = 0.7) +
     ggplot2::scale_fill_viridis_c(limits = c(0, 1), option = "inferno") +
@@ -350,8 +375,16 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
   }
   # Grouped fit: one heatmap panel per moderator level (as for
   # plot_survival_curves); a no-op when the summary carries no moderator column.
+  if (identical(facet_scales, "auto")) {
+    facet_scales <- if (isTRUE(clip_to_observed) && !is.null(observed)) {
+      "free"
+    } else {
+      "fixed"
+    }
+  }
   tdt_facet_by_group(p, df, c("temp", "duration",
-                              "survival_lower", "survival_median", "survival_upper"))
+                              "survival_lower", "survival_median", "survival_upper"),
+                     scales = facet_scales)
 }
 
 #' Plot a posterior temperature density (e.g. CTmax or T_crit)
