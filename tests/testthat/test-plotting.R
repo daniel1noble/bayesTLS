@@ -186,16 +186,18 @@ test_that("plot_survival_curves overlays observed points only when provided", {
   expect_equal(length(plot_survival_curves(pr, observed = obs)$layers), 3L)
 })
 
-test_that("clip_to_observed (default TRUE) restricts each temp's curve to its observed durations", {
+test_that("clip_to_observed caps the UPPER observed duration but keeps shorter predictions", {
   pr  <- fake_pred()  # temps 30/34/38 x durations 0.5/1/2/4
   obs <- tibble::tibble(temp = c(30, 30, 38, 38),
                         duration = c(0.5, 1, 2, 4),
                         survival = c(0.9, 0.8, 0.5, 0.2))
-  # Default clips per (temp): temp 30 -> [0.5, 1]; temp 38 -> [2, 4]; temp 34
-  # has no observed cell and is dropped.
+  # side = "upper": each temp is capped at its longest observed duration, but
+  # shorter grid durations are retained. temp 30 obs max 1 -> {0.5, 1} (2, 4
+  # dropped). temp 38 obs [2, 4] -> {0.5, 1, 2, 4}: 4 is the cap, and 0.5/1
+  # (below the observed minimum) are KEPT. temp 34 has no observed cell -> dropped.
   cd <- plot_survival_curves(pr, observed = obs)$data
   expect_setequal(cd$duration[cd$temp == 30], c(0.5, 1))
-  expect_setequal(cd$duration[cd$temp == 38], c(2, 4))
+  expect_setequal(cd$duration[cd$temp == 38], c(0.5, 1, 2, 4))
   expect_false(any(cd$temp == 34))
   # No observed supplied -> no clip (no error), full grid.
   no_obs <- plot_survival_curves(pr)$data
@@ -222,14 +224,36 @@ test_that("plot_survival_curves drops unsupported grouped temperature cells", {
   expect_false(any(cd$oxygen == "hyperoxia" & cd$temp == 26))
   expect_false(any(cd$oxygen == "normoxia" & cd$temp == 38))
   expect_false(any(cd$temp == 39))
+  # Duration is capped at each cell's longest observed exposure but keeps shorter
+  # grid values (side = "upper"): normoxia@26 obs max 30 -> {10, 30} (60 dropped);
+  # hyperoxia@38 obs [30, 60] -> {10, 30, 60} (10 is below the observed min but kept).
   expect_setequal(cd$duration[cd$oxygen == "normoxia" & cd$temp == 26],
                   c(10, 30))
   expect_setequal(cd$duration[cd$oxygen == "hyperoxia" & cd$temp == 38],
-                  c(30, 60))
+                  c(10, 30, 60))
 
   full <- plot_survival_curves(pr, observed = obs,
                                clip_to_observed = FALSE)$data
   expect_equal(nrow(unique(full[, c("oxygen", "temp")])), 6L)
+})
+
+test_that("plot_survival_curves facet_scales frees the duration axis per group (auto)", {
+  pr <- fake_grouped_pred()
+  obs <- tibble::tibble(
+    oxygen = c("normoxia", "normoxia", "hyperoxia", "hyperoxia"),
+    temp = c(26, 26, 38, 38),
+    duration = c(10, 30, 30, 60),
+    survival = c(1, 1, 0.9, 0.5)
+  )
+  # auto (default): with clipping + observed, free the duration (x) axis per
+  # group while survival (y) stays shared.
+  p <- plot_survival_curves(pr, observed = obs)
+  expect_true(p$facet$params$free$x)
+  expect_false(p$facet$params$free$y)
+  # Explicit "fixed" frees neither axis.
+  p_fixed <- plot_survival_curves(pr, observed = obs, facet_scales = "fixed")
+  expect_false(p_fixed$facet$params$free$x)
+  expect_false(p_fixed$facet$params$free$y)
 })
 
 # ========================= plot_tdt_landscape ==============================
@@ -298,8 +322,9 @@ test_that("plot_tdt_landscape clips to the observed temp x duration box (default
   lsp <- fake_landscape()
   obs <- tibble::tibble(temp = c(32, 36), duration = c(1, 10), survival = c(0.6, 0.3))
   cd  <- plot_tdt_landscape(lsp, observed = obs)$data     # default clip = TRUE
-  expect_true(all(cd$temp >= 32 & cd$temp <= 36))
-  expect_true(all(cd$duration >= 1 & cd$duration <= 10))
+  expect_true(all(cd$temp >= 32 & cd$temp <= 36))         # temperature clipped both ends
+  expect_true(all(cd$duration <= 10))                     # duration capped at the upper end
+  expect_true(any(cd$duration < 1))                       # ...shorter durations retained (side = "upper")
   # No observed / explicit FALSE -> full grid.
   expect_equal(nrow(plot_tdt_landscape(lsp)$data), nrow(lsp$summary))
   expect_equal(nrow(plot_tdt_landscape(lsp, observed = obs,

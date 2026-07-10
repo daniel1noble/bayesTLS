@@ -47,14 +47,21 @@ theme_tdt <- function(base_size = 13) {
 #'                  `"Retained PSII function"` for a continuous-proportion (Beta)
 #'                  endpoint where the response is not survival.
 #' @param clip_to_observed Logical. If `TRUE` (the default) and `observed` is
-#'                  supplied, each temperature/group curve is drawn only over the
-#'                  exposure durations actually observed for that cell, rather
-#'                  than the full prediction grid — so curves are not
-#'                  extrapolated far beyond their data (e.g. designs that test
-#'                  much shorter exposures at hotter temperatures). Prediction
-#'                  cells with no matching observed temperature/group
-#'                  combination are dropped. A no-op when `observed` is not
-#'                  supplied. Set `FALSE` to draw the full grid.
+#'                  supplied, each temperature/group curve is capped at the
+#'                  longest exposure actually observed for that cell — shorter
+#'                  durations are still predicted (the curve there is
+#'                  well-behaved, rising to the upper asymptote), but the long tail
+#'                  is not extrapolated past the data (e.g. designs that test much
+#'                  shorter exposures at hotter temperatures). Prediction cells with
+#'                  no matching observed temperature/group combination are dropped.
+#'                  A no-op when `observed` is not supplied. Set `FALSE` for the
+#'                  full grid.
+#' @param facet_scales Facet scale behaviour for grouped fits. `"auto"` (default)
+#'                  frees the duration (x) axis per group when
+#'                  `clip_to_observed = TRUE` and `observed` is supplied, so each
+#'                  group fills its own tested range (survival stays shared at
+#'                  `[0, 1]`); otherwise fixed. Or pass any `facet_wrap()` scale
+#'                  (`"fixed"`, `"free"`, `"free_x"`, `"free_y"`).
 #' @return A ggplot object.
 #' @examples
 #' \dontrun{
@@ -67,7 +74,10 @@ plot_survival_curves <- function(pred, observed = NULL,
                                  log_time = FALSE,
                                  palette  = "viridis",
                                  response_label = "Survival probability",
-                                 clip_to_observed = TRUE) {
+                                 clip_to_observed = TRUE,
+                                 facet_scales = c("auto", "fixed", "free",
+                                                  "free_x", "free_y")) {
+  facet_scales <- match.arg(facet_scales)
   df  <- pred$summary
   std <- c("temp", "duration", "survival_lower", "survival_median", "survival_upper")
   # By default restrict each (group x temperature) curve to its observed duration
@@ -75,7 +85,7 @@ plot_survival_curves <- function(pred, observed = NULL,
   # shorter exposures at hotter temperatures). A no-op when `observed` is absent.
   if (isTRUE(clip_to_observed) && !is.null(observed)) {
     df <- tdt_clip_axis(df, observed, std, "duration", by_extra = "temp",
-                        drop_unmatched = TRUE)
+                        drop_unmatched = TRUE, side = "upper")
   }
   p <- ggplot2::ggplot(df, ggplot2::aes(x = duration, y = survival_median,
                                         colour = factor(temp),
@@ -109,8 +119,14 @@ plot_survival_curves <- function(pred, observed = NULL,
     )
   }
   # Grouped fit (per-group curves): facet so groups are not threaded into one line.
+  # `auto` frees the duration (x) axis per group when clipping to observed, so
+  # each group fills its own tested range; survival (y) stays shared at [0, 1].
+  if (identical(facet_scales, "auto")) {
+    facet_scales <- if (isTRUE(clip_to_observed) && !is.null(observed)) "free_x" else "fixed"
+  }
   tdt_facet_by_group(p, df, c("temp", "duration",
-                              "survival_lower", "survival_median", "survival_upper"))
+                              "survival_lower", "survival_median", "survival_upper"),
+                     scales = facet_scales)
 }
 
 # Facet a TDT plot by its grouping moderator column(s) when the data carries them
@@ -135,9 +151,16 @@ tdt_facet_by_group <- function(p, df, standard, scales = "fixed") {
 #                           values themselves).
 # Rows in cells with no matching observed data are kept intact by default; set
 # `drop_unmatched = TRUE` when the caller needs exact observed cells only.
+# `side` controls which end is clipped: "both" (default), "upper" (cap at the
+# observed maximum but keep predictions below the observed minimum), or "lower".
+# Duration is clipped "upper" only -- extrapolating to shorter exposures is
+# well-behaved (the curve rises to the upper asymptote), but extrapolating past
+# the longest tested exposure is not shown.
 # Base R (no tidy-eval) so it is dependency-light and robust.
 tdt_clip_axis <- function(df, observed, standard, axis, by_extra = character(),
-                          drop_unmatched = FALSE) {
+                          drop_unmatched = FALSE,
+                          side = c("both", "upper", "lower")) {
+  side <- match.arg(side)
   if (!(axis %in% names(observed)) || !(axis %in% names(df))) return(df)
   gcols <- setdiff(names(df), standard)
   key   <- intersect(c(gcols, by_extra), names(observed))
@@ -155,11 +178,11 @@ tdt_clip_axis <- function(df, observed, standard, axis, by_extra = character(),
     dlo <- rep(min(ov[[axis]]), nrow(df))
     dhi <- rep(max(ov[[axis]]), nrow(df))
   }
-  keep <- if (isTRUE(drop_unmatched)) {
-    !is.na(dlo) & df[[axis]] >= dlo & df[[axis]] <= dhi
-  } else {
-    is.na(dlo) | (df[[axis]] >= dlo & df[[axis]] <= dhi)
-  }
+  within <- switch(side,
+    both  = df[[axis]] >= dlo & df[[axis]] <= dhi,
+    upper = df[[axis]] <= dhi,   # cap the observed maximum; keep shorter values
+    lower = df[[axis]] >= dlo)
+  keep <- if (isTRUE(drop_unmatched)) !is.na(dlo) & within else is.na(dlo) | within
   df[keep, , drop = FALSE]
 }
 
@@ -315,11 +338,11 @@ plot_tdt_curve <- function(ltx,
 #'                  Default `FALSE` (linear).
 #' @param clip_to_observed Logical. If `TRUE` (the default) and `observed` is
 #'                  supplied, each group's heatmap is restricted to the observed
-#'                  temperature and exposure-duration extent (a per-group
-#'                  bounding box), so the surface is not drawn beyond the data;
-#'                  grouped panels use free axes to avoid plotting unsupported
-#'                  blank space. A no-op when `observed` is not supplied. Set
-#'                  `FALSE` for the full grid.
+#'                  temperature range and capped at the longest observed exposure
+#'                  (shorter durations are still shown), so the surface is not
+#'                  drawn beyond the data; grouped panels use free axes to avoid
+#'                  plotting unsupported blank space. A no-op when `observed` is
+#'                  not supplied. Set `FALSE` for the full grid.
 #' @param facet_scales Facet scale behaviour for grouped landscapes. `"auto"`
 #'                  (default) uses free axes when `clip_to_observed = TRUE` and
 #'                  `observed` is supplied, otherwise fixed axes. Use `"fixed"`
@@ -346,7 +369,7 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
   # clips to the observed range). A no-op when `observed` is absent.
   if (isTRUE(clip_to_observed) && !is.null(observed)) {
     df <- tdt_clip_axis(df, observed, std, "temp")
-    df <- tdt_clip_axis(df, observed, std, "duration")
+    df <- tdt_clip_axis(df, observed, std, "duration", side = "upper")
   }
   p <- ggplot2::ggplot(df, ggplot2::aes(x = temp, y = duration,
                                         fill = survival_median)) +

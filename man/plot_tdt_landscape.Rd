@@ -26,11 +26,11 @@ Default \code{FALSE} (linear).}
 
 \item{clip_to_observed}{Logical. If \code{TRUE} (the default) and \code{observed} is
 supplied, each group's heatmap is restricted to the observed
-temperature and exposure-duration extent (a per-group
-bounding box), so the surface is not drawn beyond the data;
-grouped panels use free axes to avoid plotting unsupported
-blank space. A no-op when \code{observed} is not supplied. Set
-\code{FALSE} for the full grid.}
+temperature range and capped at the longest observed exposure
+(shorter durations are still shown), so the surface is not
+drawn beyond the data; grouped panels use free axes to avoid
+plotting unsupported blank space. A no-op when \code{observed} is
+not supplied. Set \code{FALSE} for the full grid.}
 
 \item{facet_scales}{Facet scale behaviour for grouped landscapes. \code{"auto"}
 (default) uses free axes when \code{clip_to_observed = TRUE} and

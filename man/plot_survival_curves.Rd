@@ -10,7 +10,8 @@ plot_survival_curves(
   log_time = FALSE,
   palette = "viridis",
   response_label = "Survival probability",
-  clip_to_observed = TRUE
+  clip_to_observed = TRUE,
+  facet_scales = c("auto", "fixed", "free", "free_x", "free_y")
 )
 }
 \arguments{
@@ -32,14 +33,22 @@ Default \code{"Survival probability"}; set to e.g.
 endpoint where the response is not survival.}
 
 \item{clip_to_observed}{Logical. If \code{TRUE} (the default) and \code{observed} is
-supplied, each temperature/group curve is drawn only over the
-exposure durations actually observed for that cell, rather
-than the full prediction grid — so curves are not
-extrapolated far beyond their data (e.g. designs that test
-much shorter exposures at hotter temperatures). Prediction
-cells with no matching observed temperature/group
-combination are dropped. A no-op when \code{observed} is not
-supplied. Set \code{FALSE} to draw the full grid.}
+supplied, each temperature/group curve is capped at the
+longest exposure actually observed for that cell — shorter
+durations are still predicted (the curve there is
+well-behaved, rising to the upper asymptote), but the long tail
+is not extrapolated past the data (e.g. designs that test much
+shorter exposures at hotter temperatures). Prediction cells with
+no matching observed temperature/group combination are dropped.
+A no-op when \code{observed} is not supplied. Set \code{FALSE} for the
+full grid.}
+
+\item{facet_scales}{Facet scale behaviour for grouped fits. \code{"auto"} (default)
+frees the duration (x) axis per group when
+\code{clip_to_observed = TRUE} and \code{observed} is supplied, so each
+group fills its own tested range (survival stays shared at
+\verb{[0, 1]}); otherwise fixed. Or pass any \code{facet_wrap()} scale
+(\code{"fixed"}, \code{"free"}, \code{"free_x"}, \code{"free_y"}).}
 }
 \value{
 A ggplot object.
