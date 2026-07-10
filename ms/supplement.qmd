@@ -1142,7 +1142,7 @@ param_equiv <- tibble::tibble(
 tinytable::tt(param_equiv, digits = 3, escape = TRUE)
 ```
 
-The two fits give the same $z$ and $CT_{max_{1hr}}$ estimates, apart from small simulation noise. Use the midpoint form for most analyses because it is simple and stable. Use the direct form when you want to put a prior on $z$ or $CT_{max}$ directly, or when your main hypothesis is about those quantities.
+The two parameterisations recover essentially the same $z$ and $CT_{max_{1hr}}$ — each estimate sits well within the other's credible interval (@tbl-compare-param).
 
 ### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
