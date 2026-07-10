@@ -1685,7 +1685,7 @@ We fit the empirical examples below with the Bayesian `bayesTLS` implementation 
 The manuscript examples use the following model specifications:
 
 - **Cereal aphids**: lethal survival counts were fit with a beta-binomial 4PL, placing species directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + species`, `z = ~ 0 + species`). No random effects were included. The fitted species-specific posterior was then projected under the unmodified Wuhan May-June 2016 air-temperature trace with `predict_heat_injury(by = "species")`.
-- **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). No random effects were included. Because the design lacks a benign-temperature control for the hyperoxia treatment, we report $z$ and $CT_{max}$ but not $T_{crit}$ (`lethal = FALSE`).
+- **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). The lower asymptote was allowed to differ by oxygen treatment but not temperature (`low = ~ 0 + oxygen`), while the upper asymptote and steepness were shared (`up = ~ 1`, `k = ~ 1`). No random effects were included. Because the design lacks a benign-temperature control for the hyperoxia treatment, we report $z$ and $CT_{max}$ but not $T_{crit}$ (`lethal = FALSE`).
 - **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood. Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with a plant-level random intercept on $CT_{max}$ (`ctmax = ~ 0 + recovery + (1 | plant)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
 - **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with Ørsted et al. uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model summary uses the relative midpoint threshold (also at a 4-hour reference to be more comparable to the study). The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the Ørsted et al. NicheMapR workflow.
 
@@ -1693,7 +1693,7 @@ The exact formulas, priors, sampler settings and diagnostics are shown in the co
 
 # **Case Study 1: Zebrafish heat tolerance across an oxygen gradient** {#sec-zebrafish-o2}
 
-@saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (26 °C controls plus 38–40 °C) and exposure durations (3.8–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The 26 °C control rows are retained in the modelled frame and anchor the upper asymptote. The dual purpose here is methodological *and* a validation: if the joint model is doing its job it should recover the OCLTT prediction the authors report — that added oxygen raises heat tolerance.
+@saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (26 °C controls plus 38–40 °C) and exposure durations (3.8–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The 26 °C control rows are retained for normoxia, but hyperoxia was only assayed at stressful temperatures (38–40 °C), so prediction plots below show only observed treatment-temperature combinations. The dual purpose here is methodological *and* a validation: if the joint model is doing its job it should recover the OCLTT prediction the authors report — that added oxygen raises heat tolerance.
 
 ## Data and standardisation {#sec-zf-o2-data}
 
@@ -1718,7 +1718,7 @@ str(zf_std)
 
 ## Joint 4PL with oxygen on $CT_{max}$ and $z$ {#sec-zf-o2-fit}
 
-We fit $CT_{max}$ and $z$ directly as functions of `oxygen` using cell-means coding (`~ 0 + oxygen`), so each treatment gets its own coefficient while the asymptotes and steepness are shared. This is a coding choice: treatment coding (`~ oxygen`) gives the same per-group estimates, but cell-means coding makes them easier to read from the model output.
+We fit $CT_{max}$ and $z$ directly as functions of `oxygen` using cell-means coding (`~ 0 + oxygen`), so each treatment gets its own coefficient. Because hyperoxia lacks a 26 °C control and the lower asymptote was otherwise weakly identified, we simplify the shape model: `low` differs by oxygen treatment but has no temperature slope, while `up` and $k$ are shared. This keeps the dose-response floor from drifting with temperature in a biologically implausible way.
 
 ```{r zfo2-fit}
 #| label: zfo2-fit
@@ -1729,6 +1729,9 @@ We fit $CT_{max}$ and $z$ directly as functions of `oxygen` using cell-means cod
 wf_zf <- fit_4pl(zf_std,
                   ctmax = ~ 0 + oxygen,
                       z = ~ 0 + oxygen,
+                    low = ~ 0 + oxygen,
+                     up = ~ 1,
+                      k = ~ 1,
                  t_ref = 60,
                  control    = list(adapt_delta = 0.95),
                  file_refit = "on_change",
@@ -1759,7 +1762,7 @@ The joint fit recasts @saruhashi2026's OCLTT result as two linked components of 
 
 ```{r zfo2-survival}
 #| label: fig-zfo2-survival
-#| fig-cap: "Zebrafish survival surface. Fitted joint-4PL survival probability against exposure duration for normoxia and hyperoxia (posterior median and 95% credible band), with the observed cell proportions overlaid."
+#| fig-cap: "Zebrafish survival surface. Fitted joint-4PL survival probability against exposure duration for normoxia and hyperoxia (posterior median and 95% credible band), with the observed cell proportions overlaid. Curves are shown only for treatment-temperature combinations present in the data; hyperoxia was not assayed at 26 °C."
 #| echo: true
 #| code-fold: show
 
