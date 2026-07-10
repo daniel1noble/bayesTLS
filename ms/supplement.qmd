@@ -2171,7 +2171,10 @@ The joint fit reproduces the direction @arnold_psii_2026 report: 90 min of post-
 #| code-fold: show
 
 psc_leaf <- predict_survival_curves(wf_leaf)
-plot_survival_curves(psc_leaf, observed = leaf_std, log_time = TRUE) +
+# clip_to_observed = FALSE: full fitted curves (complete sigmoids) for both
+# recovery treatments, not truncated at the observed durations.
+plot_survival_curves(psc_leaf, observed = leaf_std, log_time = TRUE,
+                     clip_to_observed = FALSE) +
   ggplot2::labs(x = "Exposure duration (minutes)",
                 y = "Retained PSII function")
 ```
@@ -2414,9 +2417,12 @@ We can also plot the model predictions and data out:
 # Posterior survival curves for each sex with the observed proportions
 # overlaid. predict_survival_curves(by = "sex") builds the per-sex
 # temperature x duration grid; plot_survival_curves() draws the posterior
-# median and 95% band and adds the observed survival points.
+# median and 95% band and adds the observed survival points. clip_to_observed =
+# FALSE shows the full fitted curves (complete sigmoids), not truncated at the
+# observed durations.
 psc_sex <- predict_survival_curves(joint_sex_fit, by = "sex")
-plot_survival_curves(psc_sex, observed = std_sex, log_time = TRUE)
+plot_survival_curves(psc_sex, observed = std_sex, log_time = TRUE,
+                     clip_to_observed = FALSE)
 ```
 
 We can see here that the model is estimating a survival reduction at high temperatures but there doesn't appear to be much difference between the sexes. Of course, we haven't fully tested this on all parameters, but we could! Either way, we can see from the model output that the interaction `mid_sexM:temp_c` spans zero, supporting little evidence for sex differences in $z$.
