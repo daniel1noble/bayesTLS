@@ -64,6 +64,14 @@ jobs:
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
+          # cmdstanr is a Suggests hosted on the Stan r-universe (declared in
+          # DESCRIPTION Additional_repositories), which pak does not fold into
+          # its repo set here. Give pak a resolvable ref so the dependency
+          # solve succeeds. cmdstanr is not exercised on R-hub (the brms tests
+          # gate on RUN_BRMS_TESTS, which is unset), it only needs to install.
+          extra-packages: |
+            any::rcmdcheck
+            cmdstanr=stan-dev/cmdstanr
       - uses: r-hub/actions/run-check@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
@@ -93,6 +101,11 @@ jobs:
         with:
           job-config: ${{ matrix.config.job-config }}
           token: ${{ secrets.RHUB_TOKEN }}
+          # See the note in the linux-containers job: give pak a resolvable
+          # ref for the cmdstanr Suggests so the dependency solve succeeds.
+          extra-packages: |
+            any::rcmdcheck
+            cmdstanr=stan-dev/cmdstanr
       - uses: r-hub/actions/run-check@v1
         with:
           job-config: ${{ matrix.config.job-config }}
