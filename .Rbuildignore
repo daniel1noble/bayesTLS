@@ -35,3 +35,16 @@
 ^TODO\.qmd$
 ^Rplots\.pdf$
 ^TODO_files$
+
+# Cached brms fits used only by the RUN_BRMS_TESTS integration tests. They are
+# ~18 MB, which alone puts the tarball over CRAN's 5 MB limit. Every test that
+# reads them is gated behind skip_unless_brms(), so they are never touched by a
+# CRAN / R CMD check run and excluding them costs no check-time coverage. They
+# stay in the repo for local development (devtools::test() with RUN_BRMS_TESTS=true).
+^tests/testthat/fixtures$
+
+# testthat failure debris — regenerated on demand, must not ship.
+^tests/testthat/_problems$
+^tests/testthat/_snaps$
+^tests/testthat/testthat-problems\.rds$
+^cran-comments\.md$

@@ -10,13 +10,14 @@ Authors@R: c(
     person("Patrice", "Pottier",
            email = "patrice.pottier@bioenv.gu.se",
            role  = "aut"))
-Description: A function library for fitting joint Bayesian four-parameter
-    logistic (4PL) models to thermal-tolerance proportion data, extracting
-    the classical thermal load sensitivity quantities (z, CTmax at 1 hour,
-    T_crit) with full posterior uncertainty, and predicting heat-injury
-    accumulation and survival under fluctuating temperature regimes with
-    optional Sharpe-Schoolfield repair. Implements the framework described
-    in Noble, Arnold, Nakagawa and Pottier (in preparation).
+Description: Fits joint Bayesian four-parameter logistic (4PL) models to
+    thermal-tolerance proportion data, extracts the classical thermal load
+    sensitivity quantities (z, CTmax at 1 hour, T_crit) with full posterior
+    uncertainty, and predicts heat-injury accumulation and survival under
+    fluctuating temperature regimes with optional Sharpe-Schoolfield repair.
+    Models are fitted with 'Stan' via the 'brms' package. Implements the
+    framework described in Noble, Arnold, Nakagawa and Pottier (in
+    preparation).
 License: CC BY 4.0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

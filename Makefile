@@ -35,9 +35,43 @@ BUILD_MS  := $(BUILDROOT)/ms
         supp-html supp-docx supp-pdf \
         sync-sources \
         osf-push osf-status \
-        data data-full
+        data data-full \
+        document test test-full check check-cran
 
 all: ms supp
+
+# ---------------------------------------------------------------------------
+# bayesTLS package targets.
+#
+# Run `make check` BEFORE pushing. It reproduces the GitHub R-CMD-check job
+# exactly, including its error_on = "warning" setting: the CI action
+# (r-lib/actions/check-r-package) fails the build on a WARNING, not just an
+# ERROR. A stale man/ page or a malformed \link is a WARNING, so it will pass
+# an ordinary `R CMD check` invocation and still turn CI red.
+# ---------------------------------------------------------------------------
+
+## Regenerate NAMESPACE + man/ from the roxygen comments in R/.
+## Always run this after editing any #' block, and commit the result.
+document:
+	Rscript -e 'roxygen2::roxygenise(".", roclets = c("rd", "namespace"))'
+
+## Fast test suite (brms integration tests skip; no Stan compilation).
+test:
+	Rscript -e 'devtools::test()'
+
+## Full suite INCLUDING the brms/Stan integration tests. Slow: compiles Stan
+## models and needs the cached fits in tests/testthat/fixtures/.
+test-full:
+	RUN_BRMS_TESTS=true Rscript -e 'devtools::test()'
+
+## The pre-push gate: mirrors the GitHub R-CMD-check job.
+check: document
+	Rscript -e 'rcmdcheck::rcmdcheck(args = c("--no-manual"), error_on = "warning")'
+
+## Stricter, for a CRAN submission: adds --as-cran (tarball size, incoming
+## feasibility, CRAN policy checks).
+check-cran: document
+	Rscript -e 'rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"), error_on = "warning")'
 
 # Sync sources to BUILDROOT. `bib/`, `output/`, `data/`, and `pics/` are
 # symlinked from the project so that:
