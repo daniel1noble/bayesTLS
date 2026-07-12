@@ -50,7 +50,7 @@ resolve_target_surv <- function(target_surv) {
 #'   midpoint between the fitted lower and upper asymptotes, i.e.
 #'   `(low + up)/2`. This is the 4PL `mid` parameter on the natural time
 #'   axis, returned directly from `posterior_linpred(nlpar = "mid")` — no
-#'   numerical inversion. When `low ≈ 0` and `up ≈ 1` it coincides with
+#'   numerical inversion. When `low` is about 0 and `up` about 1 it coincides with
 #'   the classical LT50.
 #' - `"absolute"` (or a numeric `p` in `(0, 1)`): the duration at which
 #'   survival crosses the literal probability `p` (0.5 by default). The

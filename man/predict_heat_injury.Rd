@@ -24,14 +24,14 @@ predict_heat_injury(
 \arguments{
 \item{trace}{Tibble with columns \code{time} (numeric time from start,
 in \code{trace_unit}) and \code{temp} (°C), in time order.
-Requires ≥ 2 rows.}
+Requires >= 2 rows.}
 
 \item{workflow}{Fitted \code{bayes_tls}.}
 
 \item{target_surv}{Threshold defining "1 dose". \code{"relative"} (default;
 \code{(low + up)/2}), \code{"absolute"} (= 0.5), or a numeric in
 \verb{(0, 1)}. The default coincides with the classical LT50
-when \verb{low ≈ 0} and \verb{up ≈ 1}; with sub-unit asymptotes
+when \code{low} is about 0 and \code{up} about 1; with sub-unit asymptotes
 the relative threshold is the more biologically
 meaningful anchor for dose accounting.}
 

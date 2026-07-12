@@ -283,12 +283,12 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'
 #' @param trace        Tibble with columns `time` (numeric time from start,
 #'                     in `trace_unit`) and `temp` (°C), in time order.
-#'                     Requires ≥ 2 rows.
+#'                     Requires >= 2 rows.
 #' @param workflow     Fitted `bayes_tls`.
 #' @param target_surv  Threshold defining "1 dose". `"relative"` (default;
 #'                     `(low + up)/2`), `"absolute"` (= 0.5), or a numeric in
 #'                     `(0, 1)`. The default coincides with the classical LT50
-#'                     when `low ≈ 0` and `up ≈ 1`; with sub-unit asymptotes
+#'                     when `low` is about 0 and `up` about 1; with sub-unit asymptotes
 #'                     the relative threshold is the more biologically
 #'                     meaningful anchor for dose accounting.
 #' @param T_c          Optional damage-accumulation threshold (°C). When

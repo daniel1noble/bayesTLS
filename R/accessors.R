@@ -2,7 +2,7 @@
 # heat-injury quantities as long-format tibbles. The motivating use case is
 # group contrasts: fit one workflow per group (life stage, sex, treatment),
 # run tls() / predict_*() on each, and use these helpers to pair the
-# per-draw posteriors so a user can compute the posterior of (group A −
+# per-draw posteriors so a user can compute the posterior of (group A -
 # group B) directly.
 
 #' Extract TLS estimates (draws or summary) from a `tls` object

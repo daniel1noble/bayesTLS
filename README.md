@@ -215,7 +215,7 @@ as "Equation 7 of the manuscript" in the supplement or "Figure S2" in the
 manuscript. The supplement render automatically labels figures, tables, and
 equations with an "S" prefix.
 
-See [CLAUDE.md §8a](CLAUDE.md) for more detail on the render architecture,
+See [CLAUDE.md §8a](https://github.com/daniel1noble/bayesTLS/blob/main/CLAUDE.md) for more detail on the render architecture,
 cross-reference handling, and the `brms` cache.
 
 ### Case studies in the supplement

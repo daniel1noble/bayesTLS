@@ -20,7 +20,7 @@
 #' passed to `brms::brm()`, default 10); a saturation is a post-warmup transition
 #' that hit that ceiling. A fit that merely tops out *below* the ceiling has zero
 #' saturations. Per-chain BFMI is computed from the energy diagnostic in
-#' `brms::nuts_params(.)` following the standard Stan definition (Var(ΔE)/Var(E)).
+#' `brms::nuts_params(.)` following the standard Stan definition (Var(Delta E)/Var(E)).
 #'
 #' @param workflow A fitted `bayes_tls`.
 #' @return A tibble with one row of diagnostic statistics.
@@ -53,7 +53,7 @@ diagnose_tdt_fit <- function(workflow) {
   ess_tail_min <- min(ess_summary$ess_tail, na.rm = TRUE)
 
   # BFMI per chain. nuts_params returns one row per (Chain, Iteration,
-  # Parameter); "energy__" is the per-iteration energy. BFMI ≈ Var(ΔE) /
+  # Parameter); "energy__" is the per-iteration energy. BFMI approx Var(Delta E) /
   # Var(E) per chain (post-warmup only — nuts_params is already post-warmup).
   energy <- subset(np, Parameter == "energy__")
   bfmi_per_chain <- if (nrow(energy) > 0L) {

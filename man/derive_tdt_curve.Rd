@@ -67,7 +67,7 @@ Two threshold modes are supported via \code{target_surv}:
 midpoint between the fitted lower and upper asymptotes, i.e.
 \code{(low + up)/2}. This is the 4PL \code{mid} parameter on the natural time
 axis, returned directly from \code{posterior_linpred(nlpar = "mid")} — no
-numerical inversion. When \verb{low ≈ 0} and \verb{up ≈ 1} it coincides with
+numerical inversion. When \code{low} is about 0 and \code{up} about 1 it coincides with
 the classical LT50.
 \item \code{"absolute"} (or a numeric \code{p} in \verb{(0, 1)}): the duration at which
 survival crosses the literal probability \code{p} (0.5 by default). The

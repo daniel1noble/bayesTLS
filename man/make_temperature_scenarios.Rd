@@ -52,7 +52,7 @@ cool (\code{baseline + 5}) and warm (\code{baseline + 8}) days so
 some days accrue HI and others do not.}
 
 \item{diurnal_peak_fwhm}{Numeric. Full-width-half-maximum of the daily
-Gaussian temperature peak, in hours. Default 6 (≈ 4-5
+Gaussian temperature peak, in hours. Default 6 (about 4-5
 hours near the daily peak).}
 
 \item{diurnal_noise_sd}{Numeric. Standard deviation (°C) of smooth hourly
