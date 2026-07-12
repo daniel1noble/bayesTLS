@@ -24,17 +24,9 @@ parity_wrap <- function(fit, std, du = "hours", group_vars = character(0)) {
 }
 
 parity_workflows <- function() {
-  wfs <- list(midpoint = load_fixture_workflow(),
-              beta     = load_fixture_workflow_beta(),
-              direct   = load_fixture_workflow_direct())
-  shp <- file.path(here::here("output", "models"), "fit_shrimp_lethal_4pl.rds")
-  if (file.exists(shp)) {
-    ss <- standardize_data(shrimp_lethal, temp = "Temperature_assay",
-            duration = "Duration_exposure_hours", n_total = "N_individuals_after_trial",
-            mortality = "Mortality_after_trial", duration_unit = "hours")
-    wfs$shrimp <- parity_wrap(readRDS(shp), ss)
-  }
-  wfs
+  list(midpoint = load_fixture_workflow(),
+       beta     = load_fixture_workflow_beta(),
+       direct   = load_fixture_workflow_direct())
 }
 
 test_that("unification did not move tdt_parameter_table / derive_z / predict_survival_curves", {
@@ -54,24 +46,4 @@ test_that("unification did not move tdt_parameter_table / derive_z / predict_sur
                                       durations = c(0.5, 2, 8), ndraws = NULL)$summary
     expect_lt(max(abs(new_sc$survival_median - g[[nm]]$surv$survival_median)), 1e-6)
   }
-})
-
-test_that("unification did not move the grouped tls() case study (zebrafish per-group z)", {
-  skip_unless_brms()
-  gp <- here::here("tests", "testthat", "fixtures", "golden_preunify.rds")
-  zfp <- file.path(here::here("output", "models"), "fit_zf_joint_4pl.rds")
-  if (!file.exists(gp) || !file.exists(zfp)) skip("local-only no-drift gate: golden snapshot or cached zf fit absent (gitignored); skipped in CI.")
-  g <- readRDS(gp)
-  if (!is.data.frame(g$zf_tls)) skip("golden zf_tls not captured.")
-  zs <- standardize_data(zebrafish_lethal, temp = "assay_temp", duration = "duration_h",
-          n_total = "n_total", n_surv = "n_surv", duration_unit = "hours")
-  zwf <- parity_wrap(readRDS(zfp), zs, du = "hours", group_vars = "life_stage")
-  # Pin the threshold to "absolute": the golden snapshot was captured when tls()
-  # DEFAULTED to absolute. tls() now defaults to "relative" (the per-draw
-  # midpoint; an intentional unification fix, not drift), so the no-drift check
-  # must request the same threshold the golden used.
-  new <- tls(zwf, by = "life_stage", lethal = TRUE, target_surv = "absolute",
-             seed = 1)$summary
-  m <- merge(new, g$zf_tls, by = c("life_stage", "quantity"), suffixes = c(".new", ".old"))
-  expect_lt(max(abs(m$median.new - m$median.old)), 0.05)   # tls() unchanged by the engine factor-out
 })

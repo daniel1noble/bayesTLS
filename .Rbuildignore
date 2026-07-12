@@ -48,3 +48,13 @@
 ^tests/testthat/_snaps$
 ^tests/testthat/testthat-problems\.rds$
 ^cran-comments\.md$
+
+# Manuscript-only microclimate / temperature-trace data. These are external
+# open datasets used by the compendium's fluctuating-temperature case studies
+# (rezende 2020, kristineberg, orsted/rennes, aphid summer trace); no package
+# function, example, or test references them, and together they are ~3 MB. They
+# stay in the repo for the manuscript but are excluded from the CRAN tarball.
+^inst/extdata/rezende_2020$
+^inst/extdata/kristineberg$
+^inst/extdata/orsted_2024$
+^inst/extdata/data_temp_trace_aphid_summer2016\.csv$

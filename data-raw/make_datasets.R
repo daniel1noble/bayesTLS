@@ -5,8 +5,9 @@
 #
 # Run from the package root:  Rscript data-raw/make_datasets.R
 #
-# Datasets created: shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
-# snowgum_psii. Documented in R/data.R.
+# Datasets created: snowgum_psii, dsuzukii, zebrafish_o2, aphid_tdt.
+# Documented in R/data.R. (The unpublished brown-shrimp and life-stage
+# zebrafish case studies were removed from the distributed package.)
 
 suppressPackageStartupMessages({
   library(dplyr)
@@ -20,74 +21,7 @@ ext <- function(f) {
   if (file.exists(p)) p else system.file("extdata", f, package = "bayesTLS")
 }
 
-## 1. Brown shrimp — lethal TDT -----------------------------------------------
-# Keep the columns standardize_data() and the case study use. In the raw CSV
-# `Mortality_after_trial` is the death PROPORTION (deaths / N_individuals_after_trial,
-# in [0, 1]) — it is consumed downstream by standardize_data(mortality = ...),
-# which derives n_surv = round((1 - mortality) * n_total). It must therefore stay
-# numeric: a previous as.integer() here floored every proportion < 1 to 0, which
-# collapsed the shipped death counts to ~all-zero (fixed 2026-06-16).
-shrimp_lethal <- read_csv(ext("data_lethal_TDT_brown_shrimp.csv"),
-                          show_col_types = FALSE) |>
-  dplyr::transmute(
-    Date,
-    Tank,
-    Temperature_assay        = as.numeric(Temperature_assay),
-    Duration_exposure_hours  = as.numeric(Duration_exposure_hours),
-    N_individuals_after_trial = as.integer(N_individuals_after_trial),
-    Mortality_after_trial    = as.numeric(Mortality_after_trial)
-  ) |>
-  as.data.frame()
-
-## 2. Brown shrimp — sublethal time-to-knockdown -----------------------------
-# Parse the clock-time strings into elapsed minutes to knockdown; drop excluded
-# rows. One row per cup.
-parse_time_min <- function(s) {
-  t <- lubridate::parse_date_time(s, orders = c("I:M:S p", "H:M:S"),
-                                  quiet = TRUE)
-  lubridate::hour(t) * 60 + lubridate::minute(t) + lubridate::second(t) / 60
-}
-shrimp_sublethal <- read_csv(ext("data_sublethal_TDT_brown_shrimp.csv"),
-                             show_col_types = FALSE) |>
-  dplyr::filter(Exclude == "no") |>
-  dplyr::mutate(
-    assay_temp      = as.numeric(Assay_temperature),
-    date_experiment = as.character(lubridate::dmy(Date)),
-    tank_ID         = as.character(Tank),
-    cup_ID          = paste0(Trial_ID, "_", Sample),
-    time_to_event   = parse_time_min(Time_to_death) -
-                      parse_time_min(Starting_time)   # minutes
-  ) |>
-  dplyr::filter(is.finite(time_to_event), time_to_event > 0) |>
-  dplyr::select(assay_temp, time_to_event, date_experiment, tank_ID, cup_ID) |>
-  as.data.frame()
-
-## 3. Zebrafish — lethal TDT across life stages (counts) ---------------------
-# Aggregate the per-day morning/afternoon mortality columns into one death count
-# per trial, derive survivors, and keep one row per assay trial.
-zf_raw <- read_csv(ext("data_lethal_TDT_zebrafish.csv"), show_col_types = FALSE)
-mort_cols <- grep("^Mortality_day_\\d+_(morning|afternoon)$",
-                  names(zf_raw), value = TRUE)
-zebrafish_lethal <- zf_raw |>
-  dplyr::filter(Exclude == "no") |>
-  dplyr::mutate(
-    n_total    = as.integer(N_total),
-    n_dead     = as.integer(rowSums(
-      dplyr::across(dplyr::all_of(mort_cols), as.numeric), na.rm = TRUE)),
-    n_surv     = pmax(n_total - n_dead, 0L),
-    assay_temp = as.numeric(Temperature_assay),
-    duration_h = as.numeric(Duration_exposure_hours),
-    life_stage = factor(Life_stage,
-                        levels = c("young_embryos", "old_embryos", "larvae")),
-    Date_experiment = as.character(Date_experiment)
-  ) |>
-  dplyr::filter(is.finite(duration_h), duration_h > 0,
-                is.finite(assay_temp), n_total > 0) |>
-  dplyr::select(assay_temp, duration_h, n_total, n_surv, n_dead,
-                life_stage, Date_experiment) |>
-  as.data.frame()
-
-## 4. Snow gum leaf — PSII functional impairment (continuous proportion) -----
+## 1. Snow gum leaf — PSII functional impairment (continuous proportion) -----
 # Arnold et al. (2026) preprint open data (CC BY-NC 4.0; bioRxiv
 # 10.64898/2026.04.09.717599), Experiment 1 (light vs dark recovery), snow gum
 # (Eucalyptus pauciflora) slice. ~1 cm^2 leaf sections were heat-treated in a
@@ -121,7 +55,7 @@ snowgum_psii <- read_csv(ext("data_function_PSII_TDT_snowgum.csv"),
   dplyr::filter(fvfm_prop <= 1) |>   # drop the 2 post/pre > 1 noise rows
   as.data.frame()
 
-## 5. Drosophila suzukii — multi-trait TDT, per individual -------------------
+## 2. Drosophila suzukii — multi-trait TDT, per individual -------------------
 # Ørsted et al. (2024) open data (CC BY 4.0; Zenodo 10.5281/zenodo.10602268),
 # long-format "all_data_long_R3.csv": one row per fly, three thermal-tolerance
 # endpoints in a single frame — mortality (`dead`, aggregate to counts), heat
@@ -143,7 +77,7 @@ dsuzukii <- read_csv(ext("data_multitrait_TDT_drosophila_suzukii.csv"),
   ) |>
   as.data.frame()
 
-## 6. Zebrafish larvae — lethal TDT across an oxygen gradient (counts) --------
+## 3. Zebrafish larvae — lethal TDT across an oxygen gradient (counts) --------
 # Saruhashi et al. (2026) open data (CC BY 4.0; Zenodo 10.5281/zenodo.20075355),
 # "Upper thermal limit" sheet. Survival of diploid/triploid larvae assayed at
 # 26/38/39/40 C for 3.8-240 min under three oxygen treatments. The categorical
@@ -171,7 +105,7 @@ zebrafish_o2 <- read_csv(ext("data_lethal_TDT_zebrafish_oxygen.csv"),
   ) |>
   as.data.frame()
 
-## 7. Cereal aphids — lethal TDT, three species x three ages (counts) ---------
+## 4. Cereal aphids — lethal TDT, three species x three ages (counts) ---------
 # Li et al. (2023) open data (CC0; Dryad 10.5061/dryad.mcvdnck4j), surv.txt.
 # Survival of three aphid species at three ages across a heat branch (34-40 C)
 # and a cold branch (-11 to -3 C); `branch` flags which. Species codes are
@@ -192,6 +126,5 @@ aphid_tdt <- read_csv(ext("data_lethal_TDT_aphid.csv"), show_col_types = FALSE) 
   ) |>
   as.data.frame()
 
-usethis::use_data(shrimp_lethal, shrimp_sublethal, zebrafish_lethal,
-                  snowgum_psii, dsuzukii, zebrafish_o2, aphid_tdt,
+usethis::use_data(snowgum_psii, dsuzukii, zebrafish_o2, aphid_tdt,
                   overwrite = TRUE)

@@ -71,19 +71,16 @@ Full reference: `?fit_4pl`, `?tls`, `?predict_heat_injury`, etc.
 
 ## `bayesTLS` Data
 
-Seven datasets are included with the `bayesTLS` package to make it easier to reproduce analyses and results in the paper and for testing purposes. These datasets are:
+Four publicly available datasets are included with the `bayesTLS` package to make it easier to reproduce analyses and results in the paper and for testing purposes. These datasets are:
 
 | Dataset | Help | Endpoint |
 |---|---|---|
-| `shrimp_lethal` | `?shrimp_lethal` | Brown-shrimp lethal TDT (survival counts) |
-| `shrimp_sublethal` | `?shrimp_sublethal` | Brown-shrimp sublethal time-to-knockdown |
-| `zebrafish_lethal` | `?zebrafish_lethal` | Zebrafish lethal TDT across life stages |
 | `snowgum_psii` | `?snowgum_psii` | Snowgum leaf PSII (continuous proportion) |
 | `dsuzukii` | `?dsuzukii` | *Drosophila suzukii* multi-trait TDT (lethal, knockdown, fertility; per individual) |
 | `zebrafish_o2` | `?zebrafish_o2` | Zebrafish lethal TDT across an oxygen gradient (survival counts) |
 | `aphid_tdt` | `?aphid_tdt` | Cereal-aphid lethal TDT — three species × ages, heat + cold branches (survival counts) |
 
-Each dataset can be loaded easily using `data(shrimp_lethal)` (as an example of loading the `shrimp_lethal` dataset). If you want other datasets loaded then simply replace `shrimp_lethal`. If you want to learn more about a dataset you can explore it's helpful `?shrimp_lethal`. 
+Each dataset can be loaded easily using `data(aphid_tdt)` (as an example of loading the `aphid_tdt` dataset). If you want other datasets loaded then simply replace `aphid_tdt`. If you want to learn more about a dataset you can explore it's helpful `?aphid_tdt`. 
 
 ## Reproducing the associated paper
 

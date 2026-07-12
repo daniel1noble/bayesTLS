@@ -49,6 +49,5 @@ quantity carries full uncertainty and is mutually consistent within a draw.
 
 ## Data
 
-Seven example datasets spanning lethal and sub-lethal endpoints: `aphid_tdt`,
-`dsuzukii`, `shrimp_lethal`, `shrimp_sublethal`, `snowgum_psii`,
-`zebrafish_lethal` and `zebrafish_o2`.
+Four publicly available example datasets spanning lethal and sub-lethal
+endpoints: `aphid_tdt`, `dsuzukii`, `snowgum_psii` and `zebrafish_o2`.
