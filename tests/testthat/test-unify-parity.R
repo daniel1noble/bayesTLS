@@ -7,22 +7,6 @@
 # precision. Gated (needs the cached brms fits). If golden_preunify.rds is
 # absent, the gate skips with a clear message (rebuild via the Step-0 snapshot).
 
-cb <- function(...) getFromNamespace("compute_4pl_bounds", "bayesTLS")(...)
-
-# Wrap a cached brmsfit into a bayes_tls workflow (verifying temp_c alignment),
-# identical to the Step-0 snapshot construction.
-parity_wrap <- function(fit, std, du = "hours", group_vars = character(0)) {
-  meta <- attr(std, "tdt_meta"); tm <- tdt_unit_to_minutes(du)
-  stopifnot(isTRUE(all.equal(sort(unique(round(std$temp_c, 6))),
-                             sort(unique(round(fit$data$temp_c, 6))))))
-  structure(list(fit = fit, data = std,
-    meta = utils::modifyList(meta, list(
-      bounds = cb(0, 1), lower = 0, upper = 1, parameterization = "midpoint",
-      threshold = "relative", t_ref = 60, log10_tref = log10(60 / tm),
-      duration_unit = du, group_vars = group_vars,
-      grouped = length(group_vars) > 0))), class = "bayes_tls")
-}
-
 parity_workflows <- function() {
   list(midpoint = load_fixture_workflow(),
        beta     = load_fixture_workflow_beta(),
