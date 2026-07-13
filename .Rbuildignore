@@ -58,3 +58,4 @@
 ^inst/extdata/kristineberg$
 ^inst/extdata/orsted_2024$
 ^inst/extdata/data_temp_trace_aphid_summer2016\.csv$
+^CRAN-SUBMISSION$
