@@ -3972,9 +3972,14 @@ orsted_micro <- utils::read.csv(here::here(
   "orsted2024_nichemapr_rennes_2018_hourly.csv.gz"
 ))
 fly_trace <- orsted_micro |>
-  dplyr::mutate(datetime_utc = as.POSIXct(datetime_utc, tz = "UTC")) |>
-  dplyr::filter(substr(datetime_utc, 1, 4) == "2018",
-                substr(datetime_utc, 6, 7) %in% c("06", "07", "08"),
+  # The column is ISO-8601 with a "T" separator and trailing "Z". as.POSIXct()'s
+  # default formats do NOT match that, so it silently falls back to "%Y-%m-%d" and
+  # collapses every hour of a day onto midnight (which made the Fig. 6 trace plot as
+  # one vertical min-max bar per day). Give the format explicitly.
+  dplyr::mutate(datetime_utc = as.POSIXct(datetime_utc,
+                                          format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")) |>
+  dplyr::filter(format(datetime_utc, "%Y") == "2018",
+                format(datetime_utc, "%m") %in% c("06", "07", "08"),
                 is.finite(micro_temp_c)) |>
   dplyr::arrange(datetime_utc) |>
   dplyr::transmute(time = dplyr::row_number() - 1, temp = micro_temp_c,
@@ -4032,8 +4037,10 @@ aphid_trace <- readr::read_csv(
   show_col_types = FALSE) |>
   dplyr::filter(city == "Wuhan",
                 as.integer(format(datetime, "%m")) <= 6) |>   # May-June only
-  dplyr::transmute(time = time_h, temp = temp_c,
-                   datetime = as.POSIXct(sub("T", " ", as.character(datetime)), tz = "UTC"))
+  # readr already parses this ISO-8601 column to POSIXct. The old as.character()
+  # round-trip rendered the first (midnight) element as a bare date, which made
+  # as.POSIXct() choose a date-only format for the WHOLE vector -> hours lost.
+  dplyr::transmute(time = time_h, temp = temp_c, datetime = datetime)
 aphid_repair <- list(TA = 14065, TAL = 50000, TAH = 100000,
                      TL = 15 + 273.15, TH = 35 + 273.15,
                      TREF = 25 + 273.15, r_ref = 0.005)
