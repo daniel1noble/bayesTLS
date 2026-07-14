@@ -201,7 +201,7 @@ if (!(.have_results && .have_models) && file.exists(.fetch_script)) {
 }
 ```
 
-# **General Introduction**
+# **General Introduction** {#sec-general-intro}
 
 This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. To cite the approach and the associated R package please use:
 
