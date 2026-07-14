@@ -667,7 +667,7 @@ $$ {#eq-supp-mid-temp}
 
 so that $\beta_1$ encodes how fast the dose-response curve shifts on the time axis as assay temperature changes; $\bar{T}$ is the grand-mean temperature, included so that $\beta_0$ is interpretable as the midpoint at the average assay temperature.
 
-The function library exposes this model as a single call: `fit_4pl()` constructs the brms `bf()` formula, the default weakly-informative priors, and the sampling controls, and returns a workflow object containing the fit. Internally the formula uses the disjoint-bounds reparameterisation introduced in this section — `low = 0.001 + \text{inv\_logit}(\text{lowraw}) \cdot 0.498` and `up = 0.501 + \text{inv\_logit}(\text{upraw}) \cdot 0.498` — so the 4PL output is guaranteed to lie in $(0, 1)$ regardless of where MCMC takes the unconstrained `lowraw`, `upraw`, and `logk` parameters. The default also puts a `temp_c` slope on every 4PL sub-parameter; when temperature has no real effect on a given parameter, the slope shrinks toward zero under the prior. We inspect the brms formula `fit_4pl()` builds with:
+The function library exposes this model as a single call: `fit_4pl()` constructs the brms `bf()` formula, the default weakly-informative priors, and the sampling controls, and returns a workflow object containing the fit. Internally the formula uses the disjoint-bounds reparameterisation introduced in this section — $\text{low} = 0.001 + \text{inv\_logit}(\text{lowraw}) \cdot 0.498$ and $\text{up} = 0.501 + \text{inv\_logit}(\text{upraw}) \cdot 0.498$ — so the 4PL output is guaranteed to lie in $(0, 1)$ regardless of where MCMC takes the unconstrained `lowraw`, `upraw`, and `logk` parameters. The default also puts a `temp_c` slope on every 4PL sub-parameter; when temperature has no real effect on a given parameter, the slope shrinks toward zero under the prior. We inspect the brms formula `fit_4pl()` builds with:
 
 ```{r show-formula}
 #| label: show-formula
@@ -1900,7 +1900,7 @@ We can also visualise the TDT curves.
 
 ```{r}
 #| label: fig-aphid-tdt
-#| fig-cap: "TDT Curves for each species"
+#| fig-cap: "Thermal-death-time curves for the three cereal aphids, read from the joint 4PL posterior across assay temperatures (34–40 °C). Each panel gives the exposure duration needed to reach the relative survival threshold, on a $\\log_{10}$ time axis (posterior median with 95% credible band). The slope of each line is $-1/z$, so a shallower curve means lower thermal sensitivity."
 
 tdt_aphid <- derive_tdt_curve(wf_aphid, by = "species", temp_grid = seq(34, 40, by = 1))
 plot_tdt_curve(tdt_aphid)
@@ -2943,6 +2943,8 @@ $$
 
 where
 
+- $\eta$ is the **linear predictor** — the quantity the model assembles from the
+  coefficients below, which the logistic link then maps onto a probability,
 - $\text{logd} = \log_{10}(\text{exposure duration in minutes})$ — the dose axis,
 - $t = \tau - \bar{T}$ — temperature centred on the mean assay temperature $\bar T$
   (so $t = 0$ at the mean, $\tau$ is the actual temperature),
@@ -3005,8 +3007,9 @@ The above equation is the `z_at` object we use below. However, we make that calc
 
 $CT_{max}(1\,\text{h})$ is the temperature hot enough that a **one-hour exposure
 already drops reproduction to 50%**. So, we ask, at what temperature does $\text{logd}_{50}$ equal
-$\log_{10}(60\ \text{min})$? Set $\text{logd}_{50}(t) = L_{\text{ref}}$ (with
-$L_{\text{ref}} = \log_{10} 60$) and solve for $t$:
+$\log_{10}(60\ \text{min})$? Set $\text{logd}_{50}(t) = L_{\text{ref}}$, where
+$L_{\text{ref}} = \log_{10} 60$ is the **reference exposure** (one hour) expressed
+on the $\log_{10}$-minutes scale, and solve for $t$:
 
 $$
 -\frac{I + T t}{D + DT\,t} = L_{\text{ref}}
@@ -3334,7 +3337,7 @@ Of the 1,000 datasets per simulated scenario, models in the two-stage analytical
 #| message: false
 #| fig-width: 8
 #| fig-height: 8
-#| fig-cap: "Bias and coverage at the strict-equivalence baseline (binomial DGP, asymptotes near 0/1, single slope $k$). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom). Columns: $z$ (left) and $CT_{max,1h}$ (right). Dashed reference lines at zero bias and nominal 0.95 coverage."
+#| fig-cap: "Bias and coverage at the strict-equivalence baseline (binomial data-generating process, asymptotes near 0/1, single slope $k$). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom). Columns: $z$ (left) and $CT_{max,1h}$ (right). Dashed reference lines at zero bias and nominal 0.95 coverage."
 
 # Plot bias and coverage for simulation scenario 1.
 .d <- .load_screened("scen1") |>
@@ -3370,7 +3373,7 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 #| message: false
 #| fig-width: 8
 #| fig-height: 8
-#| fig-cap: "Bias and coverage with likelihood misspecification only (beta-binomial DGP with $\\phi=5$; curve shape as in the strict-equivalence baseline). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
+#| fig-cap: "Bias and coverage with likelihood misspecification only (beta-binomial data-generating process with $\\phi=5$; curve shape as in the strict-equivalence baseline). Rows: $n_{reps}=3$ (top) and $n_{reps}=5$ (bottom)."
 
 # Plot bias and coverage for simulation scenario 2.
 .d <- .load_screened("scen2") |>
@@ -3381,7 +3384,7 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 
 ```{r}
 #| label: tbl-sim-supp-scen2-rmse
-#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ under likelihood misspecification only (beta-binomial DGP, $\\phi=5$; curve shape as in the baseline), by point estimator and replication budget."
+#| tbl-cap: "RMSE (°C) of $z$ and $CT_{max,1h}$ under likelihood misspecification only (beta-binomial data-generating process, $\\phi=5$; curve shape as in the baseline), by point estimator and replication budget."
 #| warning: false
 #| message: false
 # Format the RMSE table for simulation scenario 2.
@@ -3505,7 +3508,7 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 ## *Experimental Design Impacts*
 
 #### *Different temperature time duration levels*
-This scenario varies experimental design while holding the data-generating process fixed. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration treatment. Each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The DGP used the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$) and the sparsest design had only 12 'cups' total.
+This scenario varies experimental design while holding the data-generating process fixed. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration treatment. Each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The data-generating process used the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$) and the sparsest design had only 12 'cups' total.
 
 We included this scenario to test how much information each estimator needs before the two-stage reduction becomes unstable. Performance improved with denser designs and more replication, but the sparse one-replicate design was especially problematic for the two-stage pipeline. The joint 4PL was more stable across the design gradient because it shares information across temperatures and durations rather than estimating each temperature-specific curve separately.
 
@@ -4312,11 +4315,7 @@ $\log_{10}t_{50}(T)$ from a 4PL whose asymptotes are not 0 and 1 (Eq. (4)),
 and the corresponding correction *subtracted* from the naive
 $CT_{max}(t_{\text{ref}})$ (Eq. (5)). Here we derive both expressions, extend
 them to an arbitrary survival threshold $x/100$, and check them against direct
-4PL inversion. (The "Eq. (N)" labels below are the manuscript's display-equation
-numbers — currently the 4PL, Eq. 2; the midpoint–temperature relation, Eq. 3;
-the LT50 asymmetry correction, Eq. 4; and the corrected $CT_{max}$, Eq. 5. These
-are plain-text cross-document references, so they must be re-checked if the
-manuscript's display equations are inserted or removed.)
+4PL inversion.
 
 ## Why a correction is needed {#sec-supp-corr-why}
 
