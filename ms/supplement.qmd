@@ -213,7 +213,7 @@ Simulation outputs and model fits are large! There are several chunks below that
 
 # **Introduction to `bayesTLS` R Package**
 
-We use the [**`bayesTLS`**](https://github.com/daniel1noble/bayesTLS) R package included with this project. The package fits 4PL models, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty, and can estimate $z$ and $CT_{max_{1hr}}$ directly so group differences and random effects are easy to interpret. It also predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally with a Sharpe-Schoolfield repair kernel [@arnold_thermal_2025].
+We use the [**`bayesTLS`**](https://github.com/daniel1noble/bayesTLS) R package included with this project. The package fits 4PL models, extracts classical TLS quantities ($z$, $CT_{max_{1hr}}$, and, for lethal endpoints, $T_{crit}$) with posterior uncertainty, and can estimate $z$ and $CT_{max_{1hr}}$ directly so group differences and random effects are easy to interpret. It also predicts heat-injury accumulation and survival under arbitrary temperature time series, optionally with a Sharpe–Schoolfield repair kernel [@arnold_thermal_2025].
 
 All the data used throughout the manuscript and supplement are already preloaded into **`bayesTLS`**, so are easily accessible. 
 
@@ -352,14 +352,14 @@ tdt_function_tour <- tibble::tribble(
   "Heat injury",      "make_temperature_scenarios()",       "Three reference traces (flat / single spike / multi-spike).",
   "Heat injury",      "planted_dose_from_trace()",          "Analytical HI under known z, CTmax, T_c (validation truth).",
   "Heat injury",      "predict_heat_injury()",              "Posterior HI and survival under a temperature trace (per group via `by =`).",
-  "Heat injury",      "repair_rate_schoolfield()",          "Sharpe-Schoolfield repair TPC (Kelvin internally).",
+  "Heat injury",      "repair_rate_schoolfield()",          "Sharpe–Schoolfield repair TPC (Kelvin internally).",
   "Plotting",         "plot_survival_curves()",             "Posterior curves with observed proportion overlay; by default each curve is capped at its longest observed exposure (shorter durations retained) and grouped panels get free per-group axes (`clip_to_observed`, `facet_scales`).",
   "Plotting",         "plot_tdt_curve()",                   "LT_x curve on a log-time axis (classical TDT view), faceted automatically for grouped `derive_tdt_curve(by = ...)` output.",
   "Plotting",         "plot_tdt_landscape()",               "Survival heatmap with contour overlay.",
   "Plotting",         "plot_temperature_density()",         "Posterior density for CTmax / T_crit with a 95-percent CrI bar.",
   "Plotting",         "plot_temperature_scenarios()",       "Three traces stacked vertically.",
   "Plotting",         "plot_heat_injury()",                 "HI and predicted survival trajectories with CrI bands.",
-  "Plotting",         "plot_repair_rate()",                 "Sharpe-Schoolfield TPC curve.",
+  "Plotting",         "plot_repair_rate()",                 "Sharpe–Schoolfield TPC curve.",
   "Plotting",         "theme_tdt()",                        "Shared project ggplot theme (minimal classic, bold axis titles) used by all package plots.",
   "Utilities",        "tdt_quantile()",                     "Quantile wrapper with TDT-friendly defaults (2.5 / 50 / 97.5%).",
   "Utilities",        "format_interval()",                  "Format a median with its bounds as a `median [lower, upper]` string.",
@@ -2719,7 +2719,7 @@ ct_coma_lin_F <- coma_tbar + (log10(60) - int_F_c) / slope_F_c
 ct_coma_lin_M <- coma_tbar + (log10(60) - int_M_c) / slope_M_c
 ```
 
-Now, we could also think about these data differently and retain the use of the 4PL model. To take this path we reformulate the same data as proportion-awake counts for each temperature-by-exposure-by-sex block. We fit one joint model with `sex` on the ctmax and z — the same structure as the mortality `joint_sex_fit` above, but here we write the `brms` model out **by hand** (rather than via `fit_4pl(ctmax = ... , z = ...)`) to show that `tls()` derives the per-sex quantities from *any* `brms` 4PL, not only from `fit_4pl()` workflows:
+Now, we could also think about these data differently and retain the use of the 4PL model. To take this path we reformulate the same data as proportion-awake counts for each temperature-by-exposure-by-sex block. We fit one joint model with `sex` on $CT_{max}$ and $z$ — the same structure as the mortality `joint_sex_fit` above, but here we write the `brms` model out **by hand** (rather than via `fit_4pl(ctmax = ... , z = ...)`) to show that `tls()` derives the per-sex quantities from *any* `brms` 4PL, not only from `fit_4pl()` workflows:
 
 ```{r}
 #| label: dros-coma-4pl-panel
@@ -2938,12 +2938,12 @@ Now, from the hurdle models posterior we can calculate $z$ and $CT_{max_{1hr}}$ 
 First, we are, statistically speaking, fitting the following model (using the notation in the `sex_coefs()` function above):
 
 $$
-\eta(\text{low}, t) \;=\; I + T\,t + D\,\text{low} + DT\,(\text{low}\,t),
+\eta(\text{logd}, t) \;=\; I + T\,t + D\,\text{logd} + DT\,(\text{logd}\,t),
 $$
 
 where
 
-- $\text{low} = \log_{10}(\text{exposure duration in minutes})$ — the dose axis,
+- $\text{logd} = \log_{10}(\text{exposure duration in minutes})$ — the dose axis,
 - $t = \tau - \bar{T}$ — temperature centred on the mean assay temperature $\bar T$
   (so $t = 0$ at the mean, $\tau$ is the actual temperature),
 - $I, T, D, DT$ are the four posterior coefficients `sex_coefs()` returns:
@@ -2959,15 +2959,15 @@ $$
 
 The natural halfway mark is the exposure at which half the flies still
 reproduce: $P(\text{reproduce}) = 0.5$. A logistic equals $0.5$ **exactly when its
-input is zero**, so we set $\eta = 0$ and solve for $\text{low}$, collecting the $\text{low}$
+input is zero**, so we set $\eta = 0$ and solve for $\text{logd}$, collecting the $\text{logd}$
 terms on one side:
 
 $$
-I + T\,t + D\,\text{low} + DT\,(\text{low}\,t) = 0
+I + T\,t + D\,\text{logd} + DT\,(\text{logd}\,t) = 0
 \;\Longrightarrow\;
-\text{low}\,(D + DT\,t) = -(I + T\,t)
+\text{logd}\,(D + DT\,t) = -(I + T\,t)
 \;\Longrightarrow\;
-\ell_{50}(t) = -\frac{I + T\,t}{D + DT\,t}.
+\text{logd}_{50}(t) = -\frac{I + T\,t}{D + DT\,t}.
 $$
 
 That is the first formula: the $\log_{10}$ of the exposure time that halves
@@ -2978,17 +2978,17 @@ temperature on the $x$-axis) the line slopes down, and $z$ is defined so the lin
 falls by **one** $\log_{10}$ unit — a factor of ten in time — every $z$ degrees:
 
 $$
-z(t) \;=\; -\frac{1}{\,\mathrm{d}\ell_{50}/\mathrm{d}t\,}.
+z(t) \;=\; -\frac{1}{\,\mathrm{d}\text{logd}_{50}/\mathrm{d}t\,}.
 $$
 
 (Because $t = \tau - \bar T$, a derivative in $t$ equals a derivative in the
 absolute temperature $\tau$, so $z$ is per actual degree.)
 
-Differentiate $\ell_{50}(t) = -(I + T t)/(D + DT\,t)$ with the quotient rule. The
+Differentiate $\text{logd}_{50}(t) = -(I + T t)/(D + DT\,t)$ with the quotient rule. The
 key simplification: **the two terms that carry $t$ cancel** in the numerator:
 
 $$
-\frac{\mathrm{d}\ell_{50}}{\mathrm{d}t}
+\frac{\mathrm{d}\text{logd}_{50}}{\mathrm{d}t}
 = -\frac{T(D + DT\,t) - (I + T t)\,DT}{(D + DT\,t)^2}
 = -\frac{\overbrace{TD + T\,DT\,t - I\,DT - T\,DT\,t}^{=\,TD - I\,DT}}{(D + DT\,t)^2}
 = -\frac{TD - I\,DT}{(D + DT\,t)^2}.
@@ -3004,8 +3004,8 @@ $$
 The above equation is the `z_at` object we use below. However, we make that calculation for every row of the posterior, which means that we get the full posterior distribution of $z$.
 
 $CT_{max}(1\,\text{h})$ is the temperature hot enough that a **one-hour exposure
-already drops reproduction to 50%**. So, we ask, at what temperature does $\ell_{50}$ equal
-$\log_{10}(60\ \text{min})$? Set $\ell_{50}(t) = L_{\text{ref}}$ (with
+already drops reproduction to 50%**. So, we ask, at what temperature does $\text{logd}_{50}$ equal
+$\log_{10}(60\ \text{min})$? Set $\text{logd}_{50}(t) = L_{\text{ref}}$ (with
 $L_{\text{ref}} = \log_{10} 60$) and solve for $t$:
 
 $$
@@ -3024,7 +3024,7 @@ $$
 \qquad L_{\text{ref}} = \log_{10} 60 .
 $$
 
-This is the code's `tbar - (cc$I + log10_tref*cc$D)/(cc$T + log10_tref*cc$DT)`. Again, remember we can making this calculation for every **row** of the joint posterior so we are getting a full posterior distribution of $CT_{max}(1\,\text{h})$.
+This is the code's `tbar - (cc$I + log10_tref*cc$D)/(cc$T + log10_tref*cc$DT)`. Again, remember we can make this calculation for every **row** of the joint posterior so we are getting a full posterior distribution of $CT_{max}(1\,\text{h})$.
 
 
 ```{r}
@@ -3674,11 +3674,11 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
 
 # **Manuscript Figure 5: cross-case-study summary** {#sec-ms-fig5}
 
-This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. Every panel is a group comparison drawn from a single joint fit: three cereal-aphid species (panel a), snow gum under dark vs light post-heat recovery (panel b), zebrafish across two oxygen treatments (panel c), and the vinegar fly by sex (panel d). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for aphids, leaf and zebrafish, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale.
+This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. Every panel is a group comparison drawn from a single joint fit: three cereal-aphid species (panel a), snow gum under dark vs light post-heat recovery (panel b), zebrafish across two oxygen treatments (panel c), and the vinegar fly by sex (panel d). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for aphids, snow gum, and zebrafish, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale.
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig5-case-study-densities
-#| fig-cap: "Manuscript Figure 5. Posterior distributions of thermal sensitivity $z$ (left of each panel) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: a) three cereal-aphid species (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*), b) snow gum (*Eucalyptus pauciflora*) leaf photosystem II function under dark vs 90-min-light post-heat recovery, c) zebrafish (*Danio rerio*) larvae under normoxia vs hyperoxia, and d) the vinegar fly (*Drosophila suzukii*) by sex. Filled ridges are the posterior densities, coloured by group; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study's own analysis: 1 h for aphids, leaf and zebrafish (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). Within each panel the groups are fit jointly, so pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
+#| fig-cap: "Manuscript Figure 5. Posterior distributions of thermal sensitivity $z$ (left of each panel) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: a) three cereal-aphid species (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*), b) snow gum (*Eucalyptus pauciflora*) leaf photosystem II function under dark vs 90-min-light post-heat recovery, c) zebrafish (*Danio rerio*) larvae under normoxia vs hyperoxia, and d) the vinegar fly (*Drosophila suzukii*) by sex. Filled ridges are the posterior densities, coloured by group; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study's own analysis: 1 h for aphids, snow gum, and zebrafish (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). Within each panel the groups are fit jointly, so pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
