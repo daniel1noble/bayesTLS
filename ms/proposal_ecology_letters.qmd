@@ -1,0 +1,38 @@
+---
+title: "Pre-submission proposal to *Ecology Letters*"
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+format:
+  docx:
+    toc: false
+    number-sections: false
+---
+
+15 July 2026
+
+Dear Editors of *Ecology Letters*,
+
+We attach a 300 word proposal for a **Methods** article entitled "A flexible modelling framework for estimating thermal tolerance and sensitivity," for your consideration ahead of a full submission. 
+
+We believe our work will be of significant interest to the readers of *Ecology Letters*, given the diversity of recent high-impact empirical work being published in the journal on the impacts of extreme heat [@orsted_suzukii_2024; @orsted2026; @verberk2026]. Additionally, our work also applies to other anthropogenic stressors (e.g., herbicides) that we expect will open up new ways for quantifying and statistically comparing species vulnerability to other dose-dependent anthropogenic stressors. 
+
+Thank you for your consideration,
+
+Daniel W. A. Noble, Pieter A. Arnold, Shinichi Nakagawa and Patrice Pottier 
+
+-------
+
+Extreme heat is one of the clearest ecological consequences of climate change, but a central bottleneck remains: converting laboratory heat-tolerance assays into predictions about which species, populations and biological processes are most vulnerable under realistic temperature sequences [@snook_fertility_2026; @arnold_thermal_2025]. Thermal death time (TDT) and thermal load sensitivity (TLS) models were designed for this task, linking heat intensity, exposure duration and biological failure [@rezende_landscapes_2014; @orsted_finding_2022; @jorgensen_unifying_2021]. Yet common two-stage workflows often discard uncertainty, violate model assumptions, handle overdispersion and hierarchy poorly, and make group comparisons and forecasts fragile [@truebano2018; @jorgensen_drosophila_2019; @li2023].
+
+We propose a Methods article that provides a direct, flexible replacement while preserving the biological quantities thermal ecologists already use. We show that four-parameter logistic and related dose-response models recover critical thermal maxima ($CT_{max}$), thermal sensitivity ($z$), critical temperature thresholds ($T_{crit}$), heat injury and survival from a single response surface fitted directly to raw data [@ritz_drc_2015; @ritz_ecotox_2010] ([@fig-proposal-framework]). This reframes TDT/TLS analysis as a coherent dose-response problem, allowing uncertainty to flow naturally into comparisons and predictions under fluctuating thermal regimes.
+
+The contribution is ecological as well as statistical. Simulations show that the joint model matches classical estimates when their assumptions hold and is more reliable when they fail across diverse experimental designs. Empirical case studies in cereal aphids [@li2023], snow gum [@arnold_psii_2026], zebrafish [@saruhashi2026] and vinegar flies [@orsted_suzukii_2024] show how the framework moves beyond ranking tolerance values to ask richer questions: which species loses survival under real heat sequences, how daylight shifts plant heat-injury thresholds, how oxygen alters duration-dependent fish tolerance, and which vital rates fail before mortality.
+
+We also make the workflow accessible through two documented R packages, `bayesTLS` and `freqTLS`, with data, code, simulations and a tutorial. The framework spans lethal and sublethal endpoints, count and continuous-proportion data, treatment comparisons and hierarchical designs. Building on recent *Ecology Letters* work [@orsted_suzukii_2024; @orsted2026], it offers a general, uncertainty-aware standard for forecasting biological vulnerability to extreme heat and other dose-response stressors.
+
+![Conceptual comparison of the classical two-stage TDT/TLS workflow and the joint four-parameter log-logistic (4PL) model. (a) In the two-stage workflow, separate dose-response curves are fit at each assay temperature and the resulting $t_{50}$ estimates are regressed against temperature. This workflow can fail when assays do not bracket $t_{50}$, treats first-stage estimates as fixed and independent, and does not naturally propagate uncertainty or account for covariates / hierarchical structure into $z$ and $CT_{max_{1hr}}$. (b) The joint 4PL model estimates the full survival surface in one model. Coloured curves show posterior median survival probabilities at assay temperatures, with shaded pointwise 95% credible intervals. Filled circles mark the model midpoint, `mid(T)`, defining relative $\log_{10}t_{50}$; open triangles mark the absolute 50% survival crossing. A *relative* threshold is each curve's own midpoint (halfway between its lower and upper asymptotes), whereas an *absolute* threshold is a fixed survival probability (here 50%); the two coincide only when the asymptotes are 0 and 1 (see Methods). The black and steelblue trajectories give the relative and absolute $t_{50}$ relationships used to derive $z_\text{rel}$, $z_\text{abs}$, and $CT_{max_{1hr}}$ at the 60-min reference. Dashed curves show the fitted dose response at the corresponding relative and absolute $CT_{max_{1hr}}$ values. Inset: the 4PL parameters `low`, `up`, `mid`, and `k`. Values are illustrative.](../output/figs/fig1.png){#fig-proposal-framework width=100%}
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
