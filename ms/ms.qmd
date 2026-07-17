@@ -72,6 +72,9 @@ format:
     keep-tex: true
     include-in-header:
       text: |
+        % Continuous line numbers for peer review (PDF only).
+        \usepackage{lineno}
+        \linenumbers
         % tinytable LaTeX dependencies. See supplement.qmd for rationale.
         \usepackage{tabularray}
         \usepackage{float}
