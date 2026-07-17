@@ -224,7 +224,16 @@ if (is.null(cc)) cc <- list(
 ci1  <- function(v) sprintf("%.1f [%.1f, %.1f]", v["med"], v["lo"], v["hi"])
 ci1a <- function(v) sprintf("%.1f [%.1f, %.1f]", abs(v["med"]), min(abs(v[c("lo", "hi")])), max(abs(v[c("lo", "hi")])))
 pmc  <- function(v) if (v["p"] < 1e-3) "$p_{\\mathrm{MCMC}}$ < .001" else paste0("$p_{\\mathrm{MCMC}}$ = ", sub("^0", "", sprintf("%.2f", v["p"])))
-rep1 <- function(v) sprintf("%.0f [%.0f, %.0f]", v["med"], v["lo"], v["hi"])
+# Repair effect as "med [lo, hi]" percentage points. Whole-number rounding is too
+# coarse here: it collapsed R. padi's lower bound (0.28) to 0 and printed
+# M. dirhodum's ~7e-6% effect as "0 [0, 0]", implying an exact zero. When the
+# entire interval falls below the display resolution, report a single "< limit".
+rep1 <- function(v, digits = 1) {
+  lim <- 10^(-digits)
+  if (v["hi"] < lim) return(sprintf(paste0("< %.", digits, "f"), lim))
+  f <- paste0("%.", digits, "f")
+  sprintf(paste0(f, " [", f, ", ", f, "]"), v["med"], v["lo"], v["hi"])
+}
 ```
 
 # Introduction
@@ -771,14 +780,22 @@ aphid_surv_end <- if (.f5_fresh) {
     dplyr::group_by(species) |>
     dplyr::slice_max(time, n = 1) |>
     dplyr::pull(surv_med)
-} else c(0.008, 0.019)
+} else c(0.0200, 0.0212)
+# Across-species survival as a percentage range. Rounding to whole percent was
+# too coarse: the three species land at 2.00-2.12%, so min and max both printed
+# as "2", giving the nonsensical "2-2%". Keep one decimal, and collapse to a
+# single figure if the species do round to the same value.
+aphid_surv_rng <- {
+  .r <- round(100 * range(aphid_surv_end), 1)
+  if (.r[1] == .r[2]) sprintf("%.1f", .r[1]) else sprintf("%.1f-%.1f", .r[1], .r[2])
+}
 ```
 
 ## Cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*)
 
 @li2023 found pronounced differences in heat tolerance and sensitivity among species, which likely explain changes in cereal-aphid communities. Our 4PL model recovers similar findings, with *R. padi* having the highest $CT_{max_{1hr}}$ = `r aphid_ct_rp` °C (exceeding *M. dirhodum* by `r ci1(cc$aphid_ct_rp_md)` °C, `r pmc(cc$aphid_ct_rp_md)`) and *M. dirhodum* the shallowest thermal-death-time slope (largest $z$ = `r aphid_z_md` °C) and the lowest $CT_{max_{1hr}}$ ([@fig-tls-comparison]a). However, because the 4PL is fit to the raw survival counts, $R^2$ was more realistic (0.695, 95% CrI: 0.671-0.715), and well below the reported $R^2$ values from the two-stage regressions (0.97-0.996; [Supplement Section 6.2](https://daniel1noble.github.io/bayesTLS/#sec-aphid-fit)). 
 
-Using field temperatures from the same site (Wuhan, China), we also show how the 4PL can predict field mortality with uncertainty propagated from that same model: survival without repair is predicted to fall to roughly `r round(100 * min(aphid_surv_end))`-`r round(100 * max(aphid_surv_end))`% by late June, while physiological repair raised end-of-June survival by `r rep1(cc$aphid_repair$R_padi)`% for *R. padi* and `r rep1(cc$aphid_repair$S_avenae)` for *S. avenae*, but barely changed it (`r rep1(cc$aphid_repair$M_dirhodum)`%) for the least-tolerant *M. dirhodum* ([@fig-heat-injury]d-f). The model therefore moves inference from ranking laboratory tolerance to predicting which species is most likely to experience mortality during natural fluctuating temperature regimes.
+Using field temperatures from the same site (Wuhan, China), we also show how the 4PL can predict field mortality with uncertainty propagated from that same model: survival without repair is predicted to fall to roughly `r aphid_surv_rng`% by late June, while physiological repair raised end-of-June survival by `r rep1(cc$aphid_repair$R_padi)`% for *R. padi* and `r rep1(cc$aphid_repair$S_avenae)`% for *S. avenae*, but barely changed it (`r rep1(cc$aphid_repair$M_dirhodum)`%) for the least-tolerant *M. dirhodum* ([@fig-heat-injury]d-f). The model therefore moves inference from ranking laboratory tolerance to predicting which species is most likely to experience mortality during natural fluctuating temperature regimes.
 
 ## Snow gum (*Eucalyptus pauciflora*)
 
