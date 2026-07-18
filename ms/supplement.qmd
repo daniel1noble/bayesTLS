@@ -205,7 +205,7 @@ if (!(.have_results && .have_models) && file.exists(.fetch_script)) {
 
 This supplement demonstrates the joint Bayesian 4-parameter logistic (4PL) framework from the main manuscript. To cite the approach and the associated R package please use:
 
-Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (in preparation). A flexible modelling framework for estimating thermal tolerance and sensitivity.
+Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (2026). A flexible modelling framework for estimating thermal tolerance and sensitivity. *bioRxiv*. https://doi.org/10.64898/2026.07.16.738378
 
 The supplement has two parts. The first introduces the `bayesTLS` R package using simulated data and empirical case studies. The second reports the detailed models fit for each case study, extended simulation results and provides the code used to reproduce the main manuscript figures.
 
