@@ -4,7 +4,7 @@ citHeader(
 
 ## --- bayesTLS (the package) ---------------------------------------------
 bibentry(
-  bibtype = "Unpublished",
+  bibtype = "Article",
   title   = "A flexible modelling framework for estimating thermal tolerance and sensitivity",
   author  = c(
     person("Daniel W. A.", "Noble"),
@@ -13,12 +13,14 @@ bibentry(
     person("Patrice",      "Pottier")
   ),
   year    = "2026",
-  note    = "Manuscript in preparation",
-  url     = "https://github.com/daniel1noble/bayesTLS",
+  journal = "bioRxiv",
+  doi     = "10.64898/2026.07.16.738378",
+  url     = "https://www.biorxiv.org/content/10.64898/2026.07.16.738378v1",
   textVersion = paste(
     "Noble DWA, Arnold PA, Nakagawa S, Pottier P (2026).",
     "A flexible modelling framework for estimating thermal tolerance and sensitivity.",
-    "Manuscript in preparation. https://github.com/daniel1noble/bayesTLS"
+    "bioRxiv. doi:10.64898/2026.07.16.738378.",
+    "https://www.biorxiv.org/content/10.64898/2026.07.16.738378v1"
   )
 )
 

@@ -21,13 +21,13 @@ bundled case-study data.
 
 Please cite the companion paper when using `bayesTLS`:
 
-> Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (in preparation). A
-> flexible modelling framework for estimating thermal tolerance and sensitivity.
+> Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (2026). A flexible
+> modelling framework for estimating thermal tolerance and sensitivity.
+> *bioRxiv*. https://doi.org/10.64898/2026.07.16.738378
 
-This paper is the primary citation for both the statistical framework and the
-`bayesTLS` package. Citation details will be updated here when the paper is
-published. You can also run `citation("bayesTLS")` in R for the formatted
-reference and a BibTeX entry.
+This preprint is the primary citation for both the statistical framework and
+the `bayesTLS` package. You can also run `citation("bayesTLS")` in R for the
+formatted reference and a BibTeX entry.
 
 ## Installing the `bayesTLS` package
 
