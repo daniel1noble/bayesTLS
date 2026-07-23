@@ -1,5 +1,5 @@
 ---
-title: "Pre-submission proposal to *Ecology Letters*"
+title: "Cover Letter"
 bibliography: ../bib/tdt_problems.bib
 csl: ../bib/ecology-letters.csl
 format:
@@ -12,7 +12,7 @@ format:
 
 Dear Editors of *Ecology Letters*,
 
-Please find our submissions entitled "A flexible modelling framework for estimating thermal tolerance and sensitivity," for your consideration for a **Methods** article. 
+Please find our submissions entitled "A flexible modelling framework for estimating thermal tolerance and sensitivity," for your consideration for a **Methods** article. We have already sought approval for submission, and have received confirmation from John Drake that a full submission would be of interest to *Ecology Letters*. 
 
 We develop a new method for deriving thermal tolerance ($CT_{max}$) and sensitivity estimates (i.e., sensitivity slopes, $z$) from dose-response models. We show how this method allows ecologists to model variation directly in these widely used quantities, improving inference and enabling tests of hypotheses that current methods cannot address.  We believe our proposed paper will be of significant interest to the readers of *Ecology Letters*, given the recent high-impact work being published in the journal on the effects of extreme heat [@orsted_suzukii_2024; @orsted2026; @verberk2026]. 
 
@@ -21,16 +21,18 @@ We expect our proposed approach will open up new and more rigorous ways for quan
 We believe that suitable Editors and reviewers with experience in this area of research would be the following:
 
 **Editors**:
-Madhav Thakur
-Sean Michaletz
-Rob Salguero-Gómez
+
+- Madhav Thakur
+- Sean Michaletz
+- Rob Salguero-Gómez
 
 **Reviewers**:
-Wilco Verbeck (W.Verberk@science.ru.nl)
-Micheal Ørstead (moer@bio.aau.dk)
-Lauren Buckley (lbuckley@uw.edu)
-Jennifer Sunday (jennifer.m.sunday@gmail.com)
-Johannes Overgaard (johannes.overgaard@bio.au.dk)
+ 
+- Wilco Verbeck (W.Verberk@science.ru.nl)
+- Micheal Ørstead (moer@bio.aau.dk)
+- Lauren Buckley (lbuckley@uw.edu)
+- Jennifer Sunday (jennifer.m.sunday@gmail.com)
+- Johannes Overgaard (johannes.overgaard@bio.au.dk)
 
 Thank you for your consideration of our paper,
 

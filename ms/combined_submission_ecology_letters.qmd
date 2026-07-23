@@ -1,0 +1,275 @@
+---
+title: "Combined Submission Document"
+subtitle: "Novelty Statement, Cover Letter, and Title Page"
+bibliography: ../bib/tdt_problems.bib
+csl: ../bib/ecology-letters.csl
+# The cover letter cites a few papers. Render them as in-text author-year
+# citations but suppress the reference list: a submission document should not
+# end with a bibliography after the title page. Set to false if you would
+# rather the cited works were listed.
+suppress-bibliography: true
+format:
+  pdf:
+    toc: false
+    number-sections: false
+---
+
+```{r}
+#| label: setup-counts
+#| include: false
+# Manuscript metrics for the Title Page, computed from the manuscript itself so
+# no count is ever typed by hand (project rule: every number comes from code).
+#
+# Ecology Letters counts the MAIN TEXT excluding the title, abstract,
+# acknowledgements, references, table/figure legends, and appendices. `texcount`
+# is used because it understands LaTeX and reports body text separately from
+# captions, headers, and the bibliography. We therefore count only the .tex
+# region between \end{abstract} and \section{Acknowledgements}.
+#
+# DEPENDENCY: needs the .tex that `make ms-pdf` produces (ms.qmd sets
+# keep-tex: true). `make` renders OUT OF TREE and copies artefacts back, so the
+# fresh .tex is _output/ms.tex; the in-tree ms/ms.tex is a committed leftover
+# that can be months out of date. Counting that stale file silently reported an
+# old draft (274-word abstract instead of 148), so pick the newest candidate and
+# then REFUSE to proceed if it predates ms.qmd.
+
+ms_qmd <- here::here("ms", "ms.qmd")
+candidates <- c(
+  here::here("_output", "ms.tex"),                       # written by `make ms-pdf`
+  file.path(Sys.getenv("HOME"), "Library", "Caches",     # BUILDROOT (Makefile)
+            "tls-render", "ms", "ms.tex"),
+  here::here("ms", "ms.tex")                             # in-tree leftover
+)
+candidates <- candidates[file.exists(candidates)]
+if (!length(candidates)) {
+  stop("No ms.tex found. Run `make ms-pdf` first (it writes _output/ms.tex), ",
+       "then re-render this document.")
+}
+ms_tex <- candidates[which.max(file.mtime(candidates))]
+
+# Staleness guard: a .tex older than the manuscript source describes a previous
+# draft, so every count would be wrong. Fail loudly rather than mislead.
+if (file.mtime(ms_tex) < file.mtime(ms_qmd)) {
+  stop("Stale LaTeX: ", ms_tex, " (", format(file.mtime(ms_tex)), ") is older than ",
+       "ms.qmd (", format(file.mtime(ms_qmd)), "), so the counts would describe an ",
+       "out-of-date draft. Run `make ms-pdf`, then re-render this document.")
+}
+if (Sys.which("texcount") == "") {
+  stop("`texcount` not found on PATH (it ships with TeX Live). It is required ",
+       "to compute the main-text word count.")
+}
+
+tex <- readLines(ms_tex, warn = FALSE)
+
+# Run texcount over a slice of the .tex and pull out its component counts.
+tc <- function(lines) {
+  f <- tempfile(fileext = ".tex")
+  writeLines(lines, f)
+  out <- suppressWarnings(
+    system2("texcount", c("-sum", shQuote(f)), stdout = TRUE, stderr = FALSE))
+  grab <- function(pattern) {
+    hit <- grep(pattern, out, value = TRUE)[1]
+    if (is.na(hit)) NA_integer_ else
+      as.integer(sub("^[^0-9]*([0-9]+).*$", "\\1", hit))
+  }
+  list(text     = grab("^Words in text"),
+       headers  = grab("^Words in headers"),
+       captions = grab("^Words outside text"))
+}
+
+i_abs_beg <- grep("^\\\\begin\\{abstract\\}", tex)[1]
+i_abs_end <- grep("^\\\\end\\{abstract\\}", tex)[1]
+# Main text ends at Acknowledgements; fall back to the reference list if absent.
+i_body_end <- grep("^\\\\section\\*?\\{Acknowledgements\\}", tex)[1]
+if (is.na(i_body_end)) i_body_end <- grep("^\\\\section\\*?\\{References\\}", tex)[1]
+stopifnot(!is.na(i_abs_beg), !is.na(i_abs_end), !is.na(i_body_end),
+          i_abs_end < i_body_end)
+
+abstract_words <- tc(tex[i_abs_beg:i_abs_end])$text
+body <- tc(tex[(i_abs_end + 1):(i_body_end - 1)])
+# Rendered main text, i.e. what a reader/editor counts in the typeset article.
+# Section headings count (EL excludes only the items listed above).
+main_words_rendered <- body$text + body$headers
+legend_words        <- body$captions
+
+# Reference list length: one \bibitem per entry in the CSL bibliography.
+n_references <- sum(grepl("\\\\bibitem", tex))
+
+# ---------------------------------------------------------------------------
+# Main-text word count as reported on the Title Page.
+#
+# Counted from the manuscript SOURCE (ms.qmd) rather than the typeset article,
+# treating in-text citations as part of the reference apparatus and therefore
+# excluded, alongside the items EL already excludes. Everything that is not
+# authored prose is removed in documented steps.
+#
+# This differs from the rendered count (`main_words_rendered`) mainly because a
+# citation is one token in the source (`[@key]`) but several words once typeset
+# ("(Ørsted et al. 2024)"). Both figures are computed here so the difference is
+# visible and auditable; the source-based figure is the one reported.
+# ---------------------------------------------------------------------------
+source_main_words <- function(path) {
+  x <- readLines(path, warn = FALSE)
+
+  # 1. Drop the YAML header (title, abstract, keywords, format options).
+  ends <- which(x == "---")
+  if (length(ends) >= 2) x <- x[(ends[2] + 1):length(x)]
+
+  # 2. Drop fenced code blocks: analysis code is not prose.
+  fence  <- grepl("^```", x)
+  inside <- cumsum(fence) %% 2 == 1
+  x <- x[!(inside | fence)]
+
+  # 3. Drop chunk-option lines, which is where figure legends (#| fig-cap) live.
+  x <- x[!grepl("^#\\|", x)]
+
+  # 4. Drop everything from Acknowledgements onward: acknowledgements, author
+  #    contributions, data availability, AI declaration, and the reference list.
+  i_ack <- grep("^# Acknowledgements", x)[1]
+  if (!is.na(i_ack)) x <- x[seq_len(i_ack - 1)]
+
+  # 5. Drop the docx-only block that repeats the abstract in the body (see
+  #    CLAUDE.md 8a); leaving it would count the abstract twice.
+  i0 <- grep('content-visible when-format="docx"', x)
+  if (length(i0)) {
+    rest  <- x[(i0[1] + 1):length(x)]
+    close <- which(grepl("^:::\\s*$", rest))[1]
+    if (!is.na(close)) x <- x[-(i0[1]:(i0[1] + close))]
+  }
+
+  # 6. Remove non-prose markup. Inline results and inline math each stand for a
+  #    single rendered token; citations and cross-references are dropped.
+  b <- paste(x, collapse = "\n")
+  b <- gsub("`r [^`]+`", "NUM", b)          # inline result -> one token
+  # Display equations MUST be matched before inline math. With only the inline
+  # pattern, `$$ ... $$` matches the two delimiters as empty math groups and
+  # leaves the equation body as plain text, so LaTeX internals get counted as
+  # prose (this inflated the count by ~170 words).
+  b <- gsub("\\$\\$[^$]*\\$\\$", "MATH", b) # display equation -> one token
+  b <- gsub("\\$[^$]*\\$", "MATH", b)       # inline math      -> one token
+  b <- gsub("\\[-?@[^]]+\\]", "", b)        # citations / cross-references
+  b <- gsub("@[A-Za-z0-9_:-]+", "", b)
+  b <- gsub("<!--.*?-->", "", b, perl = TRUE)
+  b <- gsub(":::[^\n]*", " ", b)            # div fences
+  b <- gsub("\\]\\([^)]*\\)", " ", b)       # link targets
+  b <- gsub("\\{[^}]*\\}", " ", b)          # attribute blocks
+  b <- gsub("[#*_>|`]", " ", b)             # heading / emphasis markers
+
+  s <- trimws(b)
+  if (!nchar(s)) 0L else length(strsplit(s, "\\s+")[[1]])
+}
+
+main_words <- source_main_words(ms_qmd)
+
+# Figures / tables: count unique Quarto cross-reference labels in the source,
+# from both executable chunks (#| label: fig-x) and markdown images ({#fig-x}).
+qmd <- readLines(ms_qmd, warn = FALSE)
+count_labels <- function(kind) {
+  from_chunks <- unlist(regmatches(
+    qmd, regexpr(paste0("(?<=label: )", kind, "-[A-Za-z0-9_-]+"), qmd, perl = TRUE)))
+  from_md <- sub("\\{#", "", unlist(regmatches(
+    qmd, gregexpr(paste0("\\{#", kind, "-[A-Za-z0-9_-]+"), qmd))))
+  length(unique(c(from_chunks, from_md)))
+}
+n_figures <- count_labels("fig")
+n_tables  <- count_labels("tbl")
+
+fmt <- function(x) formatC(x, format = "d", big.mark = ",")
+```
+
+# Novelty Statement
+
+We present a new method for estimating thermal tolerance and thermal sensitivity, the two quantities most widely used to gauge how organisms withstand extreme heat. Current practice fits a separate dose-response curve at each assay temperature and then regresses the resulting median times to death against temperature. That two-stage pipeline treats first-stage estimates as if they were known without error, so uncertainty is discarded, statistical assumptions are violated, hierarchical designs and overdispersion are handled poorly, and group comparisons are weakened.
+
+Our contribution is to show that a single hierarchical four-parameter log-logistic model recovers all of the classical quantities directly, and to derive the equivalences that make this correspondence exact. Thermal sensitivity ($z$), critical thermal maximum ($CT_{max}$), critical temperature thresholds ($T_{crit}$), heat-injury accumulation, and survival under fluctuating temperatures all follow from one fitted response surface, with uncertainty propagating coherently into every derived quantity.
+
+This is a methodological advance with direct ecological consequences. Because temperature effects can be placed on any parameter of the curve, ecologists can model variation in tolerance and sensitivity directly and test hypotheses that the two-stage approach cannot address. We provide two documented R packages so the framework is immediately usable, and we show with simulations that it reproduces classical estimates when the two-stage assumptions hold while remaining reliable when they fail.
+
+{{< pagebreak >}}
+
+# Cover Letter
+
+15 July 2026
+
+Dear Editors of *Ecology Letters*,
+
+Please find our submissions entitled "A flexible modelling framework for estimating thermal tolerance and sensitivity," for your consideration for a **Methods** article. We have already sought approval for submission, and have received confirmation from John Drake that a full submission would be of interest to *Ecology Letters*. 
+
+We develop a new method for deriving thermal tolerance ($CT_{max}$) and sensitivity estimates (i.e., sensitivity slopes, $z$) from dose-response models. We show how this method allows ecologists to model variation directly in these widely used quantities, improving inference and enabling tests of hypotheses that current methods cannot address.  We believe our proposed paper will be of significant interest to the readers of *Ecology Letters*, given the recent high-impact work being published in the journal on the effects of extreme heat [@orsted_suzukii_2024; @orsted2026; @verberk2026]. 
+
+We expect our proposed approach will open up new and more rigorous ways for quantifying and statistically comparing species vulnerability to extreme heat. While we have focused on extreme heat, our work also applies to other anthropogenic stressors, such as pesticides, herbicides and other environmental toxins. As such, our contribution will be generally applicable to other fields of research making it highly relevant for the general readership of *Ecology Letters*.  
+
+We believe that suitable Editors and reviewers with experience in this area of research would be the following:
+
+**Editors**:
+
+- Madhav Thakur
+- Sean Michaletz
+- Rob Salguero-Gómez
+
+**Reviewers**:
+ 
+- Wilco Verbeck (W.Verberk@science.ru.nl)
+- Micheal Ørstead (moer@bio.aau.dk)
+- Lauren Buckley (lbuckley@uw.edu)
+- Jennifer Sunday (jennifer.m.sunday@gmail.com)
+- Johannes Overgaard (johannes.overgaard@bio.au.dk)
+
+Thank you for your consideration of our paper,
+
+Daniel W.A. Noble, Pieter A. Arnold, Shinichi Nakagawa and Patrice Pottier 
+{{< pagebreak >}}
+
+# Title Page
+
+**Title:** A flexible modelling framework for estimating thermal tolerance and sensitivity
+
+**Running title:** Bayesian models of thermal tolerance
+
+**Article type:** Methods
+
+## Authors and affiliations
+
+Daniel W. A. Noble^1^, Pieter A. Arnold^1^, Shinichi Nakagawa^2,4^, Patrice Pottier^3,4^
+
+^1^ Division of Ecology and Evolution, Research School of Biology, Australian National University, Canberra, Australia
+
+^2^ Department of Biological Sciences, University of Alberta, Edmonton, Canada
+
+^3^ Department of Biological and Environmental Sciences, University of Gothenburg, Gothenburg, Sweden
+
+^4^ Evolution & Ecology Research Centre, School of Biological, Earth and Environmental Sciences, University of New South Wales, Sydney, New South Wales, Australia
+
+**Corresponding authors:** Daniel W. A. Noble (daniel.noble@anu.edu.au) and Patrice Pottier (patrice.pottier@bioenv.gu.se)
+
+## Article metrics
+
+| Item | Count |
+|:-----|------:|
+| Words in abstract | `r fmt(abstract_words)` |
+| Words in main text | `r fmt(main_words)` |
+| Number of figures | `r fmt(n_figures)` |
+| Number of tables | `r fmt(n_tables)` |
+| Number of text boxes | 0 |
+
+## Keywords
+
+thermal tolerance landscape; dose-response; hierarchical Bayesian model; 4-parameter log-logistic; critical thermal maximum; ectotherm; heat tolerance; climate change; climate vulnerability; fluctuating temperature regimes; bayesTLS; freqTLS
+
+## Statement of authorship
+
+<!-- Reproduced verbatim from the "Author contributions" section of ms.qmd; keep
+the two in step if either is edited. -->
+
+D.W.A.N.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.P.: Conceptualization, Methodology, Software, Data Curation, Formal Analysis, Visualization, Writing – Original Draft. P.A.A.: Conceptualization, Methodology, Investigation, Resources, Writing – Review & Editing. S.N.: Conceptualization, Methodology, Software, Investigation, Resources, Writing – Review & Editing. All authors contributed to interpretation of results, reviewed and edited the manuscript, approved the final version, and agree to be accountable for the work.
+
+## Data accessibility statement
+
+<!-- Reproduced verbatim from the "Data and code availability" section of ms.qmd;
+keep the two in step if either is edited. -->
+
+Analysis scripts, case-study data, committed model fits, and rendered outputs are available at https://github.com/daniel1noble/bayesTLS. Cached simulation outputs and model fits are archived on OSF (https://osf.io/c6dxy) and can be fetched with `make data`; the raw simulation files are regenerable from the simulation scripts in the repository. The online supplement, tutorial, and `bayesTLS` installation instructions are available at https://daniel1noble.github.io/bayesTLS/. We also provide a sister package, `freqTLS`, which develops these models in a likelihood framework.
+
+## Conflict of interest
+
+The authors declare no competing interests.
