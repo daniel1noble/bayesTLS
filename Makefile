@@ -147,7 +147,9 @@ DOCX_META := --metadata abstract="" --metadata abstract-title=""
 # ---- ms.qmd (manuscript) --------------------------------------------------
 ms: ms-docx ms-pdf
 ms-docx: ; $(call RENDER,ms/ms.qmd,docx,ms.docx,$(DOCX_META))
-ms-pdf:  ; $(call RENDER,ms/ms.qmd,pdf,ms.pdf)
+ms-pdf:
+	$(call RENDER,ms/ms.qmd,pdf,ms.pdf)
+	@cp "$(BUILD_MS)/ms.tex" "$(OUTDIR)/ms.tex" && echo "  copied ms.tex -> $(OUTDIR)/ (source for submission word counts)"
 
 # ---- supplement.qmd (supplement) ------------------------------------------
 supp: supp-html supp-docx supp-pdf
