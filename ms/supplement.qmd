@@ -220,7 +220,7 @@ All the data used throughout the manuscript and supplement are already preloaded
 The **`bayesTLS`** package is complemented by [**`freqTLS`**](https://github.com/itchyshin/freqTLS), which fits the same models in a frequentist likelihood framework. `freqTLS` is faster and useful for large datasets, while `bayesTLS` is useful when posterior draws are needed for uncertainty propagation as it's much easier to propagate uncertainty into derived estimates. We show in @sec-freqtls that the two packages recover the same $z$ and $CT_{max_{1hr}}$ on one of the case studies.
 
 
-This tutorial focuses on **`bayesTLS`**. To access the `bayesTLS` R package, install it once from GitHub. Installing `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
+This tutorial focuses on **`bayesTLS`**, which is available on CRAN. Installing `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
 `posterior`, `tibble`, `patchwork`) automatically; the tutorial also uses a few
 small helper packages:
 
@@ -228,9 +228,12 @@ small helper packages:
 #| eval: false
 #| echo: true
 #| code-fold: show
-# Install bayesTLS from GitHub.
+# Install the released version of bayesTLS from CRAN.
+install.packages("bayesTLS")
+
+# Or install the development version from GitHub:
 # install.packages("remotes")   # if needed
-remotes::install_github("daniel1noble/bayesTLS")
+# remotes::install_github("daniel1noble/bayesTLS")
 
 # Install helper packages used in the tutorial.
 install.packages(c("here", "purrr", "tidyr"))

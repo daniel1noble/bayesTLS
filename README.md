@@ -1,6 +1,9 @@
 # `bayesTLS` R Package
 
 <!-- badges: start -->
+[![CRAN status](https://www.r-pkg.org/badges/version/bayesTLS)](https://CRAN.R-project.org/package=bayesTLS)
+[![CRAN downloads (monthly)](https://cranlogs.r-pkg.org/badges/bayesTLS)](https://CRAN.R-project.org/package=bayesTLS)
+[![CRAN downloads (total)](https://cranlogs.r-pkg.org/badges/grand-total/bayesTLS)](https://CRAN.R-project.org/package=bayesTLS)
 [![R-CMD-check](https://github.com/daniel1noble/bayesTLS/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/daniel1noble/bayesTLS/actions/workflows/R-CMD-check.yaml)
 [![test-coverage](https://github.com/daniel1noble/bayesTLS/actions/workflows/test-coverage.yaml/badge.svg)](https://github.com/daniel1noble/bayesTLS/actions/workflows/test-coverage.yaml)
 [![Codecov test coverage](https://codecov.io/gh/daniel1noble/bayesTLS/graph/badge.svg?token=m2j2yA8jbt)](https://app.codecov.io/gh/daniel1noble/bayesTLS)
@@ -31,13 +34,19 @@ formatted reference and a BibTeX entry.
 
 ## Installing the `bayesTLS` package
 
-The analytical workflow ships as an installable R package at the root of this
-repository. Install from GitHub:
+The analytical workflow ships as an installable R package, available on CRAN.
+Install the released version with:
 
 ```r
-install.packages("remotes")  # if needed
-remotes::install_github("daniel1noble/bayesTLS")
+install.packages("bayesTLS")
 library(bayesTLS)
+```
+
+To install the development version from GitHub instead:
+
+```r
+# install.packages("remotes")  # if needed
+remotes::install_github("daniel1noble/bayesTLS")
 ```
 
 The package depends on [`brms`](https://paulbuerkner.com/brms/) (which needs a
