@@ -49,6 +49,9 @@
 ^tests/testthat/testthat-problems\.rds$
 ^cran-comments\.md$
 
+# Hex-logo retina master: only man/figures/logo.png ships in the tarball.
+^man/figures/logo@2x\.png$
+
 # Manuscript-only microclimate / temperature-trace data. These are external
 # open datasets used by the compendium's fluctuating-temperature case studies
 # (rezende 2020, kristineberg, orsted/rennes, aphid summer trace); no package
