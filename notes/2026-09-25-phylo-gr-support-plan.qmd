@@ -69,6 +69,31 @@ Considered and rejected: a convenience wrapper like
 depending on `lme4` just for its formula parser (heavy dependency for 12
 lines).
 
+## API impact (decided 2026-09-25: keep changes minimal)
+
+Exactly **one new argument in the whole package**: `data2 = NULL` on
+`fit_4pl()` (the `brms` name users already know; it already reaches
+`brms::brm()` through `...`, so naming it buys documentation, autocomplete,
+and a home for validation). Everything else — the formula parser, the
+grouping-variable reader, the extraction engine's random-effect rule — is
+internal. No argument anywhere is renamed, removed, or re-defaulted, and every
+existing call stays bit-identical (test T13).
+
+To be precise about `make_4pl_formula()`, since it is where formulas are
+built: its **behaviour changes** (today it aborts on `gr()`; afterwards it
+emits the term verbatim), but the **edited code is not in its definition**.
+It splices each sub-parameter's right-hand side into the `brms` formula as-is
+and never dissects random-effect terms itself — all dissection happens in four
+small internal helpers (`rhs_fixed_vars`, `normalize_cellmeans`,
+`direct_group_vars`, `tdt_random_effect_variables`), which are what get
+rewritten. In Pieter's direct-mode call the crash happens in `fit_4pl()`'s
+body (`normalize_cellmeans`, `R/fit_4pl.R:417`) before `make_4pl_formula()`
+is even reached; in midpoint mode it happens inside `make_4pl_formula()` via
+the helper it calls at line 192. Caveat: if the new splitter changes what that
+line-192 guard consumes, a 1–2 line touch there may be needed — test T4
+(emitted formulas contain `gr()` verbatim, both parameterisations) settles
+it.
+
 ## The plan, in order
 
 1. **Write the failing tests first** (Pieter's call, at the formula level —
@@ -82,11 +107,13 @@ lines).
    be present in `data2`, symmetric, with row/column names covering the
    species levels; warn if it looks like a covariance rather than a
    correlation matrix (diagonal not 1).
-5. **Extraction**: give `tls()` (and friends) a `re_formula` argument. Default
-   rule: if a `by` variable is only a random effect, include exactly that
-   random-effect term; otherwise behave exactly as today. Never blanket-include
-   all random effects — the internal prediction grid pads unrelated grouping
-   columns with arbitrary values, which would inject phantom effects.
+5. **Extraction**: no new argument (decided 2026-09-25 — keep function
+   signatures minimal). The engine gets an *internal* rule: if a `by` variable
+   is only a random effect, include exactly that random-effect term; otherwise
+   behave exactly as today. Never blanket-include all random effects — the
+   internal prediction grid pads unrelated grouping columns with arbitrary
+   values, which would inject phantom effects. An explicit `re_formula`
+   override is deferred to a follow-up issue if anyone needs it.
 6. **Docs and release**: document `data2` with an `ape` example, README line,
    NEWS, version 1.1.0. `ape` stays out of our dependencies — tests use a
    small committed correlation matrix (with a `data-raw/` script to
