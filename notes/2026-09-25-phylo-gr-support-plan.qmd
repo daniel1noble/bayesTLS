@@ -1,0 +1,242 @@
+---
+title: "Plan: phylogenetic models in fit_4pl() (issue #12)"
+date: 2026-09-25
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## What Pieter wants
+
+One joint model comparing $CT_{max}$ and $z$ across many species, with related
+species allowed to be similar (phylogenetic covariance). In `brms` this is
+written:
+
+```r
+fit_4pl(std_phy,
+        ctmax = ~ 1 + (1 | gr(species, cov = A)),
+        z     = ~ 1 + (1 | gr(species, cov = A)),
+        t_ref = 60, data2 = list(A = A))
+```
+
+`A` is the phylogenetic correlation matrix from `ape::vcv(phy, corr = TRUE)`.
+Right now this call fails at the `gr()` part. Target: **bayesTLS 1.1.0**.
+
+## Why it breaks — three separate problems
+
+**1. Our formula handling treats formulas as text.** Two helpers
+(`rhs_fixed_vars()` at `R/fit_4pl.R` ~662 and `normalize_cellmeans()` ~693)
+strip out random-effect terms using text patterns. The patterns cannot cope
+with brackets inside brackets — `(1 | gr(species, cov = A))` — so they leave a
+stray `)` behind and the formula step aborts. This is the error Pieter saw
+(Snippet 1 below reproduces it).
+
+**2. We misread which variables are data columns.** The helper that pulls
+grouping variables out of random-effect terms (`R/utils.R:133`) would return
+both `species` **and** `A` — but `A` is a matrix passed separately, not a data
+column, so a column check would wrongly demand a column called `A`.
+
+**3. Estimates per species would silently be wrong.** All post-fit quantities
+come from one engine, and it currently ignores random effects
+(`re_formula = NA`, `R/tls_engine.R:76`). With species included only as a
+random effect, `tls(by = "species")` would return the *same* number for every
+species — the overall mean — with no warning. Today this is harmless because
+all our models put groups in as fixed effects, but for Pieter it would be a
+silent trap.
+
+Good news: the sampler itself needs no work (`fit_4pl()` already passes extra
+arguments through to `brms::brm()`, so `data2` arrives), and the prior code
+already copes when the grouping factor is not a fixed effect (`R/priors.R:186`).
+
+## What we should do, and why
+
+**Fix the formula handling so users write plain `brms` syntax, add `data2` as
+a proper documented argument, and teach the extraction engine to include
+random effects when asked for them.**
+
+Why this option:
+
+- No new modelling interface to learn or maintain — anything `gr()` can do in
+  `brms` works for free (e.g. `gr(species, by = region, cov = A)`).
+- The fix is small: parse formulas as R code instead of text (~12 lines,
+  Snippet 2), name and validate `data2`, and add one careful default to the
+  engine.
+- It is what the issue itself asks for.
+
+Considered and rejected: a convenience wrapper like
+`phylo = list(group, A)` (nice sugar, can add later; not the foundation), and
+depending on `lme4` just for its formula parser (heavy dependency for 12
+lines).
+
+## The plan, in order
+
+1. **Write the failing tests first** (Pieter's call, at the formula level —
+   no Stan needed).
+2. **Replace the text patterns** with a small proper parser (Snippet 2). Both
+   broken helpers get rebuilt on it.
+3. **Read grouping variables correctly**: inside `gr()`, everything except
+   `cov =` and `dist =` names data columns; `cov =` names a `data2` matrix.
+   `mm()` (multi-membership) gets a clear "not supported" error.
+4. **Add `data2` as a named argument** with checks: every `cov =` matrix must
+   be present in `data2`, symmetric, with row/column names covering the
+   species levels; warn if it looks like a covariance rather than a
+   correlation matrix (diagonal not 1).
+5. **Extraction**: give `tls()` (and friends) a `re_formula` argument. Default
+   rule: if a `by` variable is only a random effect, include exactly that
+   random-effect term; otherwise behave exactly as today. Never blanket-include
+   all random effects — the internal prediction grid pads unrelated grouping
+   columns with arbitrary values, which would inject phantom effects.
+6. **Docs and release**: document `data2` with an `ape` example, README line,
+   NEWS, version 1.1.0. `ape` stays out of our dependencies — tests use a
+   small committed correlation matrix (with a `data-raw/` script to
+   regenerate it).
+
+Statistical notes, briefly: the species effect on $z$ acts on the log scale
+(where the model's predictor lives — natural for a positive quantity); users
+with repeated measures per species can add a plain `(1 | species)` next to the
+`gr()` term to separate phylogenetic from other species differences; and
+per-species estimates are shrinkage estimates — that is the point of the
+joint model.
+
+## Tests
+
+Fast tests that run in every check (no Stan):
+
+| # | What it checks |
+|---|----------------|
+| T1 | The new parser on: plain `(1 | g)`, `gr(cov=)`, nested `(1 | a/b)`, slopes `(temp_c | g)`, several terms mixed with fixed effects |
+| T2 | Grouping variables: `gr(species, cov = A)` → `species` only, never `A`; `gr(g, by = b)` → both; `mm()` → clear error |
+| T3 | `normalize_cellmeans()` passes `gr()` formulas through untouched |
+| T4 | `make_4pl_formula()` puts the `gr()` term, verbatim, into the right sub-parameter formula (both parameterisations); `fit_4pl(fit = FALSE)` builds the spec |
+| T5 | Error quality: `gr(cov = A)` with no `data2`, missing names, asymmetry, level mismatch → clear messages; covariance-instead-of-correlation → warning |
+| T6 | `brms::make_stancode()` accepts our built formula + `data2` (generates the model code without compiling; Snippet 3) |
+| T7 | `standardize_data()` keeps the species column when it appears only inside `gr()` |
+| T8 | The `re_formula` default rule as a pure function: fixed-effect `by` → unchanged behaviour; random-effect-only `by` → exactly that term |
+
+Slower tests behind `RUN_BRMS_TESTS=true` (cached fits, as the suite already
+does):
+
+| # | What it checks |
+|---|----------------|
+| T9 | New fixture: ~10 simulated species with known phylogenetic effects on $CT_{max}$ and $z$, small cached fit |
+| T10 | Recovery: per-species estimates track the simulated truth; overall values inside their credible intervals |
+| T11 | Parity: `gr(species, cov = identity)` vs plain `(1 | species)` on the same data agree within sampling noise |
+| T12 | Isolation: adding an unrelated `(1 | batch)` term does not move the per-species estimates (guards step 5's grid subtlety) |
+| T13 | No drift: the entire existing suite stays green and bit-identical — the new default must not change any current result |
+| T14 | `derive_tdt_curve()` and `predict_survival_curves()` run on the phylo fixture and return per-species output |
+
+## Checks you can run now
+
+### Snippet 1 — reproduce the bug
+
+The current helper, applied to Pieter's formula:
+
+```{r repro}
+rhs_fixed_vars_current <- function(rhs) {
+  rhs <- gsub("\\+?\\s*\\([^|]*\\|[^)]*\\)", "", rhs)
+  rhs <- gsub("\\+\\s*\\+", "+", rhs)
+  rhs <- trimws(gsub("\\+\\s*$|^\\s*\\+", "", rhs))
+  if (rhs %in% c("", "1", "0")) return(character(0))
+  setdiff(all.vars(stats::as.formula(paste("~", rhs))), "temp_c")
+}
+
+ok    <- rhs_fixed_vars_current("1 + (1 | species)")            # legacy: fine
+broke <- tryCatch(
+  rhs_fixed_vars_current("1 + (1 | gr(species, cov = A))"),
+  error = function(e) conditionMessage(e))
+ok
+broke
+stopifnot(identical(ok, character(0)), is.character(broke), length(broke) == 1)
+```
+
+The plain form works; the `gr()` form errors — the reported break.
+
+### Snippet 2 — the proposed parser handles every case
+
+```{r splitter}
+# Split a formula right-hand side into fixed terms and (x | g) terms by
+# walking the parsed expression — no text patterns.
+tdt_split_bars <- function(rhs) {
+  expr <- str2lang(paste("~", rhs))[[2]]
+  bars <- list()
+  walk <- function(e) {
+    if (is.call(e)) {
+      if (identical(e[[1]], as.name("(")) && is.call(e[[2]]) &&
+          identical(e[[2]][[1]], as.name("|"))) {
+        bars[[length(bars) + 1]] <<- e[[2]]
+        return(NULL)
+      }
+      if (identical(e[[1]], as.name("+"))) {
+        l <- walk(e[[2]]); r <- if (length(e) > 2) walk(e[[3]]) else NULL
+        if (is.null(l)) return(r); if (is.null(r)) return(l)
+        return(call("+", l, r))
+      }
+    }
+    e
+  }
+  fixed <- walk(expr)
+  list(fixed = if (is.null(fixed)) "1" else deparse(fixed), bars = bars)
+}
+
+# Data columns named by a random-effect term: inside gr(), everything except
+# cov=/dist=.
+bar_group_vars <- function(bar) {
+  g <- bar[[3]]
+  if (is.call(g) && identical(g[[1]], as.name("mm")))
+    stop("mm() grouping is not yet supported in bayesTLS formulas.")
+  if (is.call(g) && identical(g[[1]], as.name("gr"))) {
+    keep <- setdiff(seq_along(g)[-1], which(names(g) %in% c("cov", "dist")))
+    return(unique(unlist(lapply(as.list(g)[keep], all.vars))))
+  }
+  all.vars(g)
+}
+
+cases <- list(
+  "1 + (1 | gr(species, cov = A))",
+  "0 + region + (1 | gr(species, cov = A)) + (1 | batch)",
+  "temp_c + (temp_c | site) + (1 | a/b)")
+res <- lapply(cases, tdt_split_bars)
+str(lapply(res, function(r)
+  list(fixed = r$fixed, groups = lapply(r$bars, bar_group_vars))))
+
+stopifnot(
+  identical(res[[1]]$fixed, "1"),
+  identical(bar_group_vars(res[[1]]$bars[[1]]), "species"),      # never "A"
+  identical(res[[2]]$fixed, "0 + region"),
+  identical(bar_group_vars(res[[2]]$bars[[2]]), "batch"),
+  identical(res[[3]]$fixed, "temp_c"),
+  identical(bar_group_vars(res[[3]]$bars[[2]]), c("a", "b")))
+```
+
+### Snippet 3 — brms accepts the target model (no compiling)
+
+```{r stancode, message=FALSE, warning=FALSE}
+library(brms)
+set.seed(1)
+sp  <- paste0("s", 1:4)
+A   <- diag(4); A[A == 0] <- 0.3; dimnames(A) <- list(sp, sp)
+toy <- data.frame(species = rep(sp, each = 3),
+                  temp_c  = rep(c(-1, 0, 1), 4),
+                  n = 20, y = rbinom(12, 20, 0.6))
+
+bf_phy <- bf(y | trials(n) ~ a, nl = TRUE,
+             a ~ 1 + (1 | gr(species, cov = A)))
+code <- make_stancode(bf_phy, data = toy, data2 = list(A = A),
+                      family = binomial())
+grep("cholesky|Lcov", strsplit(as.character(code), "\n")[[1]],
+     value = TRUE, ignore.case = TRUE)[1:3]
+stopifnot(any(grepl("Lcov|cholesky", as.character(code), ignore.case = TRUE)))
+```
+
+The generated model code contains the covariance term — so once our formula
+handling stops mangling `gr()`, `brms` takes it from there.
+
+## Open questions for you
+
+1. Want a phylogenetic-signal summary in `tls()` (share of species variance
+   attributable to phylogeny, lambda-like)? Useful for Pieter, but I suggest a
+   follow-up issue so 1.1.0 stays small.
+2. Does Pieter need `gr(species, by = region, ...)` (different phylo variance
+   per region)? It will parse, but I would only test it properly if he needs
+   it.
