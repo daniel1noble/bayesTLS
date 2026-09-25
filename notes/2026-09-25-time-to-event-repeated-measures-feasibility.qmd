@@ -1,0 +1,208 @@
+---
+title: "Feasibility: repeated-measures time-to-death data in bayesTLS (UW postdoc query)"
+date: 2026-09-25
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## The question
+
+A UW postdoc monitors the *same* mollusc individuals through time (daily checks,
+or near-continuously with biosensors) and records individual times of death. He
+asks: bayesTLS assumes independent temperature × duration trials — could it
+support non-independent, repeated-measures data? He was considering a Bayesian
+log-logistic likelihood.
+
+## Answer, in one paragraph
+
+Yes — and it is an extension of our model, not a different one. Our 4PL curve
+in log₁₀(duration) with asymptotes 0/1 **is** the survivor function of a
+log-logistic time-to-death distribution (his proposed likelihood): the median
+death time is $10^{mid}$ and the shape is $k/\ln 10$ (Check 1 below, machine
+precision). Because $mid$ is linear in temperature, the joint model is a
+log-logistic accelerated-failure-time model in which **z is literally the
+acceleration coefficient**: each +1 °C multiplies median survival time by
+$10^{-1/z}$. For repeated observation, the correct likelihood is the classic
+discrete-time survival construction: one row per individual per check-interval
+while alive, with death probability $p_j = 1 - S(t_j)/S(t_{j-1})$ —
+**identical** to the interval-censored log-logistic likelihood (Check 2,
+agreement ~1e-13; the identity even survives our low > 0 "immortal fraction"
+and up < 1 cases). Our current binomial model is the single-interval special
+case, so the extension nests everything we already do. A working brms
+prototype fit this way recovered a known z to within 2% with clean
+diagnostics, and the entire post-fit machinery (`tls()`, `derive_z()`, the
+whole extraction engine) ran **unchanged** on that fit because the parameters
+are the same.
+
+Daniel's instinct was right in an important way: this *is* a hazards model —
+a discrete-time hazard, the standard survival-analysis treatment of
+interval-checked data. The precise point is that he does not need a **Cox
+proportional-hazards** model, which would discard the z/CTmax
+parameterisation; the log-logistic AFT form *keeps* our estimands intact.
+(One condition: the clean "AFT" label holds when $k$ is constant across
+temperatures; with $k \sim T$, the model is log-logistic at each temperature
+and the z mapping is unaffected, but there is no single acceleration factor.)
+
+## Evidence (all independently reproduced by adversarial re-runs)
+
+- **Math**: exact 4PL ↔ log-logistic mapping (error ≤ 3e-16); person-period ↔
+  interval-censored likelihood identity (≤ 2e-13) including up < 1 (death mass
+  at t = 0) and low > 0 (defective, "cure fraction") cases; exact-time density
+  for biosensor data verified — interval and exact-time individuals can share
+  one likelihood.
+- **Prototype**: simulated 4 temperatures × 40 individuals, daily checks,
+  day-14 censoring; brms nonlinear Bernoulli person-period fit sampled in
+  ~1 s; z posterior median 3.92 vs truth 4.00 (95% CrI [3.52, 4.32]);
+  0 divergences, max R̂ 1.018 (one chain, one seed — an existence proof, not a
+  calibration study). A `(1|tank)` cluster effect compiles into the same
+  machinery.
+- **Package audit** (verified against installed v1.0.0 on a real
+  person-period fit): touched — `standardize_data()` (person-period builder),
+  a response branch in `make_4pl_formula()`, `validate_4pl_family()`, a
+  column-fill fix in `new_tdt_grid()`, and survival-vs-hazard semantics in
+  `predict_survival_curves()`. **Untouched — the whole extraction engine**
+  (`tls()`, `derive_z()`, `tls_engine.R`), which recovered z from the
+  prototype as-is. Zero new `fit_4pl()` arguments needed (the Beta-family
+  precedent).
+- **Literature**: the original TDT (Bigelow 1921) *was* time-to-death;
+  Kingsolver & Umbanhowar 2018 fit individual knockdown times with a hazard
+  framework recovering log-linear TDT; ecotoxicology's GUTS models use exactly
+  this conditional-binomial likelihood; Prentice & Gloeckler 1978 is the
+  canonical identity. We found **no existing joint Bayesian individual-level
+  TDT implementation** (targeted searches, 2024–2026) — Vajedsamiei is
+  Bayesian but two-stage; Bullard 2026 frequentist and per-temperature. This
+  is an open niche. *(Bigelow 1921, Prentice & Gloeckler 1978, and the GUTS
+  papers are not yet in `bib/` — add via Zotero if this proceeds.)*
+
+## Real limits (ranked)
+
+1. **Ramping / fluctuating temperature under biosensor monitoring is
+   unresolved.** Our likelihood assumes constant T per individual (as does
+   the current package). `predict_heat_injury()` is post-fit dose
+   *integration*, not a likelihood — a time-varying-T death-time likelihood
+   is genuinely new research (GUTS/TKTD territory), not this extension. If
+   the postdoc's biosensor work is under ramps, that part is future work.
+2. **Left truncation**: individuals enrolled late must have their first
+   interval anchored at enrolment — the naive 0-anchor is provably biased
+   (demonstrated numerically in the stress runs). Implementation must carry
+   entry times.
+3. **Frailty identifiability**: `(1|id)` compiles, but with one death per
+   individual it is weakly identified and prior-sensitive; tank/batch cluster
+   effects are the honest default.
+4. **No overdispersion parameter**: beta-binomial φ has no Bernoulli
+   analogue; heterogeneity must be *modelled* (cluster REs), and this should
+   be documented loudly.
+5. Numerics: the first-interval log₁₀(0) stand-in needs an explicit
+   indicator (2.5% error at very shallow k); model-comparison metrics
+   (loo/R²) must group by individual, not by person-period row.
+6. Biology: monotone death assumed; valve-gape "death" can misclassify —
+   worth a sentence in any reply.
+
+## Scope if we build it
+
+A contained third response type ("time-to-event") beside counts and
+proportions: most work in `standardize_data()` + one formula branch; the
+estimation and extraction core untouched. Bigger than issue #12 (phylo), so
+sequence after it — candidate for 1.2.0, and plausibly a small methods paper
+of its own given the open niche. A proper simulation study (coverage,
+calibration, frailty sensitivity) is mandatory before any release claim.
+
+## Checks (runnable)
+
+### Check 1 — 4PL is a log-logistic survivor function
+
+```{r check1}
+S4pl <- function(t, k, mid) 1 / (1 + exp(k * (log10(t) - mid)))   # low=0, up=1
+F_ll <- function(t, scale, shape) 1 / (1 + (t / scale)^(-shape))  # log-logistic CDF
+t <- 10^seq(-3, 3, length.out = 400)
+for (par in list(c(4, 1.2), c(8, 0.5), c(1.5, -0.3))) {
+  k <- par[1]; mid <- par[2]
+  stopifnot(max(abs((1 - S4pl(t, k, mid)) -
+                    F_ll(t, scale = 10^mid, shape = k / log(10)))) < 1e-12)
+}
+"mapping verified: scale = 10^mid (t50), shape = k/ln(10)"
+```
+
+### Check 2 — person-period Bernoulli = interval-censored likelihood
+
+```{r check2}
+set.seed(1)
+k <- 6; mid <- 0.9; checks <- 0:14                       # daily checks
+td  <- 10^(mid + rlogis(60) * log(10) / k)               # true death times
+int <- findInterval(td, checks)                           # death interval index
+obs_die  <- td <= max(checks)
+
+# (i) interval-censored loglik
+Fll <- function(t) ifelse(t <= 0, 0, 1 - 1/(1 + exp(k * (log10(t) - mid))))
+ll_ic <- sum(log(Fll(checks[int + 1]) - Fll(checks[int]))[obs_die]) +
+         sum(!obs_die) * log(1 - Fll(max(checks)))
+
+# (ii) person-period conditional Bernoulli
+ll_pp <- 0
+for (i in seq_along(td)) {
+  last <- if (obs_die[i]) int[i] + 1 else length(checks)
+  for (j in 2:last) {
+    S1 <- 1 - Fll(checks[j - 1]); S2 <- 1 - Fll(checks[j])
+    p  <- 1 - S2 / S1
+    died <- obs_die[i] && j == last
+    ll_pp <- ll_pp + ifelse(died, log(p), log(1 - p))
+  }
+}
+c(interval_censored = ll_ic, person_period = ll_pp, diff = ll_ic - ll_pp)
+stopifnot(abs(ll_ic - ll_pp) < 1e-10)
+"identity verified: repeated measures are fully absorbed by conditioning"
+```
+
+### Check 3 — the working prototype (not run at render; recorded results)
+
+Full script: session scratchpad `tte_prototype.R` (person-period simulate →
+brms nonlinear Bernoulli, `p = 1 - S(t_hi)/S(t_lo)`, `mid ~ temp_c`,
+cmdstanr, 1 chain / 800 iter). Recorded: z median **3.923** vs truth 4.000
+(CrI [3.522, 4.320]); mid slope −0.2549 vs −0.25; 0 divergences; R̂ ≤ 1.018.
+The installed package's `tls()` then extracted z from this fit **without any
+modification**.
+
+```{r check3, eval=FALSE}
+# person-period fit skeleton (see scratchpad tte_prototype.R for the full script)
+bf_pp <- brms::bf(
+  death ~ 1 - (1 + exp(exp(logk) * (lt_lo - mid))) /
+              (1 + exp(exp(logk) * (lt_hi - mid))),
+  logk ~ 1, mid ~ temp_c, nl = TRUE)
+fit <- brms::brm(bf_pp, data = person_period, family = brms::bernoulli("identity"),
+                 backend = "cmdstanr", chains = 1, iter = 800)
+```
+
+## Draft reply to the postdoc (for Daniel to edit)
+
+> Thanks — you've read the framework exactly right: the released bayesTLS
+> likelihood assumes independent temperature × duration batches, so repeatedly
+> observed cohorts violate it. The good news is that your instinct about the
+> log-logistic is more right than you may realise: our 4PL in log₁₀(duration)
+> *is* the log-logistic survivor function (median death time $10^{mid}$, shape
+> $k/\ln 10$), so the thermal sensitivity z and CTmax you'd want are exactly
+> preserved under a proper time-to-event treatment. For interval checks (daily
+> scoring) the correct likelihood is the standard discrete-time survival
+> construction — person-period records with conditional death probability
+> $1 - S(t_j)/S(t_{j-1})$ — which is algebraically identical to the
+> interval-censored log-logistic likelihood; for biosensor-resolution data the
+> exact-time density applies, and both can be mixed in one model. We have
+> prototyped this in brms with the same parameterisation and recovered z
+> cleanly, with our post-fit machinery working unchanged, so yes: it is on our
+> radar as a planned extension rather than a redesign. Two honest caveats:
+> individual-level frailty is weakly identified with one death per animal
+> (tank/batch effects are the robust default), and if your biosensor work is
+> under ramping rather than constant temperatures, that requires the
+> damage-integral machinery and is a genuinely open modelling problem we're
+> thinking about. We'd be happy to hear more about your design — a worked
+> example with real mollusc data would make an excellent test case.
+
+## Open questions for Daniel
+
+1. Reply + open a GitHub issue to track it (visible roadmap), or reply only?
+2. Sequence: after #12 (phylo) as 1.2.0? The niche looks open enough that
+   this could be a small stand-alone methods paper with the postdoc as a test
+   case / collaborator — worth considering.
+3. Is his biosensor work constant-T or ramping? The answer decides whether we
+   promise an extension or a research collaboration.
