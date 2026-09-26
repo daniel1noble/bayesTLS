@@ -91,6 +91,13 @@ Four publicly available datasets are included with the `bayesTLS` package to mak
 
 Each dataset can be loaded easily using `data(aphid_tdt)` (as an example of loading the `aphid_tdt` dataset). If you want other datasets loaded then simply replace `aphid_tdt`. If you want to learn more about a dataset you can explore it's helpful `?aphid_tdt`. 
 
+## Planned features
+
+Feature requests we are actively tracking (see the linked issues/plans for detail):
+
+- **Phylogenetic models** ([#12](https://github.com/daniel1noble/bayesTLS/issues/12), target 1.1.0): support `ctmax = ~ 1 + (1 | gr(species, cov = A))` with a phylogenetic correlation matrix. Needs: a `data2` argument on `fit_4pl()`, formula parsing that handles `gr()` terms, and extraction that includes group-level random effects. Plan: `notes/2026-09-25-phylo-gr-support-plan.qmd`. (Piet's specific use case. It's a very easy addition and should have been there at beginning)
+- **Time-to-event / repeated-measures designs** (target 1.2.0): individuals monitored through time (interval checks or continuous biosensors) rather than independent temperature × duration batches. Needs: `standardize_data()` to accept `id`/`last_alive`/`first_dead` (or exact death times) and build at-risk interval rows, plus a conditional-interval Bernoulli response branch in `fit_4pl()` — same 4PL parameters, so `tls()` (z, CTmax, relative and absolute) already works. Plan: `notes/2026-09-26-tte-native-support-plan.qmd`. (Thanks to Drew Villeneuve for bringing up this option)
+
 ## Reproducing the associated paper
 
 This repository also contains the code needed to reproduce the companion paper,
