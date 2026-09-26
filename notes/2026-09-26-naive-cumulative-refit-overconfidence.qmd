@@ -90,6 +90,145 @@ this one; the conditional construction is the defensible method — and its
 reformat (per-interval deaths over at-risk counts, instead of cumulative
 proportions over the initial count) is no harder to produce.
 
+## Daniel's proposed formulation (added same day)
+
+Daniel proposed: individual × check-time rows with 0/1 dead status, Bernoulli,
+the 4PL as the mean (direct CTmax/z parameterisation), plus `(1 | individual)`
+and possibly `(1 + log t | individual)`. Tested on the same seeds
+([`2026-09-26-daniel-formulation-sim.R`](2026-09-26-daniel-formulation-sim.R)):
+
+```{r daniel}
+d <- read.csv("2026-09-26-daniel-formulation-results.csv")
+lab <- c(D1 = "D1 Daniel rows, no RE", D2 = "D2 + (1|id) on mid",
+         D3 = "D3 + (1 + lt|id), 3 reps")
+out <- do.call(rbind, lapply(c("D1","D2","D3"), function(m) {
+  x <- d[d$method == m & d$fit_ok == 1, ]
+  data.frame(method = lab[m], n = nrow(x),
+             z_mean_of_medians = round(mean(x$z_med), 3),
+             mean_CrI_width = round(mean(x$width), 3),
+             coverage = paste0(sum(x$covers), "/", nrow(x)),
+             total_divergences = sum(x$n_div),
+             max_Rhat = round(max(x$max_rhat), 3),
+             sd_id_median = round(median(x$sd_mid_med), 3))
+}))
+knitr::kable(out, row.names = FALSE)
+```
+
+Reference (same seeds): naive binomial 0.520 / 16-20; naive beta-binomial
+0.690 / 18-20; correct person-period 0.722 / 18-20.
+
+Reading, flat:
+
+- **D1 = the naive binomial**, as predicted by aggregation: per-replicate
+  differences are Monte-Carlo noise (mean |Δz median| ≈ 0.01). Cumulative 0/1
+  rows with the 4PL mean are Drew's reformat, disaggregated.
+- **D2: the `(1|id)` patch largely worked for z intervals** in this design —
+  widths ~97% of correct, coverage matching. An honest correction: the prior
+  analytical expectation here was that the RE could not repair the
+  dependence; for interval *width* on z, in this design, it did (same
+  compensation family as the beta-binomial's φ).
+- **But the estimated "frailty" is an artifact.** The generator contains
+  **zero** individual heterogeneity, yet sd(1|id) posteriors sat at 0.19–0.27
+  across all 20 replicates. The RE absorbs pseudo-replication and reports it
+  as biology. Drew's stated plan — "add a random effect for individual and
+  see what variance is explained" — would read dependence as individual
+  variation every time.
+- **Sampler health degrades**: divergences appear (24 across the D2 reps,
+  max R̂ 1.23 in one), fits ~15× slower than the correct construction. D3's
+  random time-slope is not identifiable from one event per animal: 2–17%
+  divergent transitions per fit and sd(lt) pulled to ~0.06 — the term adds
+  geometry problems and no information. (Time-varying death probability is
+  already the 4PL curve's job; the slope RE would model individual
+  differences in it, which single-spell data cannot support.)
+- Same scope limit as before: one benign design; with real heterogeneity
+  *and* dependence present, one variance component cannot represent both, and
+  there is no way to tell how it splits.
+
+Verdict: Daniel's formulation is two substitutions from correct — drop rows
+after death (at-risk rows only) and replace the cumulative 4PL mean with the
+conditional interval probability $1 - S(t_j)/S(t_{j-1})$. Then it *is* the
+verified construction, the geometry is clean, and `(1|id)` becomes a real
+frailty estimating real heterogeneity (with the single-spell identifiability
+caveat from the 2026-09-25 note).
+
+## Data layouts (Daniel's question, same day; no slopes anywhere)
+
+Both layouts derive by one-line transforms from the same minimal raw sheet —
+one row per animal: `id, temp, last_alive, first_dead (NA = censored)`,
+optional `tank`, `enrol` (enrolment time), or an exact `t_death` for
+biosensor animals.
+
+**(a) Conditional-interval (correct).** One row per animal per check-interval
+while alive at the interval start; rows STOP at death. Columns: `id`,
+`temp_c`, `first` (first-interval flag), `logd_lo`, `logd_hi` (interval
+endpoints, log10 scale), `death` (1 only on a final observed-death row).
+Bernoulli mean `1 - S(logd_hi)/S(logd_lo)`, with `first = 1` rows using
+S(start of exposure) as the denominator (no log10(0) stand-in needed).
+IMPORTANT READING NOTE: `death` is the CONDITIONAL indicator for that one
+interval — "given alive at logd_lo, did it die by logd_hi?" — NOT cumulative
+status. Each animal therefore has at most one 1, always on its final row;
+censored animals end with all zeros and simply run out of rows. Rows are
+keyed by (animal, interval); an animal owns as many rows as intervals it
+started alive. Irregular per-animal schedules fine; late enrolment = first interval
+starts at `enrol` (the left-truncation fix). Example, animal dead at the
+day-4 check: 4 rows, death = 0,0,0,1.
+
+**(b) Daniel's cumulative-status Bernoulli.** One row per animal per check,
+single `logd` column, cumulative `dead` status, mean `1 - S(logd)`, plus
+`(1|id)` on `mid`. Same animal: 14 rows, death = 0,0,0,1,1,...,1 — the ten
+post-death rows are the pseudo-data quantified above, and the reason (b)
+needs the RE crutch that then misreports frailty (sd ~0.2 with truth 0).
+
+Notes common to both: same grain, same 0/1 response, `temp_c` and log10 time
+exactly as the model already carries them (`logd`); no random slopes —
+time-varying death probability is the 4PL curve itself, and `(1 + lt | id)`
+was shown unidentifiable above. In (a), `(1|id)` is optional biology (true
+frailty; weakly identified single-spell — tank/batch REs preferred), not a
+validity requirement. Exact-time biosensor animals skip row expansion and
+enter via the log-logistic density term. The planned `standardize_data()`
+extension takes the RAW sheet and builds layout (a) internally.
+
+### Worked example (runnable)
+
+```{r layout-demo}
+## RAW sheet — what Drew records. One row per animal. Checks at days 1..6.
+raw <- data.frame(
+  id         = 1:4,
+  temp       = c(39, 41, 39, 41),
+  enrol      = c(0,  0,  0,  2),           # animal 4 enrolled late (day 2)
+  last_alive = c(2,  0,  6,  4),           # 0 = never seen alive at a check
+  first_dead = c(3,  1,  NA, 5)            # NA = right-censored at day 6
+)
+cat("== RAW (one row per animal) ==\n"); print(raw)
+
+checks <- 0:6
+## (a) CONDITIONAL-INTERVAL expansion: rows only while at risk; stops at death.
+pp <- do.call(rbind, lapply(seq_len(nrow(raw)), function(r) {
+  a   <- raw[r, ]
+  cps <- checks[checks >= a$enrol]                      # this animal's schedule
+  end <- if (is.na(a$first_dead)) max(cps) else a$first_dead
+  lo  <- cps[cps < end]; hi <- cps[cps > a$enrol & cps <= end]
+  data.frame(id = a$id, temp_c = a$temp - 40,
+             first   = as.integer(lo == 0),             # S(lo) = up exactly
+             logd_lo = ifelse(lo == 0, NA, round(log10(lo), 3)),
+             logd_hi = round(log10(hi), 3),
+             death   = as.integer(!is.na(a$first_dead) & hi == a$first_dead))
+}))
+cat("\n== (a) CONDITIONAL-INTERVAL rows (mean = 1 - S(hi)/S(lo); S(lo)=up when first) ==\n")
+print(pp, row.names = FALSE)
+
+## (b) Daniel's cumulative-status layout for the same animals.
+cum <- do.call(rbind, lapply(seq_len(nrow(raw)), function(r) {
+  a  <- raw[r, ]; d <- checks[checks > a$enrol]
+  data.frame(id = a$id, temp_c = a$temp - 40, logd = round(log10(d), 3),
+             dead = as.integer(!is.na(a$first_dead) & d >= a$first_dead))
+}))
+cat("\n== (b) CUMULATIVE-STATUS rows (mean = 1 - S(logd); needs (1|id)) ==\n")
+print(cum, row.names = FALSE)
+cat(sprintf("\nrow counts: conditional = %d, cumulative = %d (the difference is post-death padding)\n",
+            nrow(pp), nrow(cum)))
+```
+
 ## Updated draft reply to Drew (supersedes the 2026-09-25 draft)
 
 > Hi Drew — thanks, that clarifies things nicely, and your statistical
@@ -103,9 +242,13 @@ proportions over the initial count) is no harder to produce.
 > overdispersion largely absorbed the dependence in that benign setting
 > (widths within a few percent of the correct likelihood) — but we would not
 > rely on that with real data, where φ also has to soak up genuine
-> overdispersion. An individual random effect can't rescue the aggregated
-> version — once you've collapsed to proportions there is no individual row
-> for it to attach to.
+> overdispersion. An individual random effect can't attach to the
+> aggregated version at all (no individual rows left), and on
+> individual-level cumulative status rows it does something sneakier: in our
+> simulations it recovered honest-looking interval widths, but the estimated
+> individual variance was pure artifact — the generator had zero individual
+> heterogeneity, yet sd(individual) came out ~0.2 every time. So "see what
+> variance is explained" would read pseudo-replication as biology.
 >
 > Second, the correct construction is just as easy to format as the one you
 > described: instead of cumulative survival out of the initial n, record
@@ -117,7 +260,9 @@ proportions over the initial count) is no harder to produce.
 > (our 4PL in log₁₀ duration *is* the log-logistic survivor function; z is
 > its temperature-acceleration coefficient). We've prototyped this in brms
 > and our post-fit machinery (`tls()`, which works on hand-written brms fits)
-> extracts z and CTmax from it unchanged — happy to share the working recipe.
+> extracts z and CTmax from it unchanged — including absolute thresholds —
+> provided the model is written with the package's four named sub-parameters;
+> the ready-made template script we'd send you does exactly that.
 > Your continuously monitored oysters/mussels slot into the same model via
 > the exact-time log-logistic density (that removes the *interval* censoring;
 > survivors at the end are still right-censored, which is handled).

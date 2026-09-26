@@ -162,7 +162,10 @@ brms nonlinear Bernoulli, `p = 1 - S(t_hi)/S(t_lo)`, `mid ~ temp_c`,
 cmdstanr, 1 chain / 800 iter). Recorded: z median **3.923** vs truth 4.000
 (CrI [3.522, 4.320]); mid slope −0.2549 vs −0.25; 0 divergences; R̂ ≤ 1.018.
 The installed package's `tls()` then extracted z from this fit **without any
-modification**.
+modification** — with one requirement established 2026-09-26: the fit must
+carry all four nlpars (lowraw/upraw/logk/mid, package naming); the minimal
+two-nlpar skeleton below illustrates the mean structure only and does NOT
+drive `tls()` (see `2026-09-26-tte-absolute-check.R`).
 
 ```{r check3, eval=FALSE}
 # person-period fit skeleton (see scratchpad tte_prototype.R for the full script)

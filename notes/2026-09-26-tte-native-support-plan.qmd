@@ -1,0 +1,142 @@
+---
+title: "Plan: native time-to-event support in bayesTLS (1.2.0)"
+date: 2026-09-26
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## What and why
+
+Repeated-measures time-to-death designs (Drew's mussels/corals, our upcoming
+cases, Verberk-style continuous monitoring) currently require hand-writing the
+brms model — the parameters are exactly ours (`logk`, `mid ~ temp_c`, same
+priors; `tls()` extracts z/CTmax unchanged, verified), but `fit_4pl()` cannot
+build the conditional mean `1 - S(t_j)/S(t_{j-1})` or the person-period data
+grain. This plan makes it native, so users hand over a raw sheet and never see
+the machinery. Evidence base: the 2026-09-25 feasibility note (likelihood
+identity, working prototype, package audit) and the 2026-09-26 simulation note
+(why the naive reformat and the cumulative-Bernoulli patch are not acceptable
+defaults).
+
+## API (minimal-changes doctrine, as for the phylo plan)
+
+**No new exported functions. Zero new `fit_4pl()` arguments** (the Beta-family
+precedent: family and behaviour driven by `standardize_data()` metadata).
+
+1. `standardize_data()` gains one mutually-exclusive input set:
+   `id =`, `last_alive =`, `first_dead =` (NA = censored), optional
+   `enrol =`, or an exact `time_of_death =` for continuously monitored
+   animals. It builds the person-period frame internally (columns `first`,
+   `logd_lo`, `logd_hi`, `death`, reusing the existing `logd` scale and
+   `temp_c`) and sets `meta$response_type = "tte"`.
+2. `make_4pl_formula()` gains a response branch: LHS `death`, family
+   `bernoulli(identity)`, mean `1 - S(logd_hi) / (first*up +
+   (1-first)*S(logd_lo))` — the `first` term also handles `up < 1` and
+   removes any log10(0) stand-in. Sub-parameter formulas, both
+   parameterisations, `by =`, and the random-effect machinery: untouched
+   (audit-verified via `make_stancode` for midpoint AND direct modes).
+3. `validate_4pl_family()`: accept bernoulli-identity (safe by the same
+   monotone-S argument as the binomial).
+4. Extraction (`tls()`, `derive_*`, the engine): **no changes** — verified
+   live against installed v1.0.0 on a person-period fit.
+5. `new_tdt_grid()` / `predict_survival_curves()`: adopt the engine's generic
+   column fill, and branch the survival computation off the sub-parameters
+   (for a tte fit the model's mu is the conditional interval hazard, not
+   survival — a silent wrong-quantity trap otherwise). Observed-data overlays
+   get a product-limit branch or a clear refusal.
+6. Stage 2 (may slip to a later release): exact-time density path for
+   biosensor data, mixable with interval rows in one likelihood.
+
+## Clarification: what makes this an accelerated-time model (Daniel's question)
+
+Not the `1 -`. The AFT property comes from where temperature acts: `mid`
+(= log10 t50) is linear in `temp_c`, so warming slides the whole survival
+curve along the log-time axis — a multiplicative rescaling of time in which
+every death-time quantile shrinks by 10^(-1/z) per +1 degree C. **z is the
+acceleration coefficient**, and this is equally true of the shipped batch
+model; the TDT framework has been an AFT model since Bigelow. The
+`1 - S(t_j)/S(t_{j-1})` term is the *observation layer*: the conditional
+probability of dying in a check-interval given alive at its start (a
+discrete-time hazard), which lets repeated checks observe that same AFT curve
+without pseudo-replication. Caveat from the 2026-09-25 adversarial pass: the
+strict single-factor "AFT" label holds when k is constant across
+temperatures; with the default k ~ T the model is log-logistic at each
+temperature and the z mapping is unaffected, but there is no single
+acceleration factor.
+
+## Relative vs absolute thresholds on TTE fits (verified 2026-09-26)
+
+z in the fitted model is RELATIVE (mid = log10 time to the curve's own
+(low+up)/2 midpoint), exactly as in the batch model, and the absolute
+threshold is the SAME per-draw correction (mid + ln((up-p)/(p-low))/k applied
+in `tls_eval_subpars()`). Verified live on a person-period fit with
+low=0.05/up=0.95/k=8/z=4 ([`2026-09-26-tte-absolute-check.R`](2026-09-26-tte-absolute-check.R)):
+`tls()` ran unchanged on the bare brmsfit for relative, absolute(0.5) and
+absolute(0.25); z identical across thresholds draw-for-draw (4e-13, as theory
+requires with constant k/low/up); CTmax absolute(0.25) 42.53 [42.18, 42.83]
+vs numeric truth 42.63, draw-level identity to 2e-13. Notes: (i) p=0.5 is
+degenerate when low+up=1 (offset exactly 0) — the p=0.25 case is the real
+test; (ii) the absolute-CTmax grid inversion needs `temp_grid` extended past
+the data range or edge draws NA out (document, not a bug); (iii)
+**`tls()` requires all four nlpars** (lowraw/upraw/logk/mid) — a minimal
+2-nlpar spelling supports neither mode ("Invalid argument nlpar"), which is
+why the formula branch here must emit the full disjoint-bounds transform
+verbatim; (iv) `derive_tdt_curve()`/`predict_survival_curves()` confirmed NOT
+TTE-safe today (missing person-period covariates in `new_tdt_grid` + the
+mu-is-hazard trap) — exactly items 5 above.
+
+## Documentation must-says
+
+- A loud warning against the cumulative-proportion reformat: our simulations
+  show ~30% too-narrow z intervals (coverage ~80%/95%) for plain binomial;
+  the beta-binomial and (1|id) patches recover widths but the (1|id) variant
+  reports individual variance that is pure artifact (sd ≈ 0.2 with truth 0).
+  This is the dangerous kind of wrong — it looks fine.
+- Frailty guidance: `(1|id)` in the correct construction is real biology but
+  weakly identified with one death per animal; tank/batch REs are the robust
+  default.
+- Model-comparison caveat: loo/R² on person-period rows must be grouped by
+  individual.
+- Constant temperature per animal only; ramping is out of scope (open
+  research, damage-integral territory).
+
+## Tests
+
+Fast (every check / CRAN):
+
+| # | What |
+|---|------|
+| T1 | Person-period builder against the worked example (death, censored, death-before-first-check, late enrolment) — golden rows exactly as in the 2026-09-26 note |
+| T2 | Nesting identity: a single-interval tte dataset must yield the SAME likelihood/stancode structure as the current binomial path (J = 1 special case) |
+| T3 | Formula emission: conditional-ratio mean present, both parameterisations; `first` handling; `up < 1` denominator |
+| T4 | Family validation accepts bernoulli-identity for tte meta and refuses it otherwise |
+| T5 | Input validation: overlapping/duplicate ids, `first_dead <= last_alive`, `enrol >= first_dead`, exact + interval mixes — actionable errors |
+| T6 | `predict_survival_curves()` on a tte spec returns SURVIVAL (not hazard); overlay refusal path |
+
+Gated (`RUN_BRMS_TESTS=true`, cached fixtures):
+
+| # | What |
+|---|------|
+| T7 | Recovery fixture: the 2026-09-26 sim design (seeds committed) — z truth in CrI, clean diagnostics |
+| T8 | End-to-end: `standardize_data(raw sheet)` → `fit_4pl()` → `tls()` (relative AND `target_surv = "absolute"`/numeric p) / `derive_tdt_curve()` / `predict_survival_curves()` per-group output |
+| T9 | No-drift: entire existing suite bit-identical (tte is meta-gated; nothing changes for count/proportion users) |
+| T10 | Frailty smoke: `(1|tank)` on a tte fit samples cleanly |
+
+## Sequencing
+
+After issue #12 (phylo) — that lands 1.1.0; this is **1.2.0**. Drew's GitHub
+issue becomes the public anchor; his mussel data the ideal worked example
+(possibly a joint methods note — the Bayesian individual-level TDT niche is
+open, per the 2026-09-25 literature sweep). The simulation harness in
+`notes/2026-09-26-naive-vs-conditional-sim.R` seeds T7 directly.
+
+## Open questions for Daniel
+
+1. Raw-sheet argument names: `last_alive`/`first_dead` vs `interval_lo`/`interval_hi`?
+2. Should stage 2 (exact-time density) block 1.2.0 or follow in 1.2.1? Drew's
+   biosensor data wants it; interval-only already unblocks his daily-check and
+   coral analyses.
+3. Ship the naive-reformat warning as documentation only, or also detect the
+   pattern (duplicated id×temp rows with monotone status) and warn at runtime?

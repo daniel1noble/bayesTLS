@@ -2323,6 +2323,11 @@ window.Quarto = {
   <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results">Results</a></li>
   <li><a href="#reading-stated-flat" id="toc-reading-stated-flat" class="nav-link" data-scroll-target="#reading-stated-flat">Reading, stated flat</a></li>
   <li><a href="#what-this-does-not-license" id="toc-what-this-does-not-license" class="nav-link" data-scroll-target="#what-this-does-not-license">What this does NOT license</a></li>
+  <li><a href="#daniels-proposed-formulation-added-same-day" id="toc-daniels-proposed-formulation-added-same-day" class="nav-link" data-scroll-target="#daniels-proposed-formulation-added-same-day">Daniel’s proposed formulation (added same day)</a></li>
+  <li><a href="#data-layouts-daniels-question-same-day-no-slopes-anywhere" id="toc-data-layouts-daniels-question-same-day-no-slopes-anywhere" class="nav-link" data-scroll-target="#data-layouts-daniels-question-same-day-no-slopes-anywhere">Data layouts (Daniel’s question, same day; no slopes anywhere)</a>
+  <ul class="collapse">
+  <li><a href="#worked-example-runnable" id="toc-worked-example-runnable" class="nav-link" data-scroll-target="#worked-example-runnable">Worked example (runnable)</a></li>
+  </ul></li>
   <li><a href="#updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft" id="toc-updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft" class="nav-link" data-scroll-target="#updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft">Updated draft reply to Drew (supersedes the 2026-09-25 draft)</a></li>
   <li><a href="#open-questions-for-daniel" id="toc-open-questions-for-daniel" class="nav-link" data-scroll-target="#open-questions-for-daniel">Open questions for Daniel</a></li>
   </ul>
@@ -2455,12 +2460,209 @@ window.Quarto = {
 <h2 class="anchored" data-anchor-id="what-this-does-not-license">What this does NOT license</h2>
 <p>One design point only (daily checks, moderate censoring, n = 40, generator matching the fitted model with <strong>no real overdispersion</strong>). With real data, φ has to absorb genuine extra-binomial variation <em>and</em> the dependence — it cannot do both, and there is no way to tell how it splits. Sparser checks, heavier censoring, smaller n, or interest in quantities other than z were not tested. The beta-binomial shortcut is a tolerable stopgap in designs like this one; the conditional construction is the defensible method — and its reformat (per-interval deaths over at-risk counts, instead of cumulative proportions over the initial count) is no harder to produce.</p>
 </section>
+<section id="daniels-proposed-formulation-added-same-day" class="level2">
+<h2 class="anchored" data-anchor-id="daniels-proposed-formulation-added-same-day">Daniel’s proposed formulation (added same day)</h2>
+<p>Daniel proposed: individual × check-time rows with 0/1 dead status, Bernoulli, the 4PL as the mean (direct CTmax/z parameterisation), plus <code>(1 | individual)</code> and possibly <code>(1 + log t | individual)</code>. Tested on the same seeds (<a href="2026-09-26-daniel-formulation-sim.R"><code>2026-09-26-daniel-formulation-sim.R</code></a>):</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>d <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="st">&quot;2026-09-26-daniel-formulation-results.csv&quot;</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>lab <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="at">D1 =</span> <span class="st">&quot;D1 Daniel rows, no RE&quot;</span>, <span class="at">D2 =</span> <span class="st">&quot;D2 + (1|id) on mid&quot;</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">D3 =</span> <span class="st">&quot;D3 + (1 + lt|id), 3 reps&quot;</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>out <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">c</span>(<span class="st">&quot;D1&quot;</span>,<span class="st">&quot;D2&quot;</span>,<span class="st">&quot;D3&quot;</span>), <span class="cf">function</span>(m) {</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  x <span class="ot">&lt;-</span> d[d<span class="sc">$</span>method <span class="sc">==</span> m <span class="sc">&amp;</span> d<span class="sc">$</span>fit_ok <span class="sc">==</span> <span class="dv">1</span>, ]</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">method =</span> lab[m], <span class="at">n =</span> <span class="fu">nrow</span>(x),</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">z_mean_of_medians =</span> <span class="fu">round</span>(<span class="fu">mean</span>(x<span class="sc">$</span>z_med), <span class="dv">3</span>),</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>             <span class="at">mean_CrI_width =</span> <span class="fu">round</span>(<span class="fu">mean</span>(x<span class="sc">$</span>width), <span class="dv">3</span>),</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>             <span class="at">coverage =</span> <span class="fu">paste0</span>(<span class="fu">sum</span>(x<span class="sc">$</span>covers), <span class="st">&quot;/&quot;</span>, <span class="fu">nrow</span>(x)),</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>             <span class="at">total_divergences =</span> <span class="fu">sum</span>(x<span class="sc">$</span>n_div),</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>             <span class="at">max_Rhat =</span> <span class="fu">round</span>(<span class="fu">max</span>(x<span class="sc">$</span>max_rhat), <span class="dv">3</span>),</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>             <span class="at">sd_id_median =</span> <span class="fu">round</span>(<span class="fu">median</span>(x<span class="sc">$</span>sd_mid_med), <span class="dv">3</span>))</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(out, <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 26%">
+<col style="width: 2%">
+<col style="width: 15%">
+<col style="width: 13%">
+<col style="width: 7%">
+<col style="width: 15%">
+<col style="width: 7%">
+<col style="width: 11%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">method</th>
+<th style="text-align: right;">n</th>
+<th style="text-align: right;">z_mean_of_medians</th>
+<th style="text-align: right;">mean_CrI_width</th>
+<th style="text-align: left;">coverage</th>
+<th style="text-align: right;">total_divergences</th>
+<th style="text-align: right;">max_Rhat</th>
+<th style="text-align: right;">sd_id_median</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">D1 Daniel rows, no RE</td>
+<td style="text-align: right;">20</td>
+<td style="text-align: right;">4.019</td>
+<td style="text-align: right;">0.512</td>
+<td style="text-align: left;">18/20</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">1.028</td>
+<td style="text-align: right;">NA</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">D2 + (1|id) on mid</td>
+<td style="text-align: right;">20</td>
+<td style="text-align: right;">3.941</td>
+<td style="text-align: right;">0.699</td>
+<td style="text-align: left;">18/20</td>
+<td style="text-align: right;">24</td>
+<td style="text-align: right;">1.225</td>
+<td style="text-align: right;">0.231</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">D3 + (1 + lt|id), 3 reps</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">3.974</td>
+<td style="text-align: right;">0.770</td>
+<td style="text-align: left;">3/3</td>
+<td style="text-align: right;">101</td>
+<td style="text-align: right;">1.122</td>
+<td style="text-align: right;">0.234</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Reference (same seeds): naive binomial 0.520 / 16-20; naive beta-binomial 0.690 / 18-20; correct person-period 0.722 / 18-20.</p>
+<p>Reading, flat:</p>
+<ul>
+<li><strong>D1 = the naive binomial</strong>, as predicted by aggregation: per-replicate differences are Monte-Carlo noise (mean |Δz median| ≈ 0.01). Cumulative 0/1 rows with the 4PL mean are Drew’s reformat, disaggregated.</li>
+<li><strong>D2: the <code>(1|id)</code> patch largely worked for z intervals</strong> in this design — widths ~97% of correct, coverage matching. An honest correction: the prior analytical expectation here was that the RE could not repair the dependence; for interval <em>width</em> on z, in this design, it did (same compensation family as the beta-binomial’s φ).</li>
+<li><strong>But the estimated “frailty” is an artifact.</strong> The generator contains <strong>zero</strong> individual heterogeneity, yet sd(1|id) posteriors sat at 0.19–0.27 across all 20 replicates. The RE absorbs pseudo-replication and reports it as biology. Drew’s stated plan — “add a random effect for individual and see what variance is explained” — would read dependence as individual variation every time.</li>
+<li><strong>Sampler health degrades</strong>: divergences appear (24 across the D2 reps, max R̂ 1.23 in one), fits ~15× slower than the correct construction. D3’s random time-slope is not identifiable from one event per animal: 2–17% divergent transitions per fit and sd(lt) pulled to ~0.06 — the term adds geometry problems and no information. (Time-varying death probability is already the 4PL curve’s job; the slope RE would model individual differences in it, which single-spell data cannot support.)</li>
+<li>Same scope limit as before: one benign design; with real heterogeneity <em>and</em> dependence present, one variance component cannot represent both, and there is no way to tell how it splits.</li>
+</ul>
+<p>Verdict: Daniel’s formulation is two substitutions from correct — drop rows after death (at-risk rows only) and replace the cumulative 4PL mean with the conditional interval probability <span class="math inline">\(1 - S(t_j)/S(t_{j-1})\)</span>. Then it <em>is</em> the verified construction, the geometry is clean, and <code>(1|id)</code> becomes a real frailty estimating real heterogeneity (with the single-spell identifiability caveat from the 2026-09-25 note).</p>
+</section>
+<section id="data-layouts-daniels-question-same-day-no-slopes-anywhere" class="level2">
+<h2 class="anchored" data-anchor-id="data-layouts-daniels-question-same-day-no-slopes-anywhere">Data layouts (Daniel’s question, same day; no slopes anywhere)</h2>
+<p>Both layouts derive by one-line transforms from the same minimal raw sheet — one row per animal: <code>id, temp, last_alive, first_dead (NA = censored)</code>, optional <code>tank</code>, <code>enrol</code> (enrolment time), or an exact <code>t_death</code> for biosensor animals.</p>
+<p><strong>(a) Conditional-interval (correct).</strong> One row per animal per check-interval while alive at the interval start; rows STOP at death. Columns: <code>id</code>, <code>temp_c</code>, <code>first</code> (first-interval flag), <code>logd_lo</code>, <code>logd_hi</code> (interval endpoints, log10 scale), <code>death</code> (1 only on a final observed-death row). Bernoulli mean <code>1 - S(logd_hi)/S(logd_lo)</code>, with <code>first = 1</code> rows using S(start of exposure) as the denominator (no log10(0) stand-in needed). IMPORTANT READING NOTE: <code>death</code> is the CONDITIONAL indicator for that one interval — “given alive at logd_lo, did it die by logd_hi?” — NOT cumulative status. Each animal therefore has at most one 1, always on its final row; censored animals end with all zeros and simply run out of rows. Rows are keyed by (animal, interval); an animal owns as many rows as intervals it started alive. Irregular per-animal schedules fine; late enrolment = first interval starts at <code>enrol</code> (the left-truncation fix). Example, animal dead at the day-4 check: 4 rows, death = 0,0,0,1.</p>
+<p><strong>(b) Daniel’s cumulative-status Bernoulli.</strong> One row per animal per check, single <code>logd</code> column, cumulative <code>dead</code> status, mean <code>1 - S(logd)</code>, plus <code>(1|id)</code> on <code>mid</code>. Same animal: 14 rows, death = 0,0,0,1,1,…,1 — the ten post-death rows are the pseudo-data quantified above, and the reason (b) needs the RE crutch that then misreports frailty (sd ~0.2 with truth 0).</p>
+<p>Notes common to both: same grain, same 0/1 response, <code>temp_c</code> and log10 time exactly as the model already carries them (<code>logd</code>); no random slopes — time-varying death probability is the 4PL curve itself, and <code>(1 + lt | id)</code> was shown unidentifiable above. In (a), <code>(1|id)</code> is optional biology (true frailty; weakly identified single-spell — tank/batch REs preferred), not a validity requirement. Exact-time biosensor animals skip row expansion and enter via the log-logistic density term. The planned <code>standardize_data()</code> extension takes the RAW sheet and builds layout (a) internally.</p>
+<section id="worked-example-runnable" class="level3">
+<h3 class="anchored" data-anchor-id="worked-example-runnable">Worked example (runnable)</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="do">## RAW sheet — what Drew records. One row per animal. Checks at days 1..6.</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>raw <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">id         =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">4</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">temp       =</span> <span class="fu">c</span>(<span class="dv">39</span>, <span class="dv">41</span>, <span class="dv">39</span>, <span class="dv">41</span>),</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">enrol      =</span> <span class="fu">c</span>(<span class="dv">0</span>,  <span class="dv">0</span>,  <span class="dv">0</span>,  <span class="dv">2</span>),           <span class="co"># animal 4 enrolled late (day 2)</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">last_alive =</span> <span class="fu">c</span>(<span class="dv">2</span>,  <span class="dv">0</span>,  <span class="dv">6</span>,  <span class="dv">4</span>),           <span class="co"># 0 = never seen alive at a check</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">first_dead =</span> <span class="fu">c</span>(<span class="dv">3</span>,  <span class="dv">1</span>,  <span class="cn">NA</span>, <span class="dv">5</span>)            <span class="co"># NA = right-censored at day 6</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;== RAW (one row per animal) ==</span><span class="sc">\n</span><span class="st">&quot;</span>); <span class="fu">print</span>(raw)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>== RAW (one row per animal) ==</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  id temp enrol last_alive first_dead
+1  1   39     0          2          3
+2  2   41     0          0          1
+3  3   39     0          6         NA
+4  4   41     2          4          5</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>checks <span class="ot">&lt;-</span> <span class="dv">0</span><span class="sc">:</span><span class="dv">6</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="do">## (a) CONDITIONAL-INTERVAL expansion: rows only while at risk; stops at death.</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>pp <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">seq_len</span>(<span class="fu">nrow</span>(raw)), <span class="cf">function</span>(r) {</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  a   <span class="ot">&lt;-</span> raw[r, ]</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  cps <span class="ot">&lt;-</span> checks[checks <span class="sc">&gt;=</span> a<span class="sc">$</span>enrol]                      <span class="co"># this animal&#39;s schedule</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  end <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">is.na</span>(a<span class="sc">$</span>first_dead)) <span class="fu">max</span>(cps) <span class="cf">else</span> a<span class="sc">$</span>first_dead</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  lo  <span class="ot">&lt;-</span> cps[cps <span class="sc">&lt;</span> end]; hi <span class="ot">&lt;-</span> cps[cps <span class="sc">&gt;</span> a<span class="sc">$</span>enrol <span class="sc">&amp;</span> cps <span class="sc">&lt;=</span> end]</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">id =</span> a<span class="sc">$</span>id, <span class="at">temp_c =</span> a<span class="sc">$</span>temp <span class="sc">-</span> <span class="dv">40</span>,</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>             <span class="at">first   =</span> <span class="fu">as.integer</span>(lo <span class="sc">==</span> <span class="dv">0</span>),             <span class="co"># S(lo) = up exactly</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>             <span class="at">logd_lo =</span> <span class="fu">ifelse</span>(lo <span class="sc">==</span> <span class="dv">0</span>, <span class="cn">NA</span>, <span class="fu">round</span>(<span class="fu">log10</span>(lo), <span class="dv">3</span>)),</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>             <span class="at">logd_hi =</span> <span class="fu">round</span>(<span class="fu">log10</span>(hi), <span class="dv">3</span>),</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>             <span class="at">death   =</span> <span class="fu">as.integer</span>(<span class="sc">!</span><span class="fu">is.na</span>(a<span class="sc">$</span>first_dead) <span class="sc">&amp;</span> hi <span class="sc">==</span> a<span class="sc">$</span>first_dead))</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n</span><span class="st">== (a) CONDITIONAL-INTERVAL rows (mean = 1 - S(hi)/S(lo); S(lo)=up when first) ==</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+== (a) CONDITIONAL-INTERVAL rows (mean = 1 - S(hi)/S(lo); S(lo)=up when first) ==</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(pp, <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code> id temp_c first logd_lo logd_hi death
+  1     -1     1      NA   0.000     0
+  1     -1     0   0.000   0.301     0
+  1     -1     0   0.301   0.477     1
+  2      1     1      NA   0.000     1
+  3     -1     1      NA   0.000     0
+  3     -1     0   0.000   0.301     0
+  3     -1     0   0.301   0.477     0
+  3     -1     0   0.477   0.602     0
+  3     -1     0   0.602   0.699     0
+  3     -1     0   0.699   0.778     0
+  4      1     0   0.301   0.477     0
+  4      1     0   0.477   0.602     0
+  4      1     0   0.602   0.699     1</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="do">## (b) Daniel&#39;s cumulative-status layout for the same animals.</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>cum <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">seq_len</span>(<span class="fu">nrow</span>(raw)), <span class="cf">function</span>(r) {</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  a  <span class="ot">&lt;-</span> raw[r, ]; d <span class="ot">&lt;-</span> checks[checks <span class="sc">&gt;</span> a<span class="sc">$</span>enrol]</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">id =</span> a<span class="sc">$</span>id, <span class="at">temp_c =</span> a<span class="sc">$</span>temp <span class="sc">-</span> <span class="dv">40</span>, <span class="at">logd =</span> <span class="fu">round</span>(<span class="fu">log10</span>(d), <span class="dv">3</span>),</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">dead =</span> <span class="fu">as.integer</span>(<span class="sc">!</span><span class="fu">is.na</span>(a<span class="sc">$</span>first_dead) <span class="sc">&amp;</span> d <span class="sc">&gt;=</span> a<span class="sc">$</span>first_dead))</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n</span><span class="st">== (b) CUMULATIVE-STATUS rows (mean = 1 - S(logd); needs (1|id)) ==</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+== (b) CUMULATIVE-STATUS rows (mean = 1 - S(logd); needs (1|id)) ==</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(cum, <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code> id temp_c  logd dead
+  1     -1 0.000    0
+  1     -1 0.301    0
+  1     -1 0.477    1
+  1     -1 0.602    1
+  1     -1 0.699    1
+  1     -1 0.778    1
+  2      1 0.000    1
+  2      1 0.301    1
+  2      1 0.477    1
+  2      1 0.602    1
+  2      1 0.699    1
+  2      1 0.778    1
+  3     -1 0.000    0
+  3     -1 0.301    0
+  3     -1 0.477    0
+  3     -1 0.602    0
+  3     -1 0.699    0
+  3     -1 0.778    0
+  4      1 0.477    0
+  4      1 0.602    0
+  4      1 0.699    1
+  4      1 0.778    1</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;</span><span class="sc">\n</span><span class="st">row counts: conditional = %d, cumulative = %d (the difference is post-death padding)</span><span class="sc">\n</span><span class="st">&quot;</span>,</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>            <span class="fu">nrow</span>(pp), <span class="fu">nrow</span>(cum)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+row counts: conditional = 13, cumulative = 22 (the difference is post-death padding)</code></pre>
+</div>
+</div>
+</section>
+</section>
 <section id="updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft" class="level2">
 <h2 class="anchored" data-anchor-id="updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft">Updated draft reply to Drew (supersedes the 2026-09-25 draft)</h2>
 <blockquote class="blockquote">
 <p>Hi Drew — thanks, that clarifies things nicely, and your statistical instincts are good on every point. Three things.</p>
-<p>First, your suspicion about the cumulative reformat is correct. We simulated your exact situation (daily checks of one cohort, four constant temperatures): feeding cumulative proportions into a plain binomial gave intervals for z about 30% too narrow (empirical coverage ~80% at nominal 95%). Interestingly, with our default beta-binomial family the estimated overdispersion largely absorbed the dependence in that benign setting (widths within a few percent of the correct likelihood) — but we would not rely on that with real data, where φ also has to soak up genuine overdispersion. An individual random effect can’t rescue the aggregated version — once you’ve collapsed to proportions there is no individual row for it to attach to.</p>
-<p>Second, the correct construction is just as easy to format as the one you described: instead of cumulative survival out of the initial n, record per-interval deaths out of the number still alive at the interval start. Modelled with conditional death probability 1 − S(t_j)/S(t_{j−1}) — the standard discrete-time survival construction — this is <em>algebraically identical</em> to the interval-censored log-logistic likelihood you were considering, and it uses exactly the parameters bayesTLS already estimates (our 4PL in log₁₀ duration <em>is</em> the log-logistic survivor function; z is its temperature-acceleration coefficient). We’ve prototyped this in brms and our post-fit machinery (<code>tls()</code>, which works on hand-written brms fits) extracts z and CTmax from it unchanged — happy to share the working recipe. Your continuously monitored oysters/mussels slot into the same model via the exact-time log-logistic density (that removes the <em>interval</em> censoring; survivors at the end are still right-censored, which is handled).</p>
+<p>First, your suspicion about the cumulative reformat is correct. We simulated your exact situation (daily checks of one cohort, four constant temperatures): feeding cumulative proportions into a plain binomial gave intervals for z about 30% too narrow (empirical coverage ~80% at nominal 95%). Interestingly, with our default beta-binomial family the estimated overdispersion largely absorbed the dependence in that benign setting (widths within a few percent of the correct likelihood) — but we would not rely on that with real data, where φ also has to soak up genuine overdispersion. An individual random effect can’t attach to the aggregated version at all (no individual rows left), and on individual-level cumulative status rows it does something sneakier: in our simulations it recovered honest-looking interval widths, but the estimated individual variance was pure artifact — the generator had zero individual heterogeneity, yet sd(individual) came out ~0.2 every time. So “see what variance is explained” would read pseudo-replication as biology.</p>
+<p>Second, the correct construction is just as easy to format as the one you described: instead of cumulative survival out of the initial n, record per-interval deaths out of the number still alive at the interval start. Modelled with conditional death probability 1 − S(t_j)/S(t_{j−1}) — the standard discrete-time survival construction — this is <em>algebraically identical</em> to the interval-censored log-logistic likelihood you were considering, and it uses exactly the parameters bayesTLS already estimates (our 4PL in log₁₀ duration <em>is</em> the log-logistic survivor function; z is its temperature-acceleration coefficient). We’ve prototyped this in brms and our post-fit machinery (<code>tls()</code>, which works on hand-written brms fits) extracts z and CTmax from it unchanged — including absolute thresholds — provided the model is written with the package’s four named sub-parameters; the ready-made template script we’d send you does exactly that. Your continuously monitored oysters/mussels slot into the same model via the exact-time log-logistic density (that removes the <em>interval</em> censoring; survivors at the end are still right-censored, which is handled).</p>
 <p>Third, the coral case fits more neatly than you might expect: define the event as “fragment reaches 10% colony death” and each fragment contributes one (interval-censored) event time — the polyp-level dependence then lives inside the measurement of the endpoint, not the likelihood. Four temperatures is thin, but that is what priors are for.</p>
 <p>Please do open the GitHub issue — native support (a time-to-event input in <code>standardize_data()</code>, same model underneath) is a planned extension, and your mussel experiments would make an ideal test case. One caveat to keep us honest: all of this assumes constant temperature per individual, which you’ve confirmed; ramping designs are a genuinely open modelling problem.</p>
 </blockquote>
