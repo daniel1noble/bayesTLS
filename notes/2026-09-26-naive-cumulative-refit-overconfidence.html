@@ -6,9 +6,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-09-25">
+<meta name="dcterms.date" content="2026-09-26">
 
-<title>Feasibility: repeated-measures time-to-death data in bayesTLS (UW postdoc query)</title>
+<title>How wrong is the naive cumulative-proportion reformat? (Drew’s question)</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -2319,18 +2319,11 @@ window.Quarto = {
    
   <ul>
   <li><a href="#the-question" id="toc-the-question" class="nav-link active" data-scroll-target="#the-question">The question</a></li>
-  <li><a href="#answer-in-one-paragraph" id="toc-answer-in-one-paragraph" class="nav-link" data-scroll-target="#answer-in-one-paragraph">Answer, in one paragraph</a></li>
-  <li><a href="#evidence-all-independently-reproduced-by-adversarial-re-runs" id="toc-evidence-all-independently-reproduced-by-adversarial-re-runs" class="nav-link" data-scroll-target="#evidence-all-independently-reproduced-by-adversarial-re-runs">Evidence (all independently reproduced by adversarial re-runs)</a></li>
-  <li><a href="#real-limits-ranked" id="toc-real-limits-ranked" class="nav-link" data-scroll-target="#real-limits-ranked">Real limits (ranked)</a></li>
-  <li><a href="#scope-if-we-build-it" id="toc-scope-if-we-build-it" class="nav-link" data-scroll-target="#scope-if-we-build-it">Scope if we build it</a></li>
-  <li><a href="#checks-runnable" id="toc-checks-runnable" class="nav-link" data-scroll-target="#checks-runnable">Checks (runnable)</a>
-  <ul class="collapse">
-  <li><a href="#check-1-4pl-is-a-log-logistic-survivor-function" id="toc-check-1-4pl-is-a-log-logistic-survivor-function" class="nav-link" data-scroll-target="#check-1-4pl-is-a-log-logistic-survivor-function">Check 1 — 4PL is a log-logistic survivor function</a></li>
-  <li><a href="#check-2-person-period-bernoulli-interval-censored-likelihood" id="toc-check-2-person-period-bernoulli-interval-censored-likelihood" class="nav-link" data-scroll-target="#check-2-person-period-bernoulli-interval-censored-likelihood">Check 2 — person-period Bernoulli = interval-censored likelihood</a></li>
-  <li><a href="#check-3-the-working-prototype-not-run-at-render-recorded-results" id="toc-check-3-the-working-prototype-not-run-at-render-recorded-results" class="nav-link" data-scroll-target="#check-3-the-working-prototype-not-run-at-render-recorded-results">Check 3 — the working prototype (not run at render; recorded results)</a></li>
-  </ul></li>
-  <li><a href="#addendum-2026-09-26" id="toc-addendum-2026-09-26" class="nav-link" data-scroll-target="#addendum-2026-09-26">Addendum (2026-09-26)</a></li>
-  <li><a href="#draft-reply-to-the-postdoc-superseded-see-2026-09-26-note" id="toc-draft-reply-to-the-postdoc-superseded-see-2026-09-26-note" class="nav-link" data-scroll-target="#draft-reply-to-the-postdoc-superseded-see-2026-09-26-note">Draft reply to the postdoc (SUPERSEDED — see 2026-09-26 note)</a></li>
+  <li><a href="#design" id="toc-design" class="nav-link" data-scroll-target="#design">Design</a></li>
+  <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results">Results</a></li>
+  <li><a href="#reading-stated-flat" id="toc-reading-stated-flat" class="nav-link" data-scroll-target="#reading-stated-flat">Reading, stated flat</a></li>
+  <li><a href="#what-this-does-not-license" id="toc-what-this-does-not-license" class="nav-link" data-scroll-target="#what-this-does-not-license">What this does NOT license</a></li>
+  <li><a href="#updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft" id="toc-updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft" class="nav-link" data-scroll-target="#updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft">Updated draft reply to Drew (supersedes the 2026-09-25 draft)</a></li>
   <li><a href="#open-questions-for-daniel" id="toc-open-questions-for-daniel" class="nav-link" data-scroll-target="#open-questions-for-daniel">Open questions for Daniel</a></li>
   </ul>
 </nav>
@@ -2339,7 +2332,7 @@ window.Quarto = {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Feasibility: repeated-measures time-to-death data in bayesTLS (UW postdoc query)</h1>
+<h1 class="title">How wrong is the naive cumulative-proportion reformat? (Drew’s question)</h1>
 </div>
 
 
@@ -2350,7 +2343,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">September 25, 2026</p>
+      <p class="date">September 26, 2026</p>
     </div>
   </div>
   
@@ -2364,123 +2357,119 @@ window.Quarto = {
 
 <section id="the-question" class="level2">
 <h2 class="anchored" data-anchor-id="the-question">The question</h2>
-<p>A UW postdoc monitors the <em>same</em> mollusc individuals through time (daily checks, or near-continuously with biosensors) and records individual times of death. He asks: bayesTLS assumes independent temperature × duration trials — could it support non-independent, repeated-measures data? He was considering a Bayesian log-logistic likelihood.</p>
+<p>Drew (UW) clarified his design: constant temperatures, the same cohort checked repeatedly, individual times of death. He proposes the “trivial reformat” — compute cumulative survival of the cohort at every checkpoint and feed those as if they were independent temperature × duration cells into the current package — and himself suspects this “could produce overconfident intervals”. He also suggests adding an individual random effect to compensate.</p>
+<p>This note quantifies the reformat against the correct likelihood (see the 2026-09-25 feasibility note for the theory), including whether the package’s <strong>default beta-binomial</strong> family accidentally compensates.</p>
 </section>
-<section id="answer-in-one-paragraph" class="level2">
-<h2 class="anchored" data-anchor-id="answer-in-one-paragraph">Answer, in one paragraph</h2>
-<p>Yes — and it is an extension of our model, not a different one. Our 4PL curve in log₁₀(duration) with asymptotes 0/1 <strong>is</strong> the survivor function of a log-logistic time-to-death distribution (his proposed likelihood): the median death time is <span class="math inline">\(10^{mid}\)</span> and the shape is <span class="math inline">\(k/\ln 10\)</span> (Check 1 below, machine precision). Because <span class="math inline">\(mid\)</span> is linear in temperature, the joint model is a log-logistic accelerated-failure-time model in which <strong>z is literally the acceleration coefficient</strong>: each +1 °C multiplies median survival time by <span class="math inline">\(10^{-1/z}\)</span>. For repeated observation, the correct likelihood is the classic discrete-time survival construction: one row per individual per check-interval while alive, with death probability <span class="math inline">\(p_j = 1 - S(t_j)/S(t_{j-1})\)</span> — <strong>identical</strong> to the interval-censored log-logistic likelihood (Check 2, agreement ~1e-13; the identity even survives our low &gt; 0 “immortal fraction” and up &lt; 1 cases). Our current binomial model is the single-interval special case, so the extension nests everything we already do. A working brms prototype fit this way recovered a known z to within 2% with clean diagnostics, and the entire post-fit machinery (<code>tls()</code>, <code>derive_z()</code>, the whole extraction engine) ran <strong>unchanged</strong> on that fit because the parameters are the same.</p>
-<p>Daniel’s instinct was right in an important way: this <em>is</em> a hazards model — a discrete-time hazard, the standard survival-analysis treatment of interval-checked data. The precise point is that he does not need a <strong>Cox proportional-hazards</strong> model, which would discard the z/CTmax parameterisation; the log-logistic AFT form <em>keeps</em> our estimands intact. (One condition: the clean “AFT” label holds when <span class="math inline">\(k\)</span> is constant across temperatures; with <span class="math inline">\(k \sim T\)</span>, the model is log-logistic at each temperature and the z mapping is unaffected, but there is no single acceleration factor.)</p>
-</section>
-<section id="evidence-all-independently-reproduced-by-adversarial-re-runs" class="level2">
-<h2 class="anchored" data-anchor-id="evidence-all-independently-reproduced-by-adversarial-re-runs">Evidence (all independently reproduced by adversarial re-runs)</h2>
+<section id="design" class="level2">
+<h2 class="anchored" data-anchor-id="design">Design</h2>
+<p>20 replicates. Each: 4 temperatures (37–43 °C) × 40 individuals, true log₁₀ t₅₀ linear in T with <strong>z = 4</strong>, log-logistic shape k = 8, daily checks to day 14, right-censoring after. Three fits per replicate, identical 4PL mean structure, identical mean-parameter priors, same seeds:</p>
 <ul>
-<li><strong>Math</strong>: exact 4PL ↔︎ log-logistic mapping (error ≤ 3e-16); person-period ↔︎ interval-censored likelihood identity (≤ 2e-13) including up &lt; 1 (death mass at t = 0) and low &gt; 0 (defective, “cure fraction”) cases; exact-time density for biosensor data verified — interval and exact-time individuals can share one likelihood.</li>
-<li><strong>Prototype</strong>: simulated 4 temperatures × 40 individuals, daily checks, day-14 censoring; brms nonlinear Bernoulli person-period fit sampled in ~1 s; z posterior median 3.92 vs truth 4.00 (95% CrI [3.52, 4.32]); 0 divergences, max R̂ 1.018 (one chain, one seed — an existence proof, not a calibration study). A <code>(1|tank)</code> cluster effect compiles into the same machinery.</li>
-<li><strong>Package audit</strong> (verified against installed v1.0.0 on a real person-period fit): touched — <code>standardize_data()</code> (person-period builder), a response branch in <code>make_4pl_formula()</code>, <code>validate_4pl_family()</code>, a column-fill fix in <code>new_tdt_grid()</code>, and survival-vs-hazard semantics in <code>predict_survival_curves()</code>. <strong>Untouched — the whole extraction engine</strong> (<code>tls()</code>, <code>derive_z()</code>, <code>tls_engine.R</code>), which recovered z from the prototype as-is. Zero new <code>fit_4pl()</code> arguments needed (the Beta-family precedent).</li>
-<li><strong>Literature</strong>: the original TDT (Bigelow 1921) <em>was</em> time-to-death; Kingsolver &amp; Umbanhowar 2018 fit individual knockdown times with a hazard framework recovering log-linear TDT; ecotoxicology’s GUTS models use exactly this conditional-binomial likelihood; Prentice &amp; Gloeckler 1978 is the canonical identity. We found <strong>no existing joint Bayesian individual-level TDT implementation</strong> (targeted searches, 2024–2026) — Vajedsamiei is Bayesian but two-stage; Bullard 2026 frequentist and per-temperature. This is an open niche. <em>(Bigelow 1921, Prentice &amp; Gloeckler 1978, and the GUTS papers are not yet in <code>bib/</code> — add via Zotero if this proceeds.)</em></li>
+<li><strong>A</strong> naive <strong>binomial</strong>: cumulative alive at each checkpoint out of the initial 40 (Drew’s reformat, with the plain binomial);</li>
+<li><strong>B</strong> naive <strong>beta-binomial</strong>: same cells, the package’s default family (φ estimated);</li>
+<li><strong>C</strong> correct <strong>person-period</strong> conditional Bernoulli (<span class="math inline">\(p_j = 1 - S(t_j)/S(t_{j-1})\)</span>).</li>
+</ul>
+<p>Script: <a href="2026-09-26-naive-vs-conditional-sim.R"><code>2026-09-26-naive-vs-conditional-sim.R</code></a> (ported from the session scratchpad; regenerates the CSV). Results are read from the committed CSV and summarised live below.</p>
+</section>
+<section id="results" class="level2">
+<h2 class="anchored" data-anchor-id="results">Results</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>d <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="st">&quot;2026-09-26-naive-vs-conditional-results.csv&quot;</span>)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">nrow</span>(d) <span class="sc">==</span> <span class="dv">60</span>, <span class="fu">all</span>(d<span class="sc">$</span>fit_ok <span class="sc">==</span> <span class="dv">1</span>), <span class="fu">all</span>(d<span class="sc">$</span>n_div <span class="sc">==</span> <span class="dv">0</span>))</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>lab <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="at">A =</span> <span class="st">&quot;A naive binomial&quot;</span>, <span class="at">B =</span> <span class="st">&quot;B naive beta-binomial (pkg default)&quot;</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>         <span class="at">C =</span> <span class="st">&quot;C correct person-period&quot;</span>)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>out <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">c</span>(<span class="st">&quot;A&quot;</span>, <span class="st">&quot;B&quot;</span>, <span class="st">&quot;C&quot;</span>), <span class="cf">function</span>(m) {</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  x <span class="ot">&lt;-</span> d[d<span class="sc">$</span>method <span class="sc">==</span> m, ]</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">method =</span> lab[m], <span class="at">z_mean_of_medians =</span> <span class="fu">round</span>(<span class="fu">mean</span>(x<span class="sc">$</span>z_med), <span class="dv">3</span>),</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>             <span class="at">mean_CrI_width =</span> <span class="fu">round</span>(<span class="fu">mean</span>(x<span class="sc">$</span>width), <span class="dv">3</span>),</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>             <span class="at">coverage =</span> <span class="fu">paste0</span>(<span class="fu">sum</span>(x<span class="sc">$</span>covers), <span class="st">&quot;/&quot;</span>, <span class="fu">nrow</span>(x)),</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>             <span class="at">max_Rhat =</span> <span class="fu">round</span>(<span class="fu">max</span>(x<span class="sc">$</span>max_rhat), <span class="dv">3</span>))</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(out, <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 41%">
+<col style="width: 20%">
+<col style="width: 17%">
+<col style="width: 10%">
+<col style="width: 10%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">method</th>
+<th style="text-align: right;">z_mean_of_medians</th>
+<th style="text-align: right;">mean_CrI_width</th>
+<th style="text-align: left;">coverage</th>
+<th style="text-align: right;">max_Rhat</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">A naive binomial</td>
+<td style="text-align: right;">4.021</td>
+<td style="text-align: right;">0.520</td>
+<td style="text-align: left;">16/20</td>
+<td style="text-align: right;">1.025</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">B naive beta-binomial (pkg default)</td>
+<td style="text-align: right;">3.999</td>
+<td style="text-align: right;">0.690</td>
+<td style="text-align: left;">18/20</td>
+<td style="text-align: right;">1.029</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">C correct person-period</td>
+<td style="text-align: right;">3.982</td>
+<td style="text-align: right;">0.722</td>
+<td style="text-align: left;">18/20</td>
+<td style="text-align: right;">1.037</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>wr <span class="ot">&lt;-</span> <span class="cf">function</span>(m) d<span class="sc">$</span>width[d<span class="sc">$</span>method <span class="sc">==</span> m] <span class="sc">/</span> d<span class="sc">$</span>width[d<span class="sc">$</span>method <span class="sc">==</span> <span class="st">&quot;C&quot;</span>]</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;paired width ratio vs C:  A/C mean %.2f (range %.2f-%.2f);  B/C mean %.2f (range %.2f-%.2f)</span><span class="sc">\n</span><span class="st">&quot;</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>            <span class="fu">mean</span>(<span class="fu">wr</span>(<span class="st">&quot;A&quot;</span>)), <span class="fu">min</span>(<span class="fu">wr</span>(<span class="st">&quot;A&quot;</span>)), <span class="fu">max</span>(<span class="fu">wr</span>(<span class="st">&quot;A&quot;</span>)),</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>            <span class="fu">mean</span>(<span class="fu">wr</span>(<span class="st">&quot;B&quot;</span>)), <span class="fu">min</span>(<span class="fu">wr</span>(<span class="st">&quot;B&quot;</span>)), <span class="fu">max</span>(<span class="fu">wr</span>(<span class="st">&quot;B&quot;</span>))))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>paired width ratio vs C:  A/C mean 0.72 (range 0.64-0.86);  B/C mean 0.96 (range 0.75-1.13)</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;beta-binomial phi, median across replicates: %.0f</span><span class="sc">\n</span><span class="st">&quot;</span>,</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>            <span class="fu">median</span>(d<span class="sc">$</span>phi_med[d<span class="sc">$</span>method <span class="sc">==</span> <span class="st">&quot;B&quot;</span>], <span class="at">na.rm =</span> <span class="cn">TRUE</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>beta-binomial phi, median across replicates: 56</code></pre>
+</div>
+</div>
+</section>
+<section id="reading-stated-flat" class="level2">
+<h2 class="anchored" data-anchor-id="reading-stated-flat">Reading, stated flat</h2>
+<ul>
+<li>Point estimates of z are essentially unbiased under all three methods — the naive reformat’s mean structure is correct, which is exactly why it <em>looks</em> fine.</li>
+<li><strong>Naive binomial</strong>: intervals ~28% narrower than the correct method; empirical coverage 16/20. The predicted overconfidence, confirmed in direction; with R = 20 the coverage estimate carries ~±5 pp Monte-Carlo error, so this resolves gross under-coverage, not its precise size.</li>
+<li><strong>Naive beta-binomial (the package default) largely compensated here</strong>: widths within ~4% of correct, same empirical coverage. Mechanism: the cohort’s realised survival trajectory wanders around S(t) as one correlated path, which the per-cell dispersion parameter absorbs.</li>
+<li>Individual random effects are <strong>not</strong> the fix Drew hopes: after aggregation to cohort proportions there is no individual row to attach them to, and the problem is likelihood structure, not a missing variance component.</li>
 </ul>
 </section>
-<section id="real-limits-ranked" class="level2">
-<h2 class="anchored" data-anchor-id="real-limits-ranked">Real limits (ranked)</h2>
-<ol type="1">
-<li><strong>Ramping / fluctuating temperature under biosensor monitoring is unresolved.</strong> Our likelihood assumes constant T per individual (as does the current package). <code>predict_heat_injury()</code> is post-fit dose <em>integration</em>, not a likelihood — a time-varying-T death-time likelihood is genuinely new research (GUTS/TKTD territory), not this extension. If the postdoc’s biosensor work is under ramps, that part is future work.</li>
-<li><strong>Left truncation</strong>: individuals enrolled late must have their first interval anchored at enrolment — the naive 0-anchor is provably biased (demonstrated numerically in the stress runs). Implementation must carry entry times.</li>
-<li><strong>Frailty identifiability</strong>: <code>(1|id)</code> compiles, but with one death per individual it is weakly identified and prior-sensitive; tank/batch cluster effects are the honest default.</li>
-<li><strong>No overdispersion parameter</strong>: beta-binomial φ has no Bernoulli analogue; heterogeneity must be <em>modelled</em> (cluster REs), and this should be documented loudly.</li>
-<li>Numerics: the first-interval log₁₀(0) stand-in needs an explicit indicator (2.5% error at very shallow k); model-comparison metrics (loo/R²) must group by individual, not by person-period row.</li>
-<li>Biology: monotone death assumed; valve-gape “death” can misclassify — worth a sentence in any reply.</li>
-</ol>
+<section id="what-this-does-not-license" class="level2">
+<h2 class="anchored" data-anchor-id="what-this-does-not-license">What this does NOT license</h2>
+<p>One design point only (daily checks, moderate censoring, n = 40, generator matching the fitted model with <strong>no real overdispersion</strong>). With real data, φ has to absorb genuine extra-binomial variation <em>and</em> the dependence — it cannot do both, and there is no way to tell how it splits. Sparser checks, heavier censoring, smaller n, or interest in quantities other than z were not tested. The beta-binomial shortcut is a tolerable stopgap in designs like this one; the conditional construction is the defensible method — and its reformat (per-interval deaths over at-risk counts, instead of cumulative proportions over the initial count) is no harder to produce.</p>
 </section>
-<section id="scope-if-we-build-it" class="level2">
-<h2 class="anchored" data-anchor-id="scope-if-we-build-it">Scope if we build it</h2>
-<p>A contained third response type (“time-to-event”) beside counts and proportions: most work in <code>standardize_data()</code> + one formula branch; the estimation and extraction core untouched. Bigger than issue #12 (phylo), so sequence after it — candidate for 1.2.0, and plausibly a small methods paper of its own given the open niche. A proper simulation study (coverage, calibration, frailty sensitivity) is mandatory before any release claim.</p>
-</section>
-<section id="checks-runnable" class="level2">
-<h2 class="anchored" data-anchor-id="checks-runnable">Checks (runnable)</h2>
-<section id="check-1-4pl-is-a-log-logistic-survivor-function" class="level3">
-<h3 class="anchored" data-anchor-id="check-1-4pl-is-a-log-logistic-survivor-function">Check 1 — 4PL is a log-logistic survivor function</h3>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>S4pl <span class="ot">&lt;-</span> <span class="cf">function</span>(t, k, mid) <span class="dv">1</span> <span class="sc">/</span> (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(k <span class="sc">*</span> (<span class="fu">log10</span>(t) <span class="sc">-</span> mid)))   <span class="co"># low=0, up=1</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>F_ll <span class="ot">&lt;-</span> <span class="cf">function</span>(t, scale, shape) <span class="dv">1</span> <span class="sc">/</span> (<span class="dv">1</span> <span class="sc">+</span> (t <span class="sc">/</span> scale)<span class="sc">^</span>(<span class="sc">-</span>shape))  <span class="co"># log-logistic CDF</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>t <span class="ot">&lt;-</span> <span class="dv">10</span><span class="sc">^</span><span class="fu">seq</span>(<span class="sc">-</span><span class="dv">3</span>, <span class="dv">3</span>, <span class="at">length.out =</span> <span class="dv">400</span>)</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (par <span class="cf">in</span> <span class="fu">list</span>(<span class="fu">c</span>(<span class="dv">4</span>, <span class="fl">1.2</span>), <span class="fu">c</span>(<span class="dv">8</span>, <span class="fl">0.5</span>), <span class="fu">c</span>(<span class="fl">1.5</span>, <span class="sc">-</span><span class="fl">0.3</span>))) {</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  k <span class="ot">&lt;-</span> par[<span class="dv">1</span>]; mid <span class="ot">&lt;-</span> par[<span class="dv">2</span>]</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stopifnot</span>(<span class="fu">max</span>(<span class="fu">abs</span>((<span class="dv">1</span> <span class="sc">-</span> <span class="fu">S4pl</span>(t, k, mid)) <span class="sc">-</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>                    <span class="fu">F_ll</span>(t, <span class="at">scale =</span> <span class="dv">10</span><span class="sc">^</span>mid, <span class="at">shape =</span> k <span class="sc">/</span> <span class="fu">log</span>(<span class="dv">10</span>)))) <span class="sc">&lt;</span> <span class="fl">1e-12</span>)</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;mapping verified: scale = 10^mid (t50), shape = k/ln(10)&quot;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;mapping verified: scale = 10^mid (t50), shape = k/ln(10)&quot;</code></pre>
-</div>
-</div>
-</section>
-<section id="check-2-person-period-bernoulli-interval-censored-likelihood" class="level3">
-<h3 class="anchored" data-anchor-id="check-2-person-period-bernoulli-interval-censored-likelihood">Check 2 — person-period Bernoulli = interval-censored likelihood</h3>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1</span>)</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>k <span class="ot">&lt;-</span> <span class="dv">6</span>; mid <span class="ot">&lt;-</span> <span class="fl">0.9</span>; checks <span class="ot">&lt;-</span> <span class="dv">0</span><span class="sc">:</span><span class="dv">14</span>                       <span class="co"># daily checks</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>td  <span class="ot">&lt;-</span> <span class="dv">10</span><span class="sc">^</span>(mid <span class="sc">+</span> <span class="fu">rlogis</span>(<span class="dv">60</span>) <span class="sc">*</span> <span class="fu">log</span>(<span class="dv">10</span>) <span class="sc">/</span> k)               <span class="co"># true death times</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>int <span class="ot">&lt;-</span> <span class="fu">findInterval</span>(td, checks)                           <span class="co"># death interval index</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>obs_die  <span class="ot">&lt;-</span> td <span class="sc">&lt;=</span> <span class="fu">max</span>(checks)</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># (i) interval-censored loglik</span></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>Fll <span class="ot">&lt;-</span> <span class="cf">function</span>(t) <span class="fu">ifelse</span>(t <span class="sc">&lt;=</span> <span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">1</span> <span class="sc">-</span> <span class="dv">1</span><span class="sc">/</span>(<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(k <span class="sc">*</span> (<span class="fu">log10</span>(t) <span class="sc">-</span> mid))))</span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>ll_ic <span class="ot">&lt;-</span> <span class="fu">sum</span>(<span class="fu">log</span>(<span class="fu">Fll</span>(checks[int <span class="sc">+</span> <span class="dv">1</span>]) <span class="sc">-</span> <span class="fu">Fll</span>(checks[int]))[obs_die]) <span class="sc">+</span></span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>         <span class="fu">sum</span>(<span class="sc">!</span>obs_die) <span class="sc">*</span> <span class="fu">log</span>(<span class="dv">1</span> <span class="sc">-</span> <span class="fu">Fll</span>(<span class="fu">max</span>(checks)))</span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="co"># (ii) person-period conditional Bernoulli</span></span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>ll_pp <span class="ot">&lt;-</span> <span class="dv">0</span></span>
-<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_along</span>(td)) {</span>
-<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>  last <span class="ot">&lt;-</span> <span class="cf">if</span> (obs_die[i]) int[i] <span class="sc">+</span> <span class="dv">1</span> <span class="cf">else</span> <span class="fu">length</span>(checks)</span>
-<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (j <span class="cf">in</span> <span class="dv">2</span><span class="sc">:</span>last) {</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    S1 <span class="ot">&lt;-</span> <span class="dv">1</span> <span class="sc">-</span> <span class="fu">Fll</span>(checks[j <span class="sc">-</span> <span class="dv">1</span>]); S2 <span class="ot">&lt;-</span> <span class="dv">1</span> <span class="sc">-</span> <span class="fu">Fll</span>(checks[j])</span>
-<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>    p  <span class="ot">&lt;-</span> <span class="dv">1</span> <span class="sc">-</span> S2 <span class="sc">/</span> S1</span>
-<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>    died <span class="ot">&lt;-</span> obs_die[i] <span class="sc">&amp;&amp;</span> j <span class="sc">==</span> last</span>
-<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    ll_pp <span class="ot">&lt;-</span> ll_pp <span class="sc">+</span> <span class="fu">ifelse</span>(died, <span class="fu">log</span>(p), <span class="fu">log</span>(<span class="dv">1</span> <span class="sc">-</span> p))</span>
-<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">interval_censored =</span> ll_ic, <span class="at">person_period =</span> ll_pp, <span class="at">diff =</span> ll_ic <span class="sc">-</span> ll_pp)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>interval_censored     person_period              diff 
-    -1.539028e+02     -1.539028e+02      2.842171e-13 </code></pre>
-</div>
-<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">abs</span>(ll_ic <span class="sc">-</span> ll_pp) <span class="sc">&lt;</span> <span class="fl">1e-10</span>)</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;identity verified: repeated measures are fully absorbed by conditioning&quot;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;identity verified: repeated measures are fully absorbed by conditioning&quot;</code></pre>
-</div>
-</div>
-</section>
-<section id="check-3-the-working-prototype-not-run-at-render-recorded-results" class="level3">
-<h3 class="anchored" data-anchor-id="check-3-the-working-prototype-not-run-at-render-recorded-results">Check 3 — the working prototype (not run at render; recorded results)</h3>
-<p>Full script: session scratchpad <code>tte_prototype.R</code> (person-period simulate → brms nonlinear Bernoulli, <code>p = 1 - S(t_hi)/S(t_lo)</code>, <code>mid ~ temp_c</code>, cmdstanr, 1 chain / 800 iter). Recorded: z median <strong>3.923</strong> vs truth 4.000 (CrI [3.522, 4.320]); mid slope −0.2549 vs −0.25; 0 divergences; R̂ ≤ 1.018. The installed package’s <code>tls()</code> then extracted z from this fit <strong>without any modification</strong>.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># person-period fit skeleton (see scratchpad tte_prototype.R for the full script)</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>bf_pp <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">bf</span>(</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  death <span class="sc">~</span> <span class="dv">1</span> <span class="sc">-</span> (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(<span class="fu">exp</span>(logk) <span class="sc">*</span> (lt_lo <span class="sc">-</span> mid))) <span class="sc">/</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>              (<span class="dv">1</span> <span class="sc">+</span> <span class="fu">exp</span>(<span class="fu">exp</span>(logk) <span class="sc">*</span> (lt_hi <span class="sc">-</span> mid))),</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  logk <span class="sc">~</span> <span class="dv">1</span>, mid <span class="sc">~</span> temp_c, <span class="at">nl =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> brms<span class="sc">::</span><span class="fu">brm</span>(bf_pp, <span class="at">data =</span> person_period, <span class="at">family =</span> brms<span class="sc">::</span><span class="fu">bernoulli</span>(<span class="st">&quot;identity&quot;</span>),</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>                 <span class="at">backend =</span> <span class="st">&quot;cmdstanr&quot;</span>, <span class="at">chains =</span> <span class="dv">1</span>, <span class="at">iter =</span> <span class="dv">800</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-</section>
-</section>
-<section id="addendum-2026-09-26" class="level2">
-<h2 class="anchored" data-anchor-id="addendum-2026-09-26">Addendum (2026-09-26)</h2>
-<p>Drew clarified: constant temperatures (no ramping), cohort checks or continuous monitoring, plus a coral time-to-10%-mortality dataset. His proposed “trivial reformat” (cumulative proportions into the current model) is quantified in <code>2026-09-26-naive-cumulative-refit-overconfidence.qmd</code>: naive binomial ~28% too-narrow CrIs (coverage 16/20), the beta-binomial default largely compensated in that one benign design, and the correct conditional reformat is equally trivial. The draft reply below is SUPERSEDED by the updated draft in that note.</p>
-</section>
-<section id="draft-reply-to-the-postdoc-superseded-see-2026-09-26-note" class="level2">
-<h2 class="anchored" data-anchor-id="draft-reply-to-the-postdoc-superseded-see-2026-09-26-note">Draft reply to the postdoc (SUPERSEDED — see 2026-09-26 note)</h2>
+<section id="updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft" class="level2">
+<h2 class="anchored" data-anchor-id="updated-draft-reply-to-drew-supersedes-the-2026-09-25-draft">Updated draft reply to Drew (supersedes the 2026-09-25 draft)</h2>
 <blockquote class="blockquote">
-<p>Thanks — you’ve read the framework exactly right: the released bayesTLS likelihood assumes independent temperature × duration batches, so repeatedly observed cohorts violate it. The good news is that your instinct about the log-logistic is more right than you may realise: our 4PL in log₁₀(duration) <em>is</em> the log-logistic survivor function (median death time <span class="math inline">\(10^{mid}\)</span>, shape <span class="math inline">\(k/\ln 10\)</span>), so the thermal sensitivity z and CTmax you’d want are exactly preserved under a proper time-to-event treatment. For interval checks (daily scoring) the correct likelihood is the standard discrete-time survival construction — person-period records with conditional death probability <span class="math inline">\(1 - S(t_j)/S(t_{j-1})\)</span> — which is algebraically identical to the interval-censored log-logistic likelihood; for biosensor-resolution data the exact-time density applies, and both can be mixed in one model. We have prototyped this in brms with the same parameterisation and recovered z cleanly, with our post-fit machinery working unchanged, so yes: it is on our radar as a planned extension rather than a redesign. Two honest caveats: individual-level frailty is weakly identified with one death per animal (tank/batch effects are the robust default), and if your biosensor work is under ramping rather than constant temperatures, that requires the damage-integral machinery and is a genuinely open modelling problem we’re thinking about. We’d be happy to hear more about your design — a worked example with real mollusc data would make an excellent test case.</p>
+<p>Hi Drew — thanks, that clarifies things nicely, and your statistical instincts are good on every point. Three things.</p>
+<p>First, your suspicion about the cumulative reformat is correct. We simulated your exact situation (daily checks of one cohort, four constant temperatures): feeding cumulative proportions into a plain binomial gave intervals for z about 30% too narrow (empirical coverage ~80% at nominal 95%). Interestingly, with our default beta-binomial family the estimated overdispersion largely absorbed the dependence in that benign setting (widths within a few percent of the correct likelihood) — but we would not rely on that with real data, where φ also has to soak up genuine overdispersion. An individual random effect can’t rescue the aggregated version — once you’ve collapsed to proportions there is no individual row for it to attach to.</p>
+<p>Second, the correct construction is just as easy to format as the one you described: instead of cumulative survival out of the initial n, record per-interval deaths out of the number still alive at the interval start. Modelled with conditional death probability 1 − S(t_j)/S(t_{j−1}) — the standard discrete-time survival construction — this is <em>algebraically identical</em> to the interval-censored log-logistic likelihood you were considering, and it uses exactly the parameters bayesTLS already estimates (our 4PL in log₁₀ duration <em>is</em> the log-logistic survivor function; z is its temperature-acceleration coefficient). We’ve prototyped this in brms and our post-fit machinery (<code>tls()</code>, which works on hand-written brms fits) extracts z and CTmax from it unchanged — happy to share the working recipe. Your continuously monitored oysters/mussels slot into the same model via the exact-time log-logistic density (that removes the <em>interval</em> censoring; survivors at the end are still right-censored, which is handled).</p>
+<p>Third, the coral case fits more neatly than you might expect: define the event as “fragment reaches 10% colony death” and each fragment contributes one (interval-censored) event time — the polyp-level dependence then lives inside the measurement of the endpoint, not the likelihood. Four temperatures is thin, but that is what priors are for.</p>
+<p>Please do open the GitHub issue — native support (a time-to-event input in <code>standardize_data()</code>, same model underneath) is a planned extension, and your mussel experiments would make an ideal test case. One caveat to keep us honest: all of this assumes constant temperature per individual, which you’ve confirmed; ramping designs are a genuinely open modelling problem.</p>
 </blockquote>
 </section>
 <section id="open-questions-for-daniel" class="level2">
 <h2 class="anchored" data-anchor-id="open-questions-for-daniel">Open questions for Daniel</h2>
 <ol type="1">
-<li>Reply + open a GitHub issue to track it (visible roadmap), or reply only?</li>
-<li>Sequence: after #12 (phylo) as 1.2.0? The niche looks open enough that this could be a small stand-alone methods paper with the postdoc as a test case / collaborator — worth considering.</li>
-<li>Is his biosensor work constant-T or ramping? The answer decides whether we promise an extension or a research collaboration.</li>
+<li>Happy with the reply as drafted (esp. sharing the brms recipe)?</li>
+<li>Should the eventual docs explicitly warn against the cumulative reformat, given the beta-binomial default makes it <em>look</em> acceptable?</li>
 </ol>
 </section>
 

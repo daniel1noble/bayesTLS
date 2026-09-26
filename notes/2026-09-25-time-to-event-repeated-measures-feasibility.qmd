@@ -174,7 +174,18 @@ fit <- brms::brm(bf_pp, data = person_period, family = brms::bernoulli("identity
                  backend = "cmdstanr", chains = 1, iter = 800)
 ```
 
-## Draft reply to the postdoc (for Daniel to edit)
+## Addendum (2026-09-26)
+
+Drew clarified: constant temperatures (no ramping), cohort checks or
+continuous monitoring, plus a coral time-to-10%-mortality dataset. His
+proposed "trivial reformat" (cumulative proportions into the current model)
+is quantified in `2026-09-26-naive-cumulative-refit-overconfidence.qmd`:
+naive binomial ~28% too-narrow CrIs (coverage 16/20), the beta-binomial
+default largely compensated in that one benign design, and the correct
+conditional reformat is equally trivial. The draft reply below is
+SUPERSEDED by the updated draft in that note.
+
+## Draft reply to the postdoc (SUPERSEDED — see 2026-09-26 note)
 
 > Thanks — you've read the framework exactly right: the released bayesTLS
 > likelihood assumes independent temperature × duration batches, so repeatedly

@@ -1,0 +1,141 @@
+---
+title: "How wrong is the naive cumulative-proportion reformat? (Drew's question)"
+date: 2026-09-26
+format:
+  html:
+    embed-resources: true
+    toc: true
+---
+
+## The question
+
+Drew (UW) clarified his design: constant temperatures, the same cohort checked
+repeatedly, individual times of death. He proposes the "trivial reformat" —
+compute cumulative survival of the cohort at every checkpoint and feed those
+as if they were independent temperature × duration cells into the current
+package — and himself suspects this "could produce overconfident intervals".
+He also suggests adding an individual random effect to compensate.
+
+This note quantifies the reformat against the correct likelihood (see the
+2026-09-25 feasibility note for the theory), including whether the package's
+**default beta-binomial** family accidentally compensates.
+
+## Design
+
+20 replicates. Each: 4 temperatures (37–43 °C) × 40 individuals, true
+log₁₀ t₅₀ linear in T with **z = 4**, log-logistic shape k = 8, daily checks
+to day 14, right-censoring after. Three fits per replicate, identical 4PL
+mean structure, identical mean-parameter priors, same seeds:
+
+- **A** naive **binomial**: cumulative alive at each checkpoint out of the
+  initial 40 (Drew's reformat, with the plain binomial);
+- **B** naive **beta-binomial**: same cells, the package's default family
+  (φ estimated);
+- **C** correct **person-period** conditional Bernoulli
+  ($p_j = 1 - S(t_j)/S(t_{j-1})$).
+
+Script: [`2026-09-26-naive-vs-conditional-sim.R`](2026-09-26-naive-vs-conditional-sim.R)
+(ported from the session scratchpad; regenerates the CSV). Results are read
+from the committed CSV and summarised live below.
+
+## Results
+
+```{r summary}
+d <- read.csv("2026-09-26-naive-vs-conditional-results.csv")
+stopifnot(nrow(d) == 60, all(d$fit_ok == 1), all(d$n_div == 0))
+lab <- c(A = "A naive binomial", B = "B naive beta-binomial (pkg default)",
+         C = "C correct person-period")
+out <- do.call(rbind, lapply(c("A", "B", "C"), function(m) {
+  x <- d[d$method == m, ]
+  data.frame(method = lab[m], z_mean_of_medians = round(mean(x$z_med), 3),
+             mean_CrI_width = round(mean(x$width), 3),
+             coverage = paste0(sum(x$covers), "/", nrow(x)),
+             max_Rhat = round(max(x$max_rhat), 3))
+}))
+knitr::kable(out, row.names = FALSE)
+wr <- function(m) d$width[d$method == m] / d$width[d$method == "C"]
+cat(sprintf("paired width ratio vs C:  A/C mean %.2f (range %.2f-%.2f);  B/C mean %.2f (range %.2f-%.2f)\n",
+            mean(wr("A")), min(wr("A")), max(wr("A")),
+            mean(wr("B")), min(wr("B")), max(wr("B"))))
+cat(sprintf("beta-binomial phi, median across replicates: %.0f\n",
+            median(d$phi_med[d$method == "B"], na.rm = TRUE)))
+```
+
+## Reading, stated flat
+
+- Point estimates of z are essentially unbiased under all three methods —
+  the naive reformat's mean structure is correct, which is exactly why it
+  *looks* fine.
+- **Naive binomial**: intervals ~28% narrower than the correct method;
+  empirical coverage 16/20. The predicted overconfidence, confirmed in
+  direction; with R = 20 the coverage estimate carries ~±5 pp Monte-Carlo
+  error, so this resolves gross under-coverage, not its precise size.
+- **Naive beta-binomial (the package default) largely compensated here**:
+  widths within ~4% of correct, same empirical coverage. Mechanism: the
+  cohort's realised survival trajectory wanders around S(t) as one correlated
+  path, which the per-cell dispersion parameter absorbs.
+- Individual random effects are **not** the fix Drew hopes: after aggregation
+  to cohort proportions there is no individual row to attach them to, and the
+  problem is likelihood structure, not a missing variance component.
+
+## What this does NOT license
+
+One design point only (daily checks, moderate censoring, n = 40, generator
+matching the fitted model with **no real overdispersion**). With real data,
+φ has to absorb genuine extra-binomial variation *and* the dependence — it
+cannot do both, and there is no way to tell how it splits. Sparser checks,
+heavier censoring, smaller n, or interest in quantities other than z were not
+tested. The beta-binomial shortcut is a tolerable stopgap in designs like
+this one; the conditional construction is the defensible method — and its
+reformat (per-interval deaths over at-risk counts, instead of cumulative
+proportions over the initial count) is no harder to produce.
+
+## Updated draft reply to Drew (supersedes the 2026-09-25 draft)
+
+> Hi Drew — thanks, that clarifies things nicely, and your statistical
+> instincts are good on every point. Three things.
+>
+> First, your suspicion about the cumulative reformat is correct. We
+> simulated your exact situation (daily checks of one cohort, four constant
+> temperatures): feeding cumulative proportions into a plain binomial gave
+> intervals for z about 30% too narrow (empirical coverage ~80% at nominal
+> 95%). Interestingly, with our default beta-binomial family the estimated
+> overdispersion largely absorbed the dependence in that benign setting
+> (widths within a few percent of the correct likelihood) — but we would not
+> rely on that with real data, where φ also has to soak up genuine
+> overdispersion. An individual random effect can't rescue the aggregated
+> version — once you've collapsed to proportions there is no individual row
+> for it to attach to.
+>
+> Second, the correct construction is just as easy to format as the one you
+> described: instead of cumulative survival out of the initial n, record
+> per-interval deaths out of the number still alive at the interval start.
+> Modelled with conditional death probability 1 − S(t_j)/S(t_{j−1}) — the
+> standard discrete-time survival construction — this is *algebraically
+> identical* to the interval-censored log-logistic likelihood you were
+> considering, and it uses exactly the parameters bayesTLS already estimates
+> (our 4PL in log₁₀ duration *is* the log-logistic survivor function; z is
+> its temperature-acceleration coefficient). We've prototyped this in brms
+> and our post-fit machinery (`tls()`, which works on hand-written brms fits)
+> extracts z and CTmax from it unchanged — happy to share the working recipe.
+> Your continuously monitored oysters/mussels slot into the same model via
+> the exact-time log-logistic density (that removes the *interval* censoring;
+> survivors at the end are still right-censored, which is handled).
+>
+> Third, the coral case fits more neatly than you might expect: define the
+> event as "fragment reaches 10% colony death" and each fragment contributes
+> one (interval-censored) event time — the polyp-level dependence then lives
+> inside the measurement of the endpoint, not the likelihood. Four
+> temperatures is thin, but that is what priors are for.
+>
+> Please do open the GitHub issue — native support (a time-to-event input in
+> `standardize_data()`, same model underneath) is a planned extension, and
+> your mussel experiments would make an ideal test case. One caveat to keep
+> us honest: all of this assumes constant temperature per individual, which
+> you've confirmed; ramping designs are a genuinely open modelling problem.
+
+## Open questions for Daniel
+
+1. Happy with the reply as drafted (esp. sharing the brms recipe)?
+2. Should the eventual docs explicitly warn against the cumulative reformat,
+   given the beta-binomial default makes it *look* acceptable?
