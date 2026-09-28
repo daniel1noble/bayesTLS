@@ -82,6 +82,13 @@ observed range. For an absolute threshold, ensure the grid brackets the
 \code{CTmax} crossing (extend it if \code{CTmax} falls outside the observed range).}
 
 \item{re_formula}{Passed to \code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}}; default \code{NA}
+(fixed effects only) -- EXCEPT when a \code{by} variable enters the model only
+as a random-effect grouping factor (e.g. a phylogenetic
+\code{(1 | gr(species, cov = A))} term): the default then auto-includes
+exactly the matching random-effect term(s), with a message, so
+per-level estimates do not silently collapse to the population mean.
+Passing \code{re_formula} explicitly (even \code{NA}) always overrides the
+auto-rule.
 (population level). Include group-level terms (e.g. clone) for per-group draws.}
 
 \item{lower, upper}{Response bounds of the disjoint-bounds reparameterisation.}

@@ -17,6 +17,7 @@ fitted model.
 Useful links:
 \itemize{
   \item \url{https://github.com/daniel1noble/bayesTLS}
+  \item \url{https://www.biorxiv.org/content/10.64898/2026.07.16.738378v1}
   \item Report bugs at \url{https://github.com/daniel1noble/bayesTLS/issues}
 }
 

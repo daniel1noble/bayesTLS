@@ -34,6 +34,7 @@ fit_4pl(
   threshold = c("relative", "absolute"),
   p = 0.5,
   t_ref = 60,
+  data2 = NULL,
   ...
 )
 }
@@ -122,6 +123,15 @@ afterwards via \code{\link[=tls]{tls()}} with
 i.e. one hour). Converted to the model's log10-time scale
 via the data's \code{duration_unit}.}
 
+\item{data2}{Named list of objects referenced by the model
+formulas but not part of \code{data} -- currently the
+covariance/correlation matrices used by
+\verb{gr(<group>, cov = <name>)} random-effect terms, e.g.
+a phylogenetic correlation matrix from
+\code{ape::vcv(phy, corr = TRUE)}. Matrices are validated
+(symmetry, dimnames covering the grouping levels,
+unit diagonal) and passed to \code{\link[brms:brm]{brms::brm()}}.}
+
 \item{...}{Further arguments passed to \code{\link[brms:brm]{brms::brm()}}.}
 }
 \value{
@@ -148,5 +158,14 @@ d  <- standardize_data(raw, ...)
 wf <- fit_4pl(d, fit = FALSE)         # inspect spec only
 wf <- fit_4pl(d, file = "output/models/my_fit")
 wf <- fit_4pl(d, lower = 0.85)        # sublethal data
+
+# Phylogenetic model: species-level CTmax/z with a phylogenetic
+# correlation matrix (issue #12).
+A  <- ape::vcv(phy, corr = TRUE)      # unit-diagonal correlation matrix
+wf <- fit_4pl(d,
+              ctmax = ~ 1 + (1 | gr(species, cov = A)),
+              z     = ~ 1 + (1 | gr(species, cov = A)),
+              t_ref = 60, data2 = list(A = A))
+tls(wf, by = "species")               # per-species z / CTmax (shrunk via A)
 }
 }
