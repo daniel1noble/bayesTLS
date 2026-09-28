@@ -343,6 +343,14 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param t_ref          Reference exposure for CTmax, in **minutes** (default 60,
 #'                       i.e. one hour). Converted to the model's log10-time scale
 #'                       via the data's `duration_unit`.
+#' @param data2          Named list of objects referenced by the model
+#'                       formulas but not part of `data` -- currently the
+#'                       covariance/correlation matrices used by
+#'                       `gr(<group>, cov = <name>)` random-effect terms, e.g.
+#'                       a phylogenetic correlation matrix from
+#'                       `ape::vcv(phy, corr = TRUE)`. Matrices are validated
+#'                       (symmetry, dimnames covering the grouping levels,
+#'                       unit diagonal) and passed to [brms::brm()].
 #' @param ...            Further arguments passed to [brms::brm()].
 #' @return A list of class `"bayes_tls"` with elements `fit`, `data`,
 #'         `formula`, `prior`, `meta`. See [print.bayes_tls()],
@@ -354,6 +362,15 @@ make_4pl_formula <- function(random_effects = NULL,
 #' wf <- fit_4pl(d, fit = FALSE)         # inspect spec only
 #' wf <- fit_4pl(d, file = "output/models/my_fit")
 #' wf <- fit_4pl(d, lower = 0.85)        # sublethal data
+#'
+#' # Phylogenetic model: species-level CTmax/z with a phylogenetic
+#' # correlation matrix (issue #12).
+#' A  <- ape::vcv(phy, corr = TRUE)      # unit-diagonal correlation matrix
+#' wf <- fit_4pl(d,
+#'               ctmax = ~ 1 + (1 | gr(species, cov = A)),
+#'               z     = ~ 1 + (1 | gr(species, cov = A)),
+#'               t_ref = 60, data2 = list(A = A))
+#' tls(wf, by = "species")               # per-species z / CTmax (shrunk via A)
 #' }
 #' @export
 fit_4pl <- function(data,
@@ -386,6 +403,7 @@ fit_4pl <- function(data,
                     threshold      = c("relative", "absolute"),
                     p              = 0.5,
                     t_ref          = 60,
+                    data2          = NULL,
                     ...) {
 
   threshold <- match.arg(threshold)
@@ -420,6 +438,17 @@ fit_4pl <- function(data,
     low   <- normalize_cellmeans(low,   data)
     k     <- normalize_cellmeans(k,     data)
   }
+
+  # Validate covariance-matrix random effects (issue #12): gr(cov = ) terms
+  # need their matrix in `data2` (symmetric, level-covering dimnames, unit
+  # diagonal) and their grouping columns in `data`. Runs for both
+  # parameterisations; a no-op when no bar terms are present.
+  tdt_validate_data2(
+    list(ctmax = ctmax, z = z, up = up, low = low, k = k, mid = mid,
+         random_effects = if (!is.null(random_effects))
+           paste(tdt_format_random_effects(random_effects), collapse = " + ")
+         else NULL),
+    data = data, data2 = data2)
 
   meta <- attr(data, "tdt_meta") %||%
     list(temp_mean      = mean(data$temp, na.rm = TRUE),
@@ -520,7 +549,7 @@ fit_4pl <- function(data,
   ))
 
   workflow <- structure(
-    list(fit = NULL, data = data, formula = formula,
+    list(fit = NULL, data = data, data2 = data2, formula = formula,
          prior = prior, meta = meta_full),
     class = "bayes_tls"
   )
@@ -538,6 +567,7 @@ fit_4pl <- function(data,
     brms::brm(
       formula    = formula,
       data       = data,
+      data2      = data2,
       prior      = prior,
       chains     = chains,
       iter       = iter,
@@ -657,14 +687,12 @@ validate_4pl_family <- function(family) {
 # (treatment) yield "species".
 rhs_fixed_vars <- function(rhs) {
   if (is.null(rhs) || !nzchar(rhs)) return(character(0))
-  # Drop (x | g) random-effect terms, CONSUMING any leading "+" so e.g.
-  # "1 + (1 | Day) + (1 | G_Room)" collapses cleanly to "1" rather than leaving a
-  # dangling "1 +" (which would make the as.formula() below abort).
-  rhs <- gsub("\\+?\\s*\\([^|]*\\|[^)]*\\)", "", rhs)
-  rhs <- gsub("\\+\\s*\\+", "+", rhs)                  # collapse any doubled "+"
-  rhs <- trimws(gsub("\\+\\s*$|^\\s*\\+", "", rhs))
-  if (rhs %in% c("", "1", "0")) return(character(0))
-  setdiff(all.vars(stats::as.formula(paste("~", rhs))), "temp_c")
+  # AST-based bar removal (tdt_split_bars): the old regexes stopped at the
+  # first ")" and mangled nested grouping calls like (1 | gr(species, cov = A))
+  # into unparseable text (issue #12).
+  fixed <- tdt_split_bars(rhs)$fixed
+  if (fixed %in% c("", "1", "0")) return(character(0))
+  setdiff(all.vars(stats::as.formula(paste("~", fixed))), "temp_c")
 }
 
 # Fixed-effect moderator variable names across the parameterisation's formulas,
@@ -689,9 +717,12 @@ direct_group_vars <- function(ctmax, z, up, low, k, mid = NULL, by = NULL) {
 normalize_cellmeans <- function(f, data) {
   if (is.null(f) || !inherits(f, "formula")) return(f)
   rhs   <- formula_rhs(f, "1")
-  re    <- regmatches(rhs, gregexpr("\\([^)]*\\|[^)]*\\)", rhs))[[1]]  # (x | g) terms
-  fe    <- gsub("\\([^)]*\\|[^)]*\\)", "", rhs)                        # fixed part only
-  terms <- trimws(strsplit(fe, "\\+")[[1]])
+  # AST-based split (tdt_split_bars): the old regexes truncated bar terms with
+  # nested parentheses -- (1 | gr(species, cov = A)) -- at the first ")".
+  sp    <- tdt_split_bars(rhs)
+  re    <- vapply(sp$bars, function(b)
+    paste0("(", paste(deparse(b), collapse = " "), ")"), character(1))
+  terms <- trimws(strsplit(sp$fixed, "\\+")[[1]])
   terms <- terms[nzchar(terms)]
   if (any(grepl("(^|[^[:alnum:]_.])0([^[:alnum:]_.]|$)|-\\s*1", terms)))
     return(f)                                       # already no-intercept
@@ -720,8 +751,9 @@ formula_rhs <- function(f, default) {
 # (they stay on CTmax/z); intercept-only CTmax/z gives `temp_c`.
 resolve_shape <- function(shape_f, inherit_rhs) {
   if (!is.null(shape_f)) return(formula_rhs(shape_f, "temp_c"))
-  fe <- trimws(gsub("\\+?\\s*\\([^|]*\\|[^)]*\\)", "", inherit_rhs))  # drop (x | g)
-  fe <- trimws(gsub("\\+\\s*$|^\\s*\\+\\s*", "", fe))
+  # AST-based bar removal (tdt_split_bars); the old regex truncated nested
+  # grouping calls like (1 | gr(species, cov = A)) at the first ")".
+  fe <- trimws(tdt_split_bars(inherit_rhs)$fixed)
   if (fe %in% c("", "1")) return("temp_c")
   if (grepl("^0\\s*\\+", fe)) {                                       # cell-means 0 + G
     core <- trimws(sub("^0\\s*\\+\\s*", "", fe))

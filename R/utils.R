@@ -133,9 +133,171 @@ tdt_format_random_effects <- function(random_effects = NULL) {
 tdt_random_effect_variables <- function(random_effects = NULL) {
   terms <- tdt_format_random_effects(random_effects)
   unique(unlist(lapply(terms, function(term) {
-    vars <- all.vars(stats::as.formula(paste("~", term)))
-    vars[vars != "1"]
+    bars <- tdt_split_bars(term)$bars
+    if (length(bars)) unlist(lapply(bars, tdt_bar_group_vars))
+    else {
+      vars <- all.vars(stats::as.formula(paste("~", term)))
+      vars[vars != "1"]
+    }
   })))
+}
+
+#' Split a formula right-hand side into fixed terms and `(x | g)` bar terms
+#'
+#' Walks the parsed expression instead of using text patterns, so grouping
+#' calls with nested parentheses -- `(1 | gr(species, cov = A))` -- survive
+#' intact (the regex predecessors stopped at the first `)` and aborted;
+#' issue #12). Returns `list(fixed = <RHS string>, bars = <list of `lhs | rhs`
+#' calls>)`; `fixed` is `"1"` when nothing but bar terms remain.
+#'
+#' @keywords internal
+tdt_split_bars <- function(rhs) {
+  expr <- str2lang(paste("~", rhs))[[2]]
+  bars <- list()
+  walk <- function(e) {
+    if (is.call(e)) {
+      if (identical(e[[1]], as.name("(")) && is.call(e[[2]]) &&
+          identical(e[[2]][[1]], as.name("|"))) {
+        bars[[length(bars) + 1]] <<- e[[2]]
+        return(NULL)
+      }
+      if (identical(e[[1]], as.name("+"))) {
+        l <- walk(e[[2]])
+        r <- if (length(e) > 2) walk(e[[3]]) else NULL
+        if (is.null(l)) return(r)
+        if (is.null(r)) return(l)
+        return(call("+", l, r))
+      }
+    }
+    e
+  }
+  fixed <- walk(expr)
+  list(fixed = if (is.null(fixed)) "1"
+       else paste(deparse(fixed), collapse = " "),
+       bars = bars)
+}
+
+#' Data-column variables named by one `(x | g)` bar term's grouping side
+#'
+#' `gr()` aware: every argument except `cov =` (a `data2` matrix) and
+#' `dist =` (a string) names data columns, so `gr(species, cov = A)` yields
+#' `"species"` -- never `"A"`. Plain groups (`g`, `a/b`) fall through to
+#' `all.vars()`. `mm()` multi-membership is not supported and errors clearly.
+#'
+#' @keywords internal
+tdt_bar_group_vars <- function(bar) {
+  g <- bar[[3]]
+  if (is.call(g) && identical(g[[1]], as.name("mm")))
+    stop("mm() multi-membership grouping is not supported in bayesTLS ",
+         "formulas.", call. = FALSE)
+  if (is.call(g) && identical(g[[1]], as.name("gr"))) {
+    keep <- setdiff(seq_along(g)[-1],
+                    which(names(g) %in% c("cov", "dist")))
+    return(unique(unlist(lapply(as.list(g)[keep], all.vars))))
+  }
+  all.vars(g)
+}
+
+#' `cov =` matrix names used by the `gr()` terms of one bar list
+#'
+#' Returns a named character vector: names are the grouping variables, values
+#' the `data2` object names their `cov =` argument references.
+#'
+#' @keywords internal
+tdt_bar_cov_vars <- function(bars) {
+  out <- character()
+  for (bar in bars) {
+    g <- bar[[3]]
+    if (is.call(g) && identical(g[[1]], as.name("gr")) &&
+        "cov" %in% names(g)) {
+      cv <- all.vars(g[["cov"]])
+      gv <- tdt_bar_group_vars(bar)[1]
+      out[gv] <- cv[1]
+    }
+  }
+  out
+}
+
+#' Validate `data2` against the `gr(cov = )` terms of the model formulas
+#'
+#' Checks that every covariance matrix a `gr()` term references is present in
+#' `data2`, symmetric, and has dimnames covering the grouping factor's levels;
+#' warns when the diagonal is not ~1 (a covariance rather than the expected
+#' correlation matrix, `ape::vcv(phy, corr = TRUE)` convention). Also checks
+#' the grouping columns exist in `data`.
+#'
+#' @keywords internal
+tdt_validate_data2 <- function(formulas, data, data2 = NULL) {
+  rhss <- unlist(lapply(formulas, function(f) {
+    if (is.null(f)) return(NULL)
+    if (inherits(f, "formula")) paste(deparse(f[[length(f)]]), collapse = " ")
+    else as.character(f)
+  }))
+  bars <- unlist(lapply(rhss, function(r) tdt_split_bars(r)$bars),
+                 recursive = FALSE)
+  if (!length(bars)) return(invisible(TRUE))
+
+  gvars <- unique(unlist(lapply(bars, tdt_bar_group_vars)))
+  miss_cols <- setdiff(gvars, names(data))
+  if (length(miss_cols))
+    stop("Random-effect grouping variable(s) not found in the data: ",
+         paste(miss_cols, collapse = ", "),
+         ". Carry them through standardize_data() (e.g. via `random_effects`)",
+         " so the column reaches the model frame.", call. = FALSE)
+
+  covs <- tdt_bar_cov_vars(bars)
+  if (!length(covs)) return(invisible(TRUE))
+  if (is.null(data2))
+    stop("The model uses gr(..., cov = ", paste(covs, collapse = ", "),
+         ") but no `data2` was supplied. Pass data2 = list(",
+         paste0(covs, " = <matrix>", collapse = ", "), ").", call. = FALSE)
+
+  for (gv in names(covs)) {
+    cv <- covs[[gv]]
+    M  <- data2[[cv]]
+    if (is.null(M))
+      stop("Covariance matrix '", cv, "' (used by gr(", gv,
+           ", cov = ", cv, ")) is not in `data2`.", call. = FALSE)
+    if (!is.matrix(M) || !isSymmetric(unname(M), tol = 1e-8))
+      stop("`data2$", cv, "` must be a symmetric matrix.", call. = FALSE)
+    if (is.null(rownames(M)) || is.null(colnames(M)))
+      stop("`data2$", cv, "` must carry dimnames (row and column names ",
+           "matching the levels of '", gv, "').", call. = FALSE)
+    lev <- unique(as.character(data[[gv]]))
+    missing_lev <- setdiff(lev, rownames(M))
+    if (length(missing_lev))
+      stop("`data2$", cv, "` is missing level(s) of '", gv, "': ",
+           paste(missing_lev, collapse = ", "), call. = FALSE)
+    if (max(abs(diag(M)[lev] - 1)) > 1e-6)
+      warning("`data2$", cv, "` does not have a unit diagonal; it looks like ",
+              "a covariance rather than a correlation matrix. brms expects a ",
+              "correlation matrix (e.g. ape::vcv(phy, corr = TRUE)).",
+              call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Auto-resolve `re_formula` when a `by` variable exists only as a random effect
+#'
+#' Given the sub-parameter formula right-hand sides, a `by` request, and the
+#' fixed-effect moderator names, returns `NA` (the legacy behaviour: `by` is a
+#' fixed-effect moderator, or matches nothing) or a one-sided formula holding
+#' EXACTLY the bar terms whose grouping variables include `by`. Never returns
+#' a blanket `NULL`: the prediction grid pads unrelated grouping columns with
+#' arbitrary first values, which blanket inclusion would turn into phantom
+#' effects.
+#'
+#' @keywords internal
+tdt_auto_re_formula <- function(pforms, by, fixed_vars = character(0)) {
+  if (is.null(by) || !length(by)) return(NA)
+  if (any(by %in% fixed_vars)) return(NA)
+  bars <- unlist(lapply(pforms, function(r) tdt_split_bars(r)$bars),
+                 recursive = FALSE)
+  hit <- Filter(function(b) any(by %in% tdt_bar_group_vars(b)), bars)
+  if (!length(hit)) return(NA)
+  txt <- unique(vapply(hit, function(b)
+    paste0("(", paste(deparse(b), collapse = " "), ")"), character(1)))
+  stats::as.formula(paste("~", paste(txt, collapse = " + ")))
 }
 
 #' Derive 4PL asymptote intervals from a user-supplied response range

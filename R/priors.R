@@ -200,10 +200,24 @@ cell_means_has_extra_terms <- function(rhs) {
   length(terms) > 1L || grepl("[:*]", core)
 }
 
-# Grouping-factor names in a one-sided formula's (x | g) random-effect terms.
+# Grouping-factor names in a one-sided formula's (x | g) random-effect terms,
+# as brms names them for `class = "sd"` priors. AST-based (tdt_split_bars):
+# the old regex read up to the first ")", so gr(species, cov = A) yielded the
+# invalid group "gr(species, cov = A". For gr() terms brms's group name is the
+# grouping variable itself (first unnamed argument); plain and nested groups
+# deparse unchanged (Date -> "Date", a/b -> "a/b", legacy-identical).
 re_groups <- function(f) {
   if (is.null(f)) return(character(0))
   rhs <- formula_rhs(f, "")
-  m <- regmatches(rhs, gregexpr("\\|\\s*[^)]+", rhs))[[1]]
-  trimws(sub("^\\|\\s*", "", m))
+  if (!nzchar(trimws(rhs))) return(character(0))
+  bars <- tdt_split_bars(rhs)$bars
+  vapply(bars, function(bar) {
+    g <- bar[[3]]
+    if (is.call(g) && identical(g[[1]], as.name("gr"))) {
+      keep <- setdiff(seq_along(g)[-1],
+                      which(names(g) %in% c("cov", "dist", "by")))
+      return(paste(deparse(g[[keep[1]]]), collapse = ""))
+    }
+    paste(deparse(g), collapse = " ")
+  }, character(1))
 }

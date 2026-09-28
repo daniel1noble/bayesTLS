@@ -274,3 +274,76 @@ load_fixture_workflow_beta <- function() {
           file    = fit_path,
           refresh = 0)
 }
+
+# --- Phylogenetic (gr(cov = )) fixtures: issue #12 ---------------------------
+#
+# All three loaders share ONE simulated dataset built deterministically from
+# the committed truth (fixtures/phylo_truth.rds: tree-structured correlation A
+# + fixed species CTmax deviations; see data-raw/make_phylo_test_fixture.R).
+# Direct parameterisation, phylo random intercept on ctmax, common z.
+phylo_truth <- function() {
+  readRDS(here::here("tests", "testthat", "fixtures", "phylo_truth.rds"))
+}
+
+simulate_phylo_tdt <- function(truth = phylo_truth(), seed = 20260928) {
+  set.seed(seed)
+  grid <- expand.grid(species = truth$species,
+                      temp    = c(37, 39, 41, 43),
+                      t_hours = c(0.5, 2, 8, 32),
+                      KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+  ctmax_i <- truth$ctmax_global + truth$ctmax_dev[grid$species]
+  log10t50 <- (ctmax_i - grid$temp) / truth$z     # log10 hours (t_ref = 1 h)
+  p_surv <- truth$low + (truth$up - truth$low) /
+    (1 + exp(truth$k * (log10(grid$t_hours) - log10t50)))
+  grid$n_total <- 30L
+  grid$n_surv  <- rbinom(nrow(grid), grid$n_total, p_surv)
+  standardize_data(grid, temp = "temp", duration = "t_hours",
+                   n_total = "n_total", n_surv = "n_surv",
+                   duration_unit = "hours")
+}
+
+phylo_fit_args <- function() {
+  list(chains = 2, iter = 1000, warmup = 500, cores = 2, seed = 1,
+       control = list(adapt_delta = 0.95, max_treedepth = 12), refresh = 0)
+}
+
+# Phylogenetic covariance fit: ctmax = ~ 1 + (1 | gr(species, cov = A)).
+load_fixture_workflow_phylo <- function() {
+  truth <- phylo_truth()
+  std   <- simulate_phylo_tdt(truth)
+  A     <- truth$A
+  wf <- do.call(fit_4pl, c(list(
+    std, ctmax = ~ 1 + (1 | gr(species, cov = A)), z = ~ 1, t_ref = 60,
+    data2 = list(A = A),
+    file  = here::here("tests", "testthat", "fixtures", "sim_fit_phylo_small")),
+    phylo_fit_args()))
+  attr(wf, "phylo_truth") <- truth
+  wf
+}
+
+# Identity-covariance twin: gr(species, cov = I) on the SAME data.
+load_fixture_workflow_phylo_ident <- function() {
+  truth  <- phylo_truth()
+  std    <- simulate_phylo_tdt(truth)
+  A_ident <- diag(length(truth$species))
+  dimnames(A_ident) <- list(truth$species, truth$species)
+  wf <- do.call(fit_4pl, c(list(
+    std, ctmax = ~ 1 + (1 | gr(species, cov = A_ident)), z = ~ 1, t_ref = 60,
+    data2 = list(A_ident = A_ident),
+    file  = here::here("tests", "testthat", "fixtures", "sim_fit_phylo_ident")),
+    phylo_fit_args()))
+  attr(wf, "phylo_truth") <- truth
+  wf
+}
+
+# Plain random-intercept twin: (1 | species), no covariance matrix.
+load_fixture_workflow_phylo_plain <- function() {
+  truth <- phylo_truth()
+  std   <- simulate_phylo_tdt(truth)
+  wf <- do.call(fit_4pl, c(list(
+    std, ctmax = ~ 1 + (1 | species), z = ~ 1, t_ref = 60,
+    file  = here::here("tests", "testthat", "fixtures", "sim_fit_phylo_plain")),
+    phylo_fit_args()))
+  attr(wf, "phylo_truth") <- truth
+  wf
+}

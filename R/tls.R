@@ -51,6 +51,13 @@
 #'   observed range. For an absolute threshold, ensure the grid brackets the
 #'   `CTmax` crossing (extend it if `CTmax` falls outside the observed range).
 #' @param re_formula Passed to [brms::posterior_linpred()]; default `NA`
+#'   (fixed effects only) -- EXCEPT when a `by` variable enters the model only
+#'   as a random-effect grouping factor (e.g. a phylogenetic
+#'   `(1 | gr(species, cov = A))` term): the default then auto-includes
+#'   exactly the matching random-effect term(s), with a message, so
+#'   per-level estimates do not silently collapse to the population mean.
+#'   Passing `re_formula` explicitly (even `NA`) always overrides the
+#'   auto-rule.
 #'   (population level). Include group-level terms (e.g. clone) for per-group draws.
 #' @param lower,upper Response bounds of the disjoint-bounds reparameterisation.
 #' @param nlpars Non-linear parameter names, ordered low / up / k / mid (raw scale).
@@ -142,6 +149,31 @@ tls <- function(object, by = NULL, params = "all",
   if (!temp %in% names(mdata)) {
     stop("Temperature column `", temp, "` not found in the model data.",
          call. = FALSE)
+  }
+
+  # Auto-resolve re_formula when a `by` variable enters the model ONLY as a
+  # random-effect grouping factor (e.g. phylogenetic fits with
+  # ctmax = ~ 1 + (1 | gr(species, cov = A)); issue #12). With the legacy
+  # hard-coded NA, posterior_linpred would exclude those effects and every
+  # `by` level would silently collapse to the population mean. Only the
+  # DEFAULT is resolved -- an explicit re_formula (even NA) always wins -- and
+  # only the matching bar terms are included, never a blanket NULL (the grid
+  # pads unrelated grouping columns with arbitrary first values, which blanket
+  # inclusion would turn into phantom effects).
+  if (missing(re_formula) && !is.null(by) &&
+      !is.null(fit$formula$pforms)) {
+    pforms_rhs <- vapply(fit$formula$pforms, function(f)
+      paste(deparse(f[[length(f)]]), collapse = " "), character(1))
+    fixed_vars <- unique(unlist(lapply(pforms_rhs, rhs_fixed_vars)))
+    re_auto    <- tdt_auto_re_formula(pforms_rhs, by, fixed_vars)
+    if (inherits(re_auto, "formula")) {
+      re_formula <- re_auto
+      message("`by = ", paste(by, collapse = ", "), "` enters the model only ",
+              "as a random effect; including ",
+              paste(deparse(re_auto), collapse = " "),
+              " in posterior_linpred. Pass `re_formula` explicitly to ",
+              "override.")
+    }
   }
 
   # --- build the moderator x temperature grid (shared engine) ----------------
