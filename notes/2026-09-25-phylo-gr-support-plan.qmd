@@ -7,6 +7,34 @@ format:
     toc: true
 ---
 
+## STATUS: IMPLEMENTED (2026-09-28, target release 1.1.0)
+
+Shipped as planned, with deviations worth recording:
+
+- The "maybe more regex sites" caveat materialised twice beyond the two known
+  helpers: `resolve_shape()` (direct-mode shape inheritance) and
+  `re_groups()` (sd-prior group names) carried the same paren-blind patterns.
+  Both were caught by the failing-first tests and rebuilt on the AST splitter.
+  `make_4pl_formula()`'s own lines were never edited -- the line-192 guard
+  survived unchanged, as T4 hoped.
+- `tls()` already HAD a `re_formula` argument, so the auto-rule resolves its
+  DEFAULT only (guarded by `missing()`); explicit values, including `NA`,
+  always win. Wired in `tls()` only this release: `derive_*()` /
+  `predict_survival_curves()` with an RE-only `by` remain population-mean and
+  are a documented follow-up.
+- T12 (unrelated-RE isolation) is covered structurally at the fast tier (the
+  auto-rule never blanket-includes); no fitted isolation fixture.
+- Fixture lesson: sp5's true CTmax (~44.8 C) sits outside the assay range, so
+  extraction needs `temp_grid` extended past the data -- tls() returns honest
+  NAs with a warning otherwise. Kept as a documented behaviour and encoded in
+  the gated test.
+
+Verification: fast tier 632+ pass / 0 fail; FULL gated suite 1032 pass /
+0 fail / 0 warn / 0 skip; `R CMD check --as-cran` with PDF manual run at
+completion. Tests: test-gr-formulas.R (fast, T1-T8) + test-phylo-fit.R
+(gated, T9-T11) with committed truth fixture
+(data-raw/make_phylo_test_fixture.R, no ape dependency).
+
 ## What Pieter wants
 
 One joint model comparing $CT_{max}$ and $z$ across many species, with related

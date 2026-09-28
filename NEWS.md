@@ -1,3 +1,22 @@
+# bayesTLS 1.1.0
+
+## New features
+
+* Covariance-matrix random effects (issue #12): `fit_4pl()` now accepts
+  `brms`'s `gr()` grouping terms, e.g.
+  `ctmax = ~ 1 + (1 | gr(species, cov = A))` with a phylogenetic correlation
+  matrix supplied through the new `data2` argument (`ape::vcv(phy, corr =
+  TRUE)` convention; validated for symmetry, level-covering dimnames and unit
+  diagonal). Internally, random-effect terms are now parsed from the formula
+  syntax tree instead of with text patterns, which previously broke on the
+  nested parentheses of `gr()` calls.
+* `tls()` auto-includes matching random-effect terms in
+  `posterior_linpred()` when a `by` variable enters the model only as a
+  random-effect grouping factor (with a message; explicit `re_formula`
+  always wins). Previously such calls silently returned the population mean
+  for every group. All existing fits -- where `by` is a fixed-effect
+  moderator -- are unaffected.
+
 # bayesTLS 1.0.0
 
 First release.

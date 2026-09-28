@@ -2318,7 +2318,8 @@ window.Quarto = {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#what-pieter-wants" id="toc-what-pieter-wants" class="nav-link active" data-scroll-target="#what-pieter-wants">What Pieter wants</a></li>
+  <li><a href="#status-implemented-2026-09-28-target-release-1.1.0" id="toc-status-implemented-2026-09-28-target-release-1.1.0" class="nav-link active" data-scroll-target="#status-implemented-2026-09-28-target-release-1.1.0">STATUS: IMPLEMENTED (2026-09-28, target release 1.1.0)</a></li>
+  <li><a href="#what-pieter-wants" id="toc-what-pieter-wants" class="nav-link" data-scroll-target="#what-pieter-wants">What Pieter wants</a></li>
   <li><a href="#why-it-breaks-three-separate-problems" id="toc-why-it-breaks-three-separate-problems" class="nav-link" data-scroll-target="#why-it-breaks-three-separate-problems">Why it breaks — three separate problems</a></li>
   <li><a href="#what-we-should-do-and-why" id="toc-what-we-should-do-and-why" class="nav-link" data-scroll-target="#what-we-should-do-and-why">What we should do, and why</a></li>
   <li><a href="#api-impact-decided-2026-09-25-keep-changes-minimal" id="toc-api-impact-decided-2026-09-25-keep-changes-minimal" class="nav-link" data-scroll-target="#api-impact-decided-2026-09-25-keep-changes-minimal">API impact (decided 2026-09-25: keep changes minimal)</a></li>
@@ -2361,6 +2362,17 @@ window.Quarto = {
 </header>
 
 
+<section id="status-implemented-2026-09-28-target-release-1.1.0" class="level2">
+<h2 class="anchored" data-anchor-id="status-implemented-2026-09-28-target-release-1.1.0">STATUS: IMPLEMENTED (2026-09-28, target release 1.1.0)</h2>
+<p>Shipped as planned, with deviations worth recording:</p>
+<ul>
+<li>The “maybe more regex sites” caveat materialised twice beyond the two known helpers: <code>resolve_shape()</code> (direct-mode shape inheritance) and <code>re_groups()</code> (sd-prior group names) carried the same paren-blind patterns. Both were caught by the failing-first tests and rebuilt on the AST splitter. <code>make_4pl_formula()</code>’s own lines were never edited – the line-192 guard survived unchanged, as T4 hoped.</li>
+<li><code>tls()</code> already HAD a <code>re_formula</code> argument, so the auto-rule resolves its DEFAULT only (guarded by <code>missing()</code>); explicit values, including <code>NA</code>, always win. Wired in <code>tls()</code> only this release: <code>derive_*()</code> / <code>predict_survival_curves()</code> with an RE-only <code>by</code> remain population-mean and are a documented follow-up.</li>
+<li>T12 (unrelated-RE isolation) is covered structurally at the fast tier (the auto-rule never blanket-includes); no fitted isolation fixture.</li>
+<li>Fixture lesson: sp5’s true CTmax (~44.8 C) sits outside the assay range, so extraction needs <code>temp_grid</code> extended past the data – tls() returns honest NAs with a warning otherwise. Kept as a documented behaviour and encoded in the gated test.</li>
+</ul>
+<p>Verification: fast tier 632+ pass / 0 fail; FULL gated suite 1032 pass / 0 fail / 0 warn / 0 skip; <code>R CMD check --as-cran</code> with PDF manual run at completion. Tests: test-gr-formulas.R (fast, T1-T8) + test-phylo-fit.R (gated, T9-T11) with committed truth fixture (data-raw/make_phylo_test_fixture.R, no ape dependency).</p>
+</section>
 <section id="what-pieter-wants" class="level2">
 <h2 class="anchored" data-anchor-id="what-pieter-wants">What Pieter wants</h2>
 <p>One joint model comparing <span class="math inline">\(CT_{max}\)</span> and <span class="math inline">\(z\)</span> across many species, with related species allowed to be similar (phylogenetic covariance). In <code>brms</code> this is written:</p>
