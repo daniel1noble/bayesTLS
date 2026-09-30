@@ -13,6 +13,12 @@ suppressPackageStartupMessages({
   library(scales)
 })
 
+# Guard: route any device-less grob building (cowplot::get_legend, ggdraw,
+# patchwork insets call ggplotGrob, whose device behaviour varies across
+# ggplot2 versions) to a null device, so non-interactive runs can never
+# litter a blank Rplots.pdf at the project root.
+if (!interactive()) grDevices::pdf(NULL)
+
 out_fig <- here::here("output", "figs")
 out_dat <- here::here("output", "data")
 dir.create(out_fig, showWarnings = FALSE, recursive = TRUE)
