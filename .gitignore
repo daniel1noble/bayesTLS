@@ -143,3 +143,12 @@ notes/2026-06-28-two-stage-vs-joint-aphids.qmd
 notes/scripts/2026-06-28-ts-vs-joint-aphids.R
 notes/scripts/2026-07-07-constant-asymptote.R
 _output/EcologyLetters_submission1.pdf
+
+# Phylo test fixtures (issue #12): the global *.rds rule above silently kept
+# these out of the 2026-09-28 commits, breaking the CI coverage job (which
+# could not read phylo_truth.rds). Negate them explicitly so committed fixture
+# fits load on CI instead of refitting Stan models every run.
+!tests/testthat/fixtures/phylo_truth.rds
+!tests/testthat/fixtures/sim_fit_phylo_small.rds
+!tests/testthat/fixtures/sim_fit_phylo_ident.rds
+!tests/testthat/fixtures/sim_fit_phylo_plain.rds
