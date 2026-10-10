@@ -768,9 +768,12 @@ For the lethal aphid and vinegar-fly examples, we also used posterior draws to p
 #| message: false
 #| warning: false
 # Read cached aphid heat-injury facts, with fallbacks for independent rendering.
+# Only trust a cache stamped by the authoritative supplement pipeline — an
+# unstamped file (e.g. written by some ad-hoc script) falls through to the
+# fallback values rather than silently feeding the text.
 .f5 <- tryCatch(readRDS(here::here("output", "data", "fig5_hi_data.rds")),
                 error = function(e) NULL)
-.f5_fresh <- !is.null(.f5$aphid_Tc)
+.f5_fresh <- identical(.f5$provenance, "supplement.qmd") && !is.null(.f5$aphid_Tc)
 # Summarise the per-species T_crit range.
 aphid_Tc_rng <- if (.f5_fresh) range(.f5$aphid_Tc$Tc) else c(23.8, 28.2)
 # Summarise end-of-season survival without repair.

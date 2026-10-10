@@ -4069,9 +4069,12 @@ adat <- dplyr::bind_rows(aphid_rows) |> dplyr::mutate(species = as.character(spe
   dplyr::left_join(aphid_trace, by = "time")
 
 dir.create(here::here("output", "data"), recursive = TRUE, showWarnings = FALSE)
+# `provenance` marks this file as written by the authoritative supplement
+# pipeline; ms.qmd refuses the cached values (falls back) without it.
 saveRDS(list(fly = fdat, fly_trace = fly_trace, fly_Tc = fTc,
              aphid = adat, aphid_trace = aphid_trace, aphid_Tc = aphid_Tc,
-             repair_pars = list(fly = fly_repair, aphid = aphid_repair)),
+             repair_pars = list(fly = fly_repair, aphid = aphid_repair),
+             provenance = "supplement.qmd", rendered = Sys.time()),
         here::here("output", "data", "fig5_hi_data.rds"))
 ```
 
