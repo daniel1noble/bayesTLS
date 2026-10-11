@@ -774,8 +774,9 @@ For the lethal aphid and vinegar-fly examples, we also used posterior draws to p
 .f5 <- tryCatch(readRDS(here::here("output", "data", "fig5_hi_data.rds")),
                 error = function(e) NULL)
 .f5_fresh <- identical(.f5$provenance, "supplement.qmd") && !is.null(.f5$aphid_Tc)
-# Summarise the per-species T_crit range.
-aphid_Tc_rng <- if (.f5_fresh) range(.f5$aphid_Tc$Tc) else c(23.8, 28.2)
+# Summarise the per-species T_crit range (currently unused in the text; kept
+# for convenience). Fallback matches the 2026-10-11 supplement render.
+aphid_Tc_rng <- if (.f5_fresh) range(.f5$aphid_Tc$Tc) else c(23.2, 27.4)
 # Summarise end-of-season survival without repair.
 aphid_surv_end <- if (.f5_fresh) {
   .f5$aphid |>
