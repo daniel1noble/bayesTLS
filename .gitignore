@@ -153,3 +153,4 @@ _output/EcologyLetters_submission1.pdf
 !tests/testthat/fixtures/sim_fit_phylo_ident.rds
 !tests/testthat/fixtures/sim_fit_phylo_plain.rds
 notes/2026-10-14-qg-grm-sim.R
+notes/2026-10-14-qg-grm-sim-PREFLIGHT-results.csv
