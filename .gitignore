@@ -40,6 +40,10 @@ vignettes/*.pdf
 output/sim_twostage/
 output/sim_twostage_*/
 output/sim_twostage_buggy_*/
+# QG/GRM feasibility sims: per-replicate raw rows are regeneratable from
+# notes/2026-10-14-qg-grm-sim.R --mode sweep; the bound summary is committed
+# at notes/2026-10-14-qg-grm-sim-reps-results.csv.
+output/sim_qg/
 output/mock_sim/
 output/figs/sim_twostage/
 
@@ -156,3 +160,5 @@ notes/2026-10-14-qg-grm-sim.R
 notes/2026-10-14-qg-grm-sim-PREFLIGHT-results.csv
 notes/2026-10-14-qg-grm-sim-results.csv
 notes/2026-10-14-qg-grm-ctmax-feasibility.qmd
+notes/2026-10-14-qg-grm-ctmax-feasibility.html
+notes/2026-10-14-qg-grm-sim-reps-results.csv
