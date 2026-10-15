@@ -151,7 +151,7 @@ All three zips unzip into `output/`, so internal paths start at
 cd output
 
 # results.zip  (~15 MB) — everything the manuscript renders from
-zip -r ../results.zip \
+zip -r ../../results.zip \
   sim_twostage/per_sim_*.rds \
   sim_twostage/summary_*.rds \
   sim_twostage/diffs_*.rds \
@@ -159,10 +159,10 @@ zip -r ../results.zip \
   data/*.rds
 
 # models.zip  (72 MB) — cached case-study brms fits (NEW to OSF)
-zip -r ../models.zip models/*.rds
+zip -r ../../models.zip models/*.rds
 
 # sim_full.zip  (~2.6 GB) — raw per-sim files + posterior draws, for re-derivation
-zip -r ../sim_full.zip \
+zip -r ../../sim_full.zip \
   sim_twostage/raw \
   sim_twostage/draws_*.rds \
   sim_twostage/meta_*.rds

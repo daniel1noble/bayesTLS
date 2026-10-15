@@ -7,8 +7,8 @@ format:
     toc: true
     toc-depth: 2
     embed-resources: true
-bibliography: ../bib/tdt_problems.bib
-csl: ../bib/ecology-letters.csl
+bibliography: ../../bib/tdt_problems.bib
+csl: ../../bib/ecology-letters.csl
 link-citations: true
 ---
 
@@ -244,5 +244,5 @@ modification to the workflow is needed for T-varying shape parameters.
 
 The worked example in
 [supplement.qmd § *A worked example: temperature effects on every
-shape parameter*](../ms/supplement.qmd) reproduces this analysis with
+shape parameter*](../../ms/supplement.qmd) reproduces this analysis with
 the same numbers.

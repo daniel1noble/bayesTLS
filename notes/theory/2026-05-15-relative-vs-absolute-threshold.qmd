@@ -11,7 +11,7 @@ execute:
   cache: false
   warning: false
   message: false
-bibliography: ../bib/tdt_problems.bib
+bibliography: ../../bib/tdt_problems.bib
 ---
 
 ## Question
@@ -22,7 +22,7 @@ $$
 \Delta(\text{low},\text{up},k) \;=\; \tfrac{1}{k}\log\!\tfrac{\text{up}-0.5}{0.5-\text{low}}
 $$
 
-that adjusts `mid` for non-unit asymptotes. The new §[Defining LT50 relative to the upper asymptote](../ms/supplement.qmd) in the zebrafish supplement, however, *recomputes* an LT50 at target = $0.5\cdot\alpha_{\text{up}}(T)$ and finds it differs from `extract_tdt()` output. Either the supplement is double-counting an adjustment that is already there, or the reviewer is conflating two distinct quantities.
+that adjusts `mid` for non-unit asymptotes. The new §[Defining LT50 relative to the upper asymptote](../../ms/supplement.qmd) in the zebrafish supplement, however, *recomputes* an LT50 at target = $0.5\cdot\alpha_{\text{up}}(T)$ and finds it differs from `extract_tdt()` output. Either the supplement is double-counting an adjustment that is already there, or the reviewer is conflating two distinct quantities.
 
 This note traces the algebra of the 4PL, reads the source of the relevant functions, and checks the numerical predictions against the cached zebrafish joint fit. The conclusion is unambiguous and is laid out at the end.
 
@@ -87,10 +87,10 @@ $$
 
 ## What `derive_ltx_curve()` and `extract_tdt()` actually do
 
-Reading [R/extract_tdt.R](../R/extract_tdt.R) and [R/predict_survival_curves.R](../R/predict_survival_curves.R):
+Reading [R/extract_tdt.R](../../R/extract_tdt.R) and [R/predict_survival_curves.R](../../R/predict_survival_curves.R):
 
-- `derive_ltx_curve(workflow, target_surv = 0.5, …)` builds a $(\text{temp} \times \text{duration})$ grid, calls `brms::posterior_linpred(…, transform = TRUE)` to get **survival probabilities on the natural 0–1 scale**, and numerically inverts each draw via `threshold_x_by_draw()` to find the duration at which survival crosses `target_surv` ([R/extract_tdt.R:31-85](../R/extract_tdt.R#L31)).
-- `extract_tdt()` calls `derive_ltx_curve(target_surv = 0.5)` and then `derive_temperature_for_duration(target_surv = 0.5)` — both with the bare value `0.5`, not `0.5 * up` ([R/extract_tdt.R:301-323](../R/extract_tdt.R#L301)).
+- `derive_ltx_curve(workflow, target_surv = 0.5, …)` builds a $(\text{temp} \times \text{duration})$ grid, calls `brms::posterior_linpred(…, transform = TRUE)` to get **survival probabilities on the natural 0–1 scale**, and numerically inverts each draw via `threshold_x_by_draw()` to find the duration at which survival crosses `target_surv` ([R/extract_tdt.R:31-85](../../R/extract_tdt.R#L31)).
+- `extract_tdt()` calls `derive_ltx_curve(target_surv = 0.5)` and then `derive_temperature_for_duration(target_surv = 0.5)` — both with the bare value `0.5`, not `0.5 * up` ([R/extract_tdt.R:301-323](../../R/extract_tdt.R#L301)).
 
 There is no asymptote-rescaling anywhere in this path. The target is the literal survival probability 0.5. The numerical inversion uses the *full* fitted 4PL — i.e. it implicitly applies the correction $\Delta(T)$ because the underlying `predict()` already evaluates `low + (up-low)/(1+exp(k(logd-mid)))`. So the output is the **absolute** $\log_{10} t_{50}(T)$, not the relative-to-asymptote quantity.
 
@@ -98,7 +98,7 @@ The same is true of `extract_tdt()`'s CTmax_1hr (temperature at which the absolu
 
 ### Where on the curve does the answer fall when $\alpha_{\text{up}} < 1$?
 
-For zebrafish young embryos, the joint fit gives $\alpha_{\text{up}} \approx 0.76$ at the grand-mean temperature ([tbl-zebrafish-upper-asymptote](../ms/supplement.qmd#L3052)). The absolute 0.5 target sits much closer to the *floor* of that stage's survival curve than it does for the other two stages, whose asymptotes are ~0.96. Symbolically: $\Delta_{\text{young}} = \tfrac{1}{k}\log\!\tfrac{0.76-0.5}{0.5-0} = \tfrac{1}{k}\log(0.52) < 0$, whereas $\Delta_{\text{larvae}} \approx \tfrac{1}{k}\log\!\tfrac{0.97-0.5}{0.5} = \tfrac{1}{k}\log(0.94) \approx 0$. So `extract_tdt()` reports an LT50 that is shifted *earlier* in time for young embryos (and a colder CTmax_1hr) than the relative-to-asymptote definition would give. The supplement's new section is correctly recovering this gap, not double-counting an adjustment.
+For zebrafish young embryos, the joint fit gives $\alpha_{\text{up}} \approx 0.76$ at the grand-mean temperature ([tbl-zebrafish-upper-asymptote](../../ms/supplement.qmd#L3052)). The absolute 0.5 target sits much closer to the *floor* of that stage's survival curve than it does for the other two stages, whose asymptotes are ~0.96. Symbolically: $\Delta_{\text{young}} = \tfrac{1}{k}\log\!\tfrac{0.76-0.5}{0.5-0} = \tfrac{1}{k}\log(0.52) < 0$, whereas $\Delta_{\text{larvae}} \approx \tfrac{1}{k}\log\!\tfrac{0.97-0.5}{0.5} = \tfrac{1}{k}\log(0.94) \approx 0$. So `extract_tdt()` reports an LT50 that is shifted *earlier* in time for young embryos (and a colder CTmax_1hr) than the relative-to-asymptote definition would give. The supplement's new section is correctly recovering this gap, not double-counting an adjustment.
 
 ## Numerical sanity check on the zebrafish joint fit
 
@@ -239,7 +239,7 @@ If the package were silently *already* using the relative-to-asymptote target, w
 
 ### Step 4: directly call the package and confirm
 
-The cleanest possible cross-check would be to invoke `bayesTLS::derive_ltx_curve()` on a per-stage fit and compare its returned LT50 to the manual absolute computation. The cached files at `output/models/fit_zf_separate_*.rds` are just the underlying `brmsfit`s (saved by `fit_4pl()`'s `file = …` argument, which writes only the brms cache); to call `derive_ltx_curve()` we would need to re-run `fit_4pl()` with `file_refit = "on_change"` to reconstruct the workflow wrapper. That would replicate, with identical numbers, the inversion already shown in step 2: `derive_ltx_curve(target_surv = 0.5)` simply applies `threshold_x_by_draw(target = 0.5)` to `posterior_linpred(transform = TRUE)` on a fitted 4PL — exactly the algebra `t_min_abs` encodes here. The supplement's [fig-zebrafish-overlay-tdt-line](../ms/supplement.qmd#L2783) is itself this comparison: the "Separate fits" curves come from `derive_ltx_curve()` and the "Joint fit" curves come from the manual absolute-0.5 algebra (identical to `t_min_abs`); they overlap within Monte Carlo error, which is the cross-check we would have done here. We therefore skip the re-fit step.
+The cleanest possible cross-check would be to invoke `bayesTLS::derive_ltx_curve()` on a per-stage fit and compare its returned LT50 to the manual absolute computation. The cached files at `output/models/fit_zf_separate_*.rds` are just the underlying `brmsfit`s (saved by `fit_4pl()`'s `file = …` argument, which writes only the brms cache); to call `derive_ltx_curve()` we would need to re-run `fit_4pl()` with `file_refit = "on_change"` to reconstruct the workflow wrapper. That would replicate, with identical numbers, the inversion already shown in step 2: `derive_ltx_curve(target_surv = 0.5)` simply applies `threshold_x_by_draw(target = 0.5)` to `posterior_linpred(transform = TRUE)` on a fitted 4PL — exactly the algebra `t_min_abs` encodes here. The supplement's [fig-zebrafish-overlay-tdt-line](../../ms/supplement.qmd#L2783) is itself this comparison: the "Separate fits" curves come from `derive_ltx_curve()` and the "Joint fit" curves come from the manual absolute-0.5 algebra (identical to `t_min_abs`); they overlap within Monte Carlo error, which is the cross-check we would have done here. We therefore skip the re-fit step.
 
 ### Step 5: visualise the three thresholds for young embryos
 
@@ -276,7 +276,7 @@ The `mid` and "50 % of upper" lines lie on top of each other, confirming the alg
 
 This is true **only if `low`, `up`, and `k` are constants** (do not depend on $T$). For the zebrafish joint fit they all carry life-stage-specific `temp_c` slopes, so $\Delta(T)$ is itself temperature-dependent, and $z$ derived from the absolute LT50 line differs in principle from $z$ derived from `mid(T)` alone.
 
-In practice the discrepancy is small for these data: the supplement's [tbl-zebrafish-threshold-compare](../ms/supplement.qmd#L3258) shows $z_{\text{abs}}$ and $z_{\text{rel}}$ within 0.02 °C of each other for every stage. So the reviewer's intuition is essentially correct *for $z$* — but is not correct for $CT_{max_{1hr}}$, which is a *level* and absorbs the full vertical shift. For young embryos $CT_{max_{1hr}}$ moves from 39.68 °C (absolute) to 39.87 °C (relative) — small in absolute terms, but a genuine direction-of-bias signal when the asymptote is well below 1.
+In practice the discrepancy is small for these data: the supplement's [tbl-zebrafish-threshold-compare](../../ms/supplement.qmd#L3258) shows $z_{\text{abs}}$ and $z_{\text{rel}}$ within 0.02 °C of each other for every stage. So the reviewer's intuition is essentially correct *for $z$* — but is not correct for $CT_{max_{1hr}}$, which is a *level* and absorbs the full vertical shift. For young embryos $CT_{max_{1hr}}$ moves from 39.68 °C (absolute) to 39.87 °C (relative) — small in absolute terms, but a genuine direction-of-bias signal when the asymptote is well below 1.
 
 ## Bottom line
 

@@ -99,7 +99,7 @@ the global cumulative dose through a step-local curve
 (which would make survival jump when temperature changes
 with no added exposure). When the shape is flat in
 temperature the two modes coincide to numerical tolerance.
-See \code{vignette}-free note \code{notes/2026-06-26-shape-varying-heat-injury.qmd}.}
+See \code{vignette}-free note \code{notes/package_design/2026-06-25-direct-param-shape-temperature-terms.qmd}.}
 }
 \value{
 A list with elements:

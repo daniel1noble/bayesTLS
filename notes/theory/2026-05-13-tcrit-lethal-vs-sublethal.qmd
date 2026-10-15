@@ -8,8 +8,8 @@ format:
     toc-depth: 2
     embed-resources: true
     fig-cap-location: bottom
-bibliography: ../bib/tdt_problems.bib
-csl: ../bib/ecology-letters.csl
+bibliography: ../../bib/tdt_problems.bib
+csl: ../../bib/ecology-letters.csl
 link-citations: true
 execute:
   echo: true

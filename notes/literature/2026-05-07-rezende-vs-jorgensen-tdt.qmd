@@ -7,8 +7,8 @@ format:
     toc: true
     toc-depth: 2
     embed-resources: true
-bibliography: ../bib/tdt_problems.bib
-csl: ../bib/ecology-letters.csl
+bibliography: ../../bib/tdt_problems.bib
+csl: ../../bib/ecology-letters.csl
 link-citations: true
 ---
 

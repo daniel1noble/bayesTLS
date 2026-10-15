@@ -118,7 +118,7 @@ Two estimators are in common use in the TDT literature for extracting $z$ (the t
 - **Joint Bayesian 4PL** — a single non-linear model fitted to all the data simultaneously, allowing all four 4PL sub-parameters (lower asymptote $\ell$, upper asymptote $u$, slope $k$, midpoint $m$) to vary with temperature. This is the estimator developed here, implemented in the `bayesTLS` R package via `brms` with a beta-binomial(identity) likelihood.
 - **Classical two-stage** — Stage 1 fits a per-temperature binomial GLM with logit link on $\log_{10}$ duration; Stage 2 fits an unweighted OLS regression of the Stage-1 $\log_{10}\mathrm{LT_{50}}$ on temperature, with 95% Wald CIs from the delta method.
 
-A previous note ([baseline + 3 categorical DGPs](./2026-05-13-two-stage-bias-sim-results.qmd)) found that two-stage carries a bias of roughly 0.5 °C on $z$ and $\mathrm{CTmax_{1hr}}$ at the dose-response parameters used there, but that the cross-DGP differences were too small to actually shift either method's point estimates. The present run sweeps each factor across a wider, continuous range to characterise *when* the methods diverge.
+A previous note ([baseline + 3 categorical DGPs](./2026-05-14-two-stage-bias-sim-results.qmd)) found that two-stage carries a bias of roughly 0.5 °C on $z$ and $\mathrm{CTmax_{1hr}}$ at the dose-response parameters used there, but that the cross-DGP differences were too small to actually shift either method's point estimates. The present run sweeps each factor across a wider, continuous range to characterise *when* the methods diverge.
 
 # Methods
 

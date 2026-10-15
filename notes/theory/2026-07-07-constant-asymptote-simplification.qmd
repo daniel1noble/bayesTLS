@@ -28,7 +28,7 @@ quantities of interest (`z`, `CTmax`, `T_crit`), and what it costs in predictive
 fit (LOO ELPD, `bayes_R2`).
 
 All numbers below are produced by
-`notes/scripts/2026-07-07-constant-asymptote.R`, which fits each case study
+`notes/theory/2026-07-07-constant-asymptote.R`, which fits each case study
 **before** (current supplement spec) and **after** (identical spec **plus**
 `up = ~ 1, low = ~ 1`) with identical sampler settings and seed, and caches the
 result to `output/models/ca_results.rds` (fits: `output/models/ca_{zf,aphid}_{before,after}.rds`;
@@ -261,7 +261,7 @@ be regenerated so the fitted curves reflect the constant asymptotes.
 
 ```{r repro}
 # Full analysis (fits reload from output/models/ca_*.rds if present):
-#   Rscript notes/scripts/2026-07-07-constant-asymptote.R
+#   Rscript notes/theory/2026-07-07-constant-asymptote.R
 # Results object:
 #   output/models/ca_results.rds  (gitignored)
 sessionInfo()

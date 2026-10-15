@@ -8,14 +8,14 @@ format:
     toc-depth: 3
     number-sections: true
     embed-resources: true
-bibliography: ../bib/tdt_problems.bib
-csl: ../bib/ecology-letters.csl
+bibliography: ../../bib/tdt_problems.bib
+csl: ../../bib/ecology-letters.csl
 link-citations: true
 ---
 
 ## Why this note exists
 
-[bayesian_TDT_shrimp.qmd](../R/bayesian_TDT_shrimp.qmd) is the brown-shrimp analysis pipeline (lethal counts, sublethal time-to-death, dynamic CTmax, field-temperature HI projections). [tdt_problems.qmd](../tdt_problems.qmd) is the manifesto: every statistical defect of the classical two-step TDT workflow plus a worked argument for replacing it with a single hierarchical Bayesian 4PL.
+[bayesian_TDT_shrimp.qmd](../legacy/bayesian_TDT_shrimp.qmd) is the brown-shrimp analysis pipeline (lethal counts, sublethal time-to-death, dynamic CTmax, field-temperature HI projections). [tdt_problems.qmd](../tdt_problems.qmd) is the manifesto: every statistical defect of the classical two-step TDT workflow plus a worked argument for replacing it with a single hierarchical Bayesian 4PL.
 
 Question 1: **Are they doing the same thing?** Mostly yes, with three concrete extensions in the shrimp script and three small gaps relative to the manifesto.
 

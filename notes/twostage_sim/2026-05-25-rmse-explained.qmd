@@ -8,8 +8,8 @@ format:
     toc: true
     toc-depth: 3
     code-fold: false
-bibliography: ../bib/tdt_problems.bib
-csl: ../bib/ecology-letters.csl
+bibliography: ../../bib/tdt_problems.bib
+csl: ../../bib/ecology-letters.csl
 link-citations: true
 ---
 

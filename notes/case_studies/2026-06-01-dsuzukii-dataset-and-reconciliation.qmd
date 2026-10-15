@@ -8,8 +8,8 @@ format:
     toc-depth: 3
     code-fold: true
     embed-resources: true
-bibliography: ../bib/tdt_problems.bib
-csl: ../bib/ecology-letters.csl
+bibliography: ../../bib/tdt_problems.bib
+csl: ../../bib/ecology-letters.csl
 link-citations: true
 editor_options:
   chunk_output_type: console
@@ -57,7 +57,7 @@ per-individual file back to cells does **not** exactly reproduce
 #| message: false
 #| warning: false
 library(dplyr)
-base <- "../data-raw/orstead2024"
+base <- "../../data-raw/orstead2024"
 L <- read.csv(file.path(base, "all_data_long_R3.csv"))
 S <- read.csv(file.path(base, "alltraits_summary_R3.csv"))
 
