@@ -345,7 +345,7 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'                     (which would make survival jump when temperature changes
 #'                     with no added exposure). When the shape is flat in
 #'                     temperature the two modes coincide to numerical tolerance.
-#'                     See `vignette`-free note `notes/2026-06-26-shape-varying-heat-injury.qmd`.
+#'                     See `vignette`-free note `notes/package_design/2026-06-25-direct-param-shape-temperature-terms.qmd`.
 #' @return A list with elements:
 #'   - `summary`: tibble with `time`, `temp`, and posterior median + 95%
 #'     CrI for `hi`, `survival`, and `mortality` at each time step (plus the

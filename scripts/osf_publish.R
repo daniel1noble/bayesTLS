@@ -33,7 +33,7 @@ dir.create(STAGE, showWarnings = FALSE, recursive = TRUE)
 # are built from inside output/, so their internal paths are output-relative
 # (sim_twostage/..., data/..., models/...) and the fetch script unzips into
 # output/. Keep these globs in sync with the fetch manifest and the design note
-# (notes/2026-06-23-osf-artifact-fetch.qmd).
+# (notes/package_design/2026-06-23-osf-artifact-fetch.qmd).
 TIERS <- list(
   results = list(zip = "results.zip", globs = c(
     "sim_twostage/per_sim_*.rds", "sim_twostage/summary_*.rds",

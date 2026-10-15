@@ -114,7 +114,7 @@ make_4pl_priors <- function(data,
 
   ## ---- direct CTmax/z priors ----
   # Centred asymptote priors are load-bearing (a flat prior gave 191 divergences;
-  # see notes/2026-06-21-prior-sensitivity-direct-ctmax-z.qmd). They match the
+  # see notes/package_design/2026-06-21-prior-sensitivity-direct-ctmax-z.qmd). They match the
   # midpoint centres exactly. CTmax/z are well identified and take simple priors;
   # random effects attach to CTmaxdev/logz only (never inherited onto the shape).
   ctmax_rhs <- formula_rhs(ctmax, "1")

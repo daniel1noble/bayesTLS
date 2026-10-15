@@ -1,7 +1,7 @@
 # Build and fit the joint Bayesian 4PL with built-in beta_binomial(link =
 # "identity"). The asymptote reparam keeps the 4PL output inside (low_min,
 # up_max) so identity link is safe; see
-# notes/2026-05-12-identity-vs-logit-link.qmd for the empirical comparison.
+# notes/package_design/2026-05-12-identity-vs-logit-link.qmd for the empirical comparison.
 
 #' Build the brms formula for the joint Bayesian 4PL
 #'

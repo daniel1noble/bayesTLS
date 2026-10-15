@@ -7,7 +7,7 @@
 # regresses those on temperature to give z, CTmax, and T_crit. Beta-binomial
 # Stage 1 uses glmmTMB (the maintained, standard tool) everywhere.
 #
-# See notes/2026-06-11-unify-two-stage.qmd for the consolidation decision.
+# See notes/package_design/2026-06-11-unify-two-stage.qmd for the consolidation decision.
 # ============================================================================
 
 #' Stage 1 of the classical two-stage TDT pipeline
