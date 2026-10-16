@@ -64,7 +64,7 @@ The coding workflow is **decoupled** — each step is a standalone function so u
 |---|---|
 | `standardize_data()` | Rename user columns to standard names; supports count responses (survived/dead/total) and continuous proportions; records response type + metadata. |
 | `make_4pl_priors()` / `make_4pl_formula()` | Disjoint-bounds reparameterised 4PL; asymptote bounds adjustable for sublethal/PSII ranges. |
-| `fit_4pl()` | Joint Bayesian 4PL via `brms`. Family resolved from the response — `beta_binomial(identity)` for counts, `Beta(identity)` for proportions. Centred temperature; `temp_effects` selects which 4PL parameters depend on temperature (all four by default; `"mid"` for sparse designs). Two parameterisations: **midpoint** (default) and **direct** CTmax/*z* (supply `ctmax =`/`z =` formulas). To compare moderator groups (species, life stage, …) in one joint fit, use `by = "<moderator>"` (midpoint — fits `~ temp_c * moderator` on all four sub-parameters) or `ctmax = ~ 0 + <moderator>` (direct); the moderator is recorded so downstream readers auto-group. `mid =` gives explicit control of the midpoint sub-model. |
+| `fit_4pl()` | Joint Bayesian 4PL via `brms`. Family resolved from the response — `beta_binomial(identity)` for counts, `Beta(identity)` for proportions. Centred temperature; `temp_effects` selects which 4PL parameters depend on temperature (all four by default; `"mid"` for sparse designs). Two parameterisations: **midpoint** (default) and **direct** CTmax/*z* (supply `ctmax =`/`z =` formulas). To compare moderator groups (species, life stage, …) in one joint fit, use `by = "<moderator>"` (midpoint — fits `~ temp_c * moderator` on all four sub-parameters) or `ctmax = ~ 0 + <moderator>` (direct); the moderator is recorded so downstream readers auto-group. `mid =` gives explicit control of the midpoint sub-model. Random effects with a known covariance matrix — phylogenetic models or SNP-relatedness animal models — are supported via `gr(group, cov = A)` terms plus `data2 =` (validated at fit time); `prior =` replaces the default priors wholesale. |
 | `tls()` / `tls_z()` / `tls_ctmax()` / `tls_tcrit()` | One call to derive *z*, CTmax, and (lethal data only, `lethal = TRUE`) *T*~crit~ **per moderator group** (`by =`; sex, life stage, clone, …) from any fitted 4PL — a `bayes_tls` workflow *or* a hand-written `brms` 4PL — all from one consistent posterior. *z* and CTmax share one posterior subsample; `seed =` makes the subsample + *T*~crit~ draws reproducible. `target_surv` picks the relative (default) or absolute threshold. |
 | `derive_z()`, `derive_tdt_curve()`, `derive_temperature_for_duration()`, `derive_tdt_landscape()` | Exported TDT primitives (the building blocks `tls()` composes, and available directly for advanced use such as the per-temperature local *z*(*T*) profile from `derive_z()`); all support per-group results via `by =`. |
 | `extract_4pl_pars()`, `tdt_parameter_table()`, `tdt_quantile()`, `summarise_observed_survival()` | Per-draw 4PL parameters, natural-scale posterior parameter tables (group-aware via `by =`), TDT-friendly quantile summaries, and observed-survival cell summaries (mean ± SE per temp × duration). |
@@ -95,8 +95,11 @@ Each dataset can be loaded easily using `data(aphid_tdt)` (as an example of load
 
 Feature requests we are actively tracking (see the linked issues/plans for detail):
 
-- **Phylogenetic models** ([#12](https://github.com/daniel1noble/bayesTLS/issues/12), target 1.1.0): support `ctmax = ~ 1 + (1 | gr(species, cov = A))` with a phylogenetic correlation matrix. Needs: a `data2` argument on `fit_4pl()`, formula parsing that handles `gr()` terms, and extraction that includes group-level random effects. Plan: `notes/package_design/2026-09-25-phylo-gr-support-plan.qmd`. (Piet's specific use case. It's a very easy addition and should have been there at beginning)
 - **Time-to-event / repeated-measures designs** (target 1.2.0): individuals monitored through time (interval checks or continuous biosensors) rather than independent temperature × duration batches. Needs: `standardize_data()` to accept `id`/`last_alive`/`first_dead` (or exact death times) and build at-risk interval rows, plus a conditional-interval Bernoulli response branch in `fit_4pl()` — same 4PL parameters, so `tls()` (z, CTmax, relative and absolute) already works. Plan: `notes/time_to_event/2026-09-26-tte-native-support-plan.qmd`. (Thanks to Drew Villeneuve for bringing up this option)
+
+Shipped:
+
+- **Covariance-matrix random effects** ([#12](https://github.com/daniel1noble/bayesTLS/issues/12), shipped in 1.1.0 — development version; on CRAN from the next release): `ctmax = ~ 1 + (1 | gr(species, cov = A))` with `data2 = list(A = A)` fits phylogenetic models — and the same machinery serves **quantitative-genetic animal models** with a SNP relatedness matrix in place of the phylogenetic correlation (`gr(id, cov = A)`). When `by` names a grouping variable that enters only through such a random effect, `tls(by = )` includes its group effects automatically (override with `re_formula`). Design-feasibility simulations for the animal-model use (how many families, which assay designs can estimate genetic variance in CTmax and *z*) live in `notes/quantgen_sim/`.
 
 ## Reproducing the associated paper
 
@@ -139,7 +142,10 @@ Use this map to find the files and outputs involved in reproduction:
 - `tests/testthat/` — fast unit tests plus optional `brms` integration tests.
 - `bib/` — bibliography and the Ecology Letters CSL file.
 - `notes/` — dated development notes for derivations, literature checks, and
-  simulations.
+  simulations, organised into topic subfolders (`literature/`, `theory/`,
+  `twostage_sim/`, `package_design/`, `case_studies/`, `manuscript/`,
+  `time_to_event/`, `quantgen_sim/`); simulation threads keep their R
+  scripts in an `R/` subfolder and their outputs in `output/`.
 - `man/` — roxygen-generated package help files.
 - `_output/` — final rendered manuscript and supplement files; created by the
   render commands below.
