@@ -38,18 +38,9 @@ format:
   impractical with single records; two-stage experiment plan drafted
   (`2026-10-16-qg-experiment-plan.qmd`).
 
-## Paper (in review)
-
-- [ ] Await referee reports; on arrival, mine `notes/` for the relevant
-  decision trails before drafting responses.
-- [ ] If revisions cite new literature: ~22 bib entries still lack verified
-  local PDFs (see the PDF-integrity audit in project memory) — verify any
-  that end up cited; replace remaining "book — needs primary-source
-  verification" citations with primary sources where possible.
-
 ## Package
 
-- [ ] **Release 1.1.0 to CRAN**: once Daniel pushes the final state, run the
+- [ ] **Release 1.1.0 to CRAN**: once Dan pushes the final state, run the
   1.0.0 gate playbook — win-builder (release + devel) and R-hub on the pushed
   commit, PDF manual must build (no `--no-manual`; no Unicode math in Rd) —
   then submit, with NEWS.md tidied.
@@ -77,11 +68,3 @@ format:
 - [ ] Verify and add the Drosophila knockdown-TDT heritability literature
   (Castañeda / Rezende lines) via Zotero before any of this enters a
   manuscript or grant.
-
-## Deferred to companion papers (out of scope here)
-
-- [ ] **Paper 2** — flow-cytometry / cell-level application of the framework.
-- [ ] **Paper 3** — static-$CT_{max}$ → TDT conversion: infer the
-  *z*-distribution behind an observed $CT_{max}$ × ramping-rate pattern with
-  uncertainty propagation; validate across datasets where both pipelines
-  exist; demonstrate the fixed-*z* assumption is unsupportable.
