@@ -39,8 +39,15 @@ design_spec <- function(design) {
     tmax120 = list(temps = std_temps,     durations = c(1, 4, 12, 30, 70, 120)),
     tmax240 = list(temps = std_temps,     durations = c(1, 5, 18, 50, 130, 240)),
     tmax405 = list(temps = std_temps,     durations = c(1, 5, 15, 45, 135, 405)),
-    stop("Unknown design: '", design, "'. Use full, sparse, or tmax060/120/240/405.",
-         call. = FALSE)
+    # Extreme-temperature designs (2026-10-29 design question, see
+    # notes/twostage_sim/): concentrate cells at the ends of the temperature
+    # range instead of filling the middle. Durations span both ends' LT50
+    # windows (t50 at 30 C ~ 126 min; at 38 C ~ 8 min under the baseline
+    # truth); `extmid` keeps the centre temperature as a linearity check.
+    ext2    = list(temps = c(30, 38),     durations = c(4, 10, 30, 60, 130, 300)),
+    extmid  = list(temps = c(30, 34, 38), durations = c(4, 10, 30, 60, 130, 300)),
+    stop("Unknown design: '", design, "'. Use full, sparse, tmax060/120/240/405, ",
+         "ext2, or extmid.", call. = FALSE)
   )
 }
 

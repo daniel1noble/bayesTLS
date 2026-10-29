@@ -163,3 +163,5 @@ notes/2026-10-14-qg-grm-sim-results.csv
 notes/2026-10-14-qg-grm-ctmax-feasibility.qmd
 notes/2026-10-14-qg-grm-ctmax-feasibility.html
 notes/2026-10-14-qg-grm-sim-reps-results.csv
+# extremes-design comparison raws (regeneratable: notes/twostage_sim/R/sim-extremes-vs-full.R)
+output/sim_extremes/
