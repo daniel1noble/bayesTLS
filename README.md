@@ -242,16 +242,25 @@ cross-reference handling, and the `brms` cache.
 
 ### Case studies in the supplement
 
-The supplement works through the same workflow on simulated data and four
-empirical examples:
+The supplement first walks through the full workflow with a simulated dataset
+(including the classical two-stage pipeline for comparison), then repeats it
+on four empirical case studies — one per bundled dataset (see
+[`bayesTLS` Data](#bayestls-data)) — each showcasing a different modelling
+need:
 
-1. **Brown shrimp** — lethal and sublethal endpoints.
-2. **Zebrafish** — lethal TDT across life stages, fit as separate per-stage 4PLs
-   and as a joint model with `life_stage` as a covariate.
-3. **Snow gum leaf PSII** — continuous-proportion response fit with a Beta
-   likelihood.
-4. **Drosophila suzukii** — multi-trait TDT data, including mortality,
-   knockdown, and fertility endpoints.
+1. **Zebrafish × oxygen** (`zebrafish_o2`) — lethal TDT with oxygen
+   treatment as a covariate on CTmax and *z*; per-treatment thermal
+   limits.
+2. **Cereal aphids** (`aphid_tdt`) — three species compared in one joint
+   model (species on CTmax and *z*); per-species limits and heat injury
+   under a field temperature trace.
+3. **Snow gum leaf PSII** (`snowgum_psii`) — continuous-proportion response
+   fit with a Beta likelihood; light vs dark recovery comparison.
+4. ***Drosophila suzukii*** (`dsuzukii`) — per-individual multi-trait TDT:
+   lethal endpoint compared across sexes, then sublethal knockdown and
+   fertility endpoints.
 
-The supplement also contains the two-stage-bias simulation results and
-sensitivity sweeps used to check the modelling framework.
+The supplement also contains the extended two-stage-bias simulation results
+and sensitivity tests, the code behind the manuscript's cross-case-study
+figures, a frequentist companion analysis (`freqTLS`), and the mathematical
+derivations for the threshold-summary correction factors.
