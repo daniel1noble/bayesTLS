@@ -1694,6 +1694,10 @@ The manuscript examples use the following model specifications:
 
 The exact formulas, priors, sampler settings and diagnostics are shown in the code chunks for each case study. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
+# **Re-paramaterisation of Alternative Dose-Response models**
+
+
+
 # **Case Study 1: Zebrafish heat tolerance across an oxygen gradient** {#sec-zebrafish-o2}
 
 @saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (26 °C controls plus 38–40 °C) and exposure durations (3.8–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The 26 °C control rows are retained for normoxia, but hyperoxia was only assayed at stressful temperatures (38–40 °C), so prediction plots below show only observed treatment-temperature combinations. While this is a **sparse** experiemntal design, we show that the 4PL can still be used to recover tolerance and sensitivity where it would be challenging with a classical two-stage analysis. 
