@@ -233,6 +233,10 @@ clean:
 	rm -rf $(OUTDIR)
 	@find ms -maxdepth 1 \( -name '*.pdf' -o -name '*.html' -o -name '*.docx' \
 	  -o -name '*.tex' -o -name '*.log' \) -delete 2>/dev/null || true
+	@# In-tree knitr caches/figure dirs only appear if someone renders inside
+	@# ms/ instead of via make; they go stale silently (a May cache outlived the
+	@# June dataset swaps), so remove them rather than let them be reused.
+	@rm -rf ms/*_cache ms/*_files ms/.quarto-tmp
 	@find . -maxdepth 2 -name "*conflicted copy*" -delete 2>/dev/null || true
 
 # Wipe the entire out-of-tree build directory (caches and intermediates).

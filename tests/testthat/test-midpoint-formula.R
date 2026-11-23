@@ -1,5 +1,5 @@
 # Fast formula-construction tests for the midpoint parameterisation's moderator
-# handling (no brms). Mirror the situations in ms/case_studies_new.qmd:
+# handling (no brms). Mirror the situations in notes/legacy/case_studies_new.qmd:
 #   (1) bare fit  -> species-agnostic, all four sub-parameters ~ temp_c
 #   (2) explicit  -> low/up/k = ~ temp_c + species + species:temp_c (honoured)
 #   (3) shorthand -> low/up/k = ~ temp_c * species (identical MODEL to (2))
