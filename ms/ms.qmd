@@ -857,7 +857,7 @@ D.W.A.N.: Conceptualization, Methodology, Software, Data Curation, Formal Analys
 
 # Data and code availability {.unnumbered}
 
-Analysis scripts, case-study data, committed model fits, and rendered outputs are available at https://github.com/daniel1noble/bayesTLS. Cached simulation outputs and model fits are archived on OSF (https://osf.io/c6dxy) and can be fetched with `make data`; the raw simulation files are regenerable from the simulation scripts in the repository. The online supplement, tutorial, and `bayesTLS` installation instructions are available at https://daniel1noble.github.io/bayesTLS/. We also provide a sister package, `freqTLS`, which develops these models in a likelihood framework.
+Analysis code, case-study data, and cached model fits are available at https://github.com/daniel1noble/bayesTLS, which is both the `bayesTLS` package repository and the research compendium for this paper. The four case-study datasets ship with the package as documented data objects (`aphid_tdt`, `dsuzukii`, `snowgum_psii`, `zebrafish_o2`); raw source files and the scripts that build them are in `data-raw/`. The full case-study analyses are in `ms/supplement.qmd` and rendered at https://daniel1noble.github.io/bayesTLS/; the simulation is run by `scripts/simulations/run_simulations.R`. Cached simulation outputs and model fits are archived on OSF (https://osf.io/c6dxy) and fetched with `make data`. `bayesTLS` is available on CRAN; the sister package `freqTLS` develops the same models in a likelihood framework.
 
 # Conflict of interest {.unnumbered}
 
