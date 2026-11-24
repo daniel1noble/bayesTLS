@@ -84,6 +84,7 @@ format:
         % run fresh, and our tables don't use S-aligned columns.
         \usepackage{tabularray}
         \usepackage{float}
+        \usepackage{pdflscape}
         \usepackage{graphicx}
         \usepackage[normalem]{ulem}
         \providecommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
@@ -1694,9 +1695,206 @@ The manuscript examples use the following model specifications:
 
 The exact formulas, priors, sampler settings and diagnostics are shown in the code chunks for each case study. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
-# **Re-paramaterisation of Alternative Dose-Response models**
+# **Re-parameterisation of alternative dose-response models** {#sec-alt-kernels}
 
+We use the four-parameter log-logistic curve (4PL; Equation 2 of the manuscript) for three reasons. First, its midpoint gives the $\log_{10}$-time to 50% mortality when the asymptotes are 0 and 1, directly linking the curve to TDT theory. Second, unlike two- or three-parameter forms, the 4PL estimates both asymptotes, allowing the response range to change with temperature. These changes can affect $CT_{max}$ and $z$ (@sec-joint-extend). Third, log-logistic models are widely used in dose-response analysis [@ritz_ecotox_2010] and fit thermal failure data well. Indeed, @bullard2026 found that alternative survival models did not consistently improve on the log-logistic fit to *Drosophila* knockdown times, but we awknowledge that there are few formal model comparisons in the TDT literature.
 
+While the log-logistic makes the clearest connection to the TDT literature, and is most often used, it is important to recognise that the same approach extends to other S-shaped dose-response curves. @tbl-alt-kernels shows four standard families [@ritz_ecotox_2010]: log-logistic, log-normal, Weibull type 1 (Gompertz-shaped on the log-time axis) and Weibull type 2. Each has a lower asymptote ($\text{low}$), an upper asymptote ($\text{up}$), a steepness parameter ($k$) and a location on the $\log_{10}$-time axis, but their shapes differ.
+
+To connect these curves to the TLS framework, we must distinguish their standard location from their midpoint. In column 2, $\theta$ marks the inflection point, where the curve is steepest on the $\log_{10}$-time axis. We define $\text{mid}$ as the $\log_{10}$-time at which survival lies halfway between the asymptotes (column 3). These points coincide for log-logistic and log-normal curves. For Weibull curves, the inflection occurs after approximately 63% (type 1) or 37% (type 2) of the drop from $\text{up}$ to $\text{low}$, placing $\theta$ about $0.367/k$ above or below $\text{mid}$, respectively. Switching the outer exponential from base $e$ to base 2 and shifting the location accordingly gives the midpoint forms without changing the curves (@fig-alt-kernels a).
+
+Column 4 expresses $\text{mid}(T)$ as the TDT line, allowing us to estimate relative $CT_{max}$ and $z$ directly (Equation 7 of the manuscript). Using the standard Weibull location instead shifts the line by approximately $0.367/k$, changing $CT_{max}$. If $k$ also varies with temperature, the offset varies too, so a straight-line fit can give a different $z$ (@fig-alt-kernels c). Log-logistic and log-normal curves need no location adjustment.
+
+Columns 5 and 6 give relative and absolute $\log_{10}t_{50}$, respectively. The relative value is $\text{mid}(T)$; the absolute value adds a correction obtained by solving $p = 0.5$, provided $\text{low} < 0.5 < \text{up}$. For every curve, the correction vanishes when $\text{low} + \text{up} = 1$. A correction that stays constant across temperatures leaves $z$ unchanged and shifts $CT_{max}$ by $z$ times the correction (Equation 5 of the manuscript). Otherwise, we solve the fitted curve for the target survival probability at each temperature. For the log-logistic model, `tls(target_surv = "absolute")` performs this calculation using the correction in Equation 4 of the manuscript (derived in @sec-ms-derive). Replacing 0.5 with another survival probability gives other thresholds (Equation 6 of the manuscript).
+
+**Hazards and survival models (column 7).** With $\text{low} = 0$ and $\text{up} = 1$, the four curves describe log-logistic, log-normal, Weibull and Fréchet (inverse-Weibull) distributions of individual death times. The log-logistic case matches the survival model of @bullard2026, whose shape parameter is $k/\ln 10$ in our notation. When $k$ stays constant across temperatures, all four are accelerated failure time (AFT) models: increasing temperature by $z$ °C divides the time to any fixed survival probability by 10. Here, temperature rescales time, while $k$ controls the spread of death times.
+
+Column 7 gives the hazard, the instantaneous death rate among individuals still alive at time $t$ (@fig-alt-kernels b); the cumulative hazard is $-\ln p$. With constant $k$, only the Weibull model also has proportional hazards: changing temperature multiplies the hazard by a factor that stays constant over time. @bullard2026 rejected this assumption for *Drosophila* knockdown times.
+
+`bayesTLS` and `freqTLS` fit the log-logistic model. The same $k$ does not imply the same steepness across families: the midpoint slope against $\log_{10}t$ is $-k(\text{up} - \text{low})$ multiplied by approximately 0.25, 0.40, 0.35 and 0.35, respectively. Priors on $k$ therefore need to reflect the chosen curve.
+
+```{r}
+#| label: alt-kernels-pars
+# Illustration constants for @fig-alt-kernels (used in the caption and the figure).
+ak <- list(low = 0.1, up = 0.8, k = 3, mid = log10(60),      # panels (a), (b)
+           CTmax = 40, z = 2, tref = 60,                      # panel (c): TDT line
+           k_at_39 = 2, k_slope = 0.3, T_min = 37.5, T_max = 42)  # panel (c): k(T) = k_at_39 * exp(k_slope * (T - 39))
+ak$k_min <- ak$k_at_39 * exp(ak$k_slope * (ak$T_min - 39))
+ak$k_max <- ak$k_at_39 * exp(ak$k_slope * (ak$T_max - 39))
+# Caption for @fig-alt-kernels, filled from the constants above.
+ak_cap <- sprintf("Midpoints, inflection points and their implications for thermal limits. (a) The four curves in @tbl-alt-kernels share low = %.1f, up = %.1f, k = %g and mid = log10(%g min), but differ in shape. The black dot marks their common midpoint. Triangles mark inflection points on the log-time axis: these coincide with the midpoint for log-logistic and log-normal curves, but lie approximately 0.367/k above (Weibull type 1) or below it (type 2). Diamonds mark absolute 50%% survival, which differs among curves because low + up is not 1. (b) Hazards for the same k and mid with low = 0 and up = 1. For these parameter values, log-logistic, log-normal and Weibull type 2 hazards rise and then fall; the Weibull type 1 hazard keeps rising. (c) Times to each landmark across temperatures for CTmax(1 h) = %g °C and z = %g °C. Steepness k rises from %.1f at %g °C to %.1f at %g °C (solid) or stays at %g (dashed). All four curves share the midpoint line. The standard Weibull locations differ from it by a fixed offset when k is constant and a varying offset when k changes. Straight-line fits to these locations therefore change CTmax and, when k varies, z. Labels give estimates from fits over the plotted temperature range.", ak$low, ak$up, ak$k, 10^ak$mid, ak$CTmax, ak$z, ak$k_min, ak$T_min, ak$k_max, ak$T_max, ak$k_at_39)
+```
+
+```{r}
+#| label: fig-alt-kernels
+#| fig-width: 10
+#| fig-height: 10.5
+#| fig-dpi: 300
+#| out-width: "100%"
+#| fig-cap: !expr ak_cap
+# Midpoint forms of the four curves (column 3 of the table): survival p against exposure time t.
+curves <- c("Log-logistic", "Log-normal", "Weibull type 1 (Gompertz)", "Weibull type 2")
+cols   <- setNames(c("black", "#0072B2", "#D55E00", "#009E73"), curves)
+p_fun <- list(
+  function(t, low, up, k, mid) low + (up - low) / (1 + exp(k * (log10(t) - mid))),
+  function(t, low, up, k, mid) low + (up - low) * pnorm(-k * (log10(t) - mid)),
+  function(t, low, up, k, mid) low + (up - low) * 2^(-exp(k * (log10(t) - mid))),
+  function(t, low, up, k, mid) up - (up - low) * 2^(-exp(-k * (log10(t) - mid))))
+theta_off  <- c(0, 0, -log(log(2)), log(log(2)))   # standard location: theta = mid + theta_off / k
+frac_theta <- c(0.5, 0.5, exp(-1), 1 - exp(-1))    # fraction of the response range remaining above low at theta
+corr <- list(                                        # absolute-50% corrections (column 6)
+  function(low, up, k) log((up - 0.5) / (0.5 - low)) / k,
+  function(low, up, k) qnorm((up - 0.5) / (up - low)) / k,
+  function(low, up, k) log(log2((up - low) / (0.5 - low))) / k,
+  function(low, up, k) -log(log2((up - low) / (up - 0.5))) / k)
+haz <- list(                                         # hazards for low = 0, up = 1 (column 7)
+  function(t, p, k, mid) k / (t * log(10)) * (1 - p),
+  function(t, p, k, mid) k / (t * log(10)) * dnorm(k * (log10(t) - mid)) / p,
+  function(t, p, k, mid) k / (t * log(10)) * (-log(p)),
+  function(t, p, k, mid) k / (t * log(10)) * (-(1 - p) * log(1 - p)) / p)
+
+# (a) the four curves with the same low, up, k and mid, with their landmarks.
+tt <- 10^seq(log10(4), log10(900), length.out = 400)
+da <- bind_rows(lapply(seq_along(curves), function(i)
+  data.frame(curve = curves[i], t = tt, p = p_fun[[i]](tt, ak$low, ak$up, ak$k, ak$mid))))
+land <- bind_rows(lapply(seq_along(curves), function(i) data.frame(
+  curve = curves[i], landmark = c("inflection", "abs50"),
+  t = c(10^(ak$mid + theta_off[i] / ak$k), 10^(ak$mid + corr[[i]](ak$low, ak$up, ak$k))),
+  p = c(ak$low + frac_theta[i] * (ak$up - ak$low), 0.5))))
+da$curve <- factor(da$curve, curves); land$curve <- factor(land$curve, curves)
+land$landmark <- factor(land$landmark, c("inflection", "abs50"))
+mid_p <- (ak$low + ak$up) / 2
+pa <- ggplot(da, aes(t, p, colour = curve)) +
+  geom_hline(yintercept = c(ak$low, ak$up), linetype = "dashed", colour = "grey55") +
+  geom_hline(yintercept = c(mid_p, 0.5), linetype = "dotted", colour = "grey35") +
+  geom_vline(xintercept = 10^ak$mid, linetype = "dashed", colour = "grey55") +
+  geom_line(linewidth = 0.9) +
+  geom_point(data = land, aes(shape = landmark), size = 3, stroke = 1.1, fill = "white") +
+  annotate("point", x = 10^ak$mid, y = mid_p, size = 3.4, colour = "black") +
+  annotate("text", x = 4.2, y = ak$up + 0.04, label = "up", hjust = 0, size = 3.4) +
+  annotate("text", x = 4.2, y = ak$low + 0.04, label = "low", hjust = 0, size = 3.4) +
+  annotate("text", x = 4.2, y = mid_p - 0.04, label = "midpoint, (low + up)/2", hjust = 0, size = 3.2) +
+  annotate("text", x = 4.2, y = 0.5 + 0.04, label = "absolute 50% survival", hjust = 0, size = 3.2) +
+  annotate("text", x = 10^ak$mid * 1.08, y = 0.02, label = "mid", hjust = 0, size = 3.4) +
+  scale_x_log10(breaks = c(5, 10, 30, 60, 100, 300, 600)) +
+  scale_colour_manual(values = cols, name = NULL) +
+  scale_shape_manual(values = c(inflection = 24, abs50 = 23), name = NULL,
+                     labels = c(inflection = expression("inflection point = standard location " * theta),
+                                abs50 = "absolute 50% survival")) +
+  labs(x = "Exposure time t (min, log scale)", y = "Survival probability p",
+       title = "(a) Same low, up, k and mid; different curves") +
+  coord_cartesian(ylim = c(0, 1)) + theme_tdt(14)
+
+# (b) hazards for the same k and mid with low = 0 and up = 1.
+db <- bind_rows(lapply(seq_along(curves), function(i) {
+  p <- p_fun[[i]](tt, 0, 1, ak$k, ak$mid)
+  data.frame(curve = curves[i], t = tt, h = haz[[i]](tt, p, ak$k, ak$mid)) }))
+db$curve <- factor(db$curve, curves)
+pb <- ggplot(db, aes(t, h, colour = curve)) +
+  geom_vline(xintercept = 10^ak$mid, linetype = "dashed", colour = "grey55") +
+  geom_line(linewidth = 0.9) +
+  annotate("text", x = 10^ak$mid * 1.08, y = 0.0005, label = "mid", hjust = 0, size = 3.4) +
+  scale_x_log10(breaks = c(5, 10, 30, 60, 100, 300, 600)) +
+  scale_colour_manual(values = cols, name = NULL, guide = "none") +
+  coord_cartesian(ylim = c(0, 0.035)) +
+  labs(x = "Exposure time t (min, log scale)", y = "Hazard h(t) (deaths per min among survivors)",
+       title = "(b) Hazard (low = 0, up = 1)") +
+  theme_tdt(14)
+
+# (c) time to each landmark against temperature: the midpoint line is the TDT line for every
+# curve; the Weibull standard locations sit 0.367/k(T) off it.
+TT   <- seq(ak$T_min, ak$T_max, by = 0.05)
+midT <- log10(ak$tref) + (ak$CTmax - TT) / ak$z
+kT   <- ak$k_at_39 * exp(ak$k_slope * (TT - 39))
+lines <- c("Midpoint line, all four curves (= log-logistic and log-normal location)",
+           "Weibull type 1 standard location", "Weibull type 2 standard location")
+kc <- c(changes = "k changes with T", constant = sprintf("k constant (= %g)", ak$k_at_39))
+dc <- bind_rows(
+  data.frame(line = lines[1], kcase = kc["changes"], T = TT, y = midT),
+  data.frame(line = lines[2], kcase = kc["changes"], T = TT, y = midT - log(log(2)) / kT),
+  data.frame(line = lines[3], kcase = kc["changes"], T = TT, y = midT + log(log(2)) / kT),
+  data.frame(line = lines[2], kcase = kc["constant"], T = TT, y = midT - log(log(2)) / ak$k_at_39),
+  data.frame(line = lines[3], kcase = kc["constant"], T = TT, y = midT + log(log(2)) / ak$k_at_39))
+dc$line <- factor(dc$line, lines)
+fit_line <- function(d) {   # straight-line fit of the landmark line: z = -1/slope, CTmax where it meets t_ref
+  b <- coef(lm(y ~ T, d))
+  data.frame(z = unname(-1 / b[2]), CTmax = unname((log10(ak$tref) - b[1]) / b[2]))
+}
+summ <- dc |> group_by(line, kcase) |> group_modify(~ fit_line(.x)) |> ungroup() |> arrange(line, kcase)
+summ$label <- with(summ, sprintf("%s%s: z = %.2f, CTmax(1 h) = %.1f °C",
+  c("Midpoint line", "Weibull 1 location", "Weibull 2 location")[as.integer(line)],
+  ifelse(line == lines[1], "", ifelse(kcase == kc["changes"], ", k changes", ", k constant")), z, CTmax))
+summ$ylab <- seq(1.45, by = -0.14, length.out = nrow(summ))
+line_cols <- setNames(c("black", "#D55E00", "#009E73"), lines)
+pc <- ggplot(dc, aes(T, y, colour = line, linetype = kcase)) +
+  geom_hline(yintercept = log10(ak$tref), linetype = "dotted", colour = "grey35") +
+  geom_line(linewidth = 0.9) +
+  geom_point(data = summ, aes(x = CTmax, y = log10(ak$tref), colour = line), inherit.aes = FALSE, size = 2.8) +
+  geom_text(data = summ, aes(x = ak$T_min + 0.05, y = ylab, label = label, colour = line),
+            inherit.aes = FALSE, hjust = 0, size = 3.3, show.legend = FALSE) +
+  annotate("text", x = ak$T_max - 0.05, y = log10(ak$tref) + 0.08, label = "t[ref] == 60~min",
+           parse = TRUE, hjust = 1, size = 3.4) +
+  scale_y_continuous(breaks = log10(c(3, 6, 10, 30, 60, 100, 300, 600, 1000, 3000)),
+                     labels = c(3, 6, 10, 30, 60, 100, 300, 600, 1000, 3000)) +
+  scale_colour_manual(values = line_cols, name = NULL) +
+  scale_linetype_manual(values = setNames(c("solid", "dashed"), kc), name = NULL) +
+  labs(x = "Assay temperature T (°C)", y = "Time to landmark (min, log scale)",
+       title = "(c) The line followed sets CTmax and z") +
+  theme_tdt(14) + theme(legend.position = "bottom", legend.box = "vertical", legend.spacing.y = unit(0, "pt"))
+
+top <- (pa | pb) + plot_layout(guides = "collect") &
+  theme(legend.position = "bottom", legend.box = "vertical", legend.spacing.y = unit(0, "pt"),
+        legend.margin = margin(0, 0, 0, 0))
+top / pc + plot_layout(heights = c(1.1, 1))
+```
+
+```{=html}
+<style>
+#tbl-alt-kernels { overflow-x: auto; }
+#tbl-alt-kernels table { font-size: 0.8em; }
+</style>
+```
+
+```{=latex}
+\newgeometry{margin=0.4in}
+\begin{landscape}
+\footnotesize
+```
+
+```{=openxml}
+<w:p><w:pPr><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="851" w:right="851" w:bottom="851" w:left="851" w:header="720" w:footer="720" w:gutter="0"/><w:lnNumType w:countBy="1" w:restart="continuous"/><w:cols w:space="720"/></w:sectPr></w:pPr></w:p>
+```
+
++---------------------------------------------+-------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------+------------------------------------------+-------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------+
+| Curve (link)                                | Standard form: location $\theta$ is the inflection point                                                                | Midpoint form: location $\text{mid}$ is the midpoint                                                                          | TDT form: $\text{mid}$ written with $CT_{max}$ and $z$                                                                           | Relative $\log_{10} t_{50}(T)$           | Absolute $\log_{10} t_{50}(T)$ (survival exactly 0.5)                                                 | Hazard $h(t) = -\,\mathrm{d}\ln p/\mathrm{d}t$ (low = 0, up = 1) and death-time distribution |
++=============================================+=========================================================================================================================+===============================================================================================================================+==================================================================================================================================+==========================================+=======================================================================================================+==============================================================================================+
+| Log-logistic (logit)                        | $p = \text{low} \; +$\                                                                                                  | $p = \text{low} \; +$\                                                                                                        | $p = \text{low} \; +$\                                                                                                           | $\text{mid}(T)$                          | $\text{mid}(T) \; +$\                                                                                 | $\dfrac{k}{t \ln 10}\,(1 - p)$\                                                              |
+|                                             | $\dfrac{\text{up} - \text{low}}{1 + \exp\bigl(k(\log_{10} t - \theta)\bigr)}$\                                          | $\dfrac{\text{up} - \text{low}}{1 + \exp\bigl(k(\log_{10} t - \text{mid})\bigr)}$\                                            | $\dfrac{\text{up} - \text{low}}{1 + \exp\bigl(k(\log_{10} t - \text{mid}(T))\bigr)}$\                                            |                                          | $\dfrac{1}{k}\ln\!\left(\dfrac{\text{up} - 0.5}{0.5 - \text{low}}\right)$                             | $t_f \sim$ log-logistic                                                                      |
+|                                             | at $\theta$: $p = \text{low} + 0.5\,(\text{up} - \text{low})$                                                           | $\theta = \text{mid}$                                                                                                         | $\text{mid}(T) = \log_{10} t_\text{ref} + \dfrac{CT_{max} - T}{z}$                                                               |                                          |                                                                                                       |                                                                                              |
++---------------------------------------------+-------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------+------------------------------------------+-------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------+
+| Log-normal (probit)                         | $p = \text{low} + (\text{up} - \text{low}) \times$\                                                                     | $p = \text{low} + (\text{up} - \text{low}) \times$\                                                                           | $p = \text{low} + (\text{up} - \text{low}) \times$\                                                                              | $\text{mid}(T)$                          | $\text{mid}(T) \; +$\                                                                                 | $\dfrac{k}{t \ln 10} \times$\                                                                |
+|                                             | $\Phi\bigl(-k(\log_{10} t - \theta)\bigr)$\                                                                             | $\Phi\bigl(-k(\log_{10} t - \text{mid})\bigr)$\                                                                               | $\Phi\bigl(-k(\log_{10} t - \text{mid}(T))\bigr)$\                                                                               |                                          | $\dfrac{1}{k}\,\Phi^{-1}\!\left(\dfrac{\text{up} - 0.5}{\text{up} - \text{low}}\right)$               | $\dfrac{\phi\bigl(k(\log_{10} t - \text{mid})\bigr)}{p}$\                                    |
+|                                             | at $\theta$: $p = \text{low} + 0.5\,(\text{up} - \text{low})$                                                           | $\theta = \text{mid}$                                                                                                         | $\text{mid}(T) = \log_{10} t_\text{ref} + \dfrac{CT_{max} - T}{z}$                                                               |                                          |                                                                                                       | $t_f \sim$ log-normal                                                                        |
++---------------------------------------------+-------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------+------------------------------------------+-------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------+
+| Weibull type 1 (Gompertz; log-log)          | $p = \text{low} + (\text{up} - \text{low}) \times$\                                                                     | $p = \text{low} + (\text{up} - \text{low}) \times$\                                                                           | $p = \text{low} + (\text{up} - \text{low}) \times$\                                                                              | $\text{mid}(T)$                          | $\text{mid}(T) \; +$\                                                                                 | $\dfrac{k}{t \ln 10}\,(-\ln p)$\                                                             |
+|                                             | $\exp\bigl(-\exp\bigl(k(\log_{10} t - \theta)\bigr)\bigr)$\                                                             | $2^{-\exp\left(k(\log_{10} t - \text{mid})\right)}$\                                                                          | $2^{-\exp\left(k(\log_{10} t - \text{mid}(T))\right)}$\                                                                          |                                          | $\dfrac{1}{k}\ln\!\left(\log_2\dfrac{\text{up} - \text{low}}{0.5 - \text{low}}\right)$                | $t_f \sim$ Weibull                                                                           |
+|                                             | at $\theta$: $p = \text{low} + 0.37\,(\text{up} - \text{low})$                                                          | $\theta = \text{mid} + 0.367/k$                                                                                               | $\text{mid}(T) = \log_{10} t_\text{ref} + \dfrac{CT_{max} - T}{z}$                                                               |                                          |                                                                                                       |                                                                                              |
++---------------------------------------------+-------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------+------------------------------------------+-------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------+
+| Weibull type 2 (complementary log-log)      | $p = \text{up} - (\text{up} - \text{low}) \times$\                                                                      | $p = \text{up} - (\text{up} - \text{low}) \times$\                                                                            | $p = \text{up} - (\text{up} - \text{low}) \times$\                                                                               | $\text{mid}(T)$                          | $\text{mid}(T) \; -$\                                                                                 | $\dfrac{k}{t \ln 10} \times$\                                                                |
+|                                             | $\exp\bigl(-\exp\bigl(-k(\log_{10} t - \theta)\bigr)\bigr)$\                                                            | $2^{-\exp\left(-k(\log_{10} t - \text{mid})\right)}$\                                                                         | $2^{-\exp\left(-k(\log_{10} t - \text{mid}(T))\right)}$\                                                                         |                                          | $\dfrac{1}{k}\ln\!\left(\log_2\dfrac{\text{up} - \text{low}}{\text{up} - 0.5}\right)$                 | $\dfrac{-(1 - p)\ln(1 - p)}{p}$\                                                             |
+|                                             | at $\theta$: $p = \text{low} + 0.63\,(\text{up} - \text{low})$                                                          | $\theta = \text{mid} - 0.367/k$                                                                                               | $\text{mid}(T) = \log_{10} t_\text{ref} + \dfrac{CT_{max} - T}{z}$                                                               |                                          |                                                                                                       | $t_f \sim$ Fréchet (inverse Weibull)                                                         |
++---------------------------------------------+-------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------+------------------------------------------+-------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------+
+
+: Four dose-response families expressed using the manuscript's 4PL parameters (Equation 2). Survival probability $p$ depends on exposure time $t$ and temperature $T$; $\text{low}$ and $\text{up}$ are the asymptotes, and $k$ controls steepness. Column 2 gives the standard forms [@ritz_ecotox_2010], with $\theta$ marking the inflection on the $\log_{10}$-time axis. Column 3 places the location at $\text{mid}$, where $p = (\text{low} + \text{up})/2$; the Weibull offset uses $-\ln(\ln 2) \approx 0.367$. Column 4 expresses $\text{mid}(T)$ as the TDT line to estimate relative $CT_{max}$ at reference time $t_\text{ref}$ and $z$ directly (Equation 7 of the manuscript). Columns 5 and 6 give relative and absolute $\log_{10}t_{50}$; the latter requires $\text{low} < 0.5 < \text{up}$, and its correction vanishes when $\text{low} + \text{up} = 1$. Column 7 gives the hazard and death-time distribution for $\text{low} = 0$ and $\text{up} = 1$. For other asymptotes, replace $p$ in the hazard formula by $(p - \text{low})/(\text{up} - \text{low})$ and multiply the result by $(p - \text{low})/p$. $\Phi$, $\Phi^{-1}$ and $\phi$ denote the standard normal distribution function, its inverse and its density. {#tbl-alt-kernels .column-page}
+
+```{=openxml}
+<w:p><w:pPr><w:sectPr><w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/><w:pgMar w:top="851" w:right="851" w:bottom="851" w:left="851" w:header="720" w:footer="720" w:gutter="0"/><w:lnNumType w:countBy="1" w:restart="continuous"/><w:cols w:space="720"/></w:sectPr></w:pPr></w:p>
+```
+
+```{=latex}
+\end{landscape}
+\restoregeometry
+```
 
 # **Case Study 1: Zebrafish heat tolerance across an oxygen gradient** {#sec-zebrafish-o2}
 
