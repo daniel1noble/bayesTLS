@@ -32,6 +32,8 @@ This preprint is the primary citation for both the statistical framework and
 the `bayesTLS` package. You can also run `citation("bayesTLS")` in R for the
 formatted reference and a BibTeX entry.
 
+**Data and Code Availability**: This repository not only contains the `bayesTLS` R package but also the code and data used in the above manuscript. The four case-study datasets ship with the R package as documented data objects (`aphid_tdt`, `dsuzukii`, `snowgum_psii`, `zebrafish_o2`). INstall the `bayesTLS` R package and you have these. Raw source files and the scripts that build them are in `data-raw/` folder. The full case-study analyses are in `ms/supplement.qmd` and rendered at https://daniel1noble.github.io/bayesTLS/. The simulation is run by `scripts/simulations/run_simulations.R`. Cached simulation outputs and model fits are archived on OSF (https://osf.io/c6dxy) and fetched with `make data`.  
+
 ## Installing the `bayesTLS` package
 
 The analytical workflow ships as an installable R package, available on CRAN.
