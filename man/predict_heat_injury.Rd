@@ -122,7 +122,8 @@ the posterior median and 95\% credible band of:
 When \code{HI(t) = 100}, the population has accumulated one full dose at the
 chosen survival threshold (default 50\% mortality).
 \item \strong{S(t)} — predicted survival fraction, mapped from the cumulative dose
-through the fitted 4PL.
+through the fitted dose-response curve (the log-logistic for \code{\link[=fit_4pl]{fit_4pl()}},
+the log-normal or Weibull curve for \code{\link[=fit_lognormal]{fit_lognormal()}} / \code{\link[=fit_weibull]{fit_weibull()}}).
 }
 
 Optionally adds a temperature-dependent repair rate via

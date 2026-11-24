@@ -101,18 +101,11 @@ overrides \code{temp_effects}. Equivalent to writing the four
 for finer per-parameter control. Errors in direct mode
 (group there via \verb{ctmax = ~ 0 + <moderator>}).}
 
-\item{threshold}{\code{"relative"} (default) fits the midpoint backbone so
-\code{CTmax}/\code{z} are the relative-threshold quantities;
-\code{"absolute"} bakes the asymmetry correction
-\eqn{C(T) = (1/k)\log((up-p)/(p-low))} into \code{mid} so
-they are the absolute (\code{p}-survival) quantities. The
-disjoint-bounds reparam splits the asymptotes at the
-bounds' midpoint, so \code{"absolute"} is only well defined
-for \code{p} \emph{near that midpoint} (with the default bounds
-\verb{[0, 1]} the achievable range is roughly \verb{(0.499, 0.501)}); other LTx values (LT60, LT90, ...) must be
-obtained from a \code{"relative"} fit plus
-\code{\link[=tls]{tls()}} with \verb{target_surv = }, which
-inverts the fitted surface post hoc for any \code{p}.}
+\item{threshold}{\code{"relative"} (default) or \code{"absolute"}, as in
+\code{\link[=make_4pl_formula]{make_4pl_formula()}}, except that \code{"absolute"} bakes the chosen model's
+correction into \code{mid}: \eqn{(1/k)\log((up-p)/(p-low))} for the
+log-logistic, and the log-normal and Weibull models' own closed forms
+otherwise.}
 
 \item{p}{Survival fraction defining the absolute threshold.
 Default \code{0.5}. Only meaningful when \code{threshold = "absolute"}, and (see \code{threshold}) only achievable for

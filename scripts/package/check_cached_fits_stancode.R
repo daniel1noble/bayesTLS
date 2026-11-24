@@ -55,92 +55,21 @@ cat(sprintf("\nPass 1: %d fitted workflows: %d identical, %d differ, %d errors\n
 
 ## ---- Pass 2: builder regression (working-tree package) ----------------------
 suppressPackageStartupMessages(devtools::load_all(root, helpers = FALSE, quiet = TRUE))
-supp  <- file.path(root, "ms", "supplement.qmd")
-lines <- readLines(supp, warn = FALSE)
-starts <- grep("^```\\{r", lines); ends <- grep("^```\\s*$", lines)
-calls <- list(); assigns <- list()
-for (s in starts) {
-  e <- ends[ends > s][1]; if (is.na(e)) next
-  code <- paste(lines[(s + 1):(e - 1)], collapse = "\n")
-  ex <- tryCatch(parse(text = code, keep.source = TRUE), error = function(e) NULL)
-  if (is.null(ex)) next
-  for (x in as.list(ex)) {                      # top-level `sym <- expr`
-    if (is.call(x) && identical(x[[1]], as.name("<-")) && is.name(x[[2]]))
-      assigns[[as.character(x[[2]])]] <- x[[3]]
-  }
-  pd <- utils::getParseData(ex)
-  for (id in pd$id[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "fit_4pl"]) {
-    call_id <- pd$parent[pd$id == pd$parent[pd$id == id]]
-    calls[[length(calls) + 1]] <- list(line = s + pd$line1[pd$id == id],
-                                       expr = str2lang(utils::getParseText(pd, call_id)))
-  }
-}
-not_model <- c("chains", "iter", "warmup", "cores", "seed", "control", "file",
-               "file_refit", "refresh", "backend", "init", "silent", "fit")
-to_stancode <- c("sample_prior", "threads", "normalize", "stanvars")
-std_formals <- formals(standardize_data)
-pass2 <- list()
-for (cl in calls) {
-  a <- as.list(cl$expr)[-1]
-  f <- a$file
-  if (is.null(f) || !is.call(f) || !identical(f[[2]], as.name("models_dir"))) next
-  name <- f[[3]]
-  path <- file.path(models_dir, paste0(name, ".rds"))
-  if (!file.exists(path)) {
-    pass2[[length(pass2) + 1]] <- data.frame(fit = name, line = cl$line, status = "no cached file")
-    next
-  }
-  fit <- readRDS(path); if (inherits(fit, "bayes_tls")) fit <- fit$fit
-  nm  <- names(a); if (is.null(nm)) nm <- rep("", length(a))
-  data_expr <- if ("data" %in% nm) a[["data"]] else a[[which(nm == "")[1]]]
-  data_sym  <- as.character(data_expr)
-  # duration unit and response type from the supplement's standardize_data()
-  sd_call <- assigns[[data_sym]]
-  unit <- std_formals$duration_unit; rtype <- "count"
-  if (!is.null(sd_call) && is.call(sd_call)) {
-    m <- tryCatch(match.call(standardize_data, sd_call), error = function(e) NULL)
-    if (!is.null(m$duration_unit)) unit <- eval(m$duration_unit)
-    if (!is.null(m$proportion)) rtype <- "proportion"
-  }
-  d <- fit$data
-  attr(d, "tdt_meta") <- list(temp_mean = 0, duration_unit = unit,
-                              random_effects = NULL, response_type = rtype,
-                              response_var = if (rtype == "proportion") "survival")
-  env <- new.env(parent = globalenv()); assign("data", d, envir = env)
-  # Evaluate an argument; only when that fails (an object defined elsewhere in
-  # the supplement, e.g. `prior = priors_sex`) resolve the missing symbols from
-  # the supplement's own assignments. Formulas evaluate without lookups.
-  resolve <- function(expr) {
-    out <- tryCatch(eval(expr, env), error = function(e) e)
-    if (!inherits(out, "error")) return(out)
-    for (s in all.names(expr, functions = FALSE)) {
-      if (!exists(s, envir = env) && !is.null(assigns[[s]])) {
-        rhs <- do.call(substitute, list(assigns[[s]],
-                                        stats::setNames(list(as.name("data")), data_sym)))
-        assign(s, eval(rhs, env), envir = env)
-      }
-    }
-    eval(expr, env)
-  }
-  keep <- setdiff(nm[nzchar(nm)], c("data", not_model))
-  args <- tryCatch(stats::setNames(lapply(keep, function(k) resolve(a[[k]])), keep),
-                   error = function(e) e)
-  if (inherits(args, "error")) {
-    pass2[[length(pass2) + 1]] <- data.frame(fit = name, line = cl$line,
-      status = paste("UNRESOLVED:", conditionMessage(args)))
-    next
-  }
-  sc_args <- args[intersect(names(args), to_stancode)]
-  wf <- do.call(fit_4pl, c(list(d), args[setdiff(names(args), to_stancode)],
-                           list(fit = FALSE)))
+source(file.path(root, "scripts", "package", "supplement_fits.R"))
+pass2 <- lapply(supplement_cached_fits(root, models_dir), function(e) {
+  if (!identical(e$status, "ok"))
+    return(data.frame(fit = e$name, line = e$line, status = e$status))
+  wf  <- supplement_workflow(e)
   now <- tryCatch(suppressWarnings(do.call(brms::make_stancode,
-           c(list(wf$formula, data = fit$data, prior = wf$prior, data2 = fit$data2),
-             sc_args))), error = function(e) paste("ERROR:", conditionMessage(e)))
-  old <- brms::stancode(fit)
-  pass2[[length(pass2) + 1]] <- data.frame(fit = name, line = cl$line,
-    status = if (identical(old, now)) "identical" else
-      if (startsWith(now, "ERROR")) now else paste("DIFFERS,", first_diff(old, now)))
-}
+           c(list(wf$formula, data = e$fit$data, prior = wf$prior,
+                  data2 = e$fit$data2), e$stan_args))),
+           error = function(err) paste("ERROR:", conditionMessage(err)))
+  old <- brms::stancode(e$fit)
+  data.frame(fit = e$name, line = e$line,
+             status = if (identical(old, now)) "identical" else
+               if (startsWith(now, "ERROR")) now else
+                 paste("DIFFERS,", first_diff(old, now)))
+})
 pass2 <- do.call(rbind, pass2)
 cat("== Pass 2: supplement fit_4pl() calls rebuilt with the working-tree package\n")
 print(pass2, row.names = FALSE, right = FALSE)

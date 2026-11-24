@@ -215,7 +215,6 @@ test_that("tdt_model() canonicalises meta$model; print() survives a bad label", 
   wf <- fit_4pl(m_std(), fit = FALSE)
   wf$meta$model <- "4pl"
   expect_equal(tdt_model(wf), "log-logistic")
-  expect_silent(tdt_require_loglogistic(wf))
   wf$meta$model <- "gompertz"
   expect_equal(tdt_model(wf), "weibull1")
   wf$meta$model <- "bogus"
@@ -246,12 +245,192 @@ test_that("Stan code generates for every model and configuration", {
   }
 })
 
-test_that("absolute thresholds and heat-injury prediction are refused for new models until supported", {
-  std <- m_std()
-  wf <- fit_lognormal(std, fit = FALSE)
-  expect_error(tls(wf, target_surv = "absolute"), "not yet available for the log-normal")
-  expect_error(predict_heat_injury(data.frame(time = 0:1, temp = c(30, 30)), wf),
-               "log-logistic fits only")
+# ---- absolute thresholds and heat injury for every model (Phase 2) -----------
+
+test_that("curve() is low + (up - low) * G(u) over the whole range", {
+  u <- seq(-12, 12, by = 0.05)
+  for (m in MODELS) {
+    spec <- tdt_model_spec(m)
+    expect_equal(spec$curve(0.1, 0.9, u), 0.1 + 0.8 * spec$G(u),
+                 tolerance = 1e-12, info = m)
+  }
+})
+
+test_that("tdt_abs_offset() is the model's correction, NA where unreachable", {
+  low <- matrix(c(0, 0.1, 0.6, 0.2), 2)     # cells [1,2] and [2,2] cannot
+  up  <- matrix(c(1, 0.9, 0.95, 0.4), 2)    # reach p = 0.5 (p < low, p > up)
+  k   <- matrix(c(2, 3, 4, 5), 2)
+  reach <- low < 0.5 & 0.5 < up
+  for (m in MODELS) {
+    off <- expect_silent(tdt_abs_offset(m, low, up, k, 0.5))
+    expect_equal(dim(off), dim(low))
+    expect_true(all(is.na(off[!reach])))
+    expect_equal(off[reach],
+                 tdt_model_spec(m)$abs_corr(low[reach], up[reach], k[reach], 0.5))
+  }
+  # log-logistic: exactly the arithmetic of the pre-models engine
+  ratio <- (up - 0.5) / (0.5 - low)
+  ratio[!is.finite(ratio) | ratio <= 0] <- NA_real_
+  expect_identical(tdt_abs_offset("log-logistic", low, up, k, 0.5), log(ratio) / k)
+})
+
+test_that("each model's curve passes through the target at the threshold time", {
+  for (m in MODELS) {
+    spec <- tdt_model_spec(m)
+    for (i in seq_len(nrow(grid))) {
+      g <- grid[i, ]
+      tau <- time_to_surv_threshold_4pl(30, g$p, g$low, g$up, g$k,
+                                        mid_int = 1.7, mid_temp = -0.2,
+                                        temp_mean = 30, model = m)
+      expect_equal(spec$curve(g$low, g$up, g$k * (log10(tau) - 1.7)), g$p,
+                   tolerance = 1e-10, info = m)
+    }
+    expect_equal(time_to_surv_threshold_4pl(30, "relative", 0.1, 0.9, 3, 1.7,
+                                            -0.2, 30, model = m), 10^1.7)
+    expect_true(is.na(time_to_surv_threshold_4pl(30, 0.95, 0.1, 0.9, 3, 1.7,
+                                                 -0.2, 30, model = m)))
+  }
+  # log-logistic: exactly the arithmetic of the pre-models code
+  expect_identical(
+    time_to_surv_threshold_4pl(c(28, 31), 0.4, 0.1, 0.9, 3, 1.7, -0.2, 30),
+    10^((1.7 - 0.2 * (c(28, 31) - 30)) + log((0.9 - 0.4) / (0.4 - 0.1)) / 3))
+})
+
+test_that("one dose reaches the threshold on every model's survival curve", {
+  doses <- c(1e-3, 0.1, 0.5, 1, 2, 10)
+  for (m in MODELS) {
+    for (i in seq_len(nrow(grid))) {
+      g <- grid[i, ]
+      expect_equal(survival_from_dose(1, g$low, g$up, g$k, target_surv = g$p,
+                                      model = m), g$p, tolerance = 1e-10,
+                   info = m)
+      expect_equal(survival_from_dose(1, g$low, g$up, g$k, model = m),
+                   (g$low + g$up) / 2, tolerance = 1e-12, info = m)
+      # bounded and non-increasing everywhere (far tails reach an asymptote in
+      # floating point, where low + (up - low) * 1 can round one unit past up);
+      # strictly decreasing in the middle
+      s <- survival_from_dose(doses, g$low, g$up, g$k, model = m)
+      expect_true(all(diff(s) <= 1e-12) &&
+                    all(s >= g$low - 1e-12 & s <= g$up + 1e-12), info = m)
+      sc <- survival_from_dose(c(0.5, 1, 2), g$low, g$up, g$k, model = m)
+      expect_true(all(diff(sc) < 0), info = m)
+    }
+    expect_true(all(is.na(survival_from_dose(doses, 0.1, 0.9, 3,
+                                             target_surv = 0.95, model = m))))
+  }
+  # log-logistic: exactly the arithmetic of the pre-models code
+  old_ll <- function(dose, low, up, k, p) {
+    c_t <- log((up - p) / (p - low)) / k
+    low + (up - low) / (1 + exp(k * (log10(pmax(dose, 1e-12)) + c_t)))
+  }
+  expect_identical(survival_from_dose(doses, 0.1, 0.9, 3, 0.4),
+                   old_ll(doses, 0.1, 0.9, 3, 0.4))
+})
+
+# ---- wiring on a real (cached) fit, no Stan ------------------------------------
+# The git-tracked Beta fixture has the nlpars every model uses (lowraw, upraw,
+# logk, mid); swapping its formula for another model's makes brms evaluate that
+# model on the same draws. fixtures/ is .Rbuildignore'd, so R CMD check skips.
+
+beta_fixture_wf <- function(model = "log-logistic", ...) {
+  path <- testthat::test_path("fixtures", "sim_fit_beta_small.rds")
+  skip_if_not(file.exists(path), "Beta fixture not available")
+  std <- standardize_data(simulate_tdt_beta(seed = 20260521), temp = "T",
+                          duration = "t_hours", proportion = "y_prop",
+                          duration_unit = "hours")
+  fit <- readRDS(path)
+  wf  <- tdt_fit(model = model, data = std, fit = FALSE, ...)
+  fit$formula <- wf$formula          # same nlpars; brms now evaluates `model`
+  wf$fit <- fit
+  wf
+}
+
+test_that("tls() reads a workflow's own asymptote bounds", {
+  skip_if_not_installed("brms")
+  wf <- beta_fixture_wf()
+  z  <- function(w, ...) tls(w, params = "z", target_surv = 0.3, ...)$summary$median
+  # default bounds: reading them from the workflow changes nothing
+  expect_identical(tls(wf, params = "z", target_surv = 0.3)$summary,
+                   tls(wf, params = "z", target_surv = 0.3, lower = 0,
+                       upper = 1)$summary)
+  # a workflow fitted with other bounds is read with those bounds
+  wf2 <- wf
+  wf2$meta$bounds <- compute_4pl_bounds(0.2, 1)
+  wf2$meta$lower  <- 0.2
+  expect_equal(z(wf2), z(wf, lower = 0.2))
+  expect_false(isTRUE(all.equal(z(wf2), z(wf))))
+  # one explicit bound: the other comes from the workflow
+  expect_equal(z(wf2, upper = 1), z(wf2))
+})
+
+test_that("absolute thresholds and heat injury are wired to each model (no Stan)", {
+  skip_if_not_installed("brms")
+  ids <- 1:60
+  for (m in c("log-normal", "weibull1", "weibull2")) {
+    wf   <- beta_fixture_wf(m)
+    fit  <- get_brmsfit(wf)
+    tbar <- wf$meta$temp_mean
+    expect_identical(tdt_model(fit), m)
+    temps <- c(30, 33, 36)
+    nd <- tls_build_grid(fit$data, temp_grid = temps - tbar)
+    sp <- tls_eval_subpars(fit, nd, wf$meta$bounds, draw_ids = ids,
+                           mode = "relative")
+    # the swap took effect: brms evaluates model m's curve
+    pp1 <- brms::posterior_linpred(fit, newdata = new_tdt_grid(wf, temps, 1),
+                                   transform = TRUE, re_formula = NA,
+                                   draw_ids = ids)
+    expect_equal(pp1, tdt_model_spec(m)$curve(sp$low, sp$up, -sp$k * sp$mid),
+                 tolerance = 1e-12, ignore_attr = TRUE, info = m)
+    # engine closed form vs numerical inversion of brms's predicted curve
+    dgrid <- 10^seq(-3, 3, length.out = 1200)
+    g  <- new_tdt_grid(wf, temps = temps, durations = dgrid)
+    pp <- brms::posterior_linpred(fit, newdata = g, transform = TRUE,
+                                  re_formula = NA, draw_ids = ids)
+    for (p in c(0.3, 0.7)) {
+      eng <- suppressWarnings(tls_eval_subpars(fit, nd, wf$meta$bounds,
+                                               draw_ids = ids, mode = "absolute",
+                                               p = p))$logLT
+      for (j in seq_along(temps)) {
+        num <- threshold_x_by_draw(pp[, g$temp == temps[j], drop = FALSE],
+                                   dgrid, p)
+        ok  <- is.finite(num) & is.finite(eng[, j])
+        expect_gt(mean(ok), 0.9)
+        expect_lt(max(abs(log10(num[ok]) - eng[ok, j])), 1e-3)
+      }
+    }
+    # heat injury: absolute dose = sum(dt / LT_p) with LT_p from the engine,
+    # for both integrators; survival on a constant T_bar trace is brms's curve
+    trace <- data.frame(time = seq(0, 1, by = 0.25),
+                        temp = c(31, 31, 35, 35, 35))
+    tr_nd <- tls_build_grid(fit$data, temp_grid = trace$temp - tbar)
+    flat  <- data.frame(time = seq(0, 2, by = 0.25), temp = tbar)
+    cpp   <- brms::posterior_linpred(fit, newdata = new_tdt_grid(wf, tbar,
+                                                                 flat$time[-1]),
+                                     transform = TRUE, re_formula = NA)
+    for (shp in c("constant", "varying")) {
+      hi <- predict_heat_injury(trace, wf, target_surv = 0.3, ndraws = 20,
+                                seed = 1, shape = shp, save_draws = TRUE)$draws
+      d   <- sort(unique(hi$.draw))
+      spa <- tls_eval_subpars(fit, tr_nd, wf$meta$bounds, draw_ids = d,
+                              mode = "absolute", p = 0.3)
+      logtau <- if (shp == "varying") spa$logLT else {
+        sp0 <- tls_eval_subpars(fit, tls_build_grid(fit$data, temp_grid = 0),
+                                wf$meta$bounds, draw_ids = d,
+                                mode = "absolute", p = 0.3)
+        spa$mid + as.vector(sp0$logLT - sp0$mid)
+      }
+      want <- t(apply(10^(-logtau[, -nrow(trace), drop = FALSE]), 1,
+                      function(r) cumsum(c(0, r * diff(trace$time)))))
+      got  <- t(sapply(d, function(i) hi$dose[hi$.draw == i]))
+      expect_equal(got, want, tolerance = 1e-10, ignore_attr = TRUE,
+                   info = paste(m, shp))
+      s <- predict_heat_injury(flat, wf, target_surv = 0.3, ndraws = 20,
+                               seed = 1, shape = shp, save_draws = TRUE)$draws
+      for (i in unique(s$.draw))
+        expect_equal(s$survival[s$.draw == i][-1], unname(cpp[i, ]),
+                     tolerance = 1e-8, info = paste(m, shp))
+    }
+  }
 })
 
 # ---- gated: simulate from each model and recover it --------------------------------
@@ -303,15 +482,81 @@ test_that("each new model recovers z and CTmax from data simulated under it", {
     expect_true(all(is.finite(ep)))
     pc <- predict_survival_curves(wf, temps = c(30, 33, 36))
     expect_true(is.list(pc) || is.data.frame(pc))
-    # every reader that inverts at an absolute threshold refuses, not just tls()
-    msg <- paste("not yet available for the", cs$model)
-    expect_error(tls(wf, target_surv = "absolute"), msg)
-    expect_error(tls(get_brmsfit(wf), target_surv = 0.5), msg)  # bare brmsfit
-    expect_error(derive_z(wf, target_surv = "absolute"), msg)
-    expect_error(derive_temperature_for_duration(wf, 60, temp_grid = 30:36,
-                                                 target_surv = 0.5), msg)
-    expect_error(predict_heat_injury(data.frame(time = 0:1, temp = c(33, 33)), wf),
-                 "log-logistic fits only")
+    # Absolute thresholds use each model's own correction. The engine's closed
+    # form is checked per draw against derive_tdt_curve(), which inverts brms's
+    # predicted curve numerically and knows nothing about the corrections.
+    fit   <- get_brmsfit(wf)
+    tbar  <- wf$meta$temp_mean
+    temps <- c(30, 33, 36)
+    nd    <- tls_build_grid(fit$data, by = NULL, temp = "temp_c",
+                            temp_grid = temps - tbar)
+    for (p in c(0.3, 0.7)) {
+      eng <- suppressWarnings(tls_eval_subpars(fit, nd, wf$meta$bounds,
+                                               mode = "absolute", p = p))$logLT
+      num <- suppressWarnings(derive_tdt_curve(wf, temp_grid = temps,
+                                               target_surv = p))$draws
+      tt  <- sort(unique(num$temp))
+      for (j in seq_along(temps)) {
+        nj <- num[num$temp == tt[j], ]
+        dd <- abs(log10(nj$duration_model) - eng[nj$.draw, j])
+        dd <- dd[is.finite(dd)]
+        expect_gt(length(dd), 0.9 * nrow(eng))
+        expect_lt(stats::median(dd), 0.002)
+        expect_lt(max(dd), 0.02)
+      }
+      # every reader works, and a bare brmsfit is read as the same model
+      za <- tls(wf, params = "z", target_surv = p)$summary$median
+      zb <- tls(fit, params = "z", target_surv = p, temp_mean = tbar)$summary$median
+      expect_true(is.finite(za))
+      expect_equal(zb, za, tolerance = 1e-8)
+      expect_true(all(is.finite(derive_z(wf, target_surv = p)$summary$z_median)))
+      # exposure in model units (these fits use hours): the temperature giving
+      # a 1 h LT, about 31.5 degC; edge draws may warn (asymptotes extrapolated)
+      tf <- suppressWarnings(derive_temperature_for_duration(
+        wf, 1, temp_grid = seq(29, 37, 0.05), target_surv = p))
+      expect_true(all(is.finite(tf$summary$temp_median)))
+    }
+
+    # Heat injury on a constant 33 degC trace (= T_bar): per draw, predicted
+    # survival is the fitted curve itself (relative and absolute dose units
+    # differ only by the model's offset, which cancels in survival).
+    trace <- data.frame(time = seq(0, 2, by = 0.05), temp = 33)
+    curve_nd <- new_tdt_grid(wf, temps = 33, durations = trace$time[-1])
+    curve_pp <- posterior_linpred_tdt(wf, curve_nd)
+    sp33 <- tls_eval_subpars(fit, tls_build_grid(fit$data, by = NULL,
+                                                 temp = "temp_c", temp_grid = 0),
+                             wf$meta$bounds, mode = "absolute", p = 0.3)
+    off33 <- unname(10^(sp33$logLT - sp33$mid))
+    last  <- function(x) x[x$time == max(x$time), ]
+    for (shp in c("constant", "varying")) {
+      rel <- predict_heat_injury(trace, wf, ndraws = 40, seed = 1, shape = shp,
+                                 save_draws = TRUE)$draws
+      ab  <- predict_heat_injury(trace, wf, target_surv = 0.3, ndraws = 40,
+                                 seed = 1, shape = shp, save_draws = TRUE)$draws
+      for (d in unique(rel$.draw)) {
+        r <- rel[rel$.draw == d, ][-1, ]; a <- ab[ab$.draw == d, ][-1, ]
+        expect_equal(r$survival, unname(curve_pp[d, ]), tolerance = 1e-8)
+        expect_equal(a$survival, r$survival, tolerance = 1e-8)
+      }
+      # dose in absolute units = relative dose / 10^offset at 33 degC, where
+      # the offset is the engine's absolute LT minus the midpoint, per draw
+      expect_equal(last(rel)$dose / last(ab)$dose, off33[last(rel)$.draw],
+                   tolerance = 1e-8, info = shp)
+    }
+
+    # planted dose: a 30 -> 36 degC ramp, truth inside the posterior band
+    ramp    <- data.frame(time = seq(0, 6, by = 0.1),
+                          temp = seq(30, 36, length.out = 61))
+    planted <- planted_dose_from_trace(ramp, z = truth[["z"]],
+                                       CTmax_1hr = truth[["ctmax_1h"]], T_c = 20)
+    for (shp in c("constant", "varying")) {
+      hi <- predict_heat_injury(ramp, wf, T_c = 20, ndraws = 200, seed = 1,
+                                shape = shp)$summary
+      end <- hi[hi$time == max(hi$time), ]
+      truth_hi <- utils::tail(planted$hi_cumulative, 1)
+      expect_true(end$hi_lower <= truth_hi && truth_hi <= end$hi_upper,
+                  info = paste(cs$model, shp))
+    }
     # relative summaries and the parameter table work, labelled with the model
     zrel <- derive_z(wf)$summary
     expect_equal(zrel$z_median, z_hat, tolerance = 1e-6)    # same z as tls()
@@ -334,6 +579,19 @@ test_that("a direct log-normal fit with an absolute threshold uses inv_Phi on bo
   expect_true(all(is.finite(lp)))
   res <- tls(wf, params = c("z", "ctmax"), t_ref = 60)$summary
   expect_true(all(is.finite(res$median)))
+  # the fitted direct line is the absolute LT50: the Stan-side inv_Phi (in
+  # mid) and the R-side qnorm (in the engine) must cancel exactly
+  fit <- get_brmsfit(wf)
+  nd  <- tls_build_grid(fit$data, temp_grid = c(-3, 0, 3))
+  eng <- tls_eval_subpars(fit, nd, wf$meta$bounds, mode = "absolute",
+                          p = 0.5)$logLT
+  ct  <- brms::posterior_linpred(fit, newdata = nd, nlpar = "CTmaxdev",
+                                 re_formula = NA)
+  lz  <- brms::posterior_linpred(fit, newdata = nd, nlpar = "logz",
+                                 re_formula = NA)
+  tc  <- matrix(nd$temp_c, nrow(eng), ncol(eng), byrow = TRUE)
+  expect_equal(eng, wf$meta$log10_tref - (tc - ct) / exp(lz),
+               tolerance = 1e-10, ignore_attr = TRUE)
   # brms computes the beta-binomial log-likelihood with extraDistr (a brms
   # Suggests); LOO is checked when it is installed.
   skip_if_not_installed("extraDistr")

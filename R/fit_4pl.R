@@ -168,6 +168,11 @@ make_4pl_formula <- function(random_effects = NULL,
 #'   Every model is written in its midpoint form, so `mid`, the TDT line,
 #'   `z` and `CTmax` mean the same thing for all of them; only the shape of
 #'   the curve and the absolute-threshold correction differ.
+#' @param threshold `"relative"` (default) or `"absolute"`, as in
+#'   [make_4pl_formula()], except that `"absolute"` bakes the chosen model's
+#'   correction into `mid`: \eqn{(1/k)\log((up-p)/(p-low))} for the
+#'   log-logistic, and the log-normal and Weibull models' own closed forms
+#'   otherwise.
 #' @inheritParams make_4pl_formula
 #' @inherit make_4pl_formula return
 #' @examples

@@ -12,7 +12,11 @@
 #   abs_corr_stan(p)      Stan expression for c/k, the correction that turns
 #                         mid into the absolute log10 t at survival p (baked
 #                         into direct fits with threshold = "absolute")
-#   G(u)                  the curve on the R side
+#   G(u)                  the curve on the R side, as a share of the range
+#   curve(low, up, u)     the full curve, p at u = k (log10 t - mid); the
+#                         log-logistic form is written exactly as the
+#                         pre-models code wrote it, so its numbers are
+#                         bit-identical
 #   abs_corr(low,up,k,p)  the same correction on the R side
 #   slope_factor          the slope of p against log10 t at mid equals
 #                         minus k times (up - low) times slope_factor
@@ -40,6 +44,7 @@ tdt_models <- function() {
         sprintf("(1/exp(logk)) * log((up - %g)/(%g - low))", p, p)
       },
       G             = function(u) 1 / (1 + exp(u)),
+      curve         = function(low, up, u) low + (up - low) / (1 + exp(u)),
       abs_corr      = function(low, up, k, p) log((up - p) / (p - low)) / k,
       slope_factor  = 0.25,
       theta_offset  = 0,
@@ -59,6 +64,7 @@ tdt_models <- function() {
         sprintf("(1/exp(logk)) * inv_Phi((up - %g)/(up - low))", p)
       },
       G             = function(u) stats::pnorm(-u),
+      curve         = function(low, up, u) low + (up - low) * stats::pnorm(-u),
       abs_corr      = function(low, up, k, p) {
         stats::qnorm((up - p) / (up - low)) / k
       },
@@ -83,6 +89,7 @@ tdt_models <- function() {
         sprintf("(1/exp(logk)) * log(log2((up - low)/(%g - low)))", p)
       },
       G             = function(u) 2^(-exp(u)),
+      curve         = function(low, up, u) low + (up - low) * 2^(-exp(u)),
       abs_corr      = function(low, up, k, p) {
         log(log2((up - low) / (p - low))) / k
       },
@@ -105,6 +112,7 @@ tdt_models <- function() {
         sprintf("(-(1/exp(logk)) * log(log2((up - low)/(up - %g))))", p)
       },
       G             = function(u) 1 - 2^(-exp(-u)),
+      curve         = function(low, up, u) up - (up - low) * 2^(-exp(-u)),
       abs_corr      = function(low, up, k, p) {
         -log(log2((up - low) / (up - p))) / k
       },
@@ -167,19 +175,30 @@ tdt_model <- function(x) {
   if (is.null(m) || is.na(m)) "log-logistic" else tdt_match_model(m)
 }
 
-# Stop unless `x` is a log-logistic fit. Absolute-threshold inversion (the
-# correction that turns the midpoint into the time at a fixed survival p) is
-# implemented only for the log-logistic so far; called by tls() and by the
-# shared engine tls_eval_subpars(), which also serves derive_z() and
-# derive_temperature_for_duration().
-tdt_require_loglogistic <- function(x, what = "Absolute survival thresholds") {
-  m <- tdt_model(x)
-  if (!identical(m, "log-logistic"))
-    stop(sprintf(paste0("%s are not yet available for the %s model; use ",
-                        "target_surv = \"relative\" (the midpoint, defined ",
-                        "identically for every model)."), what, m),
-         call. = FALSE)
-  invisible(m)
+# A model spec from a name/alias or an already-resolved spec. Hot loops (the
+# heat-injury integrators) resolve the spec once and pass the list along.
+tdt_as_model_spec <- function(model) {
+  if (is.list(model)) model else tdt_model_spec(model)
+}
+
+# Absolute offset, in log10 time, of survival target p from the midpoint:
+# the absolute log10 LT at p is mid + offset. Element-wise over low, up, k
+# (scalars, vectors or matrices of one shape; p a scalar). The target is
+# reachable only strictly between the asymptotes, low < p < up; elsewhere the
+# result is NA, and the model's correction is never evaluated there, so no
+# NaN warnings arise. For the log-logistic this is log((up - p)/(p - low))/k,
+# computed exactly as the pre-models engine computed it.
+tdt_abs_offset <- function(model, low, up, k, p) {
+  mod <- tdt_as_model_spec(model)
+  n   <- max(length(low), length(up), length(k))
+  lo  <- rep_len(low, n)
+  hi  <- rep_len(up, n)
+  kk  <- rep_len(k, n)
+  ok  <- !is.na(lo) & !is.na(hi) & lo < p & p < hi
+  out <- rep(NA_real_, n)
+  out[ok] <- mod$abs_corr(lo[ok], hi[ok], kk[ok], p)
+  dim(out) <- dim(low) %||% dim(up) %||% dim(k)
+  out
 }
 
 # Prior mean for logk such that the implied prior on the slope of p at the

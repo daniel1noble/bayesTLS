@@ -30,6 +30,11 @@ format:
   random effects `gr(group, cov = A)` + `data2` (issue #12 — phylogenetic
   models and GRM animal models), `tls()` auto-inclusion of RE-only `by`
   groups; full gated suite green.
+- [x] **1.2.0 implemented and tested** (development version, 2026-11-24):
+  alternative dose-response models (`fit_lognormal()`, `fit_weibull()`) with
+  absolute thresholds and heat injury for every model, and
+  `fit_4pl(fix_asymptotes = )`; log-logistic outputs bit-identical to 1.1.0 on
+  all cached supplement fits. Plan: `notes/package_design/2026-11-24-alternative-models-plan.qmd`.
 - [x] **Notes reorganised** into topic bins (2026-10-15); simulation threads
   carry their own `R/` + `output/` structure.
 - [x] **Quantitative-genetics feasibility programme** (`notes/quantgen_sim/`):
@@ -40,11 +45,12 @@ format:
 
 ## Package
 
-- [ ] **Release 1.1.0 to CRAN**: once Dan pushes the final state, run the
+- [ ] **Release 1.2.0 to CRAN** (1.1.0 was never submitted; 1.2.0 carries its
+  features): once Dan pushes the final state, run the
   1.0.0 gate playbook — win-builder (release + devel) and R-hub on the pushed
   commit, PDF manual must build (no `--no-manual`; no Unicode math in Rd) —
   then submit, with NEWS.md tidied.
-- [ ] **Time-to-event / repeated-measures support (target 1.2.0)**: plan in
+- [ ] **Time-to-event / repeated-measures support (target: release after 1.2.0)**: plan in
   `notes/time_to_event/2026-09-26-tte-native-support-plan.qmd`; README lists
   it under Planned features. Includes sending Drew the completed reply with
   the full 4-parameter template (draft in

@@ -62,6 +62,8 @@
 #'   auto-rule.
 #'   (population level). Include group-level terms (e.g. clone) for per-group draws.
 #' @param lower,upper Response bounds of the disjoint-bounds reparameterisation.
+#'   Read from a `bayes_tls` workflow (the bounds it was fitted with); supply
+#'   them for a bare `brmsfit` fitted with non-default bounds, or to override.
 #' @param nlpars Non-linear parameter names, ordered low / up / k / mid (raw scale).
 #' @param ndraws Optional number of posterior draws to subsample.
 #' @param newdata Optional explicit moderator x temperature grid; overrides the
@@ -114,7 +116,6 @@ tls <- function(object, by = NULL, params = "all",
   ts   <- resolve_target_surv(target_surv)
   mode <- ts$mode
   p    <- if (is.na(ts$prob)) 0.5 else ts$prob
-  if (identical(mode, "absolute")) tdt_require_loglogistic(object)
 
   # Cheap argument validation first (no fit needed).
   if (identical(params, "all")) params <- c("z", "ctmax", if (lethal) "tcrit")
@@ -134,6 +135,18 @@ tls <- function(object, by = NULL, params = "all",
     meta <- list()
   } else {
     stop("`object` must be a bayes_tls workflow or a brmsfit.", call. = FALSE)
+  }
+  # Asymptote windows of the disjoint-bounds reparameterisation. A workflow
+  # carries the ones it was fitted with (meta$bounds), as derive_z(),
+  # extract_4pl_pars(), hi_pars() and tdt_parameter_table() already use;
+  # explicit lower/upper override them (a missing one is filled from the
+  # workflow); a bare brmsfit uses the arguments. Only absolute thresholds
+  # depend on this (the relative LT is the midpoint).
+  bounds <- if (missing(lower) && missing(upper) && !is.null(meta$bounds)) {
+    meta$bounds
+  } else {
+    compute_4pl_bounds(if (missing(lower)) meta$lower %||% lower else lower,
+                       if (missing(upper)) meta$upper %||% upper else upper)
   }
   # Inherit the fit's own reference exposure when t_ref is omitted (and announce
   # it), so a fit done at e.g. 4 h is not silently read at the 60-min default.
@@ -229,7 +242,7 @@ tls <- function(object, by = NULL, params = "all",
   if (!is.null(seed)) set.seed(seed)
 
   # --- evaluate sub-parameters at every grid row (shared engine) -------------
-  logLT <- tls_eval_subpars(fit, aug, compute_4pl_bounds(lower, upper),
+  logLT <- tls_eval_subpars(fit, aug, bounds,
                             nlpars = nlpars, re_formula = re_formula,
                             ndraws = ndraws, mode = mode, p = p)$logLT
   np <- nrow(logLT)

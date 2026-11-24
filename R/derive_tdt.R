@@ -323,9 +323,12 @@ derive_temperature_for_duration <- function(workflow,
 #'   `mid` (`b_mid_temp_c`). The asymptotes \eqn{\ell, u} and slope \eqn{k}
 #'   do not enter (the midpoint cancels the curve asymmetry). z is constant in
 #'   temperature.
-#' - **Absolute threshold** \eqn{p}: the LT curve gains the asymmetry-correction
-#'   term, \eqn{\log_{10}\mathrm{LT}_p(T) = \mathrm{mid}(T) +
-#'   \tfrac{1}{k(T)}\log\tfrac{u(T)-p}{p-\ell(T)}}. When \eqn{\ell}, \eqn{u} or
+#' - **Absolute threshold** \eqn{p}: the LT curve gains the fitted model's
+#'   offset from the midpoint, \eqn{\log_{10}\mathrm{LT}_p(T) = \mathrm{mid}(T) +
+#'   C_p(T)}. For the log-logistic ([fit_4pl()])
+#'   \eqn{C_p = \tfrac{1}{k(T)}\log\tfrac{u(T)-p}{p-\ell(T)}}; the log-normal
+#'   and Weibull models ([fit_lognormal()], [fit_weibull()]) use their own
+#'   closed forms. When \eqn{\ell}, \eqn{u} or
 #'   \eqn{k} carry temperature effects this bends the curve, so z varies with
 #'   temperature. A **local** \eqn{z(T) = -1/m(T)} is computed at each assay
 #'   temperature, where the local slope \eqn{m(T)} is obtained by a central

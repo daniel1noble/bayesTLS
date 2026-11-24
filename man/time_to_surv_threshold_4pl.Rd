@@ -12,7 +12,8 @@ time_to_surv_threshold_4pl(
   k,
   mid_int,
   mid_temp,
-  temp_mean
+  temp_mean,
+  model = "log-logistic"
 )
 }
 \arguments{
@@ -27,6 +28,10 @@ lie strictly between \code{low} and \code{up}), or the string
 \item{mid_int, mid_temp}{Midpoint sub-model coefficients.}
 
 \item{temp_mean}{Centring temperature used by the model.}
+
+\item{model}{The dose-response model: a name (default
+\code{"log-logistic"}) or a resolved registry entry. Only
+the absolute threshold depends on it.}
 }
 \value{
 Numeric vector of durations in the model's time units. \code{NA} where

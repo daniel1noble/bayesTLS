@@ -1,4 +1,4 @@
-# bayesTLS 1.1.0
+# bayesTLS 1.2.0
 
 ## New features
 
@@ -12,12 +12,23 @@
   `fit_4pl()` is unchanged (it keeps meaning the log-logistic and gains no
   model argument); `make_tdt_formula()` / `make_tdt_priors()` are the
   model-generic builders behind `make_4pl_formula()` / `make_4pl_priors()`.
-  Relative-threshold summaries (`tls()`, `derive_z()`), `derive_tdt_curve()`
-  at any threshold, survival curves, landscapes and `tdt_parameter_table()`
-  work for every model. Absolute-threshold summaries (`tls()`, `derive_z()`,
-  `derive_temperature_for_duration()`) and `predict_heat_injury()` support the
-  log-logistic only for now and stop with a message for the other models. A
-  bare `brmsfit` passed to `tls()` is recognised from its formula.
+  Everything downstream works for every model: `tls()`, `derive_z()`,
+  `derive_temperature_for_duration()` and `derive_tdt_curve()` at relative
+  or absolute thresholds (each model's own correction from the midpoint to a
+  fixed survival target), `predict_heat_injury()` (dose and survival read
+  off the fitted model's curve, constant or varying shape), survival curves,
+  landscapes and `tdt_parameter_table()` (which records the model in its
+  `"model"` attribute). A bare `brmsfit` passed to `tls()` is recognised from
+  its formula.
+* Log-logistic results are unchanged. On the paper's 12 cached fits, `tls()`
+  z and CTmax (relative and absolute thresholds) and T_crit, as summaries
+  and as every posterior draw, the curve parameters, `derive_z()`,
+  `derive_temperature_for_duration()` and `derive_tdt_curve()` at the
+  absolute threshold, and `predict_heat_injury()` (constant and varying
+  shape, relative and absolute dose) are bit-identical to 1.1.0, compared
+  on the centred temperature scale and again with a shifted centring
+  constant; `tdt_parameter_table()` gains only the `"model"` attribute
+  (`scripts/package/check_case_study_outputs.R`).
 * `fit_4pl(fix_asymptotes = )` (and `make_4pl_priors()`) can pin one or both
   asymptotes instead of estimating them: `TRUE` fixes `low` and `up` at the
   response bounds (0 and 1 for proportions, a two-parameter log-logistic),
@@ -29,6 +40,22 @@
   response bounds sit at the edge of the padded window (0.001 / 0.999 by
   default); the effective values are recorded in `meta$fix_asymptotes` and
   shown by `print()`. The default (`NULL`) is unchanged.
+
+## Bug fixes
+
+* `tls()` now reads a workflow's own asymptote bounds (the ones it was fitted
+  with) when it computes absolute thresholds, as `derive_z()` and the other
+  readers already did. Before, it always used the default `[0, 1]` bounds, so
+  absolute-threshold summaries of a workflow fitted with other bounds (e.g.
+  `lower = 0.85` for photosystem-II data) were wrong without warning;
+  relative thresholds were never affected. Fits with the default bounds,
+  including all of the paper's, give identical results. `lower` and `upper`
+  still override, and are still used for a bare `brmsfit`.
+
+# bayesTLS 1.1.0
+
+## New features
+
 * Covariance-matrix random effects (issue #12): `fit_4pl()` now accepts
   `brms`'s `gr()` grouping terms, e.g.
   `ctmax = ~ 1 + (1 | gr(species, cov = A))` with a phylogenetic correlation

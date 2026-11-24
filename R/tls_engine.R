@@ -67,7 +67,8 @@ tls_draw_ids <- function(fit, ndraws) {
 
 # Evaluate the four 4PL sub-parameters at `newdata`, returning per-draw matrices
 # (`[ndraws x nrow(newdata)]`) on the natural scale plus the threshold-specific
-# logLT (relative: mid; absolute p: mid + log((up - p)/(p - low))/k). This is the
+# logLT (relative: mid; absolute p: mid + the model's offset, see
+# tdt_abs_offset()). This is the
 # ONLY engine layer that calls brms — the gate boundary for fast vs gated tests.
 # `draw_ids` selects specific posterior draws (see tls_draw_ids); `ndraws` is the
 # brms count-based subsample (used by tls()); pass at most one.
@@ -83,20 +84,18 @@ tls_eval_subpars <- function(fit, newdata, bounds,
   k   <- exp(lp(nlpars[3]))
   mid <- lp(nlpars[4])
   if (identical(mode, "absolute")) {
-    # The correction below is the log-logistic one; other models are refused
-    # here (not just in tls()) so every caller -- derive_z(),
-    # derive_temperature_for_duration(), a bare brmsfit -- is covered.
-    tdt_require_loglogistic(fit)
-    # An absolute survival threshold p is attainable only where the fitted curve
-    # spans it: low < p < up. Where it does not (p at/below the lower asymptote or
-    # at/above the upper), log((up - p)/(p - low)) is undefined and the LT at p
-    # does not exist for that draw x temperature cell. Mark those cells NA up
-    # front (so there is no bare "NaNs produced") and warn ONCE with the reason.
-    ratio       <- (up - p) / (p - low)
-    bad         <- !is.finite(ratio) | ratio <= 0
-    ratio[bad]  <- NA_real_
-    logLT       <- mid + log(ratio) / k
-    if (any(bad, na.rm = TRUE)) {
+    # Absolute LT at survival p: the midpoint plus the fitted model's offset
+    # (tdt_abs_offset(); for the log-logistic log((up - p)/(p - low))/k, as
+    # before). The model is read from the fit itself, so a bare brmsfit and
+    # every caller -- tls(), derive_z(), derive_temperature_for_duration() --
+    # get the right curve. p is attainable only where the fitted curve spans
+    # it, low < p < up; elsewhere the LT at p does not exist for that
+    # draw x temperature cell, so the cell is NA (no bare "NaNs produced") and
+    # we warn ONCE with the reason.
+    offset <- tdt_abs_offset(tdt_model(fit), low, up, k, p)
+    bad    <- is.na(offset)
+    logLT  <- mid + offset
+    if (any(bad)) {
       warning(sprintf(
         paste0("target_surv = %.3g (absolute) lies outside the fitted curve's ",
                "asymptotes for %.0f%% of draw-by-temperature cells: survival there ",

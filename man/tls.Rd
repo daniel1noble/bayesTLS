@@ -93,7 +93,9 @@ Passing \code{re_formula} explicitly (even \code{NA}) always overrides the
 auto-rule.
 (population level). Include group-level terms (e.g. clone) for per-group draws.}
 
-\item{lower, upper}{Response bounds of the disjoint-bounds reparameterisation.}
+\item{lower, upper}{Response bounds of the disjoint-bounds reparameterisation.
+Read from a \code{bayes_tls} workflow (the bounds it was fitted with); supply
+them for a bare \code{brmsfit} fitted with non-default bounds, or to override.}
 
 \item{nlpars}{Non-linear parameter names, ordered low / up / k / mid (raw scale).}
 

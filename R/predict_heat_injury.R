@@ -8,7 +8,8 @@
 #   3. Optionally add a temperature-dependent repair rate (Sharpe-Schoolfield).
 #   4. Forward-Euler integrate (damage - repair) across the trace, using each
 #      interval's own width (dose starts at zero at the first time point).
-#   5. Map cumulative dose back to predicted survival via the 4PL.
+#   5. Map cumulative dose back to predicted survival via the fitted model's
+#      curve (log-logistic, log-normal or Weibull; see R/models.R).
 
 #' Per-draw natural-scale 4PL parameters from a fitted workflow
 #'
@@ -215,12 +216,16 @@ hi_local_curves <- function(workflow, by = NULL, temps_unique) {
 #' @param low,up,k       Scalar (or per-temp) 4PL parameters.
 #' @param mid_int,mid_temp Midpoint sub-model coefficients.
 #' @param temp_mean      Centring temperature used by the model.
+#' @param model          The dose-response model: a name (default
+#'                       `"log-logistic"`) or a resolved registry entry. Only
+#'                       the absolute threshold depends on it.
 #' @return Numeric vector of durations in the model's time units. `NA` where
 #'         the threshold is outside `(low, up)` in absolute mode.
 #' @keywords internal
 time_to_surv_threshold_4pl <- function(temp, survival_target,
                                        low, up, k,
-                                       mid_int, mid_temp, temp_mean) {
+                                       mid_int, mid_temp, temp_mean,
+                                       model = "log-logistic") {
   temp_c <- temp - temp_mean
   mid    <- mid_int + mid_temp * temp_c
   if (is.character(survival_target) && length(survival_target) == 1L &&
@@ -229,8 +234,8 @@ time_to_surv_threshold_4pl <- function(temp, survival_target,
   }
   if (survival_target <= low || survival_target >= up)
     return(rep(NA_real_, length(temp)))
-  log_term <- log((up - survival_target) / (survival_target - low))
-  10 ^ (mid + log_term / k)
+  # The model's offset; for the log-logistic log((up - p)/(p - low))/k.
+  10 ^ (mid + tdt_as_model_spec(model)$abs_corr(low, up, k, survival_target))
 }
 
 #' Survival corresponding to an accumulated dose
@@ -244,26 +249,32 @@ time_to_surv_threshold_4pl <- function(temp, survival_target,
 #' @param low,up,k 4PL parameters at the reference (centring) temperature.
 #' @param target_surv Either the literal probability defining "1 dose" or the
 #'                    string `"relative"` for the `(low + up)/2` threshold.
+#' @param model       The dose-response model: a name (default
+#'                    `"log-logistic"`) or a resolved registry entry. Survival
+#'                    is read off that model's curve.
 #' @return Numeric vector of predicted survival probabilities. `NA` for every
 #'         element when a numeric `target_surv` lies outside `(low, up)` and is
 #'         therefore unreachable on this draw's 4PL (mirrors
 #'         [time_to_surv_threshold_4pl()], so the draw drops cleanly rather than
 #'         producing `log()`-of-negative `NaN`s that would poison the trace).
 #' @keywords internal
-survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
+survival_from_dose <- function(dose, low, up, k, target_surv = "relative",
+                               model = "log-logistic") {
+  mod      <- tdt_as_model_spec(model)
   dose_use <- pmax(dose, 1e-12)
   if (is.character(target_surv) && length(target_surv) == 1L &&
       target_surv == "relative") {
     c_target <- 0
   } else {
     # Unreachable target on this draw -- guard like time_to_surv_threshold_4pl()
-    # so the whole draw drops as NA instead of evaluating log() of a negative
-    # number (which would yield NaN and silently bias the medians upward).
+    # so the whole draw drops as NA instead of evaluating the correction outside
+    # its domain (which would yield NaN and silently bias the medians upward).
     if (target_surv <= low || target_surv >= up)
       return(rep(NA_real_, length(dose)))
-    c_target <- log((up - target_surv) / (target_surv - low)) / k
+    c_target <- mod$abs_corr(low, up, k, target_surv)
   }
-  low + (up - low) / (1 + exp(k * (log10(dose_use) + c_target)))
+  # At dose 1 the curve sits exactly at the threshold: u = k * c_target.
+  mod$curve(low, up, k * (log10(dose_use) + c_target))
 }
 
 #' Predict heat injury and survival under a fluctuating temperature trace
@@ -276,7 +287,8 @@ survival_from_dose <- function(dose, low, up, k, target_surv = "relative") {
 #'   When `HI(t) = 100`, the population has accumulated one full dose at the
 #'   chosen survival threshold (default 50% mortality).
 #' - **S(t)** — predicted survival fraction, mapped from the cumulative dose
-#'   through the fitted 4PL.
+#'   through the fitted dose-response curve (the log-logistic for [fit_4pl()],
+#'   the log-normal or Weibull curve for [fit_lognormal()] / [fit_weibull()]).
 #'
 #' Optionally adds a temperature-dependent repair rate via
 #' [repair_rate_schoolfield()].
@@ -372,11 +384,6 @@ predict_heat_injury <- function(trace, workflow,
                                 seed                        = NULL,
                                 by                          = NULL,
                                 shape = c("constant", "varying")) {
-  if (!identical(tdt_model(workflow), "log-logistic"))
-    stop(sprintf(paste0("predict_heat_injury() currently supports log-logistic ",
-                        "fits only (fit_4pl()); support for %s fits is the next ",
-                        "step."), tdt_model(workflow)), call. = FALSE)
-
   shape <- match.arg(shape)
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
@@ -399,6 +406,9 @@ predict_heat_injury <- function(trace, workflow,
   trace     <- trace[order(trace$time), , drop = FALSE]
   n         <- nrow(trace)
   temp_mean <- workflow$meta$temp_mean
+  # The fitted dose-response model, resolved once: the integrators below call
+  # its threshold and dose-to-survival maps for every draw and time step.
+  mod       <- tdt_model_spec(tdt_model(workflow))
 
   # Reconcile BOTH time units to a common base (hours), so the integral is
   # correct no matter how the model was fit OR how the trace is labelled:
@@ -433,7 +443,7 @@ predict_heat_injury <- function(trace, workflow,
         temp = trace$temp, survival_target = ts_arg,
         low = pars$low[i], up = pars$up[i], k = pars$k[i],
         mid_int = pars$mid_int[i], mid_temp = pars$mid_temp[i],
-        temp_mean = temp_mean
+        temp_mean = temp_mean, model = mod
       )
       dmg <- 1 / (tau * unit_h)               # doses per hour (unit-reconciled)
       dmg[!is.finite(dmg)] <- 0
@@ -460,7 +470,8 @@ predict_heat_injury <- function(trace, workflow,
       dose <- numeric(n); survival <- numeric(n)
       dose[1]     <- 0
       survival[1] <- survival_from_dose(0, low = pars$low[i], up = pars$up[i],
-                                        k = pars$k[i], target_surv = ts_arg)
+                                        k = pars$k[i], target_surv = ts_arg,
+                                        model = mod)
       for (j in seq_len(n)[-1]) {
         w     <- dt_vec[j - 1]
         rep_j <- rep_rate[j - 1] * w
@@ -468,7 +479,7 @@ predict_heat_injury <- function(trace, workflow,
         new_dose <- max(0, dose[j - 1] + dmg[j - 1] * w - rep_j)
         surv_raw <- survival_from_dose(
           new_dose, low = pars$low[i], up = pars$up[i], k = pars$k[i],
-          target_surv = ts_arg
+          target_surv = ts_arg, model = mod
         )
         survival[j] <- if (irreversible_mortality) min(survival[j - 1], surv_raw) else surv_raw
         dose[j]     <- new_dose
@@ -490,21 +501,20 @@ predict_heat_injury <- function(trace, workflow,
   curves_by_grp <- if (shape == "varying")
     hi_local_curves(workflow, by = by, temps_unique = temps_unique) else NULL
 
-  # Survival at cumulative dose D on a 4PL curve (low, up, k) anchored so that
-  # D = 1 hits the chosen threshold (relative midpoint, or absolute p). Same map
-  # as survival_from_dose(), vectorised over per-step (D, low, up, k). Used to
+  # Survival at cumulative dose D on the fitted model's curve (low, up, k)
+  # anchored so that D = 1 hits the chosen threshold (relative midpoint, or
+  # absolute p). Same map as survival_from_dose(), vectorised over per-step
+  # (D, low, up, k), with NA where an absolute target is unreachable. Used to
   # form the LOCAL per-interval survival decrement g(D_j) - g(D_{j-1}) (both
   # endpoints on the SAME local curve, so a temperature change adds no jump).
-  surv_at_dose <- function(D, low, up, k) {
-    D <- pmax(D, 1e-12)
-    if (is.character(ts_arg) && length(ts_arg) == 1L && ts_arg == "relative") {
-      c_t <- 0
-    } else {
-      ratio <- (up - ts_arg) / (ts_arg - low)
-      c_t   <- ifelse(is.finite(ratio) & ratio > 0, log(ratio) / k, NA_real_)
-    }
-    low + (up - low) / (1 + exp(k * (log10(D) + c_t)))
+  # `c_t` is the model's offset on that step's local curve, computed once per
+  # draw for the whole trace (0 for the relative threshold; NA where an
+  # absolute target is unreachable on that step's curve).
+  surv_at_dose <- function(D, low, up, k, c_t) {
+    mod$curve(low, up, k * (log10(pmax(D, 1e-12)) + c_t))
   }
+  relative_target <- is.character(ts_arg) && length(ts_arg) == 1L &&
+    ts_arg == "relative"
 
   integrate_pars_varying <- function(pars, curve) {
     # Row in the local-curve matrices for each sampled draw (matched by .draw id).
@@ -515,6 +525,8 @@ predict_heat_injury <- function(trace, workflow,
       if (is.na(r)) next                      # draw dropped as invalid somewhere
       lowT <- curve$low[r, tcol]; upT <- curve$up[r, tcol]
       kT   <- curve$k[r, tcol];   midT <- curve$mid[r, tcol]
+      cT   <- if (relative_target) numeric(n) else
+                tdt_abs_offset(mod, lowT, upT, kT, ts_arg)
 
       # Damage rate from the LOCAL curve: tau(T) via the natural-scale mid(T)
       # (mid_int = mid(T), mid_temp = 0 -> mid evaluated exactly at each point),
@@ -522,7 +534,8 @@ predict_heat_injury <- function(trace, workflow,
       tau <- vapply(seq_len(n), function(j) time_to_surv_threshold_4pl(
         temp = trace$temp[j], survival_target = ts_arg,
         low = lowT[j], up = upT[j], k = kT[j],
-        mid_int = midT[j], mid_temp = 0, temp_mean = temp_mean), numeric(1))
+        mid_int = midT[j], mid_temp = 0, temp_mean = temp_mean,
+        model = mod), numeric(1))
       dmg <- 1 / (tau * unit_h)
       dmg[!is.finite(dmg)] <- 0
       if (!is.null(T_c)) dmg[trace$temp <= T_c] <- 0
@@ -538,7 +551,7 @@ predict_heat_injury <- function(trace, workflow,
 
       dose <- numeric(n); survival <- numeric(n)
       dose[1]     <- 0
-      survival[1] <- surv_at_dose(1e-12, lowT[1], upT[1], kT[1])   # = up at D->0
+      survival[1] <- surv_at_dose(1e-12, lowT[1], upT[1], kT[1], cT[1])  # ~ up
       for (j in seq_len(n)[-1]) {
         w     <- dt_vec[j - 1]
         rep_j <- rep_rate[j - 1] * w
@@ -549,8 +562,8 @@ predict_heat_injury <- function(trace, workflow,
         # contributes no discontinuity; the local slope-in-dose sets the rate of
         # survival loss. When low/up/k are flat in T this telescopes EXACTLY to
         # the constant-shape closed form g(D_n).
-        s_prev_local <- surv_at_dose(dose[j - 1], lowT[j], upT[j], kT[j])
-        s_new_local  <- surv_at_dose(new_dose,    lowT[j], upT[j], kT[j])
+        s_prev_local <- surv_at_dose(dose[j - 1], lowT[j], upT[j], kT[j], cT[j])
+        s_new_local  <- surv_at_dose(new_dose,    lowT[j], upT[j], kT[j], cT[j])
         dec <- s_new_local - s_prev_local                  # <= 0 (dose increases)
         if (!is.finite(dec)) dec <- 0
         surv_raw    <- survival[j - 1] + dec

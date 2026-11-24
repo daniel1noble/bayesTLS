@@ -4,7 +4,14 @@
 \alias{survival_from_dose}
 \title{Survival corresponding to an accumulated dose}
 \usage{
-survival_from_dose(dose, low, up, k, target_surv = "relative")
+survival_from_dose(
+  dose,
+  low,
+  up,
+  k,
+  target_surv = "relative",
+  model = "log-logistic"
+)
 }
 \arguments{
 \item{dose}{Numeric vector of cumulative doses (in units where 1 dose =
@@ -14,6 +21,10 @@ survival_from_dose(dose, low, up, k, target_surv = "relative")
 
 \item{target_surv}{Either the literal probability defining "1 dose" or the
 string \code{"relative"} for the \code{(low + up)/2} threshold.}
+
+\item{model}{The dose-response model: a name (default
+\code{"log-logistic"}) or a resolved registry entry. Survival
+is read off that model's curve.}
 }
 \value{
 Numeric vector of predicted survival probabilities. \code{NA} for every
