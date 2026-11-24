@@ -40,7 +40,9 @@ tls_tcrit(object, ...)
 \arguments{
 \item{object}{A fitted \code{bayes_tls} workflow or a \code{brmsfit} 4PL whose
 non-linear parameters are the (reparameterised) asymptotes, steepness and
-midpoint.}
+midpoint. The dose-response model is read from the workflow; a bare
+\code{brmsfit} is recognised from its formula, and a hand-written formula is
+treated as the log-logistic.}
 
 \item{by}{Character vector of moderator columns defining the groups reported
 separately (e.g. \code{"sex"}). \code{NULL} (default) pools to a single group.}

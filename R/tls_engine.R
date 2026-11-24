@@ -83,6 +83,10 @@ tls_eval_subpars <- function(fit, newdata, bounds,
   k   <- exp(lp(nlpars[3]))
   mid <- lp(nlpars[4])
   if (identical(mode, "absolute")) {
+    # The correction below is the log-logistic one; other models are refused
+    # here (not just in tls()) so every caller -- derive_z(),
+    # derive_temperature_for_duration(), a bare brmsfit -- is covered.
+    tdt_require_loglogistic(fit)
     # An absolute survival threshold p is attainable only where the fitted curve
     # spans it: low < p < up. Where it does not (p at/below the lower asymptote or
     # at/above the upper), log((up - p)/(p - low)) is undefined and the LT at p

@@ -90,6 +90,60 @@ make_4pl_priors <- function(data,
                             low             = NULL,
                             k               = NULL,
                             fix_asymptotes  = NULL) {
+  make_tdt_priors(model = "log-logistic",
+                  data            = data,
+                  lower           = lower,
+                  upper           = upper,
+                  random_effects  = random_effects,
+                  prior_random_sd = prior_random_sd,
+                  prior_phi       = prior_phi,
+                  bounds          = bounds,
+                  ctmax           = ctmax,
+                  z               = z,
+                  up              = up,
+                  low             = low,
+                  k               = k,
+                  fix_asymptotes  = fix_asymptotes)
+}
+
+#' Default priors for a joint Bayesian four-parameter dose-response model
+#'
+#' Model-generic twin of [make_4pl_priors()]. The only prior that depends on
+#' `model` is the Intercept prior mean of `logk`: it is shifted by
+#' `log(0.25 / slope_factor)` so that the implied prior on the slope of the
+#' curve at its midpoint, `-k (up - low) * slope_factor`, is the same for every
+#' model (`slope_factor` = 0.25 log-logistic, 0.399 log-normal, 0.347 both
+#' Weibull types). [make_4pl_priors()] is `make_tdt_priors(model =
+#' "log-logistic")`.
+#'
+#' @inheritParams make_tdt_formula
+#' @inheritParams make_4pl_priors
+#' @inherit make_4pl_priors return
+#' @examples
+#' raw <- data.frame(
+#'   temperature_C = rep(c(30, 32, 34), each = 4),
+#'   exposure_h    = rep(c(1, 2, 4, 8), times = 3),
+#'   n             = 30L,
+#'   alive         = c(29, 28, 25, 5, 30, 27, 18, 2, 28, 22, 10, 1)
+#' )
+#' d <- standardize_data(raw, temp = "temperature_C", duration = "exposure_h",
+#'                       n_total = "n", n_surv = "alive")
+#' make_tdt_priors(d, model = "weibull1")
+#' @export
+make_tdt_priors <- function(data,
+                            model           = "log-logistic",
+                            lower           = 0,
+                            upper           = 1,
+                            random_effects  = NULL,
+                            prior_random_sd = "exponential(2)",
+                            prior_phi       = "gamma(2, 0.1)",
+                            bounds          = NULL,
+                            ctmax           = NULL,
+                            z               = NULL,
+                            up              = NULL,
+                            low             = NULL,
+                            k               = NULL,
+                            fix_asymptotes  = NULL) {
 
   if (is.null(bounds)) bounds <- c(lower, upper)
   b <- compute_4pl_bounds(bounds[1], bounds[2])
@@ -111,7 +165,7 @@ make_4pl_priors <- function(data,
   up_target   <- bounds[1] + 0.98 * (bounds[2] - bounds[1])
   lowraw_mean <- stats::qlogis((low_target - b$low_min) / b$low_w)
   upraw_mean  <- stats::qlogis((up_target  - b$up_min)  / b$up_w)
-  logk_mean   <- log(2)
+  logk_mean   <- tdt_logk_prior_mean(model)   # log(2) for the log-logistic
 
   if (is.null(ctmax) && is.null(z)) {
     ## ---- midpoint priors (unchanged) ----

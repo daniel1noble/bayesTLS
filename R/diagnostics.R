@@ -134,6 +134,9 @@ tdt_max_treedepth <- function(fit) {
 #'   single-condition fit then returns one block (no group column).
 #' @return A tibble with columns `parameter`, `median`, `lower`, `upper`
 #'   (plus the moderator column(s) for a grouped fit).
+#'   The fit's dose-response model is attached as attribute `"model"`:
+#'   `k` is the steepness on log10 time for every model, but its value is not
+#'   comparable across models (see [fit_lognormal()], [fit_weibull()]).
 #' @examples
 #' \dontrun{
 #' tdt_parameter_table(wf)
@@ -188,7 +191,10 @@ tdt_parameter_table <- function(workflow, by = NULL) {
       tab <- cbind(nd[ci[1], by, drop = FALSE], tab, row.names = NULL)
     tab
   })
-  dplyr::bind_rows(per_group)
+  out <- dplyr::bind_rows(per_group)
+  # k's meaning (its slope factor) is model-specific; carry the model along.
+  attr(out, "model") <- tdt_model(workflow)
+  out
 }
 
 #' Bayesian \eqn{R^2} for a fitted TDT workflow

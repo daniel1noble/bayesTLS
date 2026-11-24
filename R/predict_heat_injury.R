@@ -372,6 +372,10 @@ predict_heat_injury <- function(trace, workflow,
                                 seed                        = NULL,
                                 by                          = NULL,
                                 shape = c("constant", "varying")) {
+  if (!identical(tdt_model(workflow), "log-logistic"))
+    stop(sprintf(paste0("predict_heat_injury() currently supports log-logistic ",
+                        "fits only (fit_4pl()); support for %s fits is the next ",
+                        "step."), tdt_model(workflow)), call. = FALSE)
 
   shape <- match.arg(shape)
   if (!has_fit(workflow))

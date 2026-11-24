@@ -17,7 +17,9 @@
 #'
 #' @param object A fitted `bayes_tls` workflow or a `brmsfit` 4PL whose
 #'   non-linear parameters are the (reparameterised) asymptotes, steepness and
-#'   midpoint.
+#'   midpoint. The dose-response model is read from the workflow; a bare
+#'   `brmsfit` is recognised from its formula, and a hand-written formula is
+#'   treated as the log-logistic.
 #' @param by Character vector of moderator columns defining the groups reported
 #'   separately (e.g. `"sex"`). `NULL` (default) pools to a single group.
 #' @param params Quantities to return: `"all"` (z, CTmax, and T_crit when
@@ -112,6 +114,7 @@ tls <- function(object, by = NULL, params = "all",
   ts   <- resolve_target_surv(target_surv)
   mode <- ts$mode
   p    <- if (is.na(ts$prob)) 0.5 else ts$prob
+  if (identical(mode, "absolute")) tdt_require_loglogistic(object)
 
   # Cheap argument validation first (no fit needed).
   if (identical(params, "all")) params <- c("z", "ctmax", if (lethal) "tcrit")

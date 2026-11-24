@@ -53,7 +53,9 @@ sparse designs (few temperatures x durations, small n)
 prefer \code{temp_effects = "mid"} (constant-shape), which
 estimates only the midpoint's temperature slope (= -1/z)
 and shares the asymptotes and steepness across
-temperature. Passed to \code{\link[=make_4pl_formula]{make_4pl_formula()}}.}
+temperature. Passed to the formula builder
+(\code{\link[=make_4pl_formula]{make_4pl_formula()}} for \code{fit_4pl()},
+\code{\link[=make_tdt_formula]{make_tdt_formula()}} for the other models).}
 
 \item{lower, upper}{Response-scale bounds for the asymptotes. Default
 \verb{0, 1}; pass \verb{lower = 0.85, upper = 1} for sublethal
@@ -67,9 +69,11 @@ data's \code{response_type} metadata:
 override (e.g. \code{binomial(link = "identity")} for the
 no-overdispersion count case).}
 
-\item{prior}{Optional \code{brmsprior} object. If \code{NULL} (default),
-\code{\link[=make_4pl_priors]{make_4pl_priors()}} builds defaults from \code{data},
-\code{lower}, \code{upper}, and \code{random_effects}.}
+\item{prior}{Optional \code{brmsprior} object. If \code{NULL} (default), the
+model's default priors are built from \code{data},
+\code{lower}, \code{upper}, and \code{random_effects}
+(\code{\link[=make_4pl_priors]{make_4pl_priors()}} for \code{fit_4pl()},
+\code{\link[=make_tdt_priors]{make_tdt_priors()}} for the other models).}
 
 \item{chains, iter, warmup, cores, seed}{Sampling arguments passed to \code{\link[brms:brm]{brms::brm()}}.}
 
@@ -91,13 +95,13 @@ fitting — useful for inspecting the formula and priors.}
 supersedes \code{lower}/\code{upper} when supplied.}
 
 \item{ctmax, z, up, low, k}{One-sided formulas selecting the \strong{direct} CTmax/z
-parameterisation (see \code{\link[=make_4pl_formula]{make_4pl_formula()}}). Supplying
+parameterisation (see \code{\link[=make_tdt_formula]{make_tdt_formula()}}). Supplying
 \code{ctmax} and/or \code{z} fits CTmax and z directly; \code{up}/\code{low}/\code{k}
 are inherited from them when omitted. \code{up}/\code{low}/\code{k} also
 take explicit formulas in the \strong{midpoint} parameterisation.}
 
 \item{mid, by}{\strong{Midpoint} parameterisation only (see
-\code{\link[=make_4pl_formula]{make_4pl_formula()}}). \code{mid} is an explicit one-sided
+\code{\link[=make_tdt_formula]{make_tdt_formula()}}). \code{mid} is an explicit one-sided
 formula for the midpoint (must carry \code{temp_c}); \code{by} is a
 moderator column-name shortcut applying the moderator to
 all four sub-parameters (\code{low}/\code{up}/\code{k}/\code{mid}) at once, so

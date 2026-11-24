@@ -35,6 +35,9 @@ print.bayes_tls <- function(x, ...) {
     bounds$low_min, bounds$low_max,
     bounds$up_min,  bounds$up_max
   ))
+  lab <- tryCatch(tdt_model_spec(tdt_model(x))$label,
+                  error = function(e) paste0(x$meta$model, " (unrecognised)"))
+  cat("  Model:   ", lab, "\n")
   if (identical(x$meta$parameterization %||% "midpoint", "direct")) {
     cat(sprintf("  Param:    direct CTmax/z (%s threshold, t_ref = %g min)\n",
                 x$meta$threshold %||% "relative", x$meta$t_ref %||% 60))

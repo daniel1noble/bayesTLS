@@ -16,6 +16,9 @@ single-condition fit then returns one block (no group column).}
 \value{
 A tibble with columns \code{parameter}, \code{median}, \code{lower}, \code{upper}
 (plus the moderator column(s) for a grouped fit).
+The fit's dose-response model is attached as attribute \code{"model"}:
+\code{k} is the steepness on log10 time for every model, but its value is not
+comparable across models (see \code{\link[=fit_lognormal]{fit_lognormal()}}, \code{\link[=fit_weibull]{fit_weibull()}}).
 }
 \description{
 Pulls the population-level posterior of the reparameterised 4PL parameters,

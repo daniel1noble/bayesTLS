@@ -2,6 +2,22 @@
 
 ## New features
 
+* Alternative dose-response models with the same four parameters and the
+  same TDT machinery: `fit_lognormal()` (log-normal / probit curve) and
+  `fit_weibull(type = 1 | 2)` (Weibull type 1, the Gompertz-shaped curve on
+  log time, and Weibull type 2). Every model is written in its midpoint
+  form, so `mid`, the TDT line, the relative threshold, `z` and `CTmax` mean
+  the same thing whichever curve is fitted; the prior mean of `logk` is
+  shifted per model so the prior on the slope at the midpoint matches.
+  `fit_4pl()` is unchanged (it keeps meaning the log-logistic and gains no
+  model argument); `make_tdt_formula()` / `make_tdt_priors()` are the
+  model-generic builders behind `make_4pl_formula()` / `make_4pl_priors()`.
+  Relative-threshold summaries (`tls()`, `derive_z()`), `derive_tdt_curve()`
+  at any threshold, survival curves, landscapes and `tdt_parameter_table()`
+  work for every model. Absolute-threshold summaries (`tls()`, `derive_z()`,
+  `derive_temperature_for_duration()`) and `predict_heat_injury()` support the
+  log-logistic only for now and stop with a message for the other models. A
+  bare `brmsfit` passed to `tls()` is recognised from its formula.
 * `fit_4pl(fix_asymptotes = )` (and `make_4pl_priors()`) can pin one or both
   asymptotes instead of estimating them: `TRUE` fixes `low` and `up` at the
   response bounds (0 and 1 for proportions, a two-parameter log-logistic),

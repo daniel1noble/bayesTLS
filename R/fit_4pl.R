@@ -136,12 +136,70 @@ make_4pl_formula <- function(random_effects = NULL,
                              log10_tref     = 0,
                              lower          = 0,
                              upper          = 1) {
+  make_tdt_formula(model = "log-logistic",
+                   random_effects = random_effects,
+                   bounds         = bounds,
+                   family         = family,
+                   response_var   = response_var,
+                   temp_effects   = temp_effects,
+                   ctmax          = ctmax,
+                   z              = z,
+                   up             = up,
+                   low            = low,
+                   k              = k,
+                   mid            = mid,
+                   by             = by,
+                   threshold      = threshold,
+                   p              = p,
+                   log10_tref     = log10_tref,
+                   lower          = lower,
+                   upper          = upper)
+}
+
+#' Build the brms formula for a joint Bayesian four-parameter dose-response model
+#'
+#' Model-generic twin of [make_4pl_formula()]: the same construction with the
+#' curve chosen by `model`. [make_4pl_formula()] is `make_tdt_formula(model =
+#' "log-logistic")` and keeps meaning the log-logistic.
+#'
+#' @param model Dose-response curve: `"log-logistic"` (the 4PL),
+#'   `"log-normal"` (probit), `"weibull1"` (Weibull type 1, the
+#'   Gompertz-shaped curve on log time) or `"weibull2"` (Weibull type 2).
+#'   Every model is written in its midpoint form, so `mid`, the TDT line,
+#'   `z` and `CTmax` mean the same thing for all of them; only the shape of
+#'   the curve and the absolute-threshold correction differ.
+#' @inheritParams make_4pl_formula
+#' @inherit make_4pl_formula return
+#' @examples
+#' make_tdt_formula(model = "log-normal")
+#' make_tdt_formula(model = "weibull1", ctmax = ~ 1, z = ~ 1)
+#' @export
+make_tdt_formula <- function(model = "log-logistic",
+                             random_effects = NULL,
+                             bounds         = NULL,
+                             family         = brms::beta_binomial(
+                               link = "identity"),
+                             response_var   = "survival",
+                             temp_effects   = c("low", "up", "k", "mid"),
+                             ctmax          = NULL,
+                             z              = NULL,
+                             up             = NULL,
+                             low            = NULL,
+                             k              = NULL,
+                             mid            = NULL,
+                             by             = NULL,
+                             threshold      = c("relative", "absolute"),
+                             p              = 0.5,
+                             log10_tref     = 0,
+                             lower          = 0,
+                             upper          = 1) {
 
   if (is.null(bounds)) bounds <- c(lower, upper)
   threshold <- match.arg(threshold)
   b <- compute_4pl_bounds(bounds[1], bounds[2])
 
   family <- validate_4pl_family(family)
+  mod    <- tdt_model_spec(model)
 
   low_expr <- sprintf("(%.6f + inv_logit(lowraw) * %.6f)", b$low_min, b$low_w)
   up_expr  <- sprintf("(%.6f + inv_logit(upraw)  * %.6f)", b$up_min,  b$up_w)
@@ -156,9 +214,7 @@ make_4pl_formula <- function(random_effects = NULL,
     ## ---- midpoint parameterisation ----
     temp_effects <- match.arg(temp_effects, c("low", "up", "k", "mid"),
                               several.ok = TRUE)
-    main_rhs  <- sprintf(
-      "%s + (%s - %s) / (1 + exp(exp(logk) * (logd - mid)))",
-      low_expr, up_expr, low_expr)
+    main_rhs  <- mod$rhs(low_expr, up_expr)
     # Each sub-parameter's RHS. An explicit formula always wins. Otherwise:
     #  * with a `by` moderator -> ALL four get `temp_c * by` (treatment-coded, so
     #    the reference level keeps the centred Intercept prior and the per-group
@@ -250,8 +306,8 @@ make_4pl_formula <- function(random_effects = NULL,
       call. = FALSE)
   mid_rel   <- sprintf("(%g - (temp_c - CTmaxdev) / exp(logz))", log10_tref)
   mid_expr  <- if (identical(threshold, "relative")) mid_rel else
-    sprintf("(%s - (1/exp(logk)) * log((up - %g)/(%g - low)))", mid_rel, p, p)
-  main_rhs  <- "low + (up - low) / (1 + exp(exp(logk) * (logd - mid)))"
+    sprintf("(%s - %s)", mid_rel, mod$abs_corr_stan(p))
+  main_rhs  <- mod$rhs("low", "up")
 
   brms::bf(
     stats::as.formula(sprintf("%s ~ %s", resp_lhs, wrap(main_rhs))),
@@ -289,7 +345,9 @@ make_4pl_formula <- function(random_effects = NULL,
 #'                       prefer `temp_effects = "mid"` (constant-shape), which
 #'                       estimates only the midpoint's temperature slope (= -1/z)
 #'                       and shares the asymptotes and steepness across
-#'                       temperature. Passed to [make_4pl_formula()].
+#'                       temperature. Passed to the formula builder
+#'                       ([make_4pl_formula()] for `fit_4pl()`,
+#'                       [make_tdt_formula()] for the other models).
 #' @param lower,upper    Response-scale bounds for the asymptotes. Default
 #'                       `0, 1`; pass `lower = 0.85, upper = 1` for sublethal
 #'                       data bounded above zero.
@@ -300,9 +358,11 @@ make_4pl_formula <- function(random_effects = NULL,
 #'                       `proportion` response. Pass an explicit family to
 #'                       override (e.g. `binomial(link = "identity")` for the
 #'                       no-overdispersion count case).
-#' @param prior          Optional `brmsprior` object. If `NULL` (default),
-#'                       [make_4pl_priors()] builds defaults from `data`,
-#'                       `lower`, `upper`, and `random_effects`.
+#' @param prior          Optional `brmsprior` object. If `NULL` (default), the
+#'                       model's default priors are built from `data`,
+#'                       `lower`, `upper`, and `random_effects`
+#'                       ([make_4pl_priors()] for `fit_4pl()`,
+#'                       [make_tdt_priors()] for the other models).
 #' @param chains,iter,warmup,cores,seed Sampling arguments passed to [brms::brm()].
 #' @param backend        Either `"cmdstanr"` (default) or `"rstan"`.
 #' @param control        List of HMC control parameters.
@@ -315,12 +375,12 @@ make_4pl_formula <- function(random_effects = NULL,
 #' @param bounds         Length-2 `c(lower, upper)` asymptote interval;
 #'                       supersedes `lower`/`upper` when supplied.
 #' @param ctmax,z,up,low,k One-sided formulas selecting the **direct** CTmax/z
-#'                       parameterisation (see [make_4pl_formula()]). Supplying
+#'                       parameterisation (see [make_tdt_formula()]). Supplying
 #'                       `ctmax` and/or `z` fits CTmax and z directly; `up`/`low`/`k`
 #'                       are inherited from them when omitted. `up`/`low`/`k` also
 #'                       take explicit formulas in the **midpoint** parameterisation.
 #' @param mid,by         **Midpoint** parameterisation only (see
-#'                       [make_4pl_formula()]). `mid` is an explicit one-sided
+#'                       [make_tdt_formula()]). `mid` is an explicit one-sided
 #'                       formula for the midpoint (must carry `temp_c`); `by` is a
 #'                       moderator column-name shortcut applying the moderator to
 #'                       all four sub-parameters (`low`/`up`/`k`/`mid`) at once, so
@@ -421,8 +481,82 @@ fit_4pl <- function(data,
                     data2          = NULL,
                     fix_asymptotes = NULL,
                     ...) {
+  tdt_fit(model = "log-logistic",
+          data           = data,
+          random_effects = random_effects,
+          temp_effects   = temp_effects,
+          lower          = lower,
+          upper          = upper,
+          family         = family,
+          prior          = prior,
+          chains         = chains,
+          iter           = iter,
+          warmup         = warmup,
+          cores          = cores,
+          seed           = seed,
+          backend        = backend,
+          control        = control,
+          init           = init,
+          file           = file,
+          file_refit     = file_refit,
+          fit            = fit,
+          bounds         = bounds,
+          ctmax          = ctmax,
+          z              = z,
+          up             = up,
+          low            = low,
+          k              = k,
+          mid            = mid,
+          by             = by,
+          threshold      = threshold,
+          p              = p,
+          t_ref          = t_ref,
+          data2          = data2,
+          fix_asymptotes = fix_asymptotes,
+          ...)
+}
+
+# Internal engine behind fit_4pl(), fit_lognormal() and fit_weibull(): the
+# whole fitting workflow with the curve chosen by `model`. Kept unexported so
+# that each exported function's name says which curve it fits.
+#' @noRd
+tdt_fit <- function(model = "log-logistic",
+                    data,
+                    random_effects = NULL,
+                    temp_effects   = c("low", "up", "k", "mid"),
+                    lower          = 0,
+                    upper          = 1,
+                    family         = NULL,
+                    prior          = NULL,
+                    chains         = 4,
+                    iter           = 4000,
+                    warmup         = floor(iter / 2),
+                    cores          = chains,
+                    seed           = 123,
+                    backend        = "cmdstanr",
+                    control        = list(adapt_delta = 0.95,
+                                          max_treedepth = 12),
+                    init           = 0,
+                    file           = NULL,
+                    file_refit     = "on_change",
+                    fit            = TRUE,
+                    bounds         = NULL,
+                    ctmax          = NULL,
+                    z              = NULL,
+                    up             = NULL,
+                    low            = NULL,
+                    k              = NULL,
+                    mid            = NULL,
+                    by             = NULL,
+                    threshold      = c("relative", "absolute"),
+                    p              = 0.5,
+                    t_ref          = 60,
+                    data2          = NULL,
+                    fix_asymptotes = NULL,
+                    ...) {
 
   threshold <- match.arg(threshold)
+  model     <- tdt_match_model(model)
   if (!is.null(bounds)) { lower <- bounds[1]; upper <- bounds[2] }
 
   # Fixed asymptotes (prior-based, see tdt_resolve_fix_asymptotes()): force the
@@ -518,7 +652,8 @@ fit_4pl <- function(data,
   tm         <- if (identical(unit, "model_units")) 1 else tdt_unit_to_minutes(unit)
   log10_tref <- log10(t_ref / tm)
 
-  formula <- make_4pl_formula(random_effects = random_effects,
+  formula <- make_tdt_formula(model          = model,
+                              random_effects = random_effects,
                               lower          = lower,
                               upper          = upper,
                               family         = family,
@@ -541,7 +676,8 @@ fit_4pl <- function(data,
     family_name <- family$family
     prior_phi   <- if (family_name %in% c("beta_binomial", "beta"))
                      "gamma(2, 0.1)" else NULL
-    prior <- make_4pl_priors(data           = data,
+    prior <- make_tdt_priors(model          = model,
+                             data           = data,
                              lower          = lower,
                              upper          = upper,
                              random_effects = random_effects,
@@ -578,6 +714,7 @@ fit_4pl <- function(data,
     response_type    = response_type,
     family           = family$family,
     link             = family$link,
+    model            = model,
     parameterization = if (direct) "direct" else "midpoint",
     threshold        = threshold,
     fix_asymptotes   = fx_values,
@@ -626,6 +763,16 @@ fit_4pl <- function(data,
         invokeRestart("muffleWarning")
     }
   )
+
+  # A cached `file` returned as-is (e.g. file_refit = "never") may hold a fit
+  # of a different curve than the one requested; refuse it rather than label a
+  # log-logistic fit "log-normal" (or vice versa) in meta.
+  got <- tdt_model_from_formula(workflow$fit$formula)
+  if (!is.na(got) && !identical(got, model))
+    stop(sprintf(paste0("The fit brms returned (file = \"%s\") is a %s model, ",
+                        "but a %s model was requested. Delete the cached file ",
+                        "or use a different `file`."),
+                 file %||% "", got, model), call. = FALSE)
 
   workflow
 }
