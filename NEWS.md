@@ -2,6 +2,17 @@
 
 ## New features
 
+* `fit_4pl(fix_asymptotes = )` (and `make_4pl_priors()`) can pin one or both
+  asymptotes instead of estimating them: `TRUE` fixes `low` and `up` at the
+  response bounds (0 and 1 for proportions, a two-parameter log-logistic),
+  `c("up")` fixes only the upper asymptote while `low` stays estimated, and
+  `c(low = 0.02)` pins a named asymptote at a chosen value. Pinning is done
+  through a brms `constant()` prior on the asymptote's Intercept with its
+  formula forced to `~ 1`, so `tls()`, `predict_heat_injury()` and the
+  accessors read a fixed asymptote exactly as an estimated one. Values at the
+  response bounds sit at the edge of the padded window (0.001 / 0.999 by
+  default); the effective values are recorded in `meta$fix_asymptotes` and
+  shown by `print()`. The default (`NULL`) is unchanged.
 * Covariance-matrix random effects (issue #12): `fit_4pl()` now accepts
   `brms`'s `gr()` grouping terms, e.g.
   `ctmax = ~ 1 + (1 | gr(species, cov = A))` with a phylogenetic correlation

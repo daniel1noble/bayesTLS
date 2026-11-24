@@ -35,6 +35,7 @@ fit_4pl(
   p = 0.5,
   t_ref = 60,
   data2 = NULL,
+  fix_asymptotes = NULL,
   ...
 )
 }
@@ -131,6 +132,22 @@ a phylogenetic correlation matrix from
 \code{ape::vcv(phy, corr = TRUE)}. Matrices are validated
 (symmetry, dimnames covering the grouping levels,
 unit diagonal) and passed to \code{\link[brms:brm]{brms::brm()}}.}
+
+\item{fix_asymptotes}{Pin one or both asymptotes instead of estimating them.
+Default \code{NULL}: \code{low} and \code{up} are estimated. \code{TRUE}
+fixes both at the response bounds (\code{0} and \code{1} for
+proportions); \code{c("up")} or \code{c("low")} fixes only that
+one at its bound and leaves the other estimated; a named
+numeric vector such as \code{c(low = 0.02)} or
+\code{c(low = 0, up = 1)} fixes the named ones at those
+values. A fixed asymptote cannot carry a formula (its
+formula becomes \code{~ 1} and it is dropped from
+\code{temp_effects}); it is pinned through a brms
+\code{constant()} prior, so every downstream function reads
+it like an estimated one. Values at the response bounds
+are pinned at the edge of the padded window (\code{0.001} /
+\code{0.999} with the defaults; see \code{\link[=compute_4pl_bounds]{compute_4pl_bounds()}}).
+The effective values are stored in \code{meta$fix_asymptotes}.}
 
 \item{...}{Further arguments passed to \code{\link[brms:brm]{brms::brm()}}.}
 }

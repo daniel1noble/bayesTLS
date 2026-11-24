@@ -51,6 +51,20 @@
 #'                        `CTmaxdev`/`logz` only (never on the shape
 #'                        sub-parameters). `up`/`low`/`k`
 #'                        follow the same inheritance resolution as the formula.
+#' @param fix_asymptotes  Pin one or both asymptotes instead of estimating
+#'                        them (default `NULL`: both estimated). `TRUE` fixes
+#'                        `low` and `up` at the response bounds (`lower`,
+#'                        `upper`; `0` and `1` for proportions);
+#'                        `c("up")` fixes only the named asymptote at its bound;
+#'                        a named numeric vector such as `c(low = 0.02)` or
+#'                        `c(low = 0, up = 1)` fixes the named ones at those
+#'                        values. A fixed asymptote gets a brms `constant()`
+#'                        prior on its Intercept and no slope prior (its formula
+#'                        is `~ 1`). Values at the response bounds are pinned at
+#'                        the edge of the padded window (`0.001` / `0.999` with
+#'                        the defaults, see [compute_4pl_bounds()]) because the
+#'                        identity-link likelihood needs probabilities strictly
+#'                        inside `(lower, upper)`.
 #' @return A `brmsprior` object ready to pass to [fit_4pl()].
 #' @examples
 #' raw <- data.frame(
@@ -74,10 +88,22 @@ make_4pl_priors <- function(data,
                             z               = NULL,
                             up              = NULL,
                             low             = NULL,
-                            k               = NULL) {
+                            k               = NULL,
+                            fix_asymptotes  = NULL) {
 
   if (is.null(bounds)) bounds <- c(lower, upper)
   b <- compute_4pl_bounds(bounds[1], bounds[2])
+
+  # Fixed asymptotes: a constant() Intercept prior replaces the centred prior
+  # and the slope prior; the sub-parameter formula is `~ 1` by construction.
+  fx <- tdt_resolve_fix_asymptotes(fix_asymptotes, bounds[1], bounds[2])
+  if (!is.null(fx$low)) low <- ~ 1
+  if (!is.null(fx$up))  up  <- ~ 1
+  fixed_prior <- function(which, nlpar) {
+    raw <- tdt_fixed_asymptote_raw(fx[[which]], which, b, bounds[1], bounds[2])$raw
+    brms::set_prior(sprintf("constant(%.10f)", raw),
+                    class = "b", nlpar = nlpar, coef = "Intercept")
+  }
 
   # Centre the raw asymptotes so low ~ bounds[1] + 0.02 * range and
   # up ~ bounds[1] + 0.98 * range — the typical TDT asymptotes for any range.
@@ -90,13 +116,17 @@ make_4pl_priors <- function(data,
   if (is.null(ctmax) && is.null(z)) {
     ## ---- midpoint priors (unchanged) ----
     mid_start <- stats::median(data$logd, na.rm = TRUE)
-    priors <- c(
+    low_priors <- if (!is.null(fx$low)) fixed_prior("low", "lowraw") else c(
       brms::set_prior(sprintf("normal(%.6f, 1)", lowraw_mean),
                       class = "b", nlpar = "lowraw", coef = "Intercept"),
-      brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "lowraw"),
+      brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "lowraw"))
+    up_priors  <- if (!is.null(fx$up))  fixed_prior("up",  "upraw")  else c(
       brms::set_prior(sprintf("normal(%.6f, 1)", upraw_mean),
                       class = "b", nlpar = "upraw", coef = "Intercept"),
-      brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "upraw"),
+      brms::set_prior("normal(0, 0.5)", class = "b", nlpar = "upraw"))
+    priors <- c(
+      low_priors,
+      up_priors,
       brms::set_prior(sprintf("normal(%.6f, 1)", logk_mean),
                       class = "b", nlpar = "logk", coef = "Intercept"),
       brms::set_prior("normal(0, 0.3)", class = "b", nlpar = "logk"),
@@ -155,8 +185,10 @@ make_4pl_priors <- function(data,
   }
 
   priors <- c(
-    direct_par(shape_rhs$lowraw, "lowraw",   lowraw_mean, "1",   "0.5"),
-    direct_par(shape_rhs$upraw,  "upraw",    upraw_mean,  "1",   "0.5"),
+    if (!is.null(fx$low)) fixed_prior("low", "lowraw") else
+      direct_par(shape_rhs$lowraw, "lowraw", lowraw_mean, "1", "0.5"),
+    if (!is.null(fx$up))  fixed_prior("up",  "upraw")  else
+      direct_par(shape_rhs$upraw,  "upraw",  upraw_mean,  "1", "0.5"),
     direct_par(shape_rhs$logk,   "logk",     logk_mean,   "1",   "0.3"),
     direct_par(ctmax_rhs,        "CTmaxdev", 0,           "10",  "10"),
     direct_par(z_rhs,            "logz",     log(3),      "0.7", "0.7")

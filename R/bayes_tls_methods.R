@@ -44,6 +44,10 @@ print.bayes_tls <- function(x, ...) {
   } else {
     cat("  Param:    midpoint\n")
   }
+  if (!is.null(x$meta$fix_asymptotes))
+    cat("  Fixed:   ", paste(sprintf("%s = %.4g", names(x$meta$fix_asymptotes),
+                                     x$meta$fix_asymptotes), collapse = ", "),
+        "(asymptote(s) pinned via fix_asymptotes)\n")
   if (!is.null(x$meta$random_effects))
     cat("  RE:      ", paste(x$meta$random_effects, collapse = ", "), "\n")
   cat("  Status:  ",

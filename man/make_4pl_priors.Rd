@@ -16,7 +16,8 @@ make_4pl_priors(
   z = NULL,
   up = NULL,
   low = NULL,
-  k = NULL
+  k = NULL,
+  fix_asymptotes = NULL
 )
 }
 \arguments{
@@ -65,6 +66,21 @@ random-effect SD priors on
 \code{CTmaxdev}/\code{logz} only (never on the shape
 sub-parameters). \code{up}/\code{low}/\code{k}
 follow the same inheritance resolution as the formula.}
+
+\item{fix_asymptotes}{Pin one or both asymptotes instead of estimating
+them (default \code{NULL}: both estimated). \code{TRUE} fixes
+\code{low} and \code{up} at the response bounds (\code{lower},
+\code{upper}; \code{0} and \code{1} for proportions);
+\code{c("up")} fixes only the named asymptote at its bound;
+a named numeric vector such as \code{c(low = 0.02)} or
+\code{c(low = 0, up = 1)} fixes the named ones at those
+values. A fixed asymptote gets a brms \code{constant()}
+prior on its Intercept and no slope prior (its formula
+is \code{~ 1}). Values at the response bounds are pinned at
+the edge of the padded window (\code{0.001} / \code{0.999} with
+the defaults, see \code{\link[=compute_4pl_bounds]{compute_4pl_bounds()}}) because the
+identity-link likelihood needs probabilities strictly
+inside \verb{(lower, upper)}.}
 }
 \value{
 A \code{brmsprior} object ready to pass to \code{\link[=fit_4pl]{fit_4pl()}}.

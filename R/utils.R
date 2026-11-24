@@ -445,3 +445,86 @@ tdt_is_grouped <- function(workflow) {
   if (ndirect > 0) return(ndirect > 1)
   any(grepl("^b_mid_", nms) & !grepl("_(Intercept|temp_c)$", nms))
 }
+
+# --- Fixed asymptotes -------------------------------------------------------
+#
+# `fix_asymptotes` pins `low` and/or `up` instead of estimating them. It is a
+# PRIOR feature, not a formula change: the asymptote keeps its `lowraw`/`upraw`
+# nlpar (so every downstream reader -- tls(), predict_*(), accessors -- is
+# untouched) but its Intercept gets a brms `constant()` prior and its formula
+# is forced to `~ 1`. Resolution and the raw-scale mapping live here so
+# fit_4pl() and make_4pl_priors() agree exactly.
+
+# Resolve the user-facing `fix_asymptotes` value into NULL (estimate both) or a
+# named list with the requested response-scale values for "low" and/or "up".
+#   TRUE                 -> both at the response bounds (lower, upper)
+#   c("up")              -> the named asymptote(s) at the response bounds
+#   c(low = 0.02, up = 1) -> the named asymptote(s) at the given values
+tdt_resolve_fix_asymptotes <- function(fix_asymptotes, lower = 0, upper = 1) {
+  usage <- paste0("`fix_asymptotes` must be NULL/FALSE (estimate both), TRUE ",
+                  "(fix both at the response bounds), a character vector of ",
+                  "\"low\"/\"up\" (fix those at the bounds) or a named numeric ",
+                  "vector such as c(low = 0, up = 1).")
+  if (is.null(fix_asymptotes) || isFALSE(fix_asymptotes)) return(NULL)
+  if (isTRUE(fix_asymptotes)) return(list(low = lower, up = upper))
+  if (is.character(fix_asymptotes)) {
+    bad <- setdiff(fix_asymptotes, c("low", "up"))
+    if (length(bad) || !length(fix_asymptotes) || anyDuplicated(fix_asymptotes))
+      stop(usage, call. = FALSE)
+    return(as.list(c(low = lower, up = upper)[fix_asymptotes]))
+  }
+  if (is.numeric(fix_asymptotes)) {
+    nm <- names(fix_asymptotes)
+    if (is.null(nm) || !length(nm) || !all(nm %in% c("low", "up")) ||
+        anyDuplicated(nm))
+      stop(usage, call. = FALSE)
+    vals <- as.list(fix_asymptotes)
+    for (n in names(vals)) {
+      v <- vals[[n]]
+      if (!is.finite(v) || v < lower || v > upper)
+        stop(sprintf(paste0("fix_asymptotes: %s = %g is outside the response ",
+                            "bounds [%g, %g]."), n, v, lower, upper),
+             call. = FALSE)
+    }
+    return(vals)
+  }
+  stop(usage, call. = FALSE)
+}
+
+# Map a fixed response-scale asymptote value to the raw (logit-scale) constant
+# used by the disjoint-bounds reparameterisation, and return the EFFECTIVE value
+# the model carries. `which` is "low" or "up"; `b` is compute_4pl_bounds().
+# A value AT the response bound (the usual request: low = 0, up = 1) cannot be
+# represented exactly, because the window keeps `pad` away from the bound so
+# the identity-link likelihood never sees a probability of exactly 0 or 1; it
+# is pinned at the window edge (0.001 / 0.999 with the defaults). Any other
+# value outside the window would cross the disjoint-bounds midpoint and is an
+# error.
+tdt_fixed_asymptote_raw <- function(value, which = c("low", "up"), b,
+                                    lower = 0, upper = 1) {
+  which <- match.arg(which)
+  mn <- if (which == "low") b$low_min else b$up_min
+  w  <- if (which == "low") b$low_w   else b$up_w
+  mx <- mn + w
+  if (which == "low" && isTRUE(all.equal(value, lower))) value <- mn
+  if (which == "up"  && isTRUE(all.equal(value, upper))) value <- mx
+  if (value < mn || value > mx)
+    stop(sprintf(paste0("fix_asymptotes: %s = %g lies outside the interval ",
+                        "(%.4g, %.4g) that `%s` may occupy under the ",
+                        "disjoint-bounds reparameterisation (see ",
+                        "compute_4pl_bounds()). Values at the response bounds ",
+                        "(%g or %g) are pinned at the interval edge; choose a ",
+                        "value inside the interval otherwise."),
+                 which, value, mn, mx, which, lower, upper), call. = FALSE)
+  q   <- min(max((value - mn) / w, 1e-9), 1 - 1e-9)
+  raw <- stats::qlogis(q)
+  list(raw = raw, value = mn + stats::plogis(raw) * w)
+}
+
+# Effective fixed values (named numeric, response scale) for `meta`, or NULL.
+tdt_fixed_asymptote_values <- function(fx, b, lower = 0, upper = 1) {
+  if (is.null(fx)) return(NULL)
+  vapply(names(fx), function(n)
+    tdt_fixed_asymptote_raw(fx[[n]], n, b, lower, upper)$value, numeric(1))
+}
+

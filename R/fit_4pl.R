@@ -351,6 +351,21 @@ make_4pl_formula <- function(random_effects = NULL,
 #'                       `ape::vcv(phy, corr = TRUE)`. Matrices are validated
 #'                       (symmetry, dimnames covering the grouping levels,
 #'                       unit diagonal) and passed to [brms::brm()].
+#' @param fix_asymptotes Pin one or both asymptotes instead of estimating them.
+#'                       Default `NULL`: `low` and `up` are estimated. `TRUE`
+#'                       fixes both at the response bounds (`0` and `1` for
+#'                       proportions); `c("up")` or `c("low")` fixes only that
+#'                       one at its bound and leaves the other estimated; a named
+#'                       numeric vector such as `c(low = 0.02)` or
+#'                       `c(low = 0, up = 1)` fixes the named ones at those
+#'                       values. A fixed asymptote cannot carry a formula (its
+#'                       formula becomes `~ 1` and it is dropped from
+#'                       `temp_effects`); it is pinned through a brms
+#'                       `constant()` prior, so every downstream function reads
+#'                       it like an estimated one. Values at the response bounds
+#'                       are pinned at the edge of the padded window (`0.001` /
+#'                       `0.999` with the defaults; see [compute_4pl_bounds()]).
+#'                       The effective values are stored in `meta$fix_asymptotes`.
 #' @param ...            Further arguments passed to [brms::brm()].
 #' @return A list of class `"bayes_tls"` with elements `fit`, `data`,
 #'         `formula`, `prior`, `meta`. See [print.bayes_tls()],
@@ -404,10 +419,32 @@ fit_4pl <- function(data,
                     p              = 0.5,
                     t_ref          = 60,
                     data2          = NULL,
+                    fix_asymptotes = NULL,
                     ...) {
 
   threshold <- match.arg(threshold)
   if (!is.null(bounds)) { lower <- bounds[1]; upper <- bounds[2] }
+
+  # Fixed asymptotes (prior-based, see tdt_resolve_fix_asymptotes()): force the
+  # pinned asymptote's formula to `~ 1`, refuse a conflicting user formula, and
+  # drop it from `temp_effects` so the metadata stays honest.
+  fx <- tdt_resolve_fix_asymptotes(fix_asymptotes, lower, upper)
+  if (!is.null(fx)) {
+    for (nm in names(fx)) {
+      f_user <- if (nm == "low") low else up
+      if (!is.null(f_user) && !identical(formula_rhs(f_user, "1"), "1"))
+        stop(sprintf(paste0("`%s` is fixed by `fix_asymptotes` but also has the ",
+                            "formula `%s = %s`; a fixed asymptote cannot vary ",
+                            "with temperature or moderators. Drop one of the ",
+                            "two."), nm, nm, formula_rhs(f_user, "1")),
+             call. = FALSE)
+    }
+    if (!is.null(fx$low)) low <- ~ 1
+    if (!is.null(fx$up))  up  <- ~ 1
+    temp_effects <- setdiff(temp_effects, names(fx))
+  }
+  fx_values <- tdt_fixed_asymptote_values(fx, compute_4pl_bounds(lower, upper),
+                                          lower, upper)
   direct <- !is.null(ctmax) || !is.null(z)
   if (direct && !is.null(random_effects))
     stop("In the direct CTmax/z parameterisation, random effects go INSIDE the ",
@@ -513,7 +550,8 @@ fit_4pl <- function(data,
                              z              = z,
                              up             = up,
                              low            = low,
-                             k              = k)
+                             k              = k,
+                             fix_asymptotes = fix_asymptotes)
   }
 
   # Fixed-effect moderators (e.g. species, life_stage) the fit varies over:
@@ -542,6 +580,7 @@ fit_4pl <- function(data,
     link             = family$link,
     parameterization = if (direct) "direct" else "midpoint",
     threshold        = threshold,
+    fix_asymptotes   = fx_values,
     t_ref            = t_ref,
     log10_tref       = log10_tref,
     group_vars       = group_vars,
