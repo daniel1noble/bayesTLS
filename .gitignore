@@ -158,6 +158,11 @@ _output/EcologyLetters_submission1.pdf
 !tests/testthat/fixtures/sim_fit_phylo_small.rds
 !tests/testthat/fixtures/sim_fit_phylo_ident.rds
 !tests/testthat/fixtures/sim_fit_phylo_plain.rds
+# Golden builder fixtures (alternative-models Phase 0): formula, prior table
+# and generated Stan code per canonical configuration; ~4 KB each, must be
+# committed so CI can compare against them (test-golden-stancode.R).
+!tests/testthat/fixtures/models/
+!tests/testthat/fixtures/models/*.rds
 notes/2026-10-14-qg-grm-sim.R
 notes/2026-10-14-qg-grm-sim-PREFLIGHT-results.csv
 notes/2026-10-14-qg-grm-sim-results.csv
