@@ -13,11 +13,22 @@
 #                         mid into the absolute log10 t at survival p (baked
 #                         into direct fits with threshold = "absolute")
 #   G(u)                  the curve on the R side, as a share of the range
+#   logG(u), logGc(u)     log G(u) and log(1 - G(u)), accurate far into either
+#                         tail, where G or 1 - G underflows or cancels
+#   Ginv_log(lv), Gcinv_log(lw)  their inverses: the u with log G(u) = lv, and
+#                         with log(1 - G(u)) = lw. Used by the cumulative-
+#                         exposure option of the varying shape, which carries
+#                         survival from one temperature's curve to the next
+#                         through the log of its excess above the floor or of
+#                         its deficit from the top, so that nothing underflows
 #   curve(low, up, u)     the full curve, p at u = k (log10 t - mid); the
 #                         log-logistic form is written exactly as the
 #                         pre-models code wrote it, so its numbers are
 #                         bit-identical
 #   abs_corr(low,up,k,p)  the same correction on the R side
+#   abs_corr_dp(low,up,k,p) its derivative with respect to p (used by the
+#                         varying-shape heat-injury integrator to solve for
+#                         the surviving rank by Newton's method)
 #   slope_factor          the slope of p against log10 t at mid equals
 #                         minus k times (up - low) times slope_factor
 #   theta_offset          standard (inflection-point) location of the curve
@@ -44,8 +55,13 @@ tdt_models <- function() {
         sprintf("(1/exp(logk)) * log((up - %g)/(%g - low))", p, p)
       },
       G             = function(u) 1 / (1 + exp(u)),
+      logG          = function(u) -(pmax(u, 0) + log1p(exp(-abs(u)))),
+      logGc         = function(u) -(pmax(-u, 0) + log1p(exp(-abs(u)))),
+      Ginv_log      = function(lv) log(-expm1(lv)) - lv,
+      Gcinv_log     = function(lw) lw - log(-expm1(lw)),
       curve         = function(low, up, u) low + (up - low) / (1 + exp(u)),
       abs_corr      = function(low, up, k, p) log((up - p) / (p - low)) / k,
+      abs_corr_dp   = function(low, up, k, p) -(1 / (up - p) + 1 / (p - low)) / k,
       slope_factor  = 0.25,
       theta_offset  = 0,
       hazard        = function(t, p, k, mid) k / (t * log(10)) * (1 - p),
@@ -64,9 +80,16 @@ tdt_models <- function() {
         sprintf("(1/exp(logk)) * inv_Phi((up - %g)/(up - low))", p)
       },
       G             = function(u) stats::pnorm(-u),
+      logG          = function(u) stats::pnorm(-u, log.p = TRUE),
+      logGc         = function(u) stats::pnorm(u, log.p = TRUE),
+      Ginv_log      = function(lv) -stats::qnorm(lv, log.p = TRUE),
+      Gcinv_log     = function(lw) stats::qnorm(lw, log.p = TRUE),
       curve         = function(low, up, u) low + (up - low) * stats::pnorm(-u),
       abs_corr      = function(low, up, k, p) {
         stats::qnorm((up - p) / (up - low)) / k
+      },
+      abs_corr_dp   = function(low, up, k, p) {
+        -1 / (k * (up - low) * stats::dnorm(stats::qnorm((up - p) / (up - low))))
       },
       slope_factor  = stats::dnorm(0),
       theta_offset  = 0,
@@ -89,9 +112,25 @@ tdt_models <- function() {
         sprintf("(1/exp(logk)) * log(log2((up - low)/(%g - low)))", p)
       },
       G             = function(u) 2^(-exp(u)),
+      logG          = function(u) -log(2) * exp(u),
+      logGc         = function(u) {
+        # log(1 - 2^(-x')) with x' = e^u; below u = -20 the tail series
+        # log(x) - x/2, x = log(2) e^u, so it stays finite for any finite u
+        x <- log(2) * exp(u)
+        ifelse(u < -20, log(log(2)) + u - x / 2, log(-expm1(-x)))
+      },
+      Ginv_log      = function(lv) log(-lv) - log(log(2)),
+      Gcinv_log     = function(lw) {
+        # x = -log(1 - w), w = e^lw; for tiny w, log x = lw + w / 2
+        lx <- ifelse(lw < -30, lw + exp(lw) / 2, log(-log1p(-exp(lw))))
+        lx - log(log(2))
+      },
       curve         = function(low, up, u) low + (up - low) * 2^(-exp(u)),
       abs_corr      = function(low, up, k, p) {
         log(log2((up - low) / (p - low))) / k
+      },
+      abs_corr_dp   = function(low, up, k, p) {
+        -1 / (k * log2((up - low) / (p - low)) * (p - low) * log(2))
       },
       slope_factor  = log(2) / 2,
       theta_offset  = -log(log(2)),
@@ -112,9 +151,25 @@ tdt_models <- function() {
         sprintf("(-(1/exp(logk)) * log(log2((up - low)/(up - %g))))", p)
       },
       G             = function(u) 1 - 2^(-exp(-u)),
+      logG          = function(u) {
+        # log(1 - 2^(-x')) with x' = e^(-u); past u = 20 use the tail series
+        # log(x) - x/2, x = log(2) e^(-u), so it stays finite for any finite u
+        x <- log(2) * exp(-u)
+        ifelse(u > 20, log(log(2)) - u - x / 2, log(-expm1(-x)))
+      },
+      logGc         = function(u) -log(2) * exp(-u),
+      Ginv_log      = function(lv) {
+        # x = -log(1 - v), v = e^lv; for tiny v, log x = lv + v / 2
+        lx <- ifelse(lv < -30, lv + exp(lv) / 2, log(-log1p(-exp(lv))))
+        log(log(2)) - lx
+      },
+      Gcinv_log     = function(lw) log(log(2)) - log(-lw),
       curve         = function(low, up, u) up - (up - low) * 2^(-exp(-u)),
       abs_corr      = function(low, up, k, p) {
         -log(log2((up - low) / (up - p))) / k
+      },
+      abs_corr_dp   = function(low, up, k, p) {
+        -1 / (k * log2((up - low) / (up - p)) * (up - p) * log(2))
       },
       slope_factor  = log(2) / 2,
       theta_offset  = log(log(2)),

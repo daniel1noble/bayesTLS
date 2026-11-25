@@ -18,7 +18,8 @@ predict_heat_injury(
   save_draws = FALSE,
   seed = NULL,
   by = NULL,
-  shape = c("constant", "varying")
+  shape = c("constant", "varying"),
+  varying_method = c("individual", "cumulative")
 )
 }
 \arguments{
@@ -33,7 +34,23 @@ Requires >= 2 rows.}
 \verb{(0, 1)}. The default coincides with the classical LT50
 when \code{low} is about 0 and \code{up} about 1; with sub-unit asymptotes
 the relative threshold is the more biologically
-meaningful anchor for dose accounting.}
+meaningful anchor for dose accounting. With the
+constant shape, a draw whose curve at the centring
+temperature cannot reach an absolute target gives no
+prediction (a warning reports how many). With
+\code{shape = "varying"} and no repair, the target sets the
+heat injury only; survival does not depend on it (with
+repair it does, through the units of \code{r_ref}; see
+\code{repair_pars}). In the varying shape (either
+\code{varying_method}), heat injury for an absolute target is
+the injury of the individual of that survival rank.
+Where the target is at or above a trace temperature's
+upper asymptote, that individual dies on exposure there
+(above \code{T_c}), and heat injury is \code{Inf} (with a warning)
+while injury accrued there is outstanding (repair that
+clears all injury resets it); where it is at or below
+the lower asymptote, that temperature adds no injury to
+it.}
 
 \item{T_c}{Optional damage-accumulation threshold (°C). When
 supplied, the damage rate is forced to zero at
@@ -57,12 +74,24 @@ Default \code{FALSE}.}
 
 \item{repair_pars}{Required when \code{repair = TRUE}. Named list with elements
 \verb{TA, TAL, TAH, TL, TH, TREF, r_ref} passed straight to
-\code{\link[=repair_rate_schoolfield]{repair_rate_schoolfield()}}. \code{r_ref} should be in
-"doses per hour" so it matches the damage-rate units.}
+\code{\link[=repair_rate_schoolfield]{repair_rate_schoolfield()}}. \code{r_ref} is in doses per
+hour, the damage-rate units, where a dose is the
+threshold time of \code{target_surv}; a given \code{r_ref}
+therefore repairs more or less depending on the target.
+(With \code{shape = "varying"}, injury is kept in doses of
+the relative threshold, \code{r_ref} is converted with the
+two thresholds' ratio at the centring temperature, as in
+the constant shape; repair removes the same fraction of
+every individual's injury, or with
+\code{varying_method = "cumulative"} lowers the shared
+injury by the repair amount.)}
 
 \item{repair_scales_with_survival}{Logical. If \code{TRUE} (default), repair
 rate at each step is scaled by \code{survival / up} so dead
-organisms do not contribute to repair.}
+organisms do not contribute to repair. (With
+\code{shape = "varying"}, \code{up} is that of the first
+temperature that accrues injury, where survival starts,
+so the scale is at most 1.)}
 
 \item{irreversible_mortality}{Logical. If \code{TRUE} (default), survival can
 only decrease over time — i.e. once the population's
@@ -81,25 +110,24 @@ returns the ungrouped result. A grouped fit runs the dose
 integral through each group's 4PL and \code{summary} gains the
 moderator column(s).}
 
-\item{shape}{How the 4PL asymptotes/steepness enter the dose integral.
-\code{"constant"} (default) holds \code{low}, \code{up}, \code{k} at the
+\item{shape}{How the curve's shape enters the prediction.
+\code{"constant"} (default) holds \code{low}, \code{up} and \code{k} at the
 centring temperature \code{T_bar} and lets only the midpoint
-shift with temperature -- the classical constant-shape
-heat-injury assumption (via \code{\link[=hi_pars]{hi_pars()}}). \code{"varying"}
-feeds the temperature-local \code{low(T)}, \code{up(T)}, \code{k(T)}
-(and \code{mid(T)}) into both the damage rate and the
-dose→survival mapping (via \code{\link[=extract_4pl_pars]{extract_4pl_pars()}}). In
-\code{"varying"} mode survival is accumulated as a monotone
-state by an incremental decrement: each interval's
-mortality increment is the \emph{local} curve's drop in
-survival over the dose added that interval
-(\verb{g(D_j; shape_j) - g(D_\{j-1\}; shape_j)}), so the local
-shape sets the RATE of survival loss without re-mapping
-the global cumulative dose through a step-local curve
-(which would make survival jump when temperature changes
-with no added exposure). When the shape is flat in
-temperature the two modes coincide to numerical tolerance.
-See \code{vignette}-free note \code{notes/package_design/2026-06-25-direct-param-shape-temperature-terms.qmd}.}
+shift with temperature, along a straight line through
+its value at \code{T_bar}: survival is read off that one
+curve at the accumulated dose, the classical
+constant-shape heat-injury assumption (via
+\code{\link[=hi_pars]{hi_pars()}}). \code{"varying"} (experimental) uses the
+temperature-local \code{low(T)}, \code{up(T)}, \code{k(T)} and
+\code{mid(T)} (via \code{\link[=extract_4pl_pars]{extract_4pl_pars()}}); \code{varying_method}
+sets how survival follows them. See the section
+"Varying shape".}
+
+\item{varying_method}{For \code{shape = "varying"} only: \code{"individual"}
+(default; each individual accumulates injury against
+its own threshold time) or \code{"cumulative"} (cumulative
+exposure: survival is the state). See the section
+"Varying shape".}
 }
 \value{
 A list with elements:
@@ -107,8 +135,13 @@ A list with elements:
 \item \code{summary}: tibble with \code{time}, \code{temp}, and posterior median + 95\%
 CrI for \code{hi}, \code{survival}, and \code{mortality} at each time step (plus the
 moderator column(s) for a grouped fit).
-\item \code{draws}: optional per-draw trajectories (when \code{save_draws = TRUE}).
-\item \code{meta}: list of inputs used.
+\item \code{draws}: optional per-draw trajectories (when \code{save_draws = TRUE}); a
+draw that gives no prediction is kept as rows of \code{NA}.
+\item \code{meta}: list of inputs used. \code{meta$ndraws} is the number of posterior
+draws that produced a prediction; a warning reports any that did not,
+and they are left out of every summary column. For a grouped fit it is
+the smallest such number in any group, and \code{meta$ndraws_by_group}
+gives each group's count.
 }
 }
 \description{
@@ -120,19 +153,108 @@ the posterior median and 95\% credible band of:
 \itemize{
 \item \strong{HI(t)} — cumulative heat injury, in percent of an LT_target_surv dose.
 When \code{HI(t) = 100}, the population has accumulated one full dose at the
-chosen survival threshold (default 50\% mortality).
-\item \strong{S(t)} — predicted survival fraction, mapped from the cumulative dose
-through the fitted dose-response curve (the log-logistic for \code{\link[=fit_4pl]{fit_4pl()}},
-the log-normal or Weibull curve for \code{\link[=fit_lognormal]{fit_lognormal()}} / \code{\link[=fit_weibull]{fit_weibull()}}).
+chosen survival threshold (by default midway between the asymptotes,
+\code{(low + up)/2}).
+\item \strong{S(t)} — predicted survival fraction. With \code{shape = "constant"} it is
+read off the fitted dose-response curve (the log-logistic for
+\code{\link[=fit_4pl]{fit_4pl()}}, the log-normal or Weibull curve for \code{\link[=fit_lognormal]{fit_lognormal()}} /
+\code{\link[=fit_weibull]{fit_weibull()}}) at the cumulative dose; with \code{shape = "varying"} it
+follows each individual's own heat injury (see the section "Varying
+shape").
 }
 
 Optionally adds a temperature-dependent repair rate via
 \code{\link[=repair_rate_schoolfield]{repair_rate_schoolfield()}}.
 }
+\section{Varying shape (experimental)}{
+
+The fitted curves describe survival at constant temperatures. When their
+shape (\code{low}, \code{up}, \code{k}) changes with temperature, survival under a
+fluctuating trace depends on why it changes, which constant-temperature data
+cannot reveal. \code{varying_method} chooses between two coherent methods. Both
+reproduce the fitted curve at a constant temperature; both use the constant
+shape's rule that, with irreversible mortality, injury that is repaired and
+re-accrued kills no one until it passes its previous peak; and both equal the
+constant shape exactly when \code{low}, \code{up} and \code{k} do not change with
+temperature and the midpoint is linear in it (with an absolute target and a
+very shallow curve, \code{k} below about 2, the starting values differ slightly:
+the two shapes read their curves at a tiny dose measured in different
+units). Otherwise they differ, and comparing them shows how much the unknown
+mechanism matters.
+\itemize{
+\item \code{"individual"} (default): each individual is followed separately. The
+individual of survival rank \code{p} is the one that dies, at a constant
+temperature, when survival there falls to \code{p}, at that temperature's
+threshold time for \code{p}. It accumulates heat injury additively (the time at
+each temperature divided by its own threshold time there) and dies when
+its injury reaches 1. This is exact if individuals have their own TDT lines
+that fan out and keep their ranks. Without repair, once the trace has begun
+to accrue injury, survival depends only on the time spent at each
+temperature, not on their order or on where the trace starts; more time at
+any temperature never raises it (a hotter trace can still end higher where
+the fitted curves cross); and the heat injury of an absolute target reaches
+100\% exactly when survival falls to that target. Repair removes the same
+fraction of every individual's injury.
+\item \code{"cumulative"}: cumulative exposure, with survival as the state. Over each
+time step, survival continues along the current temperature's curve from
+the point where that curve has the current survival. This is exact if
+individuals share one injury process whose rate depends on the injury
+already accrued, and differ only in their thresholds. It is the usual rule
+in reliability for a shape that changes with stress (Nelson 1980) and the
+one used by Rezende et al. (2020) and Bullard et al. (2026); given the same
+curves it reproduces Bullard et al.'s code, except that their code reads
+each step's curve at the step's end rather than its start (the difference
+shrinks as the steps do). Temperature order matters. Because survival is
+the state, deaths on exposure to a lower \code{up} (below) also advance the
+survivors along later curves. A step injures only while survival is above
+the floor of its curve; otherwise the state stays on the curve of the last
+step that injured it (as ranks below \code{low} accrue no injury in the
+per-individual method), as it does at or below \code{T_c}. With repair, a
+shared injury falls by the repair amount on the dose scale of the curve the
+state lies on, so the repair during a cool spell depends on the curve of
+the last step that injured. The heat injury of an absolute target is the
+per-individual method's and does not mark when survival under this method
+reaches the target.
+}
+
+Each time step is held at the temperature at its start, as the dose is.
+Survival starts at \code{up} of the first temperature at which the trace accrues
+injury (above \code{T_c}); a trace that accrues none keeps the constant shape's
+value, \code{up} at \code{T_bar}. Both
+methods read a lower \code{up} at some temperature as individuals that die as
+soon as they are exposed to it (a convention without published precedent),
+so survival drops to that \code{up} once the trace spends time there above
+\code{T_c}; those deaths are permanent even with
+\code{irreversible_mortality = FALSE}, as the share \code{1 - up} is in the constant
+shape. If a temperature-dependent \code{up} reflects losses unrelated to heat, fit
+\code{up} as a constant or set \code{T_c}; \code{up(T)} is extrapolated at trace
+temperatures outside the assay range. Heat injury is the same under both
+methods unless repair scales with survival, when each method's own survival
+scales it. For a continuous response (the Beta family) the curve is a mean
+response, so the reading in terms of individuals does not apply. With
+\code{irreversible_mortality = FALSE}, survival rebounds as injury is repaired,
+up to the lowest \code{up} met so far. The cost of the varying shape grows with
+the number of distinct trace temperatures, so rounding the trace (for
+example to 0.1 °C) speeds it up.
+}
+
 \examples{
 \dontrun{
 scens <- make_temperature_scenarios()
 hi    <- predict_heat_injury(scens$single_spike, wf)
 hi$summary
 }
+}
+\references{
+Bullard GW, Buckley LB, Kingsolver JG (2026). Incorporating variation in
+death times improves predictions of ectotherm responses to stressful
+temperatures. PLOS Biology 24(5): e3003623. \doi{10.1371/journal.pbio.3003623}
+
+Nelson W (1980). Accelerated life testing - step-stress models and data
+analyses. IEEE Transactions on Reliability R-29(2): 103-108.
+\doi{10.1109/TR.1980.5220742}
+
+Rezende EL, Bozinovic F, Szilagyi A, Santos M (2020). Predicting temperature
+mortality and selection in natural Drosophila populations. Science
+369(6508): 1242-1245. \doi{10.1126/science.aba9287}
 }

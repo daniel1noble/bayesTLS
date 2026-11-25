@@ -598,3 +598,39 @@ test_that("a direct log-normal fit with an absolute threshold uses inv_Phi on bo
   lo <- suppressWarnings(brms::loo(get_brmsfit(wf)))
   expect_s3_class(lo, "loo")
 })
+
+test_that("each model's logG is log(G) without underflow", {
+  for (m in names(tdt_models())) {
+    sp <- tdt_models()[[m]]
+    u  <- c(-5, -1, 0, 1, 3, 6)
+    expect_equal(sp$logG(u), log(sp$G(u)), tolerance = 1e-10, info = m)
+    expect_equal(sp$logG(-Inf), 0, info = m)
+    # far into the tail G underflows to 0, logG stays finite
+    expect_true(all(is.finite(sp$logG(c(50, 200)))), info = m)
+    expect_true(all(diff(sp$logG(c(-Inf, -3, 0, 3, 50, 200))) < 0), info = m)
+  }
+})
+
+test_that("each model's logGc, log-scale inverses and abs_corr_dp agree with G and abs_corr", {
+  for (m in names(tdt_models())) {
+    sp <- tdt_models()[[m]]
+    u  <- c(-2, -1, 0, 1, 2)
+    expect_equal(sp$logGc(u), log1p(-sp$G(u)), tolerance = 1e-8, info = m)
+    expect_equal(sp$G(0), 0.5, info = m)              # every curve's midpoint is u = 0
+    # Each inverse on the side where its share is at most 1/2 (where the
+    # cumulative-exposure mapping uses it), out to tails where the share
+    # itself underflows to 0 on the linear scale.
+    ue <- c(0, 0.5, 2, 6, 20, 50, 300)
+    expect_equal(sp$Ginv_log(sp$logG(ue)), ue, tolerance = 1e-12, info = m)
+    expect_equal(sp$Gcinv_log(sp$logGc(-ue)), -ue, tolerance = 1e-12, info = m)
+    expect_true(all(is.finite(sp$logG(ue))) && all(is.finite(sp$logGc(-ue))), info = m)
+    expect_true(all(diff(sp$logGc(c(-300, -50, -3, 0, 3))) > 0), info = m)
+    # abs_corr_dp against a central difference of abs_corr in p
+    low <- 0.05; up <- 0.9; k <- 6; h <- 1e-6
+    for (p in c(0.1, 0.3, 0.475, 0.6, 0.85)) {
+      fd <- (sp$abs_corr(low, up, k, p + h) - sp$abs_corr(low, up, k, p - h)) / (2 * h)
+      expect_equal(sp$abs_corr_dp(low, up, k, p), fd, tolerance = 1e-6,
+                   info = paste(m, p))
+    }
+  }
+})

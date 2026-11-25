@@ -15,8 +15,9 @@
   Everything downstream works for every model: `tls()`, `derive_z()`,
   `derive_temperature_for_duration()` and `derive_tdt_curve()` at relative
   or absolute thresholds (each model's own correction from the midpoint to a
-  fixed survival target), `predict_heat_injury()` (dose and survival read
-  off the fitted model's curve, constant or varying shape), survival curves,
+  fixed survival target), `predict_heat_injury()` (dose and survival from
+  the fitted model's curve: read off it for the constant shape, followed per
+  individual or by cumulative exposure for the varying shape), survival curves,
   landscapes and `tdt_parameter_table()` (which records the model in its
   `"model"` attribute). A bare `brmsfit` passed to `tls()` is recognised from
   its formula.
@@ -24,11 +25,12 @@
   z and CTmax (relative and absolute thresholds) and T_crit, as summaries
   and as every posterior draw, the curve parameters, `derive_z()`,
   `derive_temperature_for_duration()` and `derive_tdt_curve()` at the
-  absolute threshold, and `predict_heat_injury()` (constant and varying
-  shape, relative and absolute dose) are bit-identical to 1.1.0, compared
+  absolute threshold, and `predict_heat_injury()` with the default constant
+  shape (relative and absolute dose) are bit-identical to 1.1.0, compared
   on the centred temperature scale and again with a shifted centring
   constant; `tdt_parameter_table()` gains only the `"model"` attribute
-  (`scripts/package/check_case_study_outputs.R`).
+  (`scripts/package/check_case_study_outputs.R`). The varying shape changes:
+  see Bug fixes.
 * `fit_4pl(fix_asymptotes = )` (and `make_4pl_priors()`) can pin one or both
   asymptotes instead of estimating them: `TRUE` fixes `low` and `up` at the
   response bounds (0 and 1 for proportions, a two-parameter log-logistic),
@@ -43,6 +45,60 @@
 
 ## Bug fixes
 
+* `predict_heat_injury(shape = "varying")` used an ad hoc survival update,
+  present since the shape was added in 1.0.0. The default
+  `shape = "constant"`, which the paper uses, gives the same numbers for
+  every draw that produces a prediction (draws that do not are now blanked;
+  see the next entry). Under the old update:
+  - each step subtracted the fixed number of points the current curve drops,
+    whatever share of the animals was still alive, so survival could fall
+    below every curve's lower asymptote (and was clipped at 0), could rise
+    when time at a hot temperature was added, and depended on the time of day
+    a trace started;
+  - with an absolute `target_surv`, steps where the target was at or above
+    the curve's upper asymptote added no heat injury and no mortality, and a
+    draw whose first step was such a step returned `NA` and was dropped from
+    the summary without a warning;
+  - with repair and irreversible mortality, injury that was repaired and then
+    re-accrued was charged again (identical repaired days kept killing). That
+    is what stochastic death predicts, and it was inconsistent with the
+    individual-tolerance rule of the constant shape, under which injury kills
+    no one until it passes its previous peak.
+
+  The varying shape now offers two coherent methods, chosen with the new
+  argument `varying_method`: `"individual"` (default), where each individual
+  accumulates heat injury additively against its own threshold time, and
+  `"cumulative"`, cumulative exposure with survival as the state (the rule
+  used by Rezende et al. 2020 and Bullard et al. 2026; given the same curves
+  it reproduces Bullard et al.'s code up to the time step). Both reproduce the
+  fitted curve at any constant temperature and both equal the constant shape
+  exactly when `low`, `up` and `k` do not change with temperature and `mid`
+  is linear in it, with or without repair; they differ otherwise, because
+  constant-temperature data cannot say why the shape changes. Heat injury is
+  the same under both unless repair scales with survival (for an absolute
+  target, the injury of the individual of that rank; `Inf`, with a warning,
+  while injury accrued where the target is already passed is outstanding).
+  Both read a lower `up` at a temperature as individuals that die on exposure
+  there, permanently even with reversible mortality; under cumulative
+  exposure a temperature whose floor is at or above survival adds no injury. Survival starts at `up` of the first temperature
+  that accrues injury (above `T_c`; a trace that accrues none keeps the
+  constant shape's value), and `repair_scales_with_survival`
+  scales repair by survival over that `up`, a factor never above 1. The help
+  page sets
+  out both methods and their assumptions, and the shape is marked
+  experimental. Varying-shape results change for fits whose `low`, `up` or
+  `k` change with temperature, for any fit with repair and irreversible
+  mortality, and for absolute targets outside a draw's curve at some trace
+  temperature.
+* `predict_heat_injury()` now reports in `meta$ndraws` the posterior draws
+  that produced a prediction, and warns when any did not (for example, an
+  absolute target outside a draw's curve at the centring temperature). Such
+  draws are now left out of every summary column, and `draws` keeps them as
+  rows of `NA`: before, the count reported was the number requested, the
+  draws were dropped silently, and with `repair_scales_with_survival = FALSE`
+  their heat injury still entered the summary as 0. For a grouped fit,
+  `meta$ndraws` is the smallest count in any group and the new
+  `meta$ndraws_by_group` gives each group's count.
 * `tls()` now reads a workflow's own asymptote bounds (the ones it was fitted
   with) when it computes absolute thresholds, as `derive_z()` and the other
   readers already did. Before, it always used the default `[0, 1]` bounds, so
