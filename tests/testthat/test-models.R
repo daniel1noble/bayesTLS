@@ -433,25 +433,93 @@ test_that("absolute thresholds and heat injury are wired to each model (no Stan)
   }
 })
 
+test_that("tls() reads CTmax and z off each model's own threshold line (no Stan)", {
+  skip_if_not_installed("brms")
+  # References, per draw, that never use the models' corrections or tls()'s
+  # handling of t_ref. Relative target: the midpoint line brms evaluates
+  # (derive_tdt_curve()), solved in temperature. Absolute target: brms's
+  # predicted survival solved for the threshold time on a dense duration grid,
+  # then in temperature; its z is the local slope of that line averaged over
+  # tls()'s default grid (11 temperatures across the data), as tls() averages
+  # it. The absolute CTmax is checked at 60 and 30 min, so t_ref is not only
+  # ever the fit's own. The fixture is in hours. These tests need the
+  # git-tracked Beta fixture, which the package build leaves out
+  # (tests/testthat/fixtures is in .Rbuildignore), so they run in
+  # devtools::test(), not in R CMD check.
+  temps <- seq(30, 36, by = 0.25)
+  ids   <- 1:60
+  zg    <- seq(30, 36, length.out = 11)
+  d     <- 0.1
+  t_ct  <- seq(30, 34.5, by = 0.25)
+  t_abs <- sort(unique(c(t_ct, zg - d, zg + d)))
+  dgrid <- 10^seq(log10(0.02), log10(20), length.out = 400)
+  pick  <- function(dd, q, draws) {
+    x <- dd[dd$quantity == q, ]
+    x$value[match(draws, x$.draw)]
+  }
+  rel <- list()
+  for (m in c("log-logistic", "log-normal", "weibull1", "weibull2")) {
+    wf  <- beta_fixture_wf(m)
+    fit <- get_brmsfit(wf)
+    expect_identical(wf$meta$duration_unit, "hours")
+    # relative target, every draw: exact
+    res <- tls(wf, params = c("z", "ctmax"), t_ref = 60)
+    rel[[m]] <- res$draws
+    mid <- derive_tdt_curve(wf, temp_grid = temps)$draws
+    M   <- matrix(NA_real_, max(mid$.draw), length(temps))
+    M[cbind(mid$.draw, match(mid$temp, temps))] <- log10(mid$duration_model)
+    want <- tls_invert_logLT(M, 0, temps)
+    got  <- pick(res$draws, "CTmax", seq_len(nrow(M)))
+    ok   <- is.finite(want) & is.finite(got)
+    expect_gt(mean(ok), 0.9)
+    expect_equal(got[ok], want[ok], tolerance = 1e-8, info = m)
+    expect_equal(pick(res$draws, "z", seq_len(nrow(M))),
+                 -(temps[2] - temps[1]) / (M[, 2] - M[, 1]), tolerance = 1e-8, info = m)
+    # absolute target 0.3, on the first draws
+    g  <- new_tdt_grid(wf, temps = t_abs, durations = dgrid)
+    pp <- brms::posterior_linpred(fit, newdata = g, transform = TRUE,
+                                  re_formula = NA, draw_ids = ids)
+    A  <- vapply(t_abs, function(t) {
+      log10(threshold_x_by_draw(pp[, g$temp == t, drop = FALSE], dgrid, 0.3))
+    }, numeric(length(ids)))
+    on_ct <- match(t_ct, t_abs)
+    for (tr in c(60, 30)) {
+      res  <- tls(wf, params = c("z", "ctmax"), t_ref = tr, target_surv = 0.3)
+      want <- tls_invert_logLT(A[, on_ct], log10(tr / 60), t_ct)
+      got  <- pick(res$draws, "CTmax", ids)
+      ok   <- is.finite(want) & is.finite(got)
+      expect_gt(mean(ok), 0.9)
+      expect_lt(max(abs(got - want)[ok]), 0.02,
+                label = paste(m, "t_ref", tr, "absolute CTmax"))
+      if (tr == 60) za <- pick(res$draws, "z", ids)
+    }
+    # a draw counts only if its threshold time is on the grid at all 22
+    # temperatures (tls() averages all 11 local slopes)
+    slope <- (A[, match(zg + d, t_abs)] - A[, match(zg - d, t_abs)]) / (2 * d)
+    zref  <- rowMeans(-1 / slope)
+    ok    <- is.finite(zref) & is.finite(za)
+    expect_gt(mean(ok), 0.9)
+    # 0.01-0.03 on these draws; a z read off the midpoint line instead is up
+    # to 0.9-1.4 away on some draws
+    expect_lt(max(abs(za - zref)[ok]), 0.1, label = paste(m, "absolute z"))
+  }
+  # A guard that the relative path stays model-free: the swapped fixtures share
+  # their draws, and only the absolute target consults the model, so relative
+  # z and CTmax must be identical across models.
+  for (m in names(rel)[-1]) expect_equal(rel[[m]], rel[[1]], tolerance = 1e-12, info = m)
+})
+
 # ---- gated: simulate from each model and recover it --------------------------------
 
-m_simulate <- function(model, seed, truth = list(ell = 0.05, u = 0.95, k = 6,
-                                                 m_beta0 = 1.5, m_beta1 = -0.18,
-                                                 T_bar = 33)) {
-  set.seed(seed)
-  G <- tdt_model_spec(model)$G
-  d <- expand.grid(T = c(30, 33, 36), t_hours = c(0.05, 0.5, 5, 50), rep = 1:5)
-  d$log10_t_min <- log10(d$t_hours * 60)
-  d$mid_t  <- truth$m_beta0 + truth$m_beta1 * (d$T - truth$T_bar)
-  d$p_true <- truth$ell + (truth$u - truth$ell) * G(truth$k * (d$log10_t_min - d$mid_t))
-  d$n_trials <- 30L
-  d$p_draw   <- rbeta(nrow(d), d$p_true * 8, (1 - d$p_true) * 8)
-  d$y_alive  <- rbinom(nrow(d), size = d$n_trials, prob = d$p_draw)
-  std <- standardize_data(d, temp = "T", duration = "t_hours",
+# simulate_tdt()'s default design under `model` (helper-simulate.R), ready to
+# fit; attr "truth" holds z and the relative-threshold CTmax at 1 h.
+m_simulate <- function(model, seed) {
+  raw <- simulate_tdt(seed = seed, model = model)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
                           n_total = "n_trials", n_surv = "y_alive",
                           duration_unit = "hours")
-  attr(std, "truth") <- c(z = -1 / truth$m_beta1,
-                          ctmax_1h = truth$T_bar + (log10(60) - truth$m_beta0) / truth$m_beta1)
+  tr  <- truth_summary(attr(raw, "truth"), model = model)
+  attr(std, "truth") <- c(z = tr$z, ctmax_1h = tr$CTmax_rel_1hr)
   std
 }
 m_fit <- function(fun, std, ...) {
@@ -461,16 +529,15 @@ m_fit <- function(fun, std, ...) {
 
 test_that("each new model recovers z and CTmax from data simulated under it", {
   skip_unless_brms()
-  cache <- tempfile("bayesTLS-models-")        # shared by the cache check below
-  cases <- list(list(model = "log-normal", fun = fit_lognormal, args = list()),
-                list(model = "weibull1",   fun = fit_weibull,   args = list(type = 1)),
-                list(model = "weibull2",   fun = fit_weibull,   args = list(type = 2)))
+  # The cached Phase 3 fits (helper-skip.R: half-decade design, seed 7); the
+  # recovery tests (test-model-recovery.R) read the same fits.
+  cases <- list(list(model = "log-normal"), list(model = "weibull1"),
+                list(model = "weibull2"))
   for (cs in cases) {
-    std <- m_simulate(cs$model, seed = 7)
-    wf  <- do.call(m_fit, c(list(cs$fun, std), cs$args,
-                            if (cs$model == "log-normal") list(file = cache)))
+    wf  <- load_fixture_workflow_model(cs$model)
     expect_equal(wf$meta$model, cs$model)
-    truth <- attr(std, "truth")
+    tr    <- attr(wf, "truth")
+    truth <- c(z = tr$z, ctmax_1h = tr$CTmax_rel_1hr)
     res <- tls(wf, params = c("z", "ctmax"), t_ref = 60)$summary
     z_hat  <- res$median[res$quantity == "z"]
     ct_hat <- res$median[res$quantity == "CTmax"]
@@ -565,6 +632,7 @@ test_that("each new model recovers z and CTmax from data simulated under it", {
     expect_true(all(is.finite(tab$median)))
   }
   # a cached file holding one model is refused when another is requested
+  cache <- testthat::test_path("fixtures", "sim_fit_model_lognormal")
   expect_error(m_fit(fit_weibull, m_simulate("weibull1", seed = 7),
                      file = cache, file_refit = "never"),
                "is a log-normal model, but a weibull1 model was requested")

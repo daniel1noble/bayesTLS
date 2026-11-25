@@ -347,3 +347,58 @@ load_fixture_workflow_phylo_plain <- function() {
   attr(wf, "phylo_truth") <- truth
   wf
 }
+
+# --- Alternative-models Phase 3: each dose-response model, fitted ------------
+#
+# Durations of the Phase 3 recovery design: every half decade from 0.05 to
+# 50 h (7), at simulate_tdt()'s temperatures (30, 33, 36 degC) and truth, 3
+# replicates of 30 (63 rows). Every temperature then has durations on both
+# shoulders of its curve, so the data pin z. With simulate_tdt()'s default
+# decade steps they do not: a steep curve can slide each temperature's midpoint
+# within a decade-wide gap between durations, so the data barely fix z for any
+# curve and the estimate leans on the priors (exact large-sample comparison of
+# designs in notes/package_design/alt_models_phase3/R/kl_design_check.R).
+phase3_hours <- 10^seq(log10(0.05), log10(50), by = 0.5)
+
+# Data simulated under `model` with the Phase 3 design (seed 7 by default),
+# fitted with `fit_model`: the matching model, or another one to test
+# misspecification. Carries attr "truth" (truth_summary() under the simulating
+# model). Cached at fixtures/sim_fit_model_<model>[_as_<fit_model>][_seed<s>].rds.
+# brms refits a cached fit when its Stan code or data change, not when the
+# sampler settings or brms do, so a cached fit drawn with other chains or draws
+# or under another brms version is refitted here. (Other sampler controls,
+# e.g. adapt_delta, are not checked: delete the git-ignored fixtures after
+# changing them.)
+load_fixture_workflow_model <- function(model, fit_model = model, seed = 7) {
+  fixture_dir <- testthat::test_path("fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  model     <- tdt_model_spec(model)$name
+  fit_model <- tdt_model_spec(fit_model)$name
+  raw <- simulate_tdt(durations_hours = phase3_hours, n_rep = 3, seed = seed,
+                      model = model)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          n_total = "n_trials", n_surv = "y_alive",
+                          duration_unit = "hours")
+  fit_fun <- switch(fit_model,
+                    "log-logistic" = fit_4pl,
+                    "log-normal"   = fit_lognormal,
+                    weibull1       = function(...) fit_weibull(..., type = 1),
+                    weibull2       = function(...) fit_weibull(..., type = 2))
+  stem <- paste0("sim_fit_model_", gsub("-", "", model),
+                 if (fit_model != model) paste0("_as_", gsub("-", "", fit_model)),
+                 if (seed != 7) paste0("_seed", seed))
+  args <- list(chains = 2, iter = 1200, warmup = 600, cores = 2, seed = 1,
+               control = list(adapt_delta = 0.95, max_treedepth = 12),
+               file = file.path(fixture_dir, stem), refresh = 0)
+  wf  <- do.call(fit_fun, c(list(std), args))
+  fit <- get_brmsfit(wf)
+  stale <- brms::nchains(fit) != args$chains ||
+    brms::ndraws(fit) != args$chains * (args$iter - args$warmup) ||
+    !identical(as.character(fit$version$brms),
+               as.character(utils::packageVersion("brms")))
+  if (stale) {
+    wf <- do.call(fit_fun, c(list(std), utils::modifyList(args, list(file_refit = "always"))))
+  }
+  attr(wf, "truth") <- truth_summary(attr(raw, "truth"), model = model)
+  wf
+}

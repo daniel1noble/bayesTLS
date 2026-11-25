@@ -1,6 +1,10 @@
 # Reusable simulator for tests. Produces a beta-binomial-noised survival
-# dataset with known truth, ready to feed to standardize_data().
-
+# dataset with known truth, ready to feed to standardize_data(). `model` picks
+# the dose-response curve (any registry name: "log-logistic", "log-normal",
+# "weibull1", "weibull2"), all in their midpoint form, so `m_beta0` and
+# `m_beta1` set the same midpoint line (log10 minutes) whichever is chosen. The
+# log-logistic registry curve is the expression this simulator always used, so
+# its datasets (and the cached fixtures fitted to them) are unchanged.
 simulate_tdt <- function(temps           = c(30, 33, 36),
                          durations_hours = c(0.05, 0.5, 5, 50),
                          n_rep           = 5,
@@ -12,17 +16,20 @@ simulate_tdt <- function(temps           = c(30, 33, 36),
                                                 m_beta0 = 1.5,
                                                 m_beta1 = -0.18,
                                                 T_bar   = 33),
-                         seed            = 1) {
+                         seed            = 1,
+                         model           = "log-logistic") {
+  mod <- tdt_model_spec(model)
   set.seed(seed)
   d <- expand.grid(T = temps, t_hours = durations_hours, rep = seq_len(n_rep))
   d$log10_t_min <- log10(d$t_hours * 60)
   d$mid_t       <- truth$m_beta0 + truth$m_beta1 * (d$T - truth$T_bar)
-  d$p_true      <- truth$ell + (truth$u - truth$ell) /
-                   (1 + exp(truth$k * (d$log10_t_min - d$mid_t)))
+  d$p_true      <- mod$curve(truth$ell, truth$u,
+                             truth$k * (d$log10_t_min - d$mid_t))
   d$n_trials    <- n_per_rep
   d$p_draw      <- rbeta(nrow(d), d$p_true * phi, (1 - d$p_true) * phi)
   d$y_alive     <- rbinom(nrow(d), size = d$n_trials, prob = d$p_draw)
   attr(d, "truth") <- truth
+  attr(d, "model") <- mod$name
   d
 }
 
@@ -60,16 +67,28 @@ simulate_tdt_beta <- function(temps           = c(30, 33, 36),
   d
 }
 
-# Truth values derived from the simulator's default parameters.
+# Truth values derived from the simulator's parameters. `CTmax_1hr` is the
+# temperature with a 1 h threshold time at the absolute survival target `p_abs`
+# (0.5 by default; with low + up = 1 it equals the relative one);
+# `CTmax_rel_1hr` is the one at the relative threshold (the midpoint line
+# itself). The absolute offset from the midpoint is found by solving the
+# simulated curve numerically, not with the registry's closed-form correction
+# the package uses to read absolute thresholds, so a wrong correction cannot
+# shift the truth and the estimate together. z is the same for every target,
+# since low, up and k do not change with temperature.
 truth_summary <- function(truth = list(ell = 0.05, u = 0.95, k = 6,
                                        m_beta0 = 1.5, m_beta1 = -0.18,
-                                       T_bar = 33)) {
+                                       T_bar = 33),
+                          model = "log-logistic", p_abs = 0.5) {
+  mod     <- tdt_model_spec(model)
   z       <- -1 / truth$m_beta1
-  alpha   <- truth$m_beta0 +
-             (1 / truth$k) * log((truth$u - 0.5) / (0.5 - truth$ell)) -
-             truth$m_beta1 * truth$T_bar
+  off     <- stats::uniroot(function(x) mod$curve(truth$ell, truth$u, truth$k * x) - p_abs,
+                            c(-20, 20), tol = 1e-13)$root   # log10 t - mid at p_abs
+  alpha   <- truth$m_beta0 + off - truth$m_beta1 * truth$T_bar
   CT1     <- (log10(60) - alpha) / truth$m_beta1
-  list(z = z, CTmax_1hr = CT1, truth = truth)
+  CT1_rel <- truth$T_bar + (log10(60) - truth$m_beta0) / truth$m_beta1
+  list(z = z, CTmax_1hr = CT1, CTmax_rel_1hr = CT1_rel, low = truth$ell,
+       up = truth$u, k = truth$k, model = mod$name, p_abs = p_abs, truth = truth)
 }
 
 # Simulator with KNOWN temperature SLOPES on the asymptotes/steepness, not just

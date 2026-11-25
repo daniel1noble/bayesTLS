@@ -38,6 +38,7 @@ Imports:
     utils
 Suggests:
     cmdstanr,
+    extraDistr,
     glmmTMB,
     here,
     pkgload,
