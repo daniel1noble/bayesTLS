@@ -22,6 +22,11 @@ random-effect grouping; better treated as fixed or omitted.}
 (a proportion in the unit interval; 0 indicates complete loss of
 measurable PSII function).}
 }
+The 89 zero readings sit below what the fluorometer resolved: no final
+\eqn{F_v/F_m} lies between 0 and 0.081, and the smallest positive
+\code{fvfm_prop} is 0.1. \code{standardize_data(detection_limit = 0.1)}
+treats them as left-censored (true value below 0.1) instead of clamping
+them to a small value.
 }
 \source{
 Arnold PA, Harris RJ, Aitken SM, Hoek MM, Cook AM, Leigh A, Nicotra AB

@@ -67,6 +67,10 @@ new_tdt_grid <- function(workflow,
 
   nd$logd    <- log10(nd$duration)
   nd$temp_c  <- nd$temp - meta$temp_mean
+  # A censored fit's flag only changes how a reading enters the likelihood;
+  # prediction rows read the curve, so mark them uncensored.
+  if (isTRUE(meta$censored) && "censored" %in% names(data) && !"censored" %in% by)
+    nd$censored <- "none"
 
   for (re_var in tdt_random_effect_variables(meta$random_effects)) {
     if (re_var %in% names(data) && !(re_var %in% names(nd))) {
@@ -136,6 +140,9 @@ summarise_observed_survival <- function(observed) {
   # n_total_sum is only available for count data; a continuous-proportion
   # (Beta) frame has no n_total column, so omit that summary there.
   has_n_total <- "n_total" %in% names(observed)
+  # Censored readings carry their detection limit in `survival`; summarise the
+  # readings as recorded (standardize_data(detection_limit = )).
+  observed <- tdt_observed_as_recorded(observed)
   out <- observed |>
     dplyr::group_by(temp, duration) |>
     dplyr::summarise(

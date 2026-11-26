@@ -47,6 +47,8 @@ simulate_tdt_beta <- function(temps           = c(30, 33, 36),
                                                      m_beta1 = -0.18,
                                                      T_bar   = 33),
                               n_zeros         = 0,
+                              floor           = NULL,
+                              p_spurious      = 0,
                               seed            = 1) {
   set.seed(seed)
   d <- expand.grid(T = temps, t_hours = durations_hours, rep = seq_len(n_rep))
@@ -63,6 +65,11 @@ simulate_tdt_beta <- function(temps           = c(30, 33, 36),
       d$y_prop[sample(hot, min(n_zeros, length(hot)))] <- 0
     }
   }
+  # An instrument that records 0 below `floor` (censored readings), and a share
+  # `p_spurious` of readings set to 0 whatever the dose (e.g. failed sections).
+  # Both draw no random numbers unless set, so existing seeds are unchanged.
+  if (!is.null(floor)) d$y_prop[d$y_prop < floor] <- 0
+  if (p_spurious > 0) d$y_prop[stats::runif(nrow(d)) < p_spurious] <- 0
   attr(d, "truth") <- truth
   d
 }

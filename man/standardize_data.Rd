@@ -17,7 +17,8 @@ standardize_data(
   proportion_eps = 0.001,
   random_effects = NULL,
   duration_unit = "hours",
-  temp_mean = NULL
+  temp_mean = NULL,
+  detection_limit = NULL
 )
 }
 \arguments{
@@ -51,7 +52,11 @@ arguments above.}
 
 \item{proportion_eps}{Half-open clamp applied to \code{proportion} so values sit
 strictly inside \verb{(0, 1)} (the Beta density is undefined
-at exactly 0 or 1). Default \code{0.001}.}
+at exactly 0 or 1): one number in \verb{(0, 0.5)}. Default
+\code{0.001}. With a \code{detection_limit}, the clamp applies
+only on a side that has no limit; censored readings
+take their limit, and uncensored readings on a side
+with a limit are kept as recorded.}
 
 \item{random_effects}{Optional character vector of grouping variables for
 random effects, e.g. \code{c("Date", "Tank")}. These
@@ -64,14 +69,55 @@ Default \code{"hours"}.}
 \item{temp_mean}{Value to subtract from \code{temp} to form \code{temp_c}.
 \code{NULL} (default) uses \code{mean(temp)}. Supply a fixed
 value to align multiple datasets to a common centre.}
+
+\item{detection_limit}{For a continuous \code{proportion} response only: the
+limit(s) beyond which the measurement cannot resolve values, so that a
+reading there says only that the true value lies beyond the limit (a
+censored reading). \code{NULL} (default): no censoring, and readings of 0 or 1
+are clamped by \code{proportion_eps}. Otherwise one of:
+\itemize{
+\item a number in \verb{(0, 1)}: a lower limit. Readings below it (typically
+recorded as 0) are left-censored: the true value is below the limit.
+\item a length-2 numeric \code{c(lower, upper)}, named or in that order, with \code{NA}
+for no limit on one side (or one named number, \code{c(upper = 0.98)}).
+Readings at or above \code{upper} (e.g. values capped at a ceiling) are
+right-censored: the true value is at or above the limit.
+\item the name of a numeric column holding a per-row lower limit, or a
+length-2 character \code{c(lower = "col_lo", upper = "col_hi")} (a list
+mixes numbers and column names). \code{NA} in a limit column means no limit
+for that row.
+}
+
+Censored rows store their limit in \code{survival}, are flagged \code{"left"} or
+\code{"right"} in a new \code{censored} column (\code{"none"} otherwise), and enter the
+Beta likelihood as the probability of lying beyond the limit (brms
+\code{cens()}, added by \code{\link[=fit_4pl]{fit_4pl()}} and the other fitters); the reading as
+recorded is kept in \code{survival_recorded} for plots and observed summaries.
+The fitted curve keeps its meaning (the mean of the uncensored response),
+so \code{\link[=tls]{tls()}} and the prediction helpers are unchanged. There is no default
+limit: take it from the instrument or the data (e.g. the smallest positive
+reading). A reading equal to the lower limit counts as observed; if your
+instrument records below-limit readings AT the limit rather than as 0,
+recode those to 0 first. Positive readings below a lower limit, and
+readings strictly between an upper limit and 1, are coarsened to censored
+with a warning, since they suggest the limit is set too high (or too low).
+
+The pointwise log-likelihood of a censored fit (\code{log_lik()}, \code{loo()},
+\code{waic()}) scores each censored reading as a probability, not a density, so
+compare such fits only with fits to the same data and the same
+\code{detection_limit}, never with a fit whose readings were clamped.}
 }
 \value{
-A tibble with the standardised columns plus a \code{"tdt_meta"} attribute
+A tibble with the standardised columns (plus \code{censored} and
+\code{survival_recorded} when \code{detection_limit} is given) and a
+\code{"tdt_meta"} attribute
 storing \code{temp_mean}, \code{duration_unit}, \code{random_effects},
 \code{response_type} (\code{"count"} or \code{"proportion"}), \code{response_var}
-(the response column name for a proportion fit, else \code{NULL}), and
+(the response column name for a proportion fit, else \code{NULL}),
 \code{proportion_eps} (the clamp half-width used for a proportion fit, else
-\code{NULL}).
+\code{NULL}), \code{detection_limit} (as supplied, else \code{NULL}), \code{censored}
+(\code{TRUE} when a \code{detection_limit} was supplied) and \code{n_censored} (the
+numbers of left- and right-censored rows, else \code{NULL}).
 }
 \description{
 Rewrites user column names into a single project-standard schema and attaches
@@ -90,8 +136,12 @@ are derived and the standardised columns include \code{n_total}, \code{n_surv},
 \eqn{F_v/F_m} ratio with no denominator: supply \code{proportion} and omit the
 count arguments. The value is stored in \code{survival} (clamped into the open
 interval \verb{(proportion_eps, 1 - proportion_eps)} so the Beta likelihood is
-finite); no \code{n_total}/\code{n_surv} columns are created. \code{response_type} is
-recorded as \code{"proportion"}.
+finite, except on a side with a \code{detection_limit}); no
+\code{n_total}/\code{n_surv} columns are created. \code{response_type} is
+recorded as \code{"proportion"}. If the instrument cannot resolve values
+beyond a limit (e.g. it records 0 when function is below what it can
+read), give that limit as \code{detection_limit} so those readings are treated
+as censored rather than clamped.
 }
 
 If the dataset spans multiple categories (life stages, species, populations,
@@ -122,4 +172,12 @@ standardize_data(raw_p,
                  temp       = "temperature_C",
                  duration   = "exposure_h",
                  proportion = "fvfm_ratio")
+
+# The instrument records 0 below 0.05: treat those zeros as censored
+cens <- standardize_data(raw_p,
+                         temp            = "temperature_C",
+                         duration        = "exposure_h",
+                         proportion      = "fvfm_ratio",
+                         detection_limit = 0.05)
+table(cens$censored)
 }

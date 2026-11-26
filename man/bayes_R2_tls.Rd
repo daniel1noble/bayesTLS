@@ -24,7 +24,10 @@ with its standard error and 95\% credible interval as a one-row tibble, rather
 than the bare matrix \code{brms::bayes_R2()} returns. Pass \code{...} straight through
 to \code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}} (e.g. \code{re_formula = NA} to exclude group-level effects,
 or \verb{ndraws =} to subsample). Map over a named list of workflows to build a
-multi-fit table.
+multi-fit table. For a fit with censored readings
+(\code{\link[=standardize_data]{standardize_data()}}'s \code{detection_limit}), those readings enter
+\eqn{R^2} at their limit rather than at their unknown true value, so the
+function warns that the value is only a rough guide.
 }
 \examples{
 \dontrun{

@@ -21,7 +21,13 @@
 #'   `brmsfit` is recognised from its formula, and a hand-written formula is
 #'   treated as the log-logistic.
 #' @param by Character vector of moderator columns defining the groups reported
-#'   separately (e.g. `"sex"`). `NULL` (default) pools to a single group.
+#'   separately (e.g. `"sex"`). `NULL` (default) uses the fit's own groups, as
+#'   the other readers do: a `bayes_tls` workflow fitted with a moderator
+#'   (e.g. `ctmax = ~ 0 + recovery`, or `by =` in [fit_4pl()]) is reported per
+#'   group, and a single-condition fit as one group. A bare `brmsfit` whose
+#'   CTmax/z (or midpoint) vary by a moderator needs `by` given explicitly
+#'   (an error says so). With a user-supplied `newdata` grid, `NULL` treats
+#'   the whole grid as one group.
 #' @param params Quantities to return: `"all"` (z, CTmax, and T_crit when
 #'   `lethal = TRUE`), or a subset of `c("z", "ctmax", "tcrit")`.
 #' @param target_surv Survival threshold the LT curve is read at:
@@ -161,6 +167,10 @@ tls <- function(object, by = NULL, params = "all",
          "read from metadata.", call. = FALSE)
   }
 
+  # `by = NULL` means the fit's own groups (it used to take the moderator from
+  # data row 1 and return that one group, unlabelled).
+  by <- tls_resolve_by(object, fit, by, newdata)
+
   mdata <- fit$data
   if (!temp %in% names(mdata)) {
     stop("Temperature column `", temp, "` not found in the model data.",
@@ -194,7 +204,8 @@ tls <- function(object, by = NULL, params = "all",
 
   # --- build the moderator x temperature grid (shared engine) ----------------
   base_grid <- tls_build_grid(mdata, by = by, temp = temp,
-                              temp_grid = temp_grid, newdata = newdata)
+                              temp_grid = temp_grid, newdata = newdata,
+                              censored = tdt_fit_censored(fit))
 
   # tls() derives z / CTmax / T_crit through the shared tls_zct_draws() engine:
   # the central-difference local z pooled over the grid, and either the exact
@@ -351,4 +362,20 @@ print.tls <- function(x, ...) {
               x$meta$mode, paste(x$meta$params, collapse = ", ")))
   print(x$summary)
   invisible(x)
+}
+
+# Resolve tls()'s `by`: an explicit `by` wins; a user-supplied `newdata` grid is
+# taken as given (one group unless `by` is set); a bayes_tls workflow uses its
+# recorded moderators via tdt_resolve_by() (as derive_z() and the other readers
+# do), so a grouped fit is reported per group; a bare brmsfit that looks grouped
+# (multi-level CTmax/z or mid coefficients) must name its moderator(s), since
+# filling the moderator from data row 1 would silently report one group.
+tls_resolve_by <- function(object, fit, by, newdata = NULL) {
+  if (!is.null(by) || !is.null(newdata)) return(by)
+  if (inherits(object, "bayes_tls")) return(tdt_resolve_by(object, by))
+  wrapped <- structure(list(fit = fit, meta = list()), class = "bayes_tls")
+  if (tdt_is_grouped(wrapped))
+    stop("This brmsfit appears to vary CTmax/z (or mid) by a moderator. Pass ",
+         "`by = <column(s)>` to tls() to extract per group.", call. = FALSE)
+  NULL
 }

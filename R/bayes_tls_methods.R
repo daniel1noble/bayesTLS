@@ -51,6 +51,14 @@ print.bayes_tls <- function(x, ...) {
     cat("  Fixed:   ", paste(sprintf("%s = %.4g", names(x$meta$fix_asymptotes),
                                      x$meta$fix_asymptotes), collapse = ", "),
         "(asymptote(s) pinned via fix_asymptotes)\n")
+  if (isTRUE(x$meta$censored)) {
+    nc <- if ("censored" %in% names(x$data))
+            c(left  = sum(x$data$censored == "left"),
+              right = sum(x$data$censored == "right"))
+          else x$meta$n_censored
+    cat(sprintf("  Censored: %d below and %d above the detection limit (brms cens())\n",
+                nc[["left"]], nc[["right"]]))
+  }
   if (!is.null(x$meta$random_effects))
     cat("  RE:      ", paste(x$meta$random_effects, collapse = ", "), "\n")
   cat("  Status:  ",

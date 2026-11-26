@@ -528,3 +528,25 @@ tdt_fixed_asymptote_values <- function(fx, b, lower = 0, upper = 1) {
     tdt_fixed_asymptote_raw(fx[[n]], n, b, lower, upper)$value, numeric(1))
 }
 
+
+# Observed data as recorded: a censored reading (standardize_data(detection_limit
+# = )) carries its limit in `survival` for the likelihood, but plots and
+# observed summaries should show what was recorded (e.g. 0). Swaps only for
+# censored data, i.e. when both the flag and the recorded column are present,
+# so an unrelated raw column named `survival_recorded` is left alone.
+tdt_observed_as_recorded <- function(observed) {
+  if (is.null(observed) ||
+      !all(c("censored", "survival_recorded") %in% names(observed)))
+    return(observed)
+  meta <- attr(observed, "tdt_meta")
+  if (!is.null(meta) && !isTRUE(meta$censored)) return(observed)  # stale pair
+  rec <- observed$survival_recorded
+  observed$survival <- ifelse(is.na(rec), observed$survival, rec)
+  observed
+}
+
+# Whether a brmsfit (or brmsformula) has a censoring term on its response.
+tdt_fit_censored <- function(fit) {
+  f <- if (inherits(fit, "brmsfit")) fit$formula else fit
+  !is.null(f) && !is.null(brms::brmsterms(f)$adforms$cens)
+}

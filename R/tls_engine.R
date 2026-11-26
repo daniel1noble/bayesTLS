@@ -14,7 +14,7 @@
 # validates), and tags groups in `.grp` (`"all"` when `by = NULL`). `temp` is the
 # (centred) temperature column name in the model data.
 tls_build_grid <- function(mdata, by = NULL, temp = "temp_c", temp_grid = NULL,
-                           newdata = NULL) {
+                           newdata = NULL, censored = FALSE) {
   if (is.null(newdata)) {
     if (is.null(temp_grid))
       temp_grid <- seq(min(mdata[[temp]]), max(mdata[[temp]]), length.out = 11)
@@ -29,6 +29,12 @@ tls_build_grid <- function(mdata, by = NULL, temp = "temp_c", temp_grid = NULL,
     rownames(newdata) <- NULL
   }
   for (v in setdiff(names(mdata), names(newdata))) newdata[[v]] <- mdata[[v]][1]
+  # A censored fit's flag only changes how a reading enters the likelihood; the
+  # grid reads the curve, so mark its rows uncensored rather than copying row 1.
+  # Only for a censored fit (`censored = TRUE`), and never a moderator column:
+  # an uncensored fit may carry its own column of that name.
+  if (isTRUE(censored) && "censored" %in% names(newdata) && !"censored" %in% by)
+    newdata$censored <- "none"
   newdata$.grp <- if (is.null(by)) "all" else
     do.call(paste, c(newdata[by], sep = " / "))
   newdata

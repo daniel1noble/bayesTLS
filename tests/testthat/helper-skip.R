@@ -275,6 +275,29 @@ load_fixture_workflow_beta <- function() {
           refresh = 0)
 }
 
+# Censored Beta fixture: the Beta simulator's truth on the half-decade design,
+# with every reading below 0.1 recorded as 0 (an instrument floor), standardised
+# with detection_limit = 0.1 so those readings are left-censored. Default
+# (all-four) model; settings as the other Beta fixture.
+load_fixture_workflow_beta_censored <- function(seed = 20261126) {
+  fixture_dir <- here::here("tests", "testthat", "fixtures")
+  dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
+  raw <- simulate_tdt_beta(durations_hours = phase3_hours, n_rep = 8, floor = 0.1,
+                           seed = seed)
+  std <- standardize_data(raw, temp = "T", duration = "t_hours",
+                          proportion = "y_prop", duration_unit = "hours",
+                          detection_limit = 0.1)
+  wf <- fit_4pl(std,
+                chains  = 2, iter = 1500, warmup = 750, cores = 2, seed = 1,
+                control = list(adapt_delta = 0.95, max_treedepth = 12),
+                file    = file.path(fixture_dir,
+                                    paste0("sim_fit_beta_censored",
+                                           if (seed != 20261126) paste0("_seed", seed))),
+                refresh = 0)
+  attr(wf, "truth") <- truth_summary(attr(raw, "truth"))
+  wf
+}
+
 # --- Phylogenetic (gr(cov = )) fixtures: issue #12 ---------------------------
 #
 # All three loaders share ONE simulated dataset built deterministically from

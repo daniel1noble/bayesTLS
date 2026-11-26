@@ -111,6 +111,7 @@ plot_survival_curves <- function(pred, observed = NULL,
   }
 
   if (!is.null(observed)) {
+    observed <- tdt_observed_as_recorded(observed)   # censored readings as recorded
     p <- p + ggplot2::geom_jitter(
       data = observed,
       ggplot2::aes(x = duration, y = survival, colour = factor(temp)),
@@ -389,6 +390,7 @@ plot_tdt_landscape <- function(landscape, observed = NULL,
   if (isTRUE(log_time)) p <- p + ggplot2::scale_y_log10()
 
   if (!is.null(observed)) {
+    observed <- tdt_observed_as_recorded(observed)   # landscape fill as recorded
     p <- p + ggplot2::geom_point(
       data = observed,
       ggplot2::aes(x = temp, y = duration, fill = survival),

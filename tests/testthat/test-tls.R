@@ -138,3 +138,44 @@ test_that("tls() per-group machinery: a moderator the model ignores gives identi
   expect_equal(za, zb, tolerance = 1e-8)       # model ignores grp -> identical
   expect_equal(za, pooled, tolerance = 0.02)   # and equals the pooled estimate
 })
+
+# --- by = NULL uses the fit's own groups (fixed 2026-11-26) -------------------
+# Previously tls() with by = NULL on a grouped fit filled the moderator from
+# data row 1 and returned that one group under an ungrouped label.
+
+test_that("tls_resolve_by(): explicit by wins, newdata is taken as given, workflows use their groups", {
+  grouped <- structure(list(fit = NULL, meta = list(group_vars = "grp", grouped = TRUE)),
+                       class = "bayes_tls")
+  single  <- structure(list(fit = NULL, meta = list(group_vars = character(0),
+                                                    grouped = FALSE)),
+                       class = "bayes_tls")
+  expect_equal(tls_resolve_by(grouped, NULL, NULL), "grp")
+  expect_equal(tls_resolve_by(grouped, NULL, "other"), "other")
+  expect_null(tls_resolve_by(grouped, NULL, NULL, newdata = data.frame(temp_c = 0)))
+  expect_null(tls_resolve_by(single, NULL, NULL))
+  # A grouped-looking workflow that records no moderator must name it.
+  unnamed <- structure(list(fit = NULL, meta = list(grouped = TRUE)), class = "bayes_tls")
+  expect_error(tls_resolve_by(unnamed, NULL, NULL), "Pass `by")
+})
+
+test_that("tls() without by reports every group of a grouped workflow (gated)", {
+  skip_unless_brms()
+  for (wf in list(load_fixture_workflow_2group_beta_direct(),
+                  load_fixture_workflow_2group_binom_mid())) {
+    auto <- tls(wf, params = c("z", "ctmax"), t_ref = 60, ndraws = 300, seed = 3)$summary
+    expl <- tls(wf, by = "grp", params = c("z", "ctmax"), t_ref = 60, ndraws = 300,
+                seed = 3)$summary
+    expect_true("grp" %in% names(auto))
+    expect_equal(nrow(auto), 4)
+    expect_equal(auto, expl)
+  }
+})
+
+test_that("tls() on a bare grouped brmsfit asks for by (gated)", {
+  skip_unless_brms()
+  wf  <- load_fixture_workflow_2group_beta_direct()
+  fit <- get_brmsfit(wf)
+  expect_error(tls(fit, params = "z", temp_mean = wf$meta$temp_mean), "Pass `by")
+  s <- tls(fit, by = "grp", params = "z", temp_mean = wf$meta$temp_mean, t_ref = 60)$summary
+  expect_equal(nrow(s), 2)
+})

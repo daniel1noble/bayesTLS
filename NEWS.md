@@ -1,3 +1,42 @@
+# bayesTLS (development version)
+
+## New features
+
+* Censored continuous-proportion readings. `standardize_data()` gains
+  `detection_limit` for a `proportion` response whose instrument cannot
+  resolve values beyond a limit (e.g. a fluorometer that records 0 below
+  what it can read, or values capped at a ceiling). Give it as one number
+  (a lower limit), `c(lower, upper)`, or per-row limit columns. Readings
+  below the lower limit are flagged left-censored and readings at or above
+  the upper limit right-censored (a new `censored` column, with the limit as
+  the response). The fitters (`fit_4pl()`, `fit_lognormal()`,
+  `fit_weibull()`) then add brms's `cens()` term to the Beta response, so
+  those readings contribute the probability of lying beyond the limit
+  instead of a density at a clamped value; `make_4pl_formula()` and
+  `make_tdt_formula()` gain `censored`. The fitted curve keeps its meaning,
+  so `tls()` and every prediction helper are unchanged.
+* Plots (`plot_survival_curves()`, `plot_tdt_landscape()`) and
+  `summarise_observed_survival()` show censored readings as recorded
+  (`survival_recorded`), `print()` reports the censored counts, and
+  `bayes_R2_tls()` warns that R^2 is only a rough guide when readings are
+  censored. A censored fit scores censored readings as probabilities in
+  `log_lik()`, `loo()` and `waic()`, so compare it only with fits to the same
+  data and the same `detection_limit`, never with a fit whose readings were
+  clamped. The new arguments come last in each signature, so existing
+  positional calls are unchanged. Without `detection_limit` nothing changes,
+  except that `proportion_eps` must now be one number in (0, 0.5) (values
+  outside that range gave degenerate or invalid responses before).
+
+## Bug fixes
+
+* `tls()` with `by = NULL` on a grouped fit (e.g. `ctmax = ~ 0 + recovery`)
+  now reports every group, as `derive_z()` and the other readers already
+  did. Previously it filled the moderator from the first data row and
+  silently returned that one group without a group label. A bare `brmsfit`
+  whose CTmax/z (or midpoint) vary by a moderator now asks for `by`; with a
+  user-supplied `newdata` grid, `by = NULL` still treats the grid as one
+  group. Single-condition fits are unaffected.
+
 # bayesTLS 1.2.0
 
 ## New features

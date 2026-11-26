@@ -206,7 +206,10 @@ tdt_parameter_table <- function(workflow, by = NULL) {
 #' than the bare matrix `brms::bayes_R2()` returns. Pass `...` straight through
 #' to [brms::bayes_R2()] (e.g. `re_formula = NA` to exclude group-level effects,
 #' or `ndraws =` to subsample). Map over a named list of workflows to build a
-#' multi-fit table.
+#' multi-fit table. For a fit with censored readings
+#' ([standardize_data()]'s `detection_limit`), those readings enter
+#' \eqn{R^2} at their limit rather than at their unknown true value, so the
+#' function warns that the value is only a rough guide.
 #'
 #' @param workflow A fitted `bayes_tls` workflow returned by [fit_4pl()].
 #' @param ... Further arguments passed to [brms::bayes_R2()].
@@ -225,7 +228,17 @@ tdt_parameter_table <- function(workflow, by = NULL) {
 #' @export
 bayes_R2_tls <- function(workflow, ...) {
   fit <- get_brmsfit(workflow)            # clear error if the workflow is unfitted
-  r   <- brms::bayes_R2(fit, ...)
+  censored <- inherits(workflow, "bayes_tls") && isTRUE(workflow$meta$censored)
+  r <- withCallingHandlers(
+    brms::bayes_R2(fit, ...),
+    warning = function(w) {
+      if (censored && grepl("censored", conditionMessage(w), fixed = TRUE))
+        invokeRestart("muffleWarning")
+    })
+  if (censored && any(workflow$data$censored %in% c("left", "right")))
+    warning("bayes_R2_tls(): this fit has censored readings, which enter R^2 at ",
+            "their detection limit rather than at their unknown true value, so ",
+            "R^2 is only a rough guide here.", call. = FALSE)
   # brms::bayes_R2() returns a 1-row matrix with columns
   # Estimate / Est.Error / Q2.5 / Q97.5 (the quantile labels track `probs`).
   # This wrapper reshapes that summary; passing summary = FALSE via ... yields a

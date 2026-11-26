@@ -45,7 +45,13 @@ midpoint. The dose-response model is read from the workflow; a bare
 treated as the log-logistic.}
 
 \item{by}{Character vector of moderator columns defining the groups reported
-separately (e.g. \code{"sex"}). \code{NULL} (default) pools to a single group.}
+separately (e.g. \code{"sex"}). \code{NULL} (default) uses the fit's own groups, as
+the other readers do: a \code{bayes_tls} workflow fitted with a moderator
+(e.g. \code{ctmax = ~ 0 + recovery}, or \verb{by =} in \code{\link[=fit_4pl]{fit_4pl()}}) is reported per
+group, and a single-condition fit as one group. A bare \code{brmsfit} whose
+CTmax/z (or midpoint) vary by a moderator needs \code{by} given explicitly
+(an error says so). With a user-supplied \code{newdata} grid, \code{NULL} treats
+the whole grid as one group.}
 
 \item{params}{Quantities to return: \code{"all"} (z, CTmax, and T_crit when
 \code{lethal = TRUE}), or a subset of \code{c("z", "ctmax", "tcrit")}.}

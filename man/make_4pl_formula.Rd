@@ -21,7 +21,8 @@ make_4pl_formula(
   p = 0.5,
   log10_tref = 0,
   lower = 0,
-  upper = 1
+  upper = 1,
+  censored = FALSE
 )
 }
 \arguments{
@@ -119,6 +120,15 @@ data's duration unit.}
 \item{lower, upper}{Response-scale bounds for the asymptotes. Default
 \verb{0, 1} for proportion data; set narrower for sublethal
 data whose response sits well above \code{0}.}
+
+\item{censored}{Logical. \code{TRUE} adds brms's censoring term to a \code{Beta}
+response, \verb{<response_var> | cens(censored)}, so rows
+flagged \code{"left"}/\code{"right"} in a \code{censored} column enter
+the likelihood as the probability of lying beyond their
+limit. Default \code{FALSE}. \code{\link[=fit_4pl]{fit_4pl()}} and the other
+fitters set it from the data when \code{\link[=standardize_data]{standardize_data()}}
+was given a \code{detection_limit}. Errors for the count
+families.}
 }
 \value{
 A \code{brmsformula} object.
@@ -139,7 +149,11 @@ The response term depends on the family:
 \verb{<response_var> ~ <4PL>} with no \code{trials()} term. With \code{link = "identity"}
 the 4PL value is the mean directly (safe because the reparam keeps it in
 \verb{(0, 1)}); with \code{link = "logit"} the 4PL is wrapped in \code{logit()} so the mean
-is still the 4PL value.
+is still the 4PL value. With \code{censored = TRUE} the response becomes
+\verb{<response_var> | cens(censored) ~ <4PL>}: rows flagged \code{"left"} or
+\code{"right"} in a \code{censored} column contribute the probability of lying below
+or above their recorded limit instead of a density (see the
+\code{detection_limit} argument of \code{\link[=standardize_data]{standardize_data()}}).
 }
 
 If a parameter has no real temperature effect, its \code{temp_c} slope shrinks
@@ -151,5 +165,7 @@ make_4pl_formula(family = binomial(link = "identity"))
 make_4pl_formula(temp_effects = "mid")            # constant-shape TDT
 make_4pl_formula(family = brms::Beta(link = "identity"),
                  response_var = "survival")
+make_4pl_formula(family = brms::Beta(link = "identity"),
+                 censored = TRUE)           # censored readings
 make_4pl_formula(ctmax = ~ life_stage, z = ~ life_stage)  # direct CTmax/z
 }

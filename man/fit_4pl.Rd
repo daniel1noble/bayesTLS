@@ -172,6 +172,16 @@ intercepts attach to \code{mid} only. Use \code{temp_effects = "mid"} for the cl
 constant-shape TDT model (recommended for sparse designs — see \code{temp_effects}).
 To fit separate categories (life stages, species, populations), filter \code{data}
 per category and call this function once per subset.
+
+Censored readings: if \code{\link[=standardize_data]{standardize_data()}} was given a \code{detection_limit}
+(a continuous-proportion response whose instrument cannot resolve values
+beyond a limit), the fit adds brms's \code{cens()} term to the response so those
+readings contribute the probability of lying beyond the limit. Only the
+response side of the formula changes (\code{survival | cens(censored)}); the
+4PL, the priors and every downstream reader of the curve are the same.
+Because censored readings then score as probabilities in \code{log_lik()},
+\code{loo()} and \code{waic()}, compare such a fit only with fits to the same data
+and the same \code{detection_limit}.
 }
 \examples{
 \dontrun{

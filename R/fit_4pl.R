@@ -19,7 +19,11 @@
 #'   `<response_var> ~ <4PL>` with no `trials()` term. With `link = "identity"`
 #'   the 4PL value is the mean directly (safe because the reparam keeps it in
 #'   `(0, 1)`); with `link = "logit"` the 4PL is wrapped in `logit()` so the mean
-#'   is still the 4PL value.
+#'   is still the 4PL value. With `censored = TRUE` the response becomes
+#'   `<response_var> | cens(censored) ~ <4PL>`: rows flagged `"left"` or
+#'   `"right"` in a `censored` column contribute the probability of lying below
+#'   or above their recorded limit instead of a density (see the
+#'   `detection_limit` argument of [standardize_data()]).
 #'
 #' If a parameter has no real temperature effect, its `temp_c` slope shrinks
 #' toward zero under the prior and the fit reduces cleanly to the simpler case.
@@ -42,6 +46,14 @@
 #'                       proportion) fit. Ignored for count families. Default
 #'                       `"survival"` (the column [standardize_data()] writes for
 #'                       a `proportion` response).
+#' @param censored       Logical. `TRUE` adds brms's censoring term to a `Beta`
+#'                       response, `<response_var> | cens(censored)`, so rows
+#'                       flagged `"left"`/`"right"` in a `censored` column enter
+#'                       the likelihood as the probability of lying beyond their
+#'                       limit. Default `FALSE`. [fit_4pl()] and the other
+#'                       fitters set it from the data when [standardize_data()]
+#'                       was given a `detection_limit`. Errors for the count
+#'                       families.
 #' @param temp_effects   Character vector naming which 4PL sub-parameters carry a
 #'                       `temp_c` slope: any subset of `c("low", "up", "k",
 #'                       "mid")`. Default is all four — temperature can affect
@@ -116,6 +128,8 @@
 #' make_4pl_formula(temp_effects = "mid")            # constant-shape TDT
 #' make_4pl_formula(family = brms::Beta(link = "identity"),
 #'                  response_var = "survival")
+#' make_4pl_formula(family = brms::Beta(link = "identity"),
+#'                  censored = TRUE)           # censored readings
 #' make_4pl_formula(ctmax = ~ life_stage, z = ~ life_stage)  # direct CTmax/z
 #' @export
 make_4pl_formula <- function(random_effects = NULL,
@@ -135,7 +149,8 @@ make_4pl_formula <- function(random_effects = NULL,
                              p              = 0.5,
                              log10_tref     = 0,
                              lower          = 0,
-                             upper          = 1) {
+                             upper          = 1,
+                             censored       = FALSE) {
   make_tdt_formula(model = "log-logistic",
                    random_effects = random_effects,
                    bounds         = bounds,
@@ -153,7 +168,8 @@ make_4pl_formula <- function(random_effects = NULL,
                    p              = p,
                    log10_tref     = log10_tref,
                    lower          = lower,
-                   upper          = upper)
+                   upper          = upper,
+                   censored       = censored)
 }
 
 #' Build the brms formula for a joint Bayesian four-parameter dose-response model
@@ -197,8 +213,11 @@ make_tdt_formula <- function(model = "log-logistic",
                              p              = 0.5,
                              log10_tref     = 0,
                              lower          = 0,
-                             upper          = 1) {
+                             upper          = 1,
+                             censored       = FALSE) {
 
+  if (!is.logical(censored) || length(censored) != 1L || is.na(censored))
+    stop("`censored` must be TRUE or FALSE.", call. = FALSE)
   if (is.null(bounds)) bounds <- c(lower, upper)
   threshold <- match.arg(threshold)
   b <- compute_4pl_bounds(bounds[1], bounds[2])
@@ -211,7 +230,12 @@ make_tdt_formula <- function(model = "log-logistic",
 
   # Response LHS + optional logit() wrap, shared across parameterisations.
   is_beta  <- identical(family$family, "beta")
-  resp_lhs <- if (is_beta) response_var else "n_surv | trials(n_total)"
+  if (censored && !is_beta)
+    stop("`censored = TRUE` needs the Beta family (a continuous-proportion ",
+         "response); count responses are not censored.", call. = FALSE)
+  resp_lhs <- if (!is_beta) "n_surv | trials(n_total)"
+              else if (censored) paste(response_var, "| cens(censored)")
+              else response_var
   wrap     <- function(rhs) if (is_beta && identical(family$link, "logit"))
                               sprintf("logit(%s)", rhs) else rhs
 
@@ -338,6 +362,16 @@ make_tdt_formula <- function(model = "log-logistic",
 #' constant-shape TDT model (recommended for sparse designs — see `temp_effects`).
 #' To fit separate categories (life stages, species, populations), filter `data`
 #' per category and call this function once per subset.
+#'
+#' Censored readings: if [standardize_data()] was given a `detection_limit`
+#' (a continuous-proportion response whose instrument cannot resolve values
+#' beyond a limit), the fit adds brms's `cens()` term to the response so those
+#' readings contribute the probability of lying beyond the limit. Only the
+#' response side of the formula changes (`survival | cens(censored)`); the
+#' 4PL, the priors and every downstream reader of the curve are the same.
+#' Because censored readings then score as probabilities in `log_lik()`,
+#' `loo()` and `waic()`, compare such a fit only with fits to the same data
+#' and the same `detection_limit`.
 #'
 #' @param data           Output of [standardize_data()].
 #' @param random_effects Optional character vector of grouping variables for
@@ -634,6 +668,30 @@ tdt_fit <- function(model = "log-logistic",
 
   response_type <- meta$response_type %||% "count"
   response_var  <- meta$response_var %||% "survival"
+  censored      <- isTRUE(meta$censored)
+  if (censored && !"censored" %in% names(data))
+    stop("The data's metadata says its readings are censored (a ",
+         "`detection_limit` was given to standardize_data()), but the ",
+         "`censored` column is missing. Re-run standardize_data().",
+         call. = FALSE)
+  # Censoring flags made by standardize_data(detection_limit = ) (the
+  # `censored` + `survival_recorded` pair) whose metadata was lost (e.g. by
+  # merge()) would otherwise be fitted as exact readings at the limit. A
+  # user's own `censored` column with intact metadata is left alone.
+  if (is.null(attr(data, "tdt_meta")) &&
+      all(c("censored", "survival_recorded") %in% names(data)) &&
+      any(data$censored %in% c("left", "right")))
+    stop("The data flag ", sum(data$censored %in% c("left", "right")),
+         " row(s) as censored (standardize_data(detection_limit = )) but ",
+         "their 'tdt_meta' attribute was lost (e.g. by merge()). Re-run ",
+         "standardize_data() with its `detection_limit` on the combined data.",
+         call. = FALSE)
+  if (censored && !all(data$censored %in% c("none", "left", "right")))
+    stop("The `censored` column holds values other than \"none\", \"left\" ",
+         "or \"right\" (e.g. NA after binding data standardised with and ",
+         "without a `detection_limit`). Standardise the combined raw data in one ",
+         "standardize_data() call, with a per-row limit column (NA = no limit) ",
+         "where limits differ.", call. = FALSE)
 
   # Default family from the response type when not supplied; otherwise validate
   # (and lightly coerce string names) so a misspecified family fails clearly
@@ -646,6 +704,9 @@ tdt_fit <- function(model = "log-logistic",
   } else {
     family <- validate_4pl_family(family)
   }
+  if (censored && !identical(family$family, "beta"))
+    stop("Censored readings (from standardize_data(detection_limit = )) need ",
+         "the Beta family; got `", family$family, "`.", call. = FALSE)
 
   # Reference exposure for CTmax (direct mode): t_ref is in minutes; place it on
   # the model's log10-time scale. log10_tref = log10(t_ref / minutes-per-unit).
@@ -663,6 +724,7 @@ tdt_fit <- function(model = "log-logistic",
                               upper          = upper,
                               family         = family,
                               response_var   = response_var,
+                              censored       = censored,
                               temp_effects   = temp_effects,
                               ctmax          = ctmax,
                               z              = z,
@@ -717,6 +779,10 @@ tdt_fit <- function(model = "log-logistic",
     upper            = upper,
     bounds           = compute_4pl_bounds(lower, upper),
     response_type    = response_type,
+    censored         = censored,
+    n_censored       = if (censored)
+                         c(left  = sum(data$censored == "left"),
+                           right = sum(data$censored == "right")),
     family           = family$family,
     link             = family$link,
     model            = model,
@@ -778,8 +844,26 @@ tdt_fit <- function(model = "log-logistic",
                         "but a %s model was requested. Delete the cached file ",
                         "or use a different `file`."),
                  file %||% "", got, model), call. = FALSE)
+  # Likewise a cached fit whose readings were (or were not) censored.
+  tdt_check_cached_censoring(workflow$fit$formula, censored, file)
 
   workflow
+}
+
+# Refuse a fit (typically a cached `file` returned under file_refit = "never")
+# whose response side disagrees with the requested censoring: a clamped fit
+# labelled censored, or the reverse, would misreport print(), bayes_R2_tls()
+# and the meaning of its log-likelihood.
+tdt_check_cached_censoring <- function(fit_formula, censored, file = NULL) {
+  got <- tdt_fit_censored(fit_formula)
+  if (!identical(got, isTRUE(censored)))
+    stop(sprintf(paste0("The fit brms returned (file = \"%s\") has %s readings, ",
+                        "but %s readings were requested. Delete the cached ",
+                        "file or use a different `file`."),
+                 file %||% "", if (got) "censored" else "uncensored",
+                 if (isTRUE(censored)) "censored" else "uncensored"),
+         call. = FALSE)
+  invisible(TRUE)
 }
 
 #' Whether a workflow has been fitted

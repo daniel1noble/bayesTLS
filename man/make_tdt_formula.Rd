@@ -22,7 +22,8 @@ make_tdt_formula(
   p = 0.5,
   log10_tref = 0,
   lower = 0,
-  upper = 1
+  upper = 1,
+  censored = FALSE
 )
 }
 \arguments{
@@ -120,6 +121,15 @@ data's duration unit.}
 \item{lower, upper}{Response-scale bounds for the asymptotes. Default
 \verb{0, 1} for proportion data; set narrower for sublethal
 data whose response sits well above \code{0}.}
+
+\item{censored}{Logical. \code{TRUE} adds brms's censoring term to a \code{Beta}
+response, \verb{<response_var> | cens(censored)}, so rows
+flagged \code{"left"}/\code{"right"} in a \code{censored} column enter
+the likelihood as the probability of lying beyond their
+limit. Default \code{FALSE}. \code{\link[=fit_4pl]{fit_4pl()}} and the other
+fitters set it from the data when \code{\link[=standardize_data]{standardize_data()}}
+was given a \code{detection_limit}. Errors for the count
+families.}
 }
 \value{
 A \code{brmsformula} object.
