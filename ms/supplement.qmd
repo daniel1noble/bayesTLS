@@ -85,6 +85,10 @@ format:
         \usepackage{tabularray}
         \usepackage{float}
         \usepackage{pdflscape}
+        % The text font has no glyph for the approximately-equal sign, so it
+        % went missing in the PDF; typeset it as the math symbol instead.
+        \usepackage{newunicodechar}
+        \newunicodechar{≈}{\ensuremath{\approx}}
         \usepackage{graphicx}
         \usepackage[normalem]{ulem}
         \providecommand{\tinytableTabularrayUnderline}[1]{\underline{#1}}
@@ -2217,9 +2221,9 @@ Two patterns stand out (@tbl-aphid-age). **Heat tolerance rises with age in all 
 
 **Sensitivity, though, shifts with age in opposite directions across species.** A smaller $z$ means more sensitivity — less warming is needed to reduce survival time tenfold. *M. dirhodum* and *S. avenae* both grow more sensitive with age ($z$ falling from `r round(md_z[1], 1)` to `r round(md_z[2], 1)` and from `r round(sa_z[1], 1)` to `r round(sa_z[2], 1)` °C), whereas *R. padi* grows *less* sensitive ($z$ rising from `r round(rp_z[1], 1)` to `r round(rp_z[2], 1)` °C). Tolerance and sensitivity therefore do not track one another, and the age effect on sensitivity is itself species-specific.
 
-We recovered similar findings to @li2023 because, in essence, their data generally follow assumptions met by the two-stage analysis (our simulations show this should be the case - @sec-sim-step1). 
+We recovered similar findings to @li2023 because, in essence, their data generally follow assumptions met by the two-stage analysis (our simulations show this should be the case; see the [strict-equivalence baseline](#strict-equivalence-baseline)). 
 
-However, the $R^2$ is inflated in their models (@li2023 report $R^2$ = 0.97-0.996) because much of the variation in survival outcomes is disposed of during stage-1. Our 4PL model provides much more realistic $R^2$ (again, `r round(bayes_R2_tls(wf_aphid)[1], 1)` [95% CI: `r round(bayes_R2_tls(wf_aphid)[3], 1)` to `r round(bayes_R2_tls(wf_aphid)[4], 1)`]).
+However, the $R^2$ is inflated in their models (@li2023 report $R^2$ = 0.97-0.996) because much of the variation in survival outcomes is disposed of during stage-1. Our 4PL model provides much more realistic $R^2$ (again, `r with(bayes_R2_tls(wf_aphid), sprintf("%.3f [95%% CI: %.3f to %.3f]", estimate, lower, upper))`).
 
 ## Heat injury across species under a field temperature trace {#sec-aphid-hi}
 
@@ -2319,7 +2323,7 @@ leaf_summary <- tibble::tibble(
   `Recovery conditions`       = paste(levels(leaf_std$recovery), collapse = ", "),
   `Temperature range (°C)`    = paste(range(leaf_std$temp), collapse = "–"),
   `Duration range (min)`      = paste(round(range(leaf_std$duration), 0), collapse = "–"),
-  `Temperature centre (°C)`   = round(attr(leaf_std, "tdt_meta")$temp_mean, 1)
+  `Temperature centre (°C)`   = sprintf("%.1f", attr(leaf_std, "tdt_meta")$temp_mean)
 )
 tinytable::tt(leaf_summary, digits = 2, escape = TRUE)
 ```
@@ -2369,7 +2373,7 @@ tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
 .leaf_div_pct <- round(100 * .leaf_div_n / .leaf_div_tot, 1)
 ```
 
-The fit has `r .leaf_div_n` divergent transitions out of `r .leaf_div_tot` post-warmup draws (`r .leaf_div_pct`%).
+The fit has `r .leaf_div_n` divergent transitions out of `r format(.leaf_div_tot, big.mark = ",")` post-warmup draws (`r .leaf_div_pct`%).
 
 ## Per-condition thermal limits {#sec-leaf-extract}
 
@@ -3769,13 +3773,28 @@ below nominal even when using the t-quantile small-sample correction.
 Of the 1,000 datasets, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen7", "two_stage_bin")` binomial and `r .sim_fail("scen7", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen7", "joint_4pl")` for the joint 4PL, across the simulations.
 
 ```{r}
+#| label: cap-sim-supp-scen7cov
+#| include: false
+# Joint 4PL coverage range across the Scen 7 cells (both thresholds and both
+# quantities), from the same screened summaries the figure plots.
+.cov7 <- range(dplyr::filter(.load_screened("scen7"),
+                             method_code %in% c("joint_4pl", "joint_4pl_abs"))$coverage)
+.cap_scen7cov <- sprintf(paste0(
+  "95%% CI coverage when the upper asymptote value varies (Scen 7). Same data ",
+  "generating process and method as in Figure 3. Two-stage CTmax coverage collapses ",
+  "as $\\text{up}_0$ departs from 1; the t-correction widens CIs without recovering ",
+  "nominal calibration. Joint 4PL coverage ranges from %.0f%% to %.0f%%."),
+  100 * .cov7[1], 100 * .cov7[2])
+```
+
+```{r}
 #| label: fig-sim-supp-scen7cov
 #| echo: false
 #| warning: false
 #| message: false
 #| fig-width: 8
 #| fig-height: 4.5
-#| fig-cap: "95% CI coverage when the upper asymptote value varies (Scen 7). Same data generating process and method as in Figure 3. Two-stage CTmax coverage collapses as $\\text{up}_0$ departs from 1; the t-correction widens CIs without recovering nominal calibration. Joint 4PL coverage holds at 92–96% throughout."
+#| fig-cap: !expr .cap_scen7cov
 
 # Plot coverage for simulation scenario 7.
 .d <- .load_screened("scen7") |>
@@ -4283,9 +4302,9 @@ fly_trace <- orsted_micro |>
 
 ## Relative-threshold T_crit per group via tls() (matches the relative HI integration).
 Tc_F <- get_tls_est(tls(wf_dros_mort_F, target_surv = "relative", t_ref = 60,
-                        lethal = TRUE, ndraws = 150), "summary", "Tcrit")$median
+                        lethal = TRUE, ndraws = 150, seed = 123), "summary", "Tcrit")$median
 Tc_M <- get_tls_est(tls(wf_dros_mort_M, target_surv = "relative", t_ref = 60,
-                        lethal = TRUE, ndraws = 150), "summary", "Tcrit")$median
+                        lethal = TRUE, ndraws = 150, seed = 123), "summary", "Tcrit")$median
 
 ## Illustrative Sharpe–Schoolfield repair kernel (doses h^-1 at TREF; NOT fitted).
 ## TH sets the high-temperature decline: TH = 28 puts the repair optimum near
@@ -4601,7 +4620,7 @@ freqtls_maxdiff <- dplyr::inner_join(
   dplyr::summarise(m = max(abs(b - f))) |> dplyr::pull(m)
 ```
 
-The two packages agree to within `r round(freqtls_maxdiff, 2)` °C on every estimate, with essentially identical intervals. The choice between them is practical: `freqTLS` is faster for large datasets and quick exploration, while `bayesTLS` retains the posterior draws needed to propagate uncertainty into derived quantities — group contrasts, heat-injury trajectories and $T_{crit}$ — as used throughout this supplement.
+The two packages agree to within `r sprintf("%.3f", freqtls_maxdiff)` °C on every estimate, with essentially identical intervals. The choice between them is practical: `freqTLS` is faster for large datasets and quick exploration, while `bayesTLS` retains the posterior draws needed to propagate uncertainty into derived quantities — group contrasts, heat-injury trajectories and $T_{crit}$ — as used throughout this supplement.
 
 # **Derivation of the correction factors for threshold summaries** {#sec-ms-derive}
 
@@ -4758,7 +4777,7 @@ $$
 The correction then shrinks to zero and
 $\text{mid}(T)\approx\log_{10}t_{50}(T)$. This is the equivalence regime in
 @sec-twostage and @sec-joint, and the strict-equivalence baseline of the
-simulation in §3.1. The correction matters when the design is partial:
+simulation ([strict-equivalence baseline](#strict-equivalence-baseline)). The correction matters when the design is partial:
 sublethal endpoints, sparse survival-range coverage, or asymptotes that vary
 with $T$ (the last case is analysed in @sec-joint-extend).
 
