@@ -14,11 +14,32 @@
 # Or set SCENARIOS_TO_RUN below and source() the file interactively.
 # ============================================================================
 
+# Optional private library holding the bayesTLS version to run (NULL = the
+# default library). The 2026-11-26 re-run used a frozen copy (see
+# rerun_abs_truncation.R) so that package edits during the run could not reach it.
+PKG_LIB <- NULL
+if (!is.null(PKG_LIB)) .libPaths(c(PKG_LIB, .libPaths()))
+
+# CmdStan version. The June 2026 runs used 2.38.0, and reproducing their joint
+# fits needs it (2.40.0 gives different draws). Set before cmdstanr loads; NULL
+# = cmdstanr's default installation (then the MCMC draws differ from June's).
+# Two-stage rows also depend on the glmmTMB version: see PROVENANCE.md.
+CMDSTAN_VERSION <- "2.38.0"
+if (!is.null(CMDSTAN_VERSION)) {
+  cmdstan_dir <- file.path(Sys.getenv("HOME"), ".cmdstan", paste0("cmdstan-", CMDSTAN_VERSION))
+  if (!dir.exists(cmdstan_dir))
+    stop("CmdStan ", CMDSTAN_VERSION, " not found at ", cmdstan_dir, ". Install it with ",
+         "cmdstanr::install_cmdstan(version = \"", CMDSTAN_VERSION, "\"), or set ",
+         "CMDSTAN_VERSION <- NULL to use the default installation.", call. = FALSE)
+  Sys.setenv(CMDSTAN = cmdstan_dir)
+}
+
 suppressPackageStartupMessages({
   library(bayesTLS); library(dplyr); library(tibble)
   library(tidyr);    library(parallel); library(here)
 })
 source(here::here("scripts", "simulations", "sim_functions.R"))
+if (!is.null(CMDSTAN_VERSION)) stopifnot(cmdstanr::cmdstan_version() == CMDSTAN_VERSION)
 
 # ---- 1. Config (edit these) ------------------------------------------------
 OUT_DIR     <- here::here("output", "sim_twostage")
@@ -43,54 +64,10 @@ SAMPLER <- list(chains = 3, iter = 3000, warmup = 1500,
 cli <- commandArgs(trailingOnly = TRUE)
 SCENARIOS_TO_RUN <- if (length(cli) > 0) cli else NULL
 
-# ---- 2. Scenarios — the single source of truth (replaces the bash queue) ---
-# Each row is plain data: a label plus the sim_truth() arguments for that cell.
-# NA in u_0 / ell_0 / u_beta1 means "keep the DGP preset". Edit a number to
-# change a sweep value; add a row to add a cell.
-#
-#   scen1  strict-equivalence baseline (binomial DGM, asymptotes at the bound)
-#   scen2  likelihood misspecification only (beta-binomial, same shape)
-#   scen3  heat lowers max survival      (asymmetric u drift)
-#   scen4  asymptotes compress           (symmetric u + ell drift)
-#   scen5  heat sharpens the curve       (k varies with T)
-#   scen6  sweep: strength of u drift    (u_beta1)
-#   scen7  sweep: level of upper asymptote (u_0)
-#   scen8  sweep: design intensity       (full/sparse x replication)
-#   scen9  sweep: exposure-time window   (max duration 60/120/240/405 min) -- the
-#          design question: how well does a shortened assay recover z & CTmax_1hr?
-scenarios <- tibble::tribble(
-  ~label,                   ~dgp,        ~family,         ~n_reps, ~design,   ~u_0,  ~ell_0, ~u_beta1,
-  "scen1_strict_eq_n3",     "baseline",  "binomial",      3,  "full",    0.999, 0.001,  NA,
-  "scen1_strict_eq_n5",     "baseline",  "binomial",      5,  "full",    0.999, 0.001,  NA,
-  "scen2_lik_misspec_n3",   "baseline",  "beta_binomial", 3,  "full",    0.999, 0.001,  NA,
-  "scen2_lik_misspec_n5",   "baseline",  "beta_binomial", 5,  "full",    0.999, 0.001,  NA,
-  "scen3_heat_lowers_u_n3", "asym_u",    "beta_binomial", 3,  "full",    NA,    NA,     NA,
-  "scen3_heat_lowers_u_n5", "asym_u",    "beta_binomial", 5,  "full",    NA,    NA,     NA,
-  "scen4_compress_n3",      "sym_ul",    "beta_binomial", 3,  "full",    NA,    NA,     NA,
-  "scen4_compress_n5",      "sym_ul",    "beta_binomial", 5,  "full",    NA,    NA,     NA,
-  "scen5_sharpen_n3",       "varying_k", "beta_binomial", 3,  "full",    NA,    NA,     NA,
-  "scen5_sharpen_n5",       "varying_k", "beta_binomial", 5,  "full",    NA,    NA,     NA,
-  "scen6_ub_m005",          "baseline",  "beta_binomial", 5,  "full",    NA,    NA,     -0.005,
-  "scen6_ub_m010",          "baseline",  "beta_binomial", 5,  "full",    NA,    NA,     -0.010,
-  "scen6_ub_m015",          "baseline",  "beta_binomial", 5,  "full",    NA,    NA,     -0.015,
-  "scen6_ub_m019",          "baseline",  "beta_binomial", 5,  "full",    NA,    NA,     -0.019,
-  "scen7_u0_099",           "baseline",  "beta_binomial", 5,  "full",    0.99,  NA,     NA,
-  "scen7_u0_095",           "baseline",  "beta_binomial", 5,  "full",    0.95,  NA,     NA,
-  "scen7_u0_085",           "baseline",  "beta_binomial", 5,  "full",    0.85,  NA,     NA,
-  "scen7_u0_075",           "baseline",  "beta_binomial", 5,  "full",    0.75,  NA,     NA,
-  "scen7_u0_065",           "baseline",  "beta_binomial", 5,  "full",    0.65,  NA,     NA,
-  "scen8_full_n1",          "baseline",  "beta_binomial", 1,  "full",    NA,    NA,     NA,
-  "scen8_full_n3",          "baseline",  "beta_binomial", 3,  "full",    NA,    NA,     NA,
-  "scen8_full_n5",          "baseline",  "beta_binomial", 5,  "full",    NA,    NA,     NA,
-  "scen8_sparse_n1",        "baseline",  "beta_binomial", 1,  "sparse",  NA,    NA,     NA,
-  "scen8_sparse_n3",        "baseline",  "beta_binomial", 3,  "sparse",  NA,    NA,     NA,
-  "scen8_sparse_n5",        "baseline",  "beta_binomial", 5,  "sparse",  NA,    NA,     NA,
-  "scen9_tmax_060",         "baseline",  "beta_binomial", 5,  "tmax060", NA,    NA,     NA,
-  "scen9_tmax_120",         "baseline",  "beta_binomial", 5,  "tmax120", NA,    NA,     NA,
-  "scen9_tmax_240",         "baseline",  "beta_binomial", 5,  "tmax240", NA,    NA,     NA,
-  "scen9_tmax_405",         "baseline",  "beta_binomial", 5,  "tmax405", NA,    NA,     NA,
-)
-scenarios$index <- seq_len(nrow(scenarios))   # disjoint seed offset per scenario
+# ---- 2. Scenarios -----------------------------------------------------------
+# The scenario table lives in sim_scenarios.R (shared with the re-run script);
+# its row order sets each scenario's seed offset.
+source(here::here("scripts", "simulations", "sim_scenarios.R"))
 
 # ---- 3. One scenario, start to finish --------------------------------------
 # Builds the truth, runs N_SIMS datasets through all three estimators, writes
@@ -105,44 +82,23 @@ run_scenario <- function(sc) {
   raw_dir <- file.path(RAW_ROOT, sc$label)
   dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # The whole per-simulation story, in plain sight:
+  # The whole per-simulation story is run_one_sim() in sim_functions.R:
   #   simulate one dataset -> fit two-stage (both Stage-1 likelihoods) ->
   #   fit the joint 4PL -> score all three against the truth -> save.
   # Resume-safe: a sim whose raw file exists is skipped unless FORCE.
-  run_one <- function(sim_id) {
-    f <- file.path(raw_dir, sprintf("sim_%05d.rds", sim_id))
-    if (!FORCE && file.exists(f)) return(invisible(NULL))
-    seed   <- MASTER_SEED + 1000L * sc$index + sim_id
-    data   <- sim_dataset(n_reps = sc$n_reps, seed = seed, truth = truth)
-    ts_bin <- fit_two_stage(data, stage1 = "binomial")
-    ts_bb  <- fit_two_stage(data, stage1 = "betabinomial")
-    joint  <- do.call(fit_joint_4pl, c(list(data, seed = seed), SAMPLER))
-    save_retry(score_run(joint, ts_bin, ts_bb, truth, sim_id, sc$label, seed), f)
-    invisible(NULL)
-  }
+  run_one <- function(sim_id)
+    run_one_sim(sim_id, sc, truth, raw_dir, SAMPLER, MASTER_SEED, FORCE)
 
   todo <- setdiff(seq_len(N_SIMS), done_ids(raw_dir, FORCE))
   message(sprintf("  %d sims to run (%d cached)", length(todo), N_SIMS - length(todo)))
   if (length(todo))
     run_parallel(todo, run_one, workers = WORKERS,
                  exports = c("sc", "truth", "raw_dir", "SAMPLER",
-                             "MASTER_SEED", "FORCE", "run_one"))
+                             "MASTER_SEED", "FORCE", "run_one"), lib = PKG_LIB)
 
-  # Aggregate the raw per-sim files into the 8 scenario objects. Each save is
-  # one named helper call, so the output set is trivial to track.
-  agg <- collect_raw(raw_dir)
-  out <- function(prefix, obj)
-    save_retry(obj, file.path(OUT_DIR, sprintf("%s_%s.rds", prefix, sc$label)))
-  out("per_sim",      agg$per_sim)
-  out("meta",         agg$meta)
-  out("draws",        agg$draws)
-  out("draws_abs",    agg$draws_abs)
-  out("summary",      summarise_mcse(agg$per_sim))
-  out("summary_conv", summarise_mcse(agg$per_sim, conv = TRUE, meta = agg$meta))
-  out("diag",         diag_summary(agg$meta, sc$label))
-  out("diffs",        pairwise_diffs(agg$per_sim))
-
-  print(as.data.frame(summarise_mcse(agg$per_sim)))
+  # Aggregate the raw per-sim files into the 8 scenario objects the documents
+  # read (aggregate_scenario() in sim_functions.R names each one).
+  print(as.data.frame(aggregate_scenario(sc$label, raw_dir, OUT_DIR)))
   invisible(NULL)
 }
 

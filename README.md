@@ -121,7 +121,11 @@ not re-fit or re-simulate. Run all scenarios with
 `Rscript scripts/simulations/run_simulations.R`, or a subset by passing scenario
 labels, e.g. `Rscript scripts/simulations/run_simulations.R scen9_tmax_060`. Each
 scenario and the per-simulation pipeline are visible in that one script; the
-reusable building blocks live in `scripts/simulations/sim_functions.R`.
+reusable building blocks live in `scripts/simulations/sim_functions.R`. Which
+runs and software versions produced the published simulation results (a June
+2026 run, and a November 2026 re-run of 14 cells after a fix to the joint
+model's absolute-threshold CTmax) is recorded in
+`scripts/simulations/PROVENANCE.md`.
 
 ### Repository layout
 

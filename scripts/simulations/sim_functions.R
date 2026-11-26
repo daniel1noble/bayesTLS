@@ -4,7 +4,8 @@
 # These are the reusable wrappers the runner (run_simulations.R) assembles.
 # They are NOT part of the user-facing bayesTLS package — they are simulation
 # internals private to this manuscript. They depend on bayesTLS's public API
-# (standardize_data, fit_4pl, extract_tdt, diagnose_tdt_fit).
+# (standardize_data, fit_4pl, diagnose_tdt_fit; extract_joint() below replaces the
+# retired extract_tdt()).
 #
 # The runner sources this file and then calls, per simulated dataset:
 #   sim_dataset() -> fit_two_stage() x2 -> fit_joint_4pl() -> score_run()
@@ -324,9 +325,124 @@ fit_two_stage <- function(data, stage1 = c("binomial", "betabinomial"),
        z = ci(z_point, z_se), CTmax_1hr = ci(CTmax_pt, CTmax_se))
 }
 
+#' Joint 4PL extraction: z, CTmax_1hr and T_crit at one threshold
+#'
+#' Reproduces, draw for draw, the retired `bayesTLS::extract_tdt()` that
+#' produced the raw results (the mid-June 2026 code, e.g. git
+#' `977498a:R/extract_tdt.R`; its last version, `19c123f^:R/extract_tdt.R`,
+#' gives the same results), including its use of the random-number stream: the
+#' draw subsample, the subsample its LT-curve step drew next, and the T_crit
+#' rate draws. Two changes (2026-11-26), both at the ABSOLUTE threshold only:
+#' (1) extract_tdt() inverted each draw's LT curve on the fixed grid
+#' `min(T) - 2` to `max(T) + 2` C and silently dropped every draw whose
+#' CTmax_1hr crossing lay outside it, so the summary came from a truncated
+#' posterior; here such a draw is searched for beyond the grid as bayesTLS's
+#' tls() does, the first crossing outward on the same 0.05 C spacing (`reach`
+#' C each side). (2) A draw whose LT curve is not monotone over the grid now
+#' takes its single falling crossing, or none when it has none or several
+#' (extract_tdt() returned a y-sorted `approx()` value, which need not be a
+#' crossing at all), and a target outside a draw's fitted asymptotes is
+#' treated as an LT of zero or infinity, with the crossing placed on the
+#' survival curve. Draws still without a single falling crossing within
+#' `reach` (for example, an LT that lengthens with temperature) are left out
+#' of the summary and counted in `n_uncrossed`. Monotone draws crossing on the
+#' grid, the absolute z and the relative threshold are unchanged.
+#'
+#' @param wf Fitted `bayes_tls` workflow (single condition, minutes, t_ref 60).
+#' @param target_surv `"relative"` or `"absolute"` (literal 50% survival).
+#' @param ndraws Posterior draws to subsample (the random stream is used
+#'   exactly as extract_tdt() used it).
+#' @param TC_rate_range HI-rate range for the T_crit rate draws.
+#' @param reach Degrees C searched beyond each end of the grid (absolute only).
+#' @return List with `z`, `CTmax`, `T_crit` (each `draws` + `summary`, the
+#'   extract_tdt() shapes), `n_uncrossed` (absolute draws still without a
+#'   crossing; 0 for relative) and `draw_ids` (the posterior draws used; NULL =
+#'   all).
+extract_joint <- function(wf, target_surv = c("relative", "absolute"),
+                          ndraws = 1000, TC_rate_range = c(0.1, 1), reach = 30) {
+  target_surv <- match.arg(target_surv)
+  ns     <- asNamespace("bayesTLS")
+  fit    <- get_brmsfit(wf)
+  data   <- wf$data
+  Tbar   <- wf$meta$temp_mean
+  bnd    <- wf$meta$bounds
+  abs_p  <- identical(target_surv, "absolute")
+  p      <- if (abs_p) 0.5 else NA_real_
+  target <- log10(60)                       # t_ref = 60 min; the model is in minutes
+  trange <- range(data$temp, na.rm = TRUE)
+  temp_grid <- seq(trange[1] - 2, trange[2] + 2, by = 0.05)    # extract_tdt()'s grid
+  z_grid <- sort(unique(data$temp)); z_grid <- z_grid[is.finite(z_grid)]
+  Lz <- length(z_grid); Lc <- length(temp_grid); h <- 1e-3
+
+  # Random stream, in extract_tdt()'s order: (1) the draw subsample ...
+  did <- ns$tls_draw_ids(fit, ndraws)
+  combo <- c(0, z_grid - Tbar - h, z_grid - Tbar + h, temp_grid - Tbar)
+  nd <- ns$tls_build_grid(fit$data, temp = "temp_c", temp_grid = combo)
+  sp <- ns$tls_eval_subpars(fit, nd, bnd, draw_ids = did, mode = target_surv, p = p)
+  # ... (2) the subsample its LT-curve step (derive_tdt_curve(ndraws = ndraws))
+  # drew through brms::posterior_linpred(), i.e. sample(seq_len(n), ndraws) ...
+  n_all <- brms::ndraws(fit)
+  invisible(sample.int(n_all, min(ndraws, n_all)))
+
+  c_minus <- 1L + seq_len(Lz); c_plus <- 1L + Lz + seq_len(Lz)
+  c_ct    <- 1L + 2L * Lz + seq_len(Lc)
+  zc <- ns$tls_zct_draws(sp$logLT[, c_plus, drop = FALSE], sp$logLT[, c_minus, drop = FALSE],
+                         h, z_grid, sp$logLT[, c_ct, drop = FALSE], temp_grid,
+                         sp$logLT[, 1], target = target, target_1hr = target, Tbar = Tbar,
+                         use_closed = !abs_p, want_ctmax = !abs_p, want_ct1 = !abs_p)
+  n_uncrossed <- 0L
+  if (abs_p) {
+    model <- ns$tdt_model(fit)
+    spc <- lapply(sp[c("low", "up", "k", "mid", "logLT")], function(m) m[, c_ct, drop = FALSE])
+    L  <- ns$tls_clamp_logLT(spc, p)
+    Tc <- ns$tls_invert_logLT(L, target, temp_grid, R = ns$tls_surv_resid(spc, target, p, model))
+    need <- which(!is.finite(Tc) &
+                  vapply(seq_len(nrow(L)), function(i) ns$tls_outward_side(L[i, ] - target) != 0L,
+                         logical(1)))
+    if (length(need)) {
+      n_out <- round(reach / 0.05)
+      lower <- temp_grid[1]  - 0.05 * rev(seq_len(n_out))
+      upper <- temp_grid[Lc] + 0.05 * seq_len(n_out)
+      ndx <- nd[rep(1L, 2L * n_out), , drop = FALSE]
+      ndx$temp_c <- c(lower, upper) - Tbar
+      rownames(ndx) <- NULL
+      spe <- ns$tls_eval_subpars(fit, ndx, bnd, draw_ids = if (is.null(did)) need else did[need],
+                                 mode = "absolute", p = p, warn = FALSE)
+      spf <- lapply(c(low = "low", up = "up", k = "k", mid = "mid", logLT = "logLT"), function(nm)
+        cbind(spe[[nm]][, seq_len(n_out), drop = FALSE], spc[[nm]][need, , drop = FALSE],
+              spe[[nm]][, n_out + seq_len(n_out), drop = FALSE]))
+      Tc[need] <- ns$tls_invert_outward(ns$tls_clamp_logLT(spf, p), target,
+                                        c(lower, temp_grid, upper), n_out + seq_len(Lc),
+                                        R = ns$tls_surv_resid(spf, target, p, model))
+    }
+    n_uncrossed <- sum(!is.finite(Tc))
+    zc$ctmax <- Tc; zc$ct1 <- Tc            # t_ref = 60: the 1-hour anchor is CTmax_1hr
+  }
+
+  qs <- function(v) stats::quantile(v, c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+  cd <- tibble::tibble(.draw = seq_along(zc$ctmax), temp = zc$ctmax) |>
+    dplyr::filter(is.finite(temp))
+  cq <- qs(cd$temp)
+  # ... and (3) the T_crit rate draws, one per draw with a finite z and anchor.
+  paired <- dplyr::inner_join(dplyr::select(zc$z$draws, .draw, z),
+                              tibble::tibble(.draw = seq_along(zc$ct1), CTmax_1hr = zc$ct1) |>
+                                dplyr::filter(is.finite(CTmax_1hr)), by = ".draw")
+  paired$log10_rate <- stats::runif(nrow(paired), log10(TC_rate_range[1] / 100),
+                                    log10(TC_rate_range[2] / 100))
+  tcd <- tibble::tibble(.draw = paired$.draw, temp = paired$CTmax_1hr + paired$z * paired$log10_rate,
+                        log10_rate = paired$log10_rate)
+  tq <- qs(tcd$temp)
+  list(z = zc$z,
+       CTmax = list(draws = cd, summary = tibble::tibble(temp_lower = cq[1], temp_median = cq[2],
+                                                         temp_upper = cq[3])),
+       T_crit = list(draws = tcd, summary = tibble::tibble(temp_lower = tq[1], temp_median = tq[2],
+                                                           temp_upper = tq[3])),
+       n_uncrossed = n_uncrossed, draw_ids = did)
+}
+
 #' Joint Bayesian 4PL fit + extract for one simulated dataset
 #'
-#' Wraps [standardize_data()] + [fit_4pl()] + [extract_tdt()] (both the relative
+#' Wraps [standardize_data()] + [fit_4pl()] + [extract_joint()] (both the relative
 #' and absolute survival thresholds on the same fit). Returns the same
 #' point/CI shape as [fit_two_stage()] for z and CTmax_1hr, plus the per-draw
 #' posterior (z, CTmax_1hr, T_crit), sampler diagnostics, and the fit runtime.
@@ -365,12 +481,10 @@ fit_joint_4pl <- function(data, ndraws = 1000,
   # Both threshold definitions on the same fit. "relative" = midpoint between
   # the estimated asymptotes (extract_tdt default); "absolute" = literal 50%
   # survival (matches the analytical OLS truth). Second extract is sub-second.
-  et_rel <- tryCatch(suppressMessages(extract_tdt(wf, target_surv = "relative",
-              t_ref = 60, time_multiplier = 1, ndraws = ndraws, lethal = TRUE)),
-              error = function(e) e)
-  et_abs <- tryCatch(suppressMessages(extract_tdt(wf, target_surv = "absolute",
-              t_ref = 60, time_multiplier = 1, ndraws = ndraws, lethal = TRUE)),
-              error = function(e) e)
+  et_rel <- tryCatch(suppressMessages(extract_joint(wf, "relative", ndraws = ndraws)),
+                     error = function(e) e)
+  et_abs <- tryCatch(suppressMessages(extract_joint(wf, "absolute", ndraws = ndraws)),
+                     error = function(e) e)
   if (inherits(et_rel, "error") || inherits(et_abs, "error")) {
     msg <- if (inherits(et_rel, "error")) conditionMessage(et_rel)
            else conditionMessage(et_abs)
@@ -400,6 +514,7 @@ fit_joint_4pl <- function(data, ndraws = 1000,
                   lower = et_rel$T_crit$summary$temp_lower,
                   upper = et_rel$T_crit$summary$temp_upper),
     draws = pack_draws(et_rel), draws_abs = pack_draws(et_abs),
+    abs_uncrossed = et_abs$n_uncrossed,
     diagnostics = diag_tbl)
 }
 
@@ -480,7 +595,9 @@ score_run <- function(joint, ts_bin, ts_bb, truth, sim_id, scenario, seed = NA_i
                          joint_sec = joint$runtime_sec %||% NA_real_,
                          joint_ok = isTRUE(joint$success),
                          ts_bin_ok = isTRUE(ts_bin$success),
-                         ts_bb_ok = isTRUE(ts_bb$success)) |>
+                         ts_bb_ok = isTRUE(ts_bb$success),
+                         abs_uncrossed = joint$abs_uncrossed %||% NA_integer_,
+                         extraction = "extract_joint 2026-11-26") |>
     dplyr::bind_cols(diag_row)
 
   tag <- function(d) if (is.null(d)) NULL else
@@ -495,6 +612,102 @@ score_run <- function(joint, ts_bin, ts_bb, truth, sim_id, scenario, seed = NA_i
 # ----------------------------------------------------------------------------
 # 6. Aggregation: per-sim files -> the 8 scenario output objects
 # ----------------------------------------------------------------------------
+
+#' One simulation, start to finish
+#'
+#' Simulate one dataset -> fit two-stage (both Stage-1 likelihoods) -> fit the
+#' joint 4PL -> score all three against the truth -> save. Resume-safe: a sim
+#' whose raw file exists is skipped unless `force`.
+#'
+#' @param sim_id Simulation id within the scenario.
+#' @param sc One scenario row (label, index, dgp, family, n_reps, design, ...).
+#' @param truth Output of [sim_truth()] for `sc`.
+#' @param raw_dir Directory for the per-sim raw files.
+#' @param sampler Sampler settings for [fit_joint_4pl()].
+#' @param master_seed Seed base: seed = master_seed + 1000 * sc$index + sim_id.
+#' @param force Refit even if the raw file exists.
+run_one_sim <- function(sim_id, sc, truth, raw_dir, sampler, master_seed, force = FALSE) {
+  f <- file.path(raw_dir, sprintf("sim_%05d.rds", sim_id))
+  if (!force && file.exists(f)) return(invisible(NULL))
+  seed   <- master_seed + 1000L * sc$index + sim_id
+  data   <- sim_dataset(n_reps = sc$n_reps, seed = seed, truth = truth)
+  ts_bin <- fit_two_stage(data, stage1 = "binomial")
+  ts_bb  <- fit_two_stage(data, stage1 = "betabinomial")
+  joint  <- do.call(fit_joint_4pl, c(list(data, seed = seed), sampler))
+  save_retry(score_run(joint, ts_bin, ts_bb, truth, sim_id, sc$label, seed), f)
+  invisible(NULL)
+}
+
+#' Keep the June two-stage results in a re-run simulation (2026-11-26)
+#'
+#' The re-run reproduces the joint 4PL exactly (same software) but the glmmTMB
+#' installed now differs from June's on a few datasets, and the two-stage arm
+#' has no bug. So the re-run result keeps the original file's two-stage rows
+#' and success flags; its joint rows are new. Also returns a one-row check of
+#' what reproduced (largest absolute difference in estimate or interval).
+#'
+#' @param new,old The re-run and the original per-sim results ([score_run()]).
+#' @return List with `result` (merged per-sim result) and `check` (tibble).
+merge_rerun <- function(new, old) {
+  key  <- paste(new$row$method, new$row$quantity)
+  m    <- match(key, paste(old$row$method, old$row$quantity))
+  d    <- pmax(abs(new$row$estimate - old$row$estimate[m]),
+               abs(new$row$lower - old$row$lower[m]),
+               abs(new$row$upper - old$row$upper[m]))
+  ts   <- grepl("^two_stage", new$row$method)
+  pick <- function(mth, q) d[new$row$method == mth & new$row$quantity == q]
+  dts  <- d[ts]
+  check <- tibble::tibble(
+    sim_id = new$meta$sim_id, scenario = new$meta$scenario,
+    rel_maxd = max(d[new$row$method == "joint_4pl"]),
+    abs_z_d = pick("joint_4pl_abs", "z"), abs_ct_d = pick("joint_4pl_abs", "CTmax_1hr"),
+    two_stage_now_maxd = if (any(!is.na(dts))) max(dts, na.rm = TRUE) else NA_real_,
+    kept_old = NROW(old$draws_abs), kept_new = NROW(new$draws_abs),
+    uncrossed = new$meta$abs_uncrossed)
+  # Rows: the re-run's joint rows and ALL of June's two-stage rows, in June's
+  # order. Keying on the re-run's rows instead lost June rows the re-run did not
+  # produce, and wrote all-NA rows for two-stage methods June did not have
+  # (today's glmmTMB returns the t-interval beta-binomial on some datasets
+  # where June's did not, and the reverse). Every row carries the re-run's
+  # joint runtime, as run_one_sim() writes it.
+  rows <- dplyr::bind_rows(new$row[!ts, , drop = FALSE],
+                           old$row[grepl("^two_stage", old$row$method), , drop = FALSE])
+  rows$runtime_sec <- new$row$runtime_sec[1]
+  new$row <- rows
+  new$meta$ts_bin_ok <- old$meta$ts_bin_ok
+  new$meta$ts_bb_ok  <- old$meta$ts_bb_ok
+  new$meta$two_stage <- "June 2026 run (kept)"
+  # The fits reproduce exactly, but diagnose_tdt_fit() has since changed how it
+  # counts treedepth hits (against the configured ceiling, not the run's own
+  # maximum). Keep June's sampler diagnostics, so meta, diag and summary_conv
+  # use one rule in every cell.
+  dcols <- c("rhat_max", "ess_bulk_min", "ess_tail_min", "divergences", "treedepth_hits",
+             "bfmi_min", "rhat_pass", "ess_pass", "divergence_pass", "treedepth_pass",
+             "bfmi_pass", "all_pass")
+  new$meta[dcols] <- old$meta[dcols]
+  new$meta$treedepth_max <- NULL
+  list(result = new, check = check)
+}
+
+#' Aggregate one scenario's raw files into the 8 objects the documents read
+#'
+#' @param label Scenario label.
+#' @param raw_dir,out_dir Raw per-sim directory and output directory.
+#' @return The scenario's MCSE summary (invisibly printed by the caller).
+aggregate_scenario <- function(label, raw_dir, out_dir) {
+  agg <- collect_raw(raw_dir)
+  out <- function(prefix, obj)
+    save_retry(obj, file.path(out_dir, sprintf("%s_%s.rds", prefix, label)))
+  out("per_sim",      agg$per_sim)
+  out("meta",         agg$meta)
+  out("draws",        agg$draws)
+  out("draws_abs",    agg$draws_abs)
+  out("summary",      summarise_mcse(agg$per_sim))
+  out("summary_conv", summarise_mcse(agg$per_sim, conv = TRUE, meta = agg$meta))
+  out("diag",         diag_summary(agg$meta, label))
+  out("diffs",        pairwise_diffs(agg$per_sim))
+  summarise_mcse(agg$per_sim)
+}
 
 #' Bind all per-sim result files in a raw directory
 #'
@@ -683,16 +896,22 @@ save_retry <- function(object, file, tries = 10, wait = 6) {
 #' @param workers Cluster size; 1 runs serially (easier debugging).
 #' @param exports Names of objects in `envir` the workers need.
 #' @param envir Environment to export from. Default the caller's.
-run_parallel <- function(ids, fun, workers, exports, envir = parent.frame()) {
+#' @param lib Optional library path put first on each worker's `.libPaths()`.
+run_parallel <- function(ids, fun, workers, exports, envir = parent.frame(),
+                         lib = NULL,
+                         src = here::here("scripts", "simulations", "sim_functions.R")) {
   if (workers <= 1L) { invisible(lapply(ids, fun)); return(invisible()) }
   cl <- parallel::makeCluster(workers)
   on.exit(parallel::stopCluster(cl), add = TRUE)
-  this_file <- file.path("scripts", "simulations", "sim_functions.R")
-  parallel::clusterExport(cl, "this_file", environment())
+  # An optional private library (e.g. a frozen bayesTLS) goes first on each
+  # worker's library path, as in the master, before bayesTLS is attached.
+  parallel::clusterCall(cl, function(l) if (!is.null(l)) .libPaths(c(l, .libPaths())), lib)
   parallel::clusterEvalQ(cl, suppressPackageStartupMessages({
     library(bayesTLS); library(dplyr); library(tibble); library(tidyr)
   }))
-  parallel::clusterCall(cl, function(f) source(here::here(f)), this_file)
+  # Workers source `src` (a long run can pass a frozen copy, so that editing
+  # this file mid-run cannot change the cells still to come).
+  parallel::clusterCall(cl, function(f) source(f), normalizePath(src))
   parallel::clusterExport(cl, exports, envir = envir)
   invisible(parallel::parLapply(cl, ids, fun))
 }
