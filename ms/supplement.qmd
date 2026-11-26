@@ -504,6 +504,10 @@ Survival counts may exhibit two forms of variation. Under **binomial** sampling,
 #| code-fold: show
 
 # Simulate binomial and beta-binomial counts from the true 4PL surface.
+# Seed here, so the counts do not depend on how many random numbers earlier
+# chunks happened to use (tables and plots draw some).
+set.seed(123)
+
 # (a) Binomial: y ~ Binomial(n, p_true)
 sim_bin <- design |>
   dplyr::mutate(y = rbinom(dplyr::n(), size = n, prob = p_true))
@@ -1105,7 +1109,21 @@ wf_direct <- fit_4pl(std_bin,
                      file_refit = "never")
 
 # Summarise the direct model, where z and CTmax are modelled explicitly.
-summary(wf_direct)                    
+summary(wf_direct)
+```
+
+```{r guard-tutorial-fit-data}
+#| include: false
+#| cache: false
+
+# The tutorial fits are reused from output/models (file_refit = "never"), so
+# check that each was fitted to the counts simulated above; stop rather than
+# report a fit to a different realisation of the data.
+stopifnot(
+  identical(as.numeric(get_brmsfit(wf_bin)$data$n_surv), as.numeric(std_bin$n_surv)),
+  identical(as.numeric(get_brmsfit(wf_bb)$data$n_surv), as.numeric(std_bb$n_surv)),
+  identical(as.numeric(get_brmsfit(wf_direct)$data$n_surv), as.numeric(std_bin$n_surv))
+)
 ```
 
 A single `tls()` call turns either fit into a tidy table of the derived quantities — one row per quantity, with the posterior median and 95% interval. It is the one-call extractor: pass it *any* fitted 4PL and it returns $z$, $CT_{max_{1hr}}$ and (for a lethal endpoint) $T_{crit}$, whatever the parameterisation.
@@ -1191,6 +1209,8 @@ design <- tidyr::expand_grid(
     n       = n_per_rep
   )
 
+# Seed here, as for the first simulation, so these counts are reproducible.
+set.seed(456)
 sim_bb_ext <- design |>
   dplyr::mutate(
     low    = 0.49 * plogis(true_params_ext$low_raw),
@@ -1318,6 +1338,15 @@ wf_ext <- fit_4pl(std_ext,
                   file       = file.path(models_dir,
                                          "sim_4pl_ext_betabin_DEFAULT_strong_v1"),
                   file_refit = "never")     # see fit-4pl-tutorial note above
+```
+
+```{r guard-ext-fit-data}
+#| include: false
+#| cache: false
+
+# As above: the reused fit must be a fit to the counts simulated here.
+stopifnot(identical(as.numeric(get_brmsfit(wf_ext)$data$n_surv),
+                    as.numeric(std_ext$n_surv)))
 ```
 
 @tbl-ext-recovery reports recovery of the four 4PL sub-parameters on their natural scale at each assay temperature. The posterior keeps $\text{low}$ near $0.05$, while recovering the decline in `up` and increase in $k$ across the assay range.
