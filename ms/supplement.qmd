@@ -1690,7 +1690,7 @@ The manuscript examples use the following model specifications:
 
 - **Cereal aphids**: lethal survival counts were fit with a beta-binomial 4PL, placing species directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + species`, `z = ~ 0 + species`). No random effects were included. The fitted species-specific posterior was then projected under the unmodified Wuhan May-June 2016 air-temperature trace with `predict_heat_injury(by = "species")`.
 - **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). The lower asymptote was allowed to differ by oxygen treatment but not temperature (`low = ~ 0 + oxygen`), while the upper asymptote and steepness were shared (`up = ~ 1`, `k = ~ 1`). No random effects were included. Because the design lacks a benign-temperature control for the hyperoxia treatment, we report $z$ and $CT_{max}$ but not $T_{crit}$ (`lethal = FALSE`).
-- **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood. Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with a plant-level random intercept on $CT_{max}$ (`ctmax = ~ 0 + recovery + (1 | plant)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
+- **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood, with zero readings left-censored at 0.1 (`detection_limit = 0.1`). Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with random intercepts on $CT_{max}$ for plant, heat run and array, the unit to which recovery was applied (`ctmax = ~ 0 + recovery + (1 | plant) + (1 | run) + (1 | array)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
 - **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with @orsted_suzukii_2024 uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model summary uses the relative midpoint threshold (also at a 4-hour reference to be more comparable to the study). The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the @orsted_suzukii_2024 NicheMapR [@kearney2017] workflow.
 
 The exact formulas, priors, sampler settings and diagnostics are shown in the code chunks for each case study. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
@@ -2232,7 +2232,7 @@ The accumulated injury and end-of-window survival differ across species in line 
 
 @arnold_psii_2026 developed a thermal-load-sensitivity (TLS) protocol for photosystem II (PSII) and asked, among other things, whether the light environment a leaf experiences *after* heat exposure affects measured heat tolerance. Here we take the snow gum (*Eucalyptus pauciflora*) arm of their Experiment 1: excised leaf sections from six mature trees were heated across a grid of assay temperatures (30–56 °C) and exposure durations (5–120 min), then held either in **darkness** or under **90 min of moderate light** before $F_v/F_m$ was re-measured 16–24 h later. The response — retained PSII function, post-exposure $F_v/F_m$ divided by its pre-exposure value — is a **continuous proportion in $[0, 1]$ with no count denominator**, so the 4PL uses a **Beta** likelihood rather than the beta-binomial of the count case studies. 
 
-We let both $CT_{max}$ and $z$ depend on the recovery condition inside one joint 4PL. @arnold_psii_2026 report that post-heat light *lowers* apparent heat tolerance while leaving thermal sensitivity broadly unchanged, so the joint model should place the Light $CT_{max}$ below the Dark one with similar $z$.
+We let both $CT_{max}$ and $z$ depend on the recovery condition inside one joint 4PL. @arnold_psii_2026 report that post-heat light *lowers* apparent heat tolerance while leaving thermal sensitivity broadly unchanged. Two features of the experiment shape the model: how the zero readings are treated, and the unit to which the light and dark treatments were applied.
 
 ## Data and standardisation {#sec-leaf-data}
 
@@ -2246,24 +2246,39 @@ We let both $CT_{max}$ and $z$ depend on the recovery condition inside one joint
 # noise) are already excluded upstream, leaving 394 rows.
 data(snowgum_psii)
 
-# `proportion =` (not n_total/n_surv) flags a continuous response: standardize_data()
-# records response_type = "proportion" and clamps to (0.001, 0.999) for the Beta
-# density. `recovery` (Dark/Light) and `plant` (six trees) pass through as the
-# moderator and the random-effect grouping.
+# `proportion =` (not n_total/n_surv) flags a continuous response for the Beta
+# likelihood. `detection_limit = 0.1` treats each zero reading as "below 0.1"
+# (left-censored) instead of an exact value (see the next paragraph).
+# `recovery` (Dark/Light) and `plant` (six trees) pass through as the moderator
+# and a random-effect grouping.
 leaf_std <- standardize_data(snowgum_psii, temp = "Temp", duration = "Time",
-                             proportion = "fvfm_prop", duration_unit = "minutes")
+                             proportion = "fvfm_prop", duration_unit = "minutes",
+                             detection_limit = 0.1)
+
+# The experiment is a split plot. Each heat run (one temperature x duration on
+# one measurement day) heated a pair of arrays together; afterwards one array
+# recovered in the light and the other in the dark. Each array held one leaf
+# section from each of the six trees, so the recovery treatment was applied to
+# whole arrays: the array, not the leaf section, replicates the treatment.
+leaf_std$run   <- factor(paste(leaf_std$Temp, leaf_std$Time, leaf_std$meas_day, sep = "_"))
+leaf_std$array <- factor(paste(leaf_std$Temp, leaf_std$Time, leaf_std$recovery,
+                               leaf_std$meas_day, sep = "_"))
 str(leaf_std)
 ```
 
 ```{r leaf-zero-fraction}
 #| echo: false
-# Check how often the leaf PSII endpoint reaches zero retained function.
-leaf_n_zero   <- sum(snowgum_psii$fvfm_prop <= 0, na.rm = TRUE)
-leaf_n_obs    <- sum(!is.na(snowgum_psii$fvfm_prop))
-leaf_pct_zero <- round(100 * leaf_n_zero / leaf_n_obs)
+# Check how often the leaf PSII endpoint reads zero, and the smallest non-zero
+# readings (the instrument's effective floor).
+leaf_n_zero    <- sum(snowgum_psii$fvfm_prop <= 0, na.rm = TRUE)
+leaf_n_obs     <- sum(!is.na(snowgum_psii$fvfm_prop))
+leaf_pct_zero  <- round(100 * leaf_n_zero / leaf_n_obs)
+leaf_min_final <- min(snowgum_psii$final_fvfm[snowgum_psii$final_fvfm > 0], na.rm = TRUE)
+leaf_min_prop  <- min(snowgum_psii$fvfm_prop[snowgum_psii$fvfm_prop > 0], na.rm = TRUE)
+leaf_n_cens    <- sum(leaf_std$censored == "left")
 ```
 
-**Response model and zeros.** Unlike the count-based case studies, the leaf response is a continuous proportion with no denominator, so we use a Beta likelihood. The Beta density is undefined at exactly 0 or 1, but `r leaf_n_zero` of `r leaf_n_obs` observations (`r leaf_pct_zero`%) are zeros — complete loss of measurable PSII function at the hottest, longest exposures. `standardize_data()` clamps these to 0.001 so a single Beta model covers the whole surface. A zero-inflated Beta that separately modelled complete shutdown would represent these structural zeros more faithfully, but we keep this simple for now and it's unlikely we would see much difference between the two models in any case.
+**Response model and zeros.** Unlike the count-based case studies, the leaf response is a continuous proportion with no denominator, so we use a Beta likelihood. The Beta density is undefined at exactly 0, but `r leaf_n_zero` of `r leaf_n_obs` observations (`r leaf_pct_zero`%) read zero, at the hottest and longest exposures. A zero here is a reading the fluorometer could not resolve rather than an exact zero: no post-exposure $F_v/F_m$ lies between 0 and `r leaf_min_final`, and the smallest non-zero retained proportion is `r round(leaf_min_prop, 2)`. We therefore treat each zero as **left-censored** at 0.1 (`detection_limit = 0.1`): it contributes the probability that retained function is below 0.1, not the density of an exact value, and the `r leaf_n_cens` censored readings enter through brms's `cens()` term, which `fit_4pl()` adds automatically. Replacing the zeros by an exact small value (0.001), as an earlier version of this analysis did, makes every zero pin the curve close to its floor; a few isolated zeros at 44 °C then forced a near-vertical light-recovery curve and produced divergent transitions. Censoring removes both problems.
 
 ```{r leaf-summary-table}
 #| label: tbl-leaf-summary
@@ -2282,7 +2297,7 @@ tinytable::tt(leaf_summary, digits = 2, escape = TRUE)
 
 ## Joint 4PL with recovery on $CT_{max}$ and $z$ {#sec-leaf-fit}
 
-We fit $CT_{max}$ and $z$ directly as functions of `recovery` (`~ 0 + recovery`), so each condition gets its own coefficient. A random intercept of `plant` absorbs among-tree variation in the threshold. We ignored `meas_day` because it has only two levels, too few to estimate a variance.  
+We fit $CT_{max}$ and $z$ directly as functions of `recovery` (`~ 0 + recovery`), so each condition gets its own coefficient. Random intercepts on $CT_{max}$ follow the design: `plant` absorbs among-tree variation, `run` the heat runs (the whole plots) and `array` the arrays (the subplots, to which light or dark recovery was applied). Without the array term, the six leaf sections on one array would count as independent replicates of the recovery treatment, overstating the precision of the light-vs-dark contrast. `meas_day` has only two levels, too few to estimate a variance, so it enters only through the run and array labels.
 
 ```{r leaf-fit}
 #| label: leaf-fit
@@ -2291,27 +2306,26 @@ We fit $CT_{max}$ and $z$ directly as functions of `recovery` (`~ 0 + recovery`)
 #| code-fold: show
 
 # Beta family is auto-picked from response_type; named here for clarity. The
-# clamped structural zeros sit on the Beta boundary and induce a small number of
-# divergent transitions (exact count + rate reported below the diagnostics
-# table); adapt_delta is raised to keep them low. The posterior is otherwise
-# well-mixed (see the diagnostics table).
+# censored zeros enter through brms's cens() term, which fit_4pl() adds because
+# the standardised data carry censored readings. Longer chains and a high
+# adapt_delta for the three random-effect standard deviations.
 wf_leaf <- fit_4pl(
   leaf_std,
-  ctmax  = ~ 0 + recovery + (1 | plant),
+  ctmax  = ~ 0 + recovery + (1 | plant) + (1 | run) + (1 | array),
   z      = ~ 0 + recovery,
   family = brms::Beta(link = "identity"),
   t_ref  = 60,
-  iter = 6000, warmup = 3000, seed = 123,
+  iter = 10000, warmup = 5000, seed = 123,
   control = list(adapt_delta = 0.999, max_treedepth = 15),
   file_refit = "on_change",
-  file = file.path(models_dir, "fit_leaf_recovery_4pl")
+  file = file.path(models_dir, "fit_leaf_recovery_4pl_cens_run_array")
 )
 summary(wf_leaf)
 ```
 
 ```{r leaf-diagnostics}
 #| label: tbl-leaf-diagnostics
-#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, high ESS. A small residual divergence count comes from the clamped structural zeros at the Beta boundary."
+#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, high ESS."
 #| cache: false
 
 tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
@@ -2326,7 +2340,7 @@ tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
 .leaf_div_pct <- round(100 * .leaf_div_n / .leaf_div_tot, 1)
 ```
 
-The clamped structural zeros leave `r .leaf_div_n` divergent transitions out of `r .leaf_div_tot` post-warmup draws (`r .leaf_div_pct`%) but the $z$ and $CT_{max}$ estimates below are insensitive to them in any case.
+The fit has `r .leaf_div_n` divergent transitions out of `r .leaf_div_tot` post-warmup draws (`r .leaf_div_pct`%).
 
 ## Per-condition thermal limits {#sec-leaf-extract}
 
@@ -2359,9 +2373,54 @@ tinytable::tt(leaf_tls_tab, escape = TRUE)
                                                  leaf_tls$summary$quantity == q]
 leaf_ctmax_dark  <- .lg("Dark",  "CTmax"); leaf_ctmax_light <- .lg("Light", "CTmax")
 leaf_z_dark      <- .lg("Dark",  "z");     leaf_z_light     <- .lg("Light", "z")
+# Light minus Dark, per posterior draw: median, 95% interval, pMCMC (as in the
+# case-study contrasts below).
+.leaf_con <- function(q) {
+  w <- leaf_tls$draws[leaf_tls$draws$quantity == q, ]
+  d <- w$value[w$recovery == "Light"][order(w$.draw[w$recovery == "Light"])] -
+       w$value[w$recovery == "Dark"][order(w$.draw[w$recovery == "Dark"])]
+  d <- d[is.finite(d)]
+  c(med = stats::median(d), stats::quantile(d, c(.025, .975), names = FALSE),
+    p = 2 * min(mean(d > 0), mean(d < 0)))
+}
+leaf_dct <- .leaf_con("CTmax"); leaf_dz <- .leaf_con("z")
+.fmt_con <- function(v) sprintf("%.1f [%.1f, %.1f] °C (pMCMC %s)", v[1], v[2], v[3],
+                                if (v["p"] < 0.001) "< .001" else
+                                  paste("=", sub("^0", "", sprintf("%.2f", v["p"]))))
+leaf_sd <- posterior::summarise_draws(posterior::as_draws_df(get_brmsfit(wf_leaf)),
+                                      stats::median)
+leaf_sd_array <- leaf_sd[[2]][leaf_sd$variable == "sd_array__CTmaxdev_Intercept"]
+leaf_sd_run   <- leaf_sd[[2]][leaf_sd$variable == "sd_run__CTmaxdev_Intercept"]
 ```
 
-The joint fit reproduces the direction @arnold_psii_2026 report: 90 min of post-heat light lowers $CT_{max_{1hr}}$ to `r round(leaf_ctmax_light, 1)` °C, below the dark-recovery `r round(leaf_ctmax_dark, 1)` °C, while thermal sensitivity is essentially unchanged ($z$ ≈ `r round(leaf_z_light, 1)` °C under light vs `r round(leaf_z_dark, 1)` °C in the dark). Post-heat light therefore reduces measured tolerance limit without altering how steeply tolerance time declines with temperature — matching their descriptive conclusion that light following heat alters tolerance but not sensitivity. 
+```{r leaf-fit-plant-only}
+#| label: leaf-fit-plant-only
+#| echo: false
+#| cache: false
+# For comparison: the same censored model with the plant random effect alone,
+# i.e. treating the six leaf sections on an array as independent replicates of
+# the recovery treatment.
+wf_leaf_plant <- fit_4pl(
+  leaf_std,
+  ctmax  = ~ 0 + recovery + (1 | plant),
+  z      = ~ 0 + recovery,
+  family = brms::Beta(link = "identity"),
+  t_ref  = 60,
+  iter = 6000, warmup = 3000, seed = 123,
+  control = list(adapt_delta = 0.999, max_treedepth = 15),
+  file_refit = "on_change",
+  file = file.path(models_dir, "fit_leaf_recovery_4pl_cens")
+)
+leaf_tls_plant <- tls(wf_leaf_plant, by = "recovery", lethal = FALSE)
+.w <- leaf_tls_plant$draws[leaf_tls_plant$draws$quantity == "CTmax", ]
+.d <- .w$value[.w$recovery == "Light"][order(.w$.draw[.w$recovery == "Light"])] -
+      .w$value[.w$recovery == "Dark"][order(.w$.draw[.w$recovery == "Dark"])]
+.d <- .d[is.finite(.d)]
+leaf_dct_plant <- c(med = stats::median(.d), stats::quantile(.d, c(.025, .975), names = FALSE),
+                    p = 2 * min(mean(.d > 0), mean(.d < 0)))
+```
+
+The point estimates follow the direction @arnold_psii_2026 report: $CT_{max_{1hr}}$ is `r round(leaf_ctmax_light, 1)` °C after 90 min of post-heat light and `r round(leaf_ctmax_dark, 1)` °C after dark recovery, and $z$ is `r round(leaf_z_light, 1)` °C and `r round(leaf_z_dark, 1)` °C. But the Light − Dark difference is `r .fmt_con(leaf_dct)` for $CT_{max_{1hr}}$ and `r .fmt_con(leaf_dz)` for $z$: both intervals include zero. Arrays vary considerably (standard deviation of their $CT_{max}$ intercepts `r round(leaf_sd_array, 1)` °C, against `r round(leaf_sd_run, 1)` °C for heat runs), and each array carries only one recovery condition, so with arrays as the replicates these data do not resolve a light effect on either the tolerance limit or the sensitivity. Treating the six leaf sections on an array as independent replicates instead (the plant random effect alone) gives a Light − Dark difference in $CT_{max_{1hr}}$ of `r .fmt_con(leaf_dct_plant)`, an apparently clear light penalty: its precision comes from counting sections rather than arrays. The hierarchical model makes the unit of replication explicit. 
 
 ## Retained PSII function curves with observed overlay {#sec-leaf-survival-curves}
 
@@ -2369,7 +2428,7 @@ The joint fit reproduces the direction @arnold_psii_2026 report: 90 min of post-
 
 ```{r leaf-survival-curves}
 #| label: fig-leaf-survival-curves
-#| fig-cap: "Fitted retained-PSII-function surfaces for snow gum under dark and light post-heat recovery (posterior median and 95% credible band), with observed per-replicate proportions overlaid. The light-recovery curves cross the midpoint at shorter durations, the visual signature of the lower $CT_{max}$."
+#| fig-cap: "Fitted retained-PSII-function surfaces for snow gum under dark and light post-heat recovery (population-level posterior median and 95% credible band, with the plant, run and array effects at zero), with the observed per-section proportions overlaid (zero readings drawn at 0)."
 #| fig-width: 8
 #| fig-height: 5
 #| echo: true
@@ -2390,7 +2449,7 @@ Loss of PSII function is described by a single joint 4PL (Beta likelihood), so t
 
 ```{r leaf-r2}
 #| label: tbl-r2-leaf
-#| tbl-cap: "Bayesian $R^2$ for the snow gum leaf PSII 4PL fit, from `bayes_R2_tls()` (a tidy wrapper around `brms::bayes_R2()`). Posterior median with 95% credible interval."
+#| tbl-cap: "Bayesian $R^2$ for the snow gum leaf PSII 4PL fit, from `bayes_R2_tls()` (a tidy wrapper around `brms::bayes_R2()`). Posterior median with 95% credible interval. brms scores the censored readings at their limit (0.1), so with censored zeros this $R^2$ is only a rough guide."
 #| echo: true
 #| code-fold: show
 
@@ -4408,7 +4467,7 @@ case_contrasts <- list(
   # Zebrafish x oxygen: limit (CTmax) vs sensitivity (z)
   zf_ct = .tlsdiff(zf_tls$draws, "oxygen", "CTmax", "hyperoxia", "normoxia"),
   zf_z  = .tlsdiff(zf_tls$draws, "oxygen", "z",     "hyperoxia", "normoxia"),
-  # Snow gum: light penalty on the limit; sensitivity unchanged
+  # Snow gum: light vs dark recovery, limit and sensitivity
   sg_ct = .tlsdiff(leaf_tls$draws, "recovery", "CTmax", "Light", "Dark"),
   sg_z  = .tlsdiff(leaf_tls$draws, "recovery", "z",     "Light", "Dark")
 )
