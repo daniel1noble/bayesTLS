@@ -725,7 +725,7 @@ std_bb  <- standardize_data(sim_bb,
                             duration_unit = "minutes")
 ```
 
-We now call `fit_4pl()` twice — once with the built-in `binomial(link = "identity")` family for the non-overdispersed simulation, and once with the default `beta_binomial(link = "identity")` for the overdispersed case. We store the model fits using brms's `file = ...` mechanism, so subsequent code calls just reload the cached fits unless the formula or data changes.
+We now call `fit_4pl()` twice — once with the built-in `binomial(link = "identity")` family for the non-overdispersed simulation, and once with the default `beta_binomial(link = "identity")` for the overdispersed case. We cache the model fits with brms's `file = ...` argument and `file_refit = "never"`, so later runs reload the saved fits as they are, even if the data or the formula change. To refit, delete the `.rds` files, or use `file_refit = "on_change"` to refit automatically when the data or the model change.
 
 ```{r fit-4pl-tutorial}
 #| label: fit-4pl-tutorial

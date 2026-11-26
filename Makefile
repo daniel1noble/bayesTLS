@@ -38,7 +38,9 @@ BUILD_MS  := $(BUILDROOT)/ms
         data data-full \
         document test test-full check check-cran
 
-all: ms supp
+# The supplement first: the manuscript reads the output/data/*.rds summaries
+# and the figures the supplement writes.
+all: supp ms
 
 # ---------------------------------------------------------------------------
 # bayesTLS package targets.
