@@ -52,11 +52,31 @@
   the grid's own width, if larger) beyond each end, taking the crossing
   nearest the data (an extrapolated bent curve can turn back and cross
   again further out). Draws still without a crossing are counted, per
-  quantity, in a warning. Crossings found on the grid are unchanged, so in
-  the supplement only the zebrafish normoxia CTmax moves (10 of 8000 draws
-  had been dropped). `derive_temperature_for_duration()` no longer assumes
+  quantity, in a warning. The grid is first refined so that neighbouring
+  points are at most 0.05 degrees C apart, or a twentieth of the original
+  spacing where that is wider than 1 degree C (the snow gum default's
+  2.6-degree steps become 0.13): interpolating linearly between 11 coarse
+  points could put a crossing up to about 2 degrees C from the curve's own
+  crossing next to an asymptote. Against a brute-force search on a fine
+  grid, the largest per-draw error fell from 0.26 to 0.03 degrees C on the
+  test fits and from 2.1 to 0.06 degrees C on a censored snow gum fit, with
+  medians within 0.002 degrees C. In the supplement, the zebrafish normoxia
+  CTmax moves by 0.01 degrees C (10 of its 8000 draws had been dropped) and
+  every other number by less than 0.003 degrees C. The search evaluates a
+  group's draws in bounded chunks and keeps, between its two passes, only
+  the draws still without a crossing, so its memory no longer grows with
+  the number of groups.
+  `derive_temperature_for_duration()` no longer assumes
   a straight relative midpoint (one that bends is inverted instead), and
   its `temp_grid` now defaults to 11 points over the observed temperatures.
+  Its check for a straight curve no longer looks only at the requested
+  temperatures, so a `temp_grid` of the centring temperature and/or one
+  degree above it cannot make a bent curve look straight (it used to be
+  solved as the line through those two temperatures, off by up to 2 degrees
+  C per draw on a test fit). A one-point `temp_grid` is searched outward at
+  a fine step instead of in quarters of the data's temperature range, and a
+  grouped call in which one group has no crossing gives that group an `NA`
+  summary row, with the warning, instead of an error.
 * Absolute thresholds near an asymptote (for example `target_surv = 0.9`
   when the upper asymptote falls with temperature): where the target lies
   outside a draw's fitted asymptotes at some temperatures, the LT there is

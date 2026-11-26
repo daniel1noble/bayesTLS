@@ -23,7 +23,8 @@ derive_temperature_for_duration(
 \item{temp_grid}{Numeric vector of temperatures (°C) to search over
 when the curve bends; it is extended beyond each end
 by the data's temperature range (or its own width,
-if wider). Not needed for a straight curve, which
+if wider; a single temperature is extended at a
+fine step). Not needed for a straight curve, which
 is solved exactly. \code{NULL} (default): 11 points over
 the observed temperatures.}
 
@@ -69,7 +70,10 @@ a fit whose midpoint is linear in temperature (midpoint and direct fits
 alike), and an absolute threshold when the asymptotes and steepness do not
 change with temperature. A curve that bends (temperature effects on the
 asymptotes or steepness, under an absolute threshold) is inverted on
-\code{temp_grid} by linear interpolation between its points, taking the crossing
+\code{temp_grid}, refined as in \code{\link[=tls]{tls()}} (each interval split into equal steps of
+at most 0.05 degrees C, but into no more than 20, so an interval wider than
+1 degree C is refined to a twentieth of its width), by linear interpolation
+between the refined points, taking the crossing
 where the LT shortens through the exposure as temperature rises; draws that
 do not cross on it are searched outward beyond each end, and draws left
 without a single crossing are reported in a warning. Where an absolute

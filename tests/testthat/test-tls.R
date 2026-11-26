@@ -296,7 +296,7 @@ test_that("tls() reads a direct fit's relative CTmax in closed form, with no dra
   expect_equal(tt, tls(wd, params = "ctmax", t_ref = 60)$draws$value, tolerance = 1e-9)
 })
 
-test_that("tls() searches a bent curve outward and agrees with a fine brute-force search (gated)", {
+test_that("tls() inverts a bent curve finely and searches outward, matching a brute-force search (gated)", {
   skip_unless_brms()
   wb  <- load_fixture_workflow_beta()
   fit <- get_brmsfit(wb); tm <- wb$meta$temp_mean
@@ -305,29 +305,38 @@ test_that("tls() searches a bent curve outward and agrees with a fine brute-forc
                  "no single crossing of their target exposure")
   new <- res$draws$value
   tc   <- fit$data$temp_c
-  tg   <- seq(min(tc), max(tc), length.out = 11)         # tls()'s default grid
   w    <- diff(range(tc))                                # the outward search's reach
-  fine <- seq(min(tg) - w, max(tg) + w, by = 0.01)
-  sp <- suppressWarnings(tls_eval_subpars(fit, tls_build_grid(fit$data, temp_grid = c(tg, fine)),
+  fine <- seq(min(tc) - w, max(tc) + w, by = 0.005)
+  sp <- suppressWarnings(tls_eval_subpars(fit, tls_build_grid(fit$data, temp_grid = fine),
                                           wb$meta$bounds, mode = "absolute", p = 0.3))
-  Min <- sp$logLT[, seq_along(tg)]; Mf <- sp$logLT[, length(tg) + seq_along(fine)]
-  inside <- is.finite(tls_invert_logLT(Min, target, tg + tm))
-  expect_equal(new[inside], tls_invert_logLT(Min, target, tg + tm)[inside],
-               tolerance = 1e-12)
-  first_out <- function(i) {                             # brute force, nearest the data
-    y <- Min[i, ]
-    cols <- if (all(y > target)) which(fine >= max(tg)) else
-      if (all(y < target)) rev(which(fine <= min(tg))) else return(NA)
-    yy <- Mf[i, cols]; s <- sign(yy - target); k <- which(!is.finite(s) | s != s[1])[1]
-    if (is.na(k) || !is.finite(s[k])) return(NA)
-    tt <- fine[cols]
-    tm + tt[k - 1] + (target - yy[k - 1]) * (tt[k] - tt[k - 1]) / (yy[k] - yy[k - 1])
-  }
-  out <- which(!inside)
-  bf  <- vapply(out, first_out, numeric(1))
-  expect_gt(length(out), 1000)                           # most draws cross off the grid
-  expect_identical(is.finite(new[out]), is.finite(bf))   # same draws found
-  expect_lt(max(abs(new[out] - bf), na.rm = TRUE), 0.01)
+  Mf  <- sp$logLT
+  ins <- which(fine >= min(tc) - 1e-9 & fine <= max(tc) + 1e-9)
+  ref <- vapply(seq_len(nrow(Mf)), function(i) {   # single falling crossing in the data's
+    y  <- Mf[i, ins] - target; n <- length(y)       # range, else the first one outward
+    j  <- which(y[-n] > 0 & y[-1] <= 0)
+    if (length(j) == 1) { t1 <- fine[ins][j]; t2 <- fine[ins][j + 1]
+      return(tm + t1 + y[j] * (t2 - t1) / (y[j] - y[j + 1])) }
+    if (length(j) > 1 || anyNA(y)) return(NA_real_)
+    cols <- if (all(y > 0)) which(fine >= max(tc) - 1e-9) else
+      if (all(y <= 0)) rev(which(fine <= min(tc) + 1e-9)) else return(NA_real_)
+    yy <- Mf[i, cols] - target; k <- which(is.na(yy) | (if (all(y > 0)) yy <= 0 else yy > 0))[1]
+    if (is.na(k) || is.na(yy[k])) return(NA_real_)
+    tt <- fine[cols]; tm + tt[k - 1] + yy[k - 1] * (tt[k] - tt[k - 1]) / (yy[k - 1] - yy[k])
+  }, numeric(1))
+  expect_gt(sum(is.finite(ref)), 1400)                   # most draws cross, many off the grid
+  expect_lt(mean(xor(is.finite(new), is.finite(ref))), 0.005)
+  ok <- is.finite(new) & is.finite(ref)
+  # 3e-4 on this (git-tracked) fixture; a coarse grid or a coarse outward step
+  # gives 1e-3 to 3e-3
+  expect_lt(max(abs(new[ok] - ref[ok])), 1e-3)
+  # crossings inside the data are read on the refined default grid
+  tf  <- tls_refine_grid(seq(min(tc), max(tc), length.out = 11))
+  Mi  <- suppressWarnings(tls_eval_subpars(fit, tls_build_grid(fit$data, temp_grid = tf),
+                                           wb$meta$bounds, mode = "absolute", p = 0.3))$logLT
+  inv <- tls_invert_logLT(Mi, target, tf + tm)
+  ins <- is.finite(inv)
+  expect_gt(sum(ins), 0)
+  expect_equal(new[ins], inv[ins], tolerance = 1e-10)
 })
 
 test_that("tls() and derive_temperature_for_duration() agree per draw on a bent curve (gated)", {
@@ -416,17 +425,22 @@ test_that("tls() finds CTmax next to an asymptote, matching a survival-curve ref
     ref <- ref_surv_ctmax(ws, p, 60)
     expect_identical(is.finite(got), is.finite(ref))
     expect_equal(sum(is.finite(got)), length(got))      # every draw has a CTmax (2 at HEAD at 0.8)
-    expect_lt(max(abs(got - ref)), 0.15)                 # coarse-grid interpolation
+    expect_lt(max(abs(got - ref)), 0.1)                  # refined grid next to the asymptote
+    # 0.006-0.008 on fixtures refitted with other seeds (about 2% of refits
+    # would exceed 0.01, from draws crossing next to the asymptote)
     expect_lt(max(abs(stats::quantile(got, c(.025, .5, .975)) -
-                      stats::quantile(ref, c(.025, .5, .975)))), 0.03)
+                      stats::quantile(ref, c(.025, .5, .975)))), 0.02)
     dd <- suppressWarnings(derive_temperature_for_duration(ws, 1, target_surv = p))$draws
     expect_equal(dd$temp, got[dd$.draw], tolerance = 1e-8)
   }
   wb  <- load_fixture_workflow_beta()           # upper asymptote below 0.9 at the hot end
   got <- muffle_uncrossed(suppressWarnings(tls(wb, params = "ctmax", target_surv = 0.9, t_ref = 60)))
   v   <- got$draws$value
-  expect_gt(sum(is.finite(v)), 900)                     # 636 before this fix
-  expect_lt(abs(v[1] - 29.4629), 2e-3)                 # crossing just below the grid
+  ref <- ref_surv_ctmax(wb, 0.9, 60)
+  expect_gt(sum(is.finite(ref)), 500)                   # most draws cross (636 of 1500 kept before this fix)
+  expect_lt(mean(xor(is.finite(v), is.finite(ref))), 0.01)
+  ok <- is.finite(v) & is.finite(ref)
+  expect_lt(max(abs(v[ok] - ref[ok])), 0.1)             # crossings next to the asymptote
 })
 
 test_that("T_crit's 1-hour anchor gets the same outward search, and the warning counts per quantity (gated)", {
@@ -438,7 +452,8 @@ test_that("T_crit's 1-hour anchor gets the same outward search, and the warning 
   d <- muffle_uncrossed(derive_temperature_for_duration(wb, 1, target_surv = 0.3))$draws
   full <- rep(NA_real_, length(a)); full[d$.draw] <- d$temp
   expect_equal(a, full, tolerance = 1e-8)
-  expect_gt(sum(is.finite(a)), 1495)                    # 1491 on the grid alone
+  ref <- ref_surv_ctmax(wb, 0.3, 60)                    # the anchor is the 1-hour CTmax
+  expect_lt(mean(xor(is.finite(a), is.finite(ref))), 0.01)
   w <- character(0)
   r <- withCallingHandlers(
     tls(wb, params = c("ctmax", "tcrit"), lethal = TRUE, target_surv = 0.3, t_ref = 20, seed = 1),
@@ -446,11 +461,16 @@ test_that("T_crit's 1-hour anchor gets the same outward search, and the warning 
   nc <- sum(!is.finite(r$draws$value[r$draws$quantity == "CTmax"]))
   nt <- sum(!is.finite(r$draws$value[r$draws$quantity == "Tcrit"]))
   uw <- grep("no single crossing", w, value = TRUE)
-  expect_length(uw, 1L)
-  if (nc > 0) expect_match(uw, sprintf("CTmax %d of 1500 draws", nc), fixed = TRUE)
-  else expect_false(grepl("CTmax [0-9]+ of", uw))
-  expect_match(uw, sprintf("T_crit %d of 1500 draws", nt), fixed = TRUE)
-  expect_match(uw, "searched 24 to 42", fixed = TRUE)
+  if (nc + nt == 0) {
+    expect_length(uw, 0L)
+  } else {                                              # one warning, counted per quantity
+    expect_length(uw, 1L)
+    if (nc > 0) expect_match(uw, sprintf("CTmax %d of 1500 draws", nc), fixed = TRUE)
+    else expect_false(grepl("CTmax [0-9]+ of", uw))
+    if (nt > 0) expect_match(uw, sprintf("T_crit %d of 1500 draws", nt), fixed = TRUE)
+    else expect_false(grepl("T_crit [0-9]+ of", uw))
+    expect_match(uw, "searched 24 to 42", fixed = TRUE)
+  }
 })
 
 test_that("the outward search reaches the data's range from a narrow grid, and derive_* is wired alike (gated)", {
@@ -459,7 +479,13 @@ test_that("the outward search reaches the data's range from a narrow grid, and d
   fit <- get_brmsfit(wb)
   narrow <- muffle_uncrossed(tls(wb, params = "ctmax", target_surv = 0.3, t_ref = 6,
                                  temp_grid = c(-1, 0, 1)))$draws$value
-  expect_gt(sum(is.finite(narrow)), 1400)               # reach 6 C, not the grid's 2 C
+  wide   <- muffle_uncrossed(tls(wb, params = "ctmax", target_surv = 0.3,
+                                 t_ref = 6))$draws$value
+  tm <- wb$meta$temp_mean                               # data 30-36 C: reach -1..1 +/- 6
+  reach <- is.finite(wide) & wide > tm - 7 + 0.1 & wide < tm + 7 - 0.1
+  expect_gt(sum(reach & wide > tm + 3), 100)            # beyond the grid's own width of 2 C
+  expect_gt(mean(is.finite(narrow[reach])), 0.99)
+  expect_true(all(abs(narrow - tm) <= 7 + 1e-8, na.rm = TRUE))
   dn <- muffle_uncrossed(derive_temperature_for_duration(wb, 0.1, target_surv = 0.3,
                                                          temp_grid = c(32, 33, 34)))$draws
   expect_equal(dn$temp, narrow[dn$.draw], tolerance = 1e-8)
@@ -519,9 +545,53 @@ test_that("the batched outward search keeps each group's own extension (gated)",
       expect_lt(mean(xor(is.finite(got), is.finite(ref[[g]]))), 0.01, label = lab)
       ok  <- is.finite(got) & is.finite(ref[[g]])
       expect_gt(sum(ok), 500, label = lab)
-      expect_lt(max(abs(got[ok] - ref[[g]][ok])), 0.35, label = lab)   # coarse-grid steps
-      expect_lt(abs(stats::median(got[ok]) - stats::median(ref[[g]][ok])), 0.02, label = lab)
+      expect_lt(max(abs(got[ok] - ref[[g]][ok])), 0.1, label = lab)    # refined grid
+      expect_lt(abs(stats::median(got[ok]) - stats::median(ref[[g]][ok])), 0.01, label = lab)
     }
+  }
+})
+
+test_that("derive_temperature_for_duration() inverts grouped bent curves like tls() (gated)", {
+  skip_unless_brms()
+  wg  <- load_fixture_workflow_shape_grouped()
+  d   <- muffle_uncrossed(suppressWarnings(
+    derive_temperature_for_duration(wg, 1, target_surv = 0.8, by = "grp")))$draws
+  r   <- muffle_uncrossed(suppressWarnings(tls(wg, params = "ctmax", target_surv = 0.8,
+                                               t_ref = 60)))$draws
+  ref <- ref_surv_ctmax(wg, 0.8, 60, by = "grp")
+  for (g in names(ref)) {
+    got <- r$value[as.character(r$grp) == g]
+    dg  <- d[as.character(d$grp) == g, ]
+    expect_equal(dg$temp, got[dg$.draw], tolerance = 1e-8)
+    expect_equal(sum(is.finite(got)), nrow(dg))
+    ok <- is.finite(got) & is.finite(ref[[g]])
+    expect_lt(mean(xor(is.finite(got), is.finite(ref[[g]]))), 0.01, label = g)
+    expect_lt(max(abs(got[ok] - ref[[g]][ok])), 0.1, label = g)
+  }
+  # no crossing in any group: an NA row per group and the warning, not an error
+  w <- character(0)
+  none <- withCallingHandlers(
+    derive_temperature_for_duration(wg, 1e8, target_surv = 0.5, by = "grp"),
+    warning = function(c) { w <<- c(w, conditionMessage(c)); invokeRestart("muffleWarning") })
+  expect_true(any(grepl("no single crossing", w, fixed = TRUE)))
+  expect_equal(nrow(none$draws), 0L)
+  expect_setequal(as.character(none$summary$grp), c("A", "B"))
+  expect_true(all(is.na(none$summary$temp_median)))
+})
+
+test_that("derive_temperature_for_duration() is not fooled by a grid at temp_mean and temp_mean + 1 (gated)", {
+  skip_unless_brms()
+  ws  <- load_fixture_workflow_shape()          # bent: temperature on all four parameters
+  tm  <- ws$meta$temp_mean
+  ref <- ref_surv_ctmax(ws, 0.8, 600)           # 10 h: crossings inside the data
+  for (g in list(tm, tm + 1, c(tm, tm + 1))) {
+    d <- muffle_uncrossed(suppressWarnings(
+      derive_temperature_for_duration(ws, 10, target_surv = 0.8, temp_grid = g)))$draws
+    got <- rep(NA_real_, length(ref)); got[d$.draw] <- d$temp
+    ok  <- is.finite(got) & is.finite(ref)
+    lab <- paste("temp_grid", paste(g, collapse = ", "))
+    expect_gt(sum(ok), 0.95 * length(ref), label = lab)
+    expect_lt(max(abs(got[ok] - ref[ok])), 0.05, label = lab)   # the old straight line: 0.16
   }
 })
 

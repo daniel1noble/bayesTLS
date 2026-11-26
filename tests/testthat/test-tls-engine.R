@@ -273,3 +273,141 @@ test_that("readers that pass ndraws on to brms validate it first", {
   tr <- data.frame(time = c(0, 1), temp = c(30, 30))
   expect_error(predict_heat_injury(tr, wf0, ndraws = 0), "whole number")
 })
+
+test_that("tls_refine_grid() keeps the grid points and fills each step to <= 0.05 C", {
+  tg <- seq(-3, 3, length.out = 11)                      # 0.6 C steps
+  g  <- tls_refine_grid(tg)
+  expect_false(anyNA(match(tg, g)))                     # original points kept exactly
+  expect_equal(length(g), 121L)
+  expect_lt(max(diff(g)), 0.05 + 1e-12)
+  expect_true(all(diff(g) > 0))
+  wide <- tls_refine_grid(seq(-13, 13, length.out = 11)) # 2.6 C steps: at most 20 a step
+  expect_equal(length(wide), 10L * 20L + 1L)
+  expect_identical(tls_refine_grid(seq(0, 1, by = 0.05)), seq(0, 1, by = 0.05))  # fine already
+  expect_identical(tls_refine_grid(c(2, 0, 2)), tls_refine_grid(c(0, 2)))   # sorted, unique
+  expect_equal(length(tls_refine_grid(c(0, 2))), 21L)   # a 2 C step: capped at 20 (0.1 C)
+  expect_identical(tls_refine_grid(1), 1)
+})
+
+# --- tls_extend_crossings() on an analytic engine (no brms) -------------------
+# tls_eval_subpars() is replaced by an exact 4PL whose draws are rows of `par`,
+# so every crossing has an exact reference (uniroot on the survival curve).
+
+mock_engine <- function(par, mid_fun, seen = NULL) {
+  force(par); force(mid_fun)
+  function(fit, newdata, bounds, nlpars = NULL, re_formula = NA, draw_ids = NULL,
+           mode = "absolute", p = 0.5, warn = TRUE) {
+    i  <- if (is.null(draw_ids)) seq_len(nrow(par)) else draw_ids
+    tt <- newdata$temp_c
+    if (!is.null(seen)) seen$calls[[length(seen$calls) + 1L]] <- list(t = tt, n = length(i))
+    low <- matrix(0.05, length(i), length(tt))
+    up  <- pmin(par$u0[i] + outer(par$us[i], tt), 0.999)
+    k   <- matrix(par$k[i], length(i), length(tt))
+    mid <- mid_fun(par[i, , drop = FALSE], tt)
+    logLT <- if (identical(mode, "absolute")) mid + tdt_abs_offset("log-logistic", low, up, k, p) else mid
+    list(low = low, up = up, k = k, mid = mid, logLT = logLT)
+  }
+}
+
+# First pass as tls() builds it: invert each draw on the coarse grid `tg`.
+first_pass <- function(engine, tg, target, p, rows = NULL) {
+  sp <- engine(NULL, data.frame(temp_c = tg), NULL, draw_ids = rows,
+               mode = if (is.na(p)) "relative" else "absolute", p = if (is.na(p)) 0.5 else p)
+  R  <- if (is.na(p)) NULL else tls_surv_resid(sp, target, p, "log-logistic")
+  list(newrow = data.frame(temp_c = 0), tg = tg, sp = sp, targets = list(v = target),
+       crossings = list(v = tls_invert_logLT(tls_clamp_logLT(sp, p), target, tg, R = R)))
+}
+
+# Exact crossing per draw: the single falling crossing of S(t_ref) - p (or of
+# logLT - target) inside [lo, hi], else the first one outward up to `reach`.
+exact_crossings <- function(f, n, lo, hi, reach) {
+  fine <- seq(lo - reach, hi + reach, by = 0.001)
+  ins  <- fine >= lo - 1e-9 & fine <= hi + 1e-9
+  vapply(seq_len(n), function(d) {
+    y <- f(d, fine); yi <- y[ins]; fi <- fine[ins]
+    j <- which(yi[-length(yi)] > 0 & yi[-1] <= 0)
+    root <- function(a, b) stats::uniroot(function(t) f(d, t), c(a, b), tol = 1e-10)$root
+    if (length(j) == 1L) return(root(fi[j], fi[j + 1L]))
+    if (length(j) > 1L) return(NA_real_)
+    if (all(yi > 0)) { o <- which(fine > hi); k <- which(y[o] <= 0)[1]
+      return(if (is.na(k)) NA_real_ else root(fine[o][k] - 0.001, fine[o][k])) }
+    if (all(yi <= 0)) { o <- rev(which(fine < lo)); k <- which(y[o] > 0)[1]
+      return(if (is.na(k)) NA_real_ else root(fine[o][k], fine[o][k] + 0.001)) }
+    NA_real_
+  }, numeric(1))
+}
+
+test_that("tls_extend_crossings() refines on the grid and steps outward on the refined grid", {
+  set.seed(42)
+  par <- data.frame(u0 = runif(200, 0.84, 0.91), us = -runif(200, 0.015, 0.03),
+                    m0 = runif(200, 1.2, 1.6), ms = -runif(200, 0.15, 0.25), k = runif(200, 4, 8))
+  midf <- function(q, tt) q$m0 + outer(q$ms, tt)
+  seen <- new.env(); seen$calls <- list()
+  eng <- mock_engine(par, midf, seen)
+  local_mocked_bindings(tls_eval_subpars = eng)
+  p <- 0.8; target <- 0; tg <- seq(-3, 3, length.out = 11)     # coarse: 0.6 C steps
+  g <- first_pass(eng, tg, target, p)
+  seen$calls <- list()
+  out <- tls_extend_crossings(NULL, list(a = g), "temp_c", width = 6, Tbar = 0,
+                              draw_ids = NULL, bounds = NULL, mode = "absolute", p = p,
+                              model = "log-logistic")$a
+  surv <- function(d, t) {
+    up <- pmin(par$u0[d] + par$us[d] * t, 0.999)
+    0.05 + (up - 0.05) / (1 + exp(par$k[d] * (target - (par$m0[d] + par$ms[d] * t)))) - p
+  }
+  ref <- exact_crossings(surv, 200, -3, 3, 6)
+  v   <- out$crossings$v
+  expect_identical(is.finite(v), is.finite(ref))
+  on  <- is.finite(ref) & abs(ref) <= 3; off <- is.finite(ref) & abs(ref) > 3
+  expect_gt(sum(on), 30); expect_gt(sum(off), 30)
+  expect_lt(max(abs(v[on] - ref[on])), 0.05)      # a refined step (coarse grid: about 0.15)
+  expect_lt(max(abs(v[off] - ref[off])), 0.03)    # a refined outward step (coarse: about 0.05)
+  expect_equal(out$tg, tls_refine_grid(tg))
+  beyond <- sort(unique(unlist(lapply(seen$calls, `[[`, "t"))))
+  beyond <- beyond[beyond > max(tg)]
+  expect_gt(length(beyond), 0)
+  expect_lte(max(diff(c(max(tg), beyond))), 6 / 200 + 1e-9)   # the refined grid's extension
+  expect_null(out$sp)
+})
+
+test_that("tls_extend_crossings() handles a relative bent midpoint, mixed groups, chunks and draw ids", {
+  set.seed(7)
+  par <- data.frame(u0 = 0.95, us = 0, m0 = runif(150, 1.0, 1.4), ms = -runif(150, 0.15, 0.25),
+                    mq = -runif(150, 0.002, 0.01), k = 6)
+  midf <- function(q, tt) q$m0 + outer(q$ms, tt) + outer(q$mq, tt^2)
+  seen <- new.env(); seen$calls <- list()
+  eng <- mock_engine(par, midf, seen)
+  local_mocked_bindings(tls_eval_subpars = eng)
+  target <- 0.5
+  ref <- exact_crossings(function(d, t) par$m0[d] + par$ms[d] * t + par$mq[d] * t^2 - target,
+                         150, -3, 3, 6)
+  coarse <- seq(-3, 3, length.out = 11)
+  fine   <- seq(-3, 3, by = 0.05)
+  run <- function(groups, ...) tls_extend_crossings(NULL, groups, "temp_c", width = 6, Tbar = 0,
+                                                    draw_ids = NULL, bounds = NULL,
+                                                    mode = "relative", p = NA, ...)
+  both <- run(list(c = first_pass(eng, coarse, target, NA), f = first_pass(eng, fine, target, NA)))
+  ok <- is.finite(ref)
+  expect_gt(sum(ok), 100)
+  for (g in c("c", "f")) {
+    expect_identical(is.finite(both[[g]]$crossings$v), ok)
+    expect_lt(max(abs(both[[g]]$crossings$v[ok] - ref[ok])), 1e-3)
+  }
+  expect_equal(both$f$tg, fine)                    # already fine: left as it is
+  expect_equal(both$c$tg, tls_refine_grid(coarse))
+  alone <- run(list(c = first_pass(eng, coarse, target, NA)))
+  expect_identical(both$c$crossings, alone$c$crossings)
+  # draws split into chunks give the same crossings, and a subsample keeps its draw ids
+  g1 <- first_pass(eng, coarse, target, NA)
+  seen$calls <- list()
+  chunked <- run(list(c = g1), max_cells = 500)
+  expect_identical(chunked$c$crossings, alone$c$crossings)
+  cells <- vapply(seen$calls, function(x) x$n * length(x$t), numeric(1))
+  expect_gt(length(cells), 1)
+  expect_lte(max(cells), 500)                      # no engine call exceeds max_cells
+  ids <- sort(sample.int(150, 40))
+  sub <- tls_extend_crossings(NULL, list(c = first_pass(eng, coarse, target, NA, rows = ids)),
+                              "temp_c", width = 6, Tbar = 0, draw_ids = ids, bounds = NULL,
+                              mode = "relative", p = NA, max_cells = 500)
+  expect_equal(sub$c$crossings$v, alone$c$crossings$v[ids])
+})

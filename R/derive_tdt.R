@@ -240,7 +240,10 @@ derive_tdt_curve <- function(workflow,
 #' alike), and an absolute threshold when the asymptotes and steepness do not
 #' change with temperature. A curve that bends (temperature effects on the
 #' asymptotes or steepness, under an absolute threshold) is inverted on
-#' `temp_grid` by linear interpolation between its points, taking the crossing
+#' `temp_grid`, refined as in [tls()] (each interval split into equal steps of
+#' at most 0.05 degrees C, but into no more than 20, so an interval wider than
+#' 1 degree C is refined to a twentieth of its width), by linear interpolation
+#' between the refined points, taking the crossing
 #' where the LT shortens through the exposure as temperature rises; draws that
 #' do not cross on it are searched outward beyond each end, and draws left
 #' without a single crossing are reported in a warning. Where an absolute
@@ -253,7 +256,8 @@ derive_tdt_curve <- function(workflow,
 #' @param temp_grid        Numeric vector of temperatures (°C) to search over
 #'                         when the curve bends; it is extended beyond each end
 #'                         by the data's temperature range (or its own width,
-#'                         if wider). Not needed for a straight curve, which
+#'                         if wider; a single temperature is extended at a
+#'                         fine step). Not needed for a straight curve, which
 #'                         is solved exactly. `NULL` (default): 11 points over
 #'                         the observed temperatures.
 #' @param target_surv      Threshold mode. `"relative"` (default), `"absolute"`,
@@ -298,16 +302,19 @@ derive_temperature_for_duration <- function(workflow,
   did <- tls_draw_ids(fit, ndraws)
 
   # Evaluate logLT per group at temp_c = 0 and 1 (the closed-form anchor and
-  # slope) and over the search grid (the inversion of a bent curve). Rows
-  # within a group keep this order (tls_build_grid()), so columns 1 and 2 are
-  # temp_c = 0 and 1 and the rest the grid.
+  # slope), at a probe temp_c = 0.5 and over the search grid (the inversion of
+  # a bent curve). The probe gives the straightness check a third temperature
+  # even when the grid is only temp_c = 0 and/or 1, so such a grid cannot make
+  # a bent curve look straight. Rows within a group keep this order
+  # (tls_build_grid()), so columns 1-3 are temp_c = 0, 1 and 0.5 and the rest
+  # the grid.
   if (is.null(temp_grid))
     temp_grid <- seq(min(workflow$data$temp), max(workflow$data$temp), length.out = 11)
   tg <- sort(unique(tdt_finite_grid(temp_grid) - tbar))
   bounds <- tdt_workflow_bounds(workflow)
   pp     <- if (is.na(ts$prob)) 0.5 else ts$prob
   width  <- diff(range(fit$data$temp_c, na.rm = TRUE))
-  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1, tg))
+  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1, 0.5, tg))
   sp <- tls_eval_subpars(fit, nd, bounds, draw_ids = did, mode = ts$mode, p = pp)
 
   # Per group: a straight logLT(T) is solved exactly at any temperature; a
@@ -321,11 +328,11 @@ derive_temperature_for_duration <- function(workflow,
   for (g in groups) {
     gi <- which(nd$.grp == g)
     M  <- sp$logLT[, gi, drop = FALSE]
-    if (tls_group_is_linear(M, c(0, 1, tg))) {
+    if (tls_group_is_linear(M, c(0, 1, 0.5, tg))) {
       Tcs[[g]] <- tbar + (target - M[, 1]) / (M[, 2] - M[, 1])
     } else {
       spg <- lapply(sp[c("low", "up", "k", "mid", "logLT")],
-                    function(m) m[, gi[-(1:2)], drop = FALSE])
+                    function(m) m[, gi[-(1:3)], drop = FALSE])
       R   <- if (is.na(p_abs)) NULL else tls_surv_resid(spg, target, p_abs, model)
       Tcs[[g]] <- tls_invert_logLT(tls_clamp_logLT(spg, p_abs), target, tg + tbar, R = R)
       bent[[g]] <- list(newrow = nd[gi[1], , drop = FALSE], tg = tg, sp = spg,
@@ -356,7 +363,8 @@ derive_temperature_for_duration <- function(workflow,
                         temp_median = q[2], temp_upper = q[3])
     if (!is.null(by)) {
       gc <- nd[gi[1], by, drop = FALSE]
-      d <- cbind(gc, d, row.names = NULL); s <- cbind(gc, s, row.names = NULL)
+      d <- cbind(gc[rep(1L, nrow(d)), , drop = FALSE], d, row.names = NULL)  # 0 rows if none crossed
+      s <- cbind(gc, s, row.names = NULL)
     }
     list(draws = d, summary = s)
   })

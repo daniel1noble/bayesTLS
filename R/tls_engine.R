@@ -208,9 +208,9 @@ tls_linear_draws <- function(M, temps, tol = 1e-7) {
 # The temperatures a bent LT curve is searched over beyond the requested grid:
 # the sorted grid `tg` plus points beyond each end, out to `width` (at least
 # the grid's own width and 1 degree) at a quarter of the grid's median spacing
-# (`refine`; at most `max_per_side` points a side), finer than the grid itself
-# because an extrapolated curve bends more. Inside the grid the points -- and
-# so any crossing found there -- are unchanged.
+# (`refine`; at most `max_per_side` points a side, which then sets the
+# spacing). Inside the grid the points -- and so any crossing found there --
+# are unchanged.
 tls_extend_grid <- function(tg, width = NULL, refine = 4L, max_per_side = 80L) {
   tg <- sort(unique(tg))
   w  <- max(width %||% 0, diff(range(tg)), 1)
@@ -218,6 +218,25 @@ tls_extend_grid <- function(tg, width = NULL, refine = 4L, max_per_side = 80L) {
   n  <- min(max_per_side, max(1L, ceiling(w / s - 1e-9)))
   s  <- w / n
   c(min(tg) - s * rev(seq_len(n)), tg, max(tg) + s * seq_len(n))
+}
+
+# The grid a bent LT curve is inverted on: the sorted grid `tg` with points
+# inserted in every interval so that consecutive points are at most `step`
+# degrees apart (at most `max_refine` sub-intervals per interval). Linear
+# interpolation between grid points then puts a crossing within a small
+# fraction of the step that would otherwise bound its error (up to ~0.1-2 C
+# per draw on a coarse grid next to an asymptote). The original points are
+# kept exactly; a grid already that fine is returned unchanged.
+tls_refine_grid <- function(tg, step = 0.05, max_refine = 20L) {
+  tg <- sort(unique(tg))
+  if (length(tg) < 2L) return(tg)
+  out <- tg[1]
+  for (i in seq_len(length(tg) - 1L)) {
+    d <- tg[i + 1L] - tg[i]
+    n <- min(max_refine, max(1L, ceiling(d / step - 1e-9)))
+    out <- c(out, if (n > 1L) tg[i] + d * seq_len(n - 1L) / n, tg[i + 1L])
+  }
+  out
 }
 
 # Sign-safe logLT for inverting an absolute-threshold LT curve. Where the
@@ -313,87 +332,175 @@ tls_invert_outward <- function(M, target, grid, inner = seq_along(grid), R = NUL
 }
 
 # Second pass for bent LT curves, all groups together. Each element of `groups`
-# is one group whose crossings were inverted on its grid:
+# is one group whose crossings were first inverted on its requested grid:
 #   newrow    one-row data frame (moderators + filled columns);
 #   tg        its sorted, unique centred grid;
 #   sp        the tls_eval_subpars() list (low, up, k, mid, logLT) on the grid
 #             columns, rows = the first pass's draws;
 #   crossings named list of per-draw crossings (original scale; NA = none);
 #   targets   matching named list of log10 reference durations (model units).
-# The draws with no crossing on the grid whose curve points off it
-# (tls_outward_side()) are evaluated, for those draws only, on the grid's
-# extension (tls_extend_grid(tg, width)) and searched outward
-# (tls_invert_outward()). posterior_linpred() has a large fixed cost per call,
-# so the groups share engine calls, batched to at most `max_cells` draws x rows
-# each. `draw_ids` are the first pass's posterior draw ids (NULL = all, in
-# order): row i of `sp` is posterior draw draw_ids[i]. Returns `groups` with the
-# crossings filled in.
+# Stage A refines the grid (tls_refine_grid(): points at most 0.05 C apart, or
+# a twentieth of an interval wider than 1 C), evaluates the new points for
+# every draw and inverts again on the refined grid, so a crossing is no longer
+# bounded by the coarse grid's interpolation error. Stage B evaluates, for the
+# draws still without a crossing whose curve points off the grid
+# (tls_outward_side()), the refined grid's extension (tls_extend_grid(...,
+# width)) and searches outward (tls_invert_outward()). posterior_linpred() has
+# a large fixed cost per call, so in each stage the groups share engine calls;
+# a group's draws are split into chunks when needed, so that no call
+# evaluates more than `max_cells` draws x rows, and each chunk is inverted as
+# soon as it is evaluated. Only the refined values of the draws Stage B needs
+# are kept between the stages. `draw_ids` are the first pass's posterior draw
+# ids (NULL = all, in order): row i of `sp` is posterior draw draw_ids[i].
+# Returns `groups` with `tg` (refined) and the crossings updated, and `sp`
+# dropped.
 tls_extend_crossings <- function(fit, groups, temp, width, Tbar, draw_ids, bounds,
                                  nlpars = c("lowraw", "upraw", "logk", "mid"),
                                  re_formula = NA, mode = "absolute", p = NA,
                                  model = NULL, max_cells = 3e6) {
   pp   <- if (identical(mode, "absolute")) p else NA_real_
-  plan <- lapply(groups, function(g) {
-    L <- tls_clamp_logLT(g$sp, pp)
-    need <- sort(unique(unlist(lapply(names(g$crossings), function(nm) {
-      i <- which(!is.finite(g$crossings[[nm]]))
-      i[vapply(i, function(r) tls_outward_side(L[r, ] - g$targets[[nm]]) != 0L,
-               logical(1))]
-    }))))
-    if (!length(need)) return(NULL)
-    grid <- tls_extend_grid(g$tg, width = width)
-    inner <- match(g$tg, grid)
-    list(need = need, grid = grid, inner = inner, ext = setdiff(seq_along(grid), inner))
-  })
-  todo <- which(!vapply(plan, is.null, logical(1)))
-  if (!length(todo)) return(groups)
-  batches <- list(); cur <- integer(0)
-  for (gi in todo) {
-    cand  <- c(cur, gi)
-    cells <- length(unique(unlist(lapply(plan[cand], `[[`, "need")))) *
-      sum(vapply(plan[cand], function(x) length(x$ext), integer(1)))
-    if (length(cur) && cells > max_cells) {
-      batches[[length(batches) + 1L]] <- cur; cur <- gi
-    } else cur <- cand
+  nms  <- c(low = "low", up = "up", k = "k", mid = "mid", logLT = "logLT")
+  ids_of <- function(rows) if (is.null(draw_ids)) rows else draw_ids[rows]
+  resid  <- function(sp, tgt) if (is.na(pp)) NULL else tls_surv_resid(sp, tgt, pp, model)
+  # TRUE for the rows of a clamped logLT matrix L whose crossing v is missing
+  # and whose curve stays on one side of the target (the crossing may lie off
+  # the grid, so Stage B searches outward for it).
+  points_off <- function(L, v, target) {
+    out <- logical(length(v))
+    i <- which(!is.finite(v))
+    out[i[vapply(i, function(r) tls_outward_side(L[r, ] - target) != 0L, logical(1))]] <- TRUE
+    out
   }
-  batches[[length(batches) + 1L]] <- cur
-  nms <- c(low = "low", up = "up", k = "k", mid = "mid", logLT = "logLT")
-  for (b in batches) {
-    rows_u <- sort(unique(unlist(lapply(plan[b], `[[`, "need"))))
-    nd <- do.call(rbind, lapply(b, function(gi) {
-      x <- groups[[gi]]$newrow[rep(1L, length(plan[[gi]]$ext)), , drop = FALSE]
-      x[[temp]] <- plan[[gi]]$grid[plan[[gi]]$ext]
-      x
-    }))
-    rownames(nd) <- NULL
-    spe <- tls_eval_subpars(fit, nd, bounds, nlpars = nlpars, re_formula = re_formula,
-                            draw_ids = if (is.null(draw_ids)) rows_u else draw_ids[rows_u],
-                            mode = mode, p = if (is.na(pp)) 0.5 else pp, warn = FALSE)
-    col0 <- 0L
-    for (gi in b) {
-      pl <- plan[[gi]]; g <- groups[[gi]]
-      cols <- col0 + seq_along(pl$ext); col0 <- col0 + length(pl$ext)
-      ru   <- match(pl$need, rows_u)
-      spf  <- lapply(nms, function(nm) {
-        m <- matrix(NA_real_, length(pl$need), length(pl$grid))
-        m[, pl$inner] <- g$sp[[nm]][pl$need, , drop = FALSE]
-        m[, pl$ext]   <- spe[[nm]][ru, cols, drop = FALSE]
+  # Evaluate, for each group gi in `todo`, the temperatures plan[[gi]]$new at
+  # the draws rows_of(gi) (first-pass row indices) and hand each block to
+  # consume(gi, rows, sub), where `sub` is a tls_eval_subpars() list of
+  # [length(rows) x length(new)] matrices. Groups share engine calls; a
+  # group's draws are split into chunks so that no call exceeds `max_cells`.
+  eval_batched <- function(plan, todo, rows_of, consume) {
+    units <- list()
+    for (gi in todo) {
+      r <- rows_of(gi); nn <- length(plan[[gi]]$new)
+      if (!length(r) || !nn) next
+      size <- max(1L, floor(max_cells / nn))
+      for (ch in split(r, ceiling(seq_along(r) / size)))
+        units[[length(units) + 1L]] <- list(gi = gi, rows = ch)
+    }
+    cells <- function(us) length(unique(unlist(lapply(us, `[[`, "rows")))) *
+      sum(vapply(us, function(u) length(plan[[u$gi]]$new), integer(1)))
+    batches <- list(); cur <- list()
+    for (u in units) {
+      cand <- c(cur, list(u))
+      if (length(cur) && cells(cand) > max_cells) {
+        batches[[length(batches) + 1L]] <- cur; cur <- list(u)
+      } else cur <- cand
+    }
+    if (length(cur)) batches[[length(batches) + 1L]] <- cur
+    for (b in batches) {
+      rows_u <- sort(unique(unlist(lapply(b, `[[`, "rows"))))
+      nd <- do.call(rbind, lapply(b, function(u) {
+        x <- groups[[u$gi]]$newrow[rep(1L, length(plan[[u$gi]]$new)), , drop = FALSE]
+        x[[temp]] <- plan[[u$gi]]$new
+        x
+      }))
+      rownames(nd) <- NULL
+      spe <- tls_eval_subpars(fit, nd, bounds, nlpars = nlpars, re_formula = re_formula,
+                              draw_ids = ids_of(rows_u), mode = mode,
+                              p = if (is.na(pp)) 0.5 else pp, warn = FALSE)
+      col0 <- 0L
+      for (u in b) {
+        nn   <- length(plan[[u$gi]]$new)
+        cols <- col0 + seq_len(nn); col0 <- col0 + nn
+        ru   <- match(u$rows, rows_u)
+        consume(u$gi, u$rows, lapply(nms, function(nm) spe[[nm]][ru, cols, drop = FALSE]))
+      }
+    }
+    invisible(NULL)
+  }
+  # `rows`: the first-pass rows whose values `sp` holds (all of them, until
+  # Stage A keeps only the rows Stage B can need).
+  for (gi in seq_along(groups)) groups[[gi]]$rows <- seq_len(nrow(groups[[gi]]$sp$logLT))
+
+  # --- Stage A: refine the grid and invert again, every draw ---------------
+  planA <- lapply(groups, function(g) {
+    tf <- tls_refine_grid(g$tg)
+    keep <- match(g$tg, tf)
+    if (length(tf) == length(g$tg)) return(NULL)
+    list(grid = tf, keep = keep, new = tf[-keep])
+  })
+  todoA <- which(!vapply(planA, is.null, logical(1)))
+  if (length(todoA)) {
+    kept <- vector("list", length(groups))
+    consumeA <- function(gi, rows, sub) {
+      pl <- planA[[gi]]; g <- groups[[gi]]
+      spf <- lapply(nms, function(nm) {
+        m <- matrix(NA_real_, length(rows), length(pl$grid))
+        m[, pl$keep] <- g$sp[[nm]][rows, , drop = FALSE]
+        m[, -pl$keep] <- sub[[nm]]
+        m
+      })
+      L <- tls_clamp_logLT(spf, pp)
+      off <- logical(length(rows))
+      for (nm in names(g$crossings)) {
+        v <- tls_invert_logLT(L, g$targets[[nm]], Tbar + pl$grid, R = resid(spf, g$targets[[nm]]))
+        groups[[gi]]$crossings[[nm]][rows] <<- v
+        off <- off | points_off(L, v, g$targets[[nm]])
+      }
+      if (any(off))
+        kept[[gi]][[length(kept[[gi]]) + 1L]] <<-
+          list(rows = rows[off], sp = lapply(spf, function(m) m[off, , drop = FALSE]))
+    }
+    eval_batched(planA, todoA, function(gi) groups[[gi]]$rows, consumeA)
+    for (gi in todoA) {
+      kk <- kept[[gi]]; ng <- length(planA[[gi]]$grid)
+      groups[[gi]]$tg   <- planA[[gi]]$grid
+      groups[[gi]]$rows <- as.integer(unlist(lapply(kk, `[[`, "rows")))
+      groups[[gi]]$sp   <- lapply(nms, function(nm)
+        if (length(kk)) do.call(rbind, lapply(kk, function(x) x$sp[[nm]]))
+        else matrix(NA_real_, 0L, ng))
+    }
+    rm(kept)
+  }
+
+  # --- Stage B: search outward for the draws still without a crossing -------
+  planB <- lapply(groups, function(g) {
+    if (!length(g$rows)) return(NULL)
+    L <- tls_clamp_logLT(g$sp, pp)
+    off <- logical(length(g$rows))
+    for (nm in names(g$crossings))
+      off <- off | points_off(L, g$crossings[[nm]][g$rows], g$targets[[nm]])
+    if (!any(off)) return(NULL)
+    # a one-point grid has no spacing of its own: extend it at the finest step
+    grid  <- tls_extend_grid(g$tg, width = width, max_per_side = 200L,
+                             refine = if (length(g$tg) > 1L) 4L else 200L)
+    inner <- match(g$tg, grid)
+    list(local = which(off), need = g$rows[off], grid = grid, inner = inner,
+         new = grid[-inner])
+  })
+  todoB <- which(!vapply(planB, is.null, logical(1)))
+  if (length(todoB)) {
+    consumeB <- function(gi, rows, sub) {
+      pl <- planB[[gi]]; g <- groups[[gi]]
+      loc <- pl$local[match(rows, pl$need)]
+      spf <- lapply(nms, function(nm) {
+        m <- matrix(NA_real_, length(rows), length(pl$grid))
+        m[, pl$inner]  <- g$sp[[nm]][loc, , drop = FALSE]
+        m[, -pl$inner] <- sub[[nm]]
         m
       })
       Lf <- tls_clamp_logLT(spf, pp)
       for (nm in names(g$crossings)) {
-        v <- g$crossings[[nm]]
-        f <- which(!is.finite(v[pl$need]))
+        v <- g$crossings[[nm]][rows]
+        f <- which(!is.finite(v))
         if (!length(f)) next
-        R <- if (is.na(pp)) NULL else
-          tls_surv_resid(lapply(spf, function(m) m[f, , drop = FALSE]),
-                         g$targets[[nm]], pp, model)
-        v[pl$need[f]] <- tls_invert_outward(Lf[f, , drop = FALSE], g$targets[[nm]],
-                                            Tbar + pl$grid, pl$inner, R = R)
-        groups[[gi]]$crossings[[nm]] <- v
+        v[f] <- tls_invert_outward(
+          Lf[f, , drop = FALSE], g$targets[[nm]], Tbar + pl$grid, pl$inner,
+          R = resid(lapply(spf, function(m) m[f, , drop = FALSE]), g$targets[[nm]]))
+        groups[[gi]]$crossings[[nm]][rows] <<- v
       }
     }
+    eval_batched(planB, todoB, function(gi) planB[[gi]]$need, consumeB)
   }
+  for (gi in seq_along(groups)) groups[[gi]]$sp <- NULL
   groups
 }
 

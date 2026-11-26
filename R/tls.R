@@ -58,11 +58,14 @@
 #'   which the LT curve is evaluated. `z` is the local `z(T)` pooled over this
 #'   grid. `CTmax` (and the 1-hour anchor of `T_crit`) is exact when the LT
 #'   curve is a straight line in temperature; when it bends (see Details) it is
-#'   inverted on this grid by linear interpolation between its points (a finer
-#'   grid reduces that error), and draws that do not cross on it are searched
-#'   outward, beyond each end by the data's temperature range or the grid's own
-#'   width, whichever is larger. Draws left without a crossing are reported in
-#'   a warning. Default: 11 points over the observed range. A grid lying
+#'   inverted on this grid, refined first so that neighbouring points are at
+#'   most 0.05 degrees apart (each interval is split into at most 20 equal
+#'   steps, so a grid coarser than 1 degree is refined to a twentieth of its
+#'   spacing), by linear interpolation between the refined points. Draws that
+#'   do not cross on it are searched outward, beyond each end by the data's
+#'   temperature range or the grid's own width, whichever is larger. Draws left
+#'   without a crossing are reported in a warning. Default: 11 points over the
+#'   observed range. A grid lying
 #'   entirely outside the observed temperatures, or reaching more than the
 #'   data's own temperature range beyond them, warns, since that is what a
 #'   grid given in degrees C usually looks like (the check cannot tell the
@@ -108,7 +111,8 @@
 #' not change with temperature. With temperature effects on the asymptotes or
 #' steepness, an absolute threshold bends the curve: the local `z(T)` follows
 #' it, and `CTmax` is the curve's crossing of `t_ref`, interpolated linearly
-#' between grid points. The crossing taken is the one where the LT shortens
+#' between the points of the refined grid (see `temp_grid`). The crossing
+#' taken is the one where the LT shortens
 #' through `t_ref` as temperature rises; a draw with none, or more than one,
 #' has no `CTmax`. Near an asymptote the LT at an absolute `p` can be
 #' undefined at some temperatures (`p` outside the fitted asymptotes there);
