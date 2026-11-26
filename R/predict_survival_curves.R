@@ -107,6 +107,7 @@ posterior_linpred_tdt <- function(workflow,
                                   re_formula = NA) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
+  tdt_check_ndraws(ndraws)
 
   args <- list(object = workflow$fit, newdata = newdata,
                re_formula = re_formula, transform = TRUE)

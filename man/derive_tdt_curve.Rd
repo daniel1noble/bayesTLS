@@ -21,10 +21,12 @@ derive_tdt_curve(
 
 \item{temp_grid}{Numeric vector of temperatures (°C).}
 
-\item{duration_grid}{Numeric vector of durations along which to search.
-Only used in \code{"absolute"} mode. Default: 350
-log-spaced values spanning 0.2× to 5× the training
-data's duration range.}
+\item{duration_grid}{Deprecated and ignored, with a message if supplied
+(in either threshold mode): absolute crossings are
+now computed exactly per draw, so no search grid is
+needed. It used to bound the numerical search,
+silently dropping draws whose crossing lay beyond
+it.}
 
 \item{target_surv}{Threshold mode. \code{"relative"} (default; = \code{(low + up)/2}),
 \code{"absolute"} (= 0.5), or a numeric in \verb{(0, 1)}.}
@@ -52,7 +54,8 @@ a single-condition fit returns one ungrouped curve.}
 }
 \value{
 A list with \code{draws} (per-draw threshold durations; \code{target_surv}
-column is a character label), \code{summary} (quantile summary by
+column is a character label; a duration too long or too short to
+represent is \code{Inf} or 0), \code{summary} (quantile summary by
 temperature, plus moderator columns for grouped fits), \code{target_surv}
 (the label), \code{time_multiplier}, \code{output_time_unit}, and \code{by}.
 }
@@ -70,9 +73,12 @@ axis, returned directly from \code{posterior_linpred(nlpar = "mid")} — no
 numerical inversion. When \code{low} is about 0 and \code{up} about 1 it coincides with
 the classical LT50.
 \item \code{"absolute"} (or a numeric \code{p} in \verb{(0, 1)}): the duration at which
-survival crosses the literal probability \code{p} (0.5 by default). The
-inversion is numerical — predict survival on a dense duration grid,
-then \code{approx()} through \code{p}.
+survival crosses the literal probability \code{p} (0.5 by default), read
+exactly from each draw's fitted curve (the midpoint plus the model's own
+closed-form correction, as in \code{\link[=tls]{tls()}}), so no duration grid bounds the
+answer. A draw whose curve never reaches \code{p} at that temperature (\code{p}
+outside its asymptotes) has no crossing; such draws are dropped from the
+summary with a warning.
 }
 
 This is the \strong{horizontal} read of the survival surface: fix a survival

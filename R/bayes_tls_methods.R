@@ -23,7 +23,7 @@
 #' }
 #' @export
 print.bayes_tls <- function(x, ...) {
-  bounds <- x$meta$bounds
+  bounds <- tdt_workflow_bounds(x)
   cat("<bayes_tls>\n")
   cat("  Data:    ", nrow(x$data), "rows;",
       length(unique(x$data$temp)),     "temperatures;",
@@ -31,7 +31,7 @@ print.bayes_tls <- function(x, ...) {
   cat("  T_bar:   ", round(x$meta$temp_mean, 2), "\n")
   cat(sprintf(
     "  Bounds:   response in (%.3f, %.3f); low in (%.3f, %.3f); up in (%.3f, %.3f)\n",
-    x$meta$lower, x$meta$upper,
+    x$meta$lower %||% 0, x$meta$upper %||% 1,
     bounds$low_min, bounds$low_max,
     bounds$up_min,  bounds$up_max
   ))

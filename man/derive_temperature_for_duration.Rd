@@ -7,7 +7,7 @@
 derive_temperature_for_duration(
   workflow,
   exposure_duration,
-  temp_grid,
+  temp_grid = NULL,
   target_surv = "relative",
   ndraws = NULL,
   probs = c(0.025, 0.5, 0.975),
@@ -20,7 +20,12 @@ derive_temperature_for_duration(
 
 \item{exposure_duration}{Numeric scalar — the fixed duration (model units).}
 
-\item{temp_grid}{Numeric vector of temperatures to search over.}
+\item{temp_grid}{Numeric vector of temperatures (°C) to search over
+when the curve bends; it is extended beyond each end
+by the data's temperature range (or its own width,
+if wider). Not needed for a straight curve, which
+is solved exactly. \code{NULL} (default): 11 points over
+the observed temperatures.}
 
 \item{target_surv}{Threshold mode. \code{"relative"} (default), \code{"absolute"},
 or a numeric in \verb{(0, 1)}.}
@@ -51,15 +56,26 @@ threshold. Returns one temperature per posterior draw.
 \details{
 Threshold modes (via \code{target_surv}) match \code{\link[=derive_tdt_curve]{derive_tdt_curve()}}:
 \itemize{
-\item \code{"relative"} (default) → temperature at which \code{mid(T) = log10(exposure_duration)}
-per draw. The inversion is done analytically per draw: extract
-\code{posterior_linpred(nlpar = "mid")} over \code{temp_grid}, then \code{approx()} to
-the target log10-time.
-\item \code{"absolute"} (= 0.5) or numeric \code{p} in \verb{(0, 1)} → existing numerical
-inversion of the 4PL survival surface at the literal probability \code{p}.
+\item \code{"relative"} (default) → temperature at which
+\code{mid(T) = log10(exposure_duration)} per draw.
+\item \code{"absolute"} (= 0.5) or numeric \code{p} in \verb{(0, 1)} → temperature at which
+the LT at the literal survival probability \code{p} (the midpoint plus the
+model's closed-form offset) equals the exposure.
 }
 
-This is the primitive used by \code{\link[=tls]{tls()}} to derive CTmax at \code{t_ref}.
+Each draw's temperature comes from the exact closed form whenever its
+\code{log10(LT)} is a straight line in temperature: every relative threshold of
+a fit whose midpoint is linear in temperature (midpoint and direct fits
+alike), and an absolute threshold when the asymptotes and steepness do not
+change with temperature. A curve that bends (temperature effects on the
+asymptotes or steepness, under an absolute threshold) is inverted on
+\code{temp_grid} by linear interpolation between its points, taking the crossing
+where the LT shortens through the exposure as temperature rises; draws that
+do not cross on it are searched outward beyond each end, and draws left
+without a single crossing are reported in a warning. Where an absolute
+target lies outside the fitted asymptotes at a temperature, the LT there is
+treated as zero or infinite, so a crossing next to it is still found.
+\code{\link[=tls]{tls()}} reads \code{CTmax} at \code{t_ref} the same way.
 }
 \examples{
 \dontrun{

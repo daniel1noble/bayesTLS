@@ -155,7 +155,7 @@ tdt_parameter_table <- function(workflow, by = NULL) {
   # Evaluate low/up/k/mid at temp_c = 0 (constant-shape asymptotes + midpoint
   # intercept) and temp_c = 1 (for the linear midpoint slope), per group.
   nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1))
-  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
+  sp <- tls_eval_subpars(fit, nd, tdt_workflow_bounds(workflow), mode = "relative")
 
   summary_row <- function(x, name) {
     # Non-finite per-draw values (e.g. +/-Inf z/CTmax from a near-zero midpoint

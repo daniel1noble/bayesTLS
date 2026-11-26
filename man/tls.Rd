@@ -83,11 +83,20 @@ T_crit is meaningful only for damage-accumulation (lethal) endpoints.}
 for \code{CTmax}/\code{T_crit}. Taken from a \code{bayes_tls} workflow's metadata when
 available; supply it for a raw \code{brmsfit}.}
 
-\item{temp_grid}{Temperatures (on the \code{temp} scale) at which the LT curve is
-evaluated: \code{z} is the local \code{z(T)} pooled over this grid and \code{CTmax} is the
-per-draw crossing of \code{t_ref} inverted on it. Default: 11 points over the
-observed range. For an absolute threshold, ensure the grid brackets the
-\code{CTmax} crossing (extend it if \code{CTmax} falls outside the observed range).}
+\item{temp_grid}{Temperatures \strong{on the centred \code{temp} scale} (temperature
+minus \code{temp_mean}, unlike the derive_*() readers, which take degrees C) at
+which the LT curve is evaluated. \code{z} is the local \code{z(T)} pooled over this
+grid. \code{CTmax} (and the 1-hour anchor of \code{T_crit}) is exact when the LT
+curve is a straight line in temperature; when it bends (see Details) it is
+inverted on this grid by linear interpolation between its points (a finer
+grid reduces that error), and draws that do not cross on it are searched
+outward, beyond each end by the data's temperature range or the grid's own
+width, whichever is larger. Draws left without a crossing are reported in
+a warning. Default: 11 points over the observed range. A grid lying
+entirely outside the observed temperatures, or reaching more than the
+data's own temperature range beyond them, warns, since that is what a
+grid given in degrees C usually looks like (the check cannot tell the
+scales apart for data near 0 degrees C).}
 
 \item{re_formula}{Passed to \code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}}; default \code{NA}
 (fixed effects only) -- EXCEPT when a \code{by} variable enters the model only
@@ -105,7 +114,9 @@ them for a bare \code{brmsfit} fitted with non-default bounds, or to override.}
 
 \item{nlpars}{Non-linear parameter names, ordered low / up / k / mid (raw scale).}
 
-\item{ndraws}{Optional number of posterior draws to subsample.}
+\item{ndraws}{Optional number of posterior draws to subsample: one
+subsample, shared by all four sub-parameters. A value at least the
+posterior size uses all draws.}
 
 \item{newdata}{Optional explicit moderator x temperature grid; overrides the
 \code{by}/\code{temp_grid} construction.}
@@ -142,13 +153,23 @@ on a common temperature grid they are mutually consistent for every
 threshold. \code{z} is the central-difference local \code{z(T)} (negative reciprocal of
 the local slope of \code{log10(LT)} on temperature) pooled over \code{temp_grid};
 \code{CTmax} is the per-draw temperature at which the fitted LT curve crosses
-\code{t_ref}, from the exact closed form when the relative midpoint is linear and
-from a true per-draw inversion of the (possibly bent) curve otherwise. Under
-\code{target_surv = "relative"} (the default) \code{log10(LT) = mid(T)} is linear, so
-\code{z} is constant in temperature and equals \code{-1 / b_mid_temp_c}; under an
-absolute threshold with temperature effects on the asymptotes or steepness
-the curve bends and both the local \code{z(T)} and the inversion account for it,
-with no linear approximation.
+\code{t_ref}: from the exact closed form whenever \code{log10(LT)} is a straight line
+in temperature (checked on the evaluated curve, for every draw), and by
+per-draw inversion of the bent curve otherwise. Under
+\code{target_surv = "relative"} (the default) \code{log10(LT) = mid(T)} is linear for
+midpoint and direct fits alike, so \code{z} is constant in temperature and
+equals \code{-1 / b_mid_temp_c}, and \code{CTmax} is exact even far outside the data;
+an absolute threshold is linear too when the asymptotes and steepness do
+not change with temperature. With temperature effects on the asymptotes or
+steepness, an absolute threshold bends the curve: the local \code{z(T)} follows
+it, and \code{CTmax} is the curve's crossing of \code{t_ref}, interpolated linearly
+between grid points. The crossing taken is the one where the LT shortens
+through \code{t_ref} as temperature rises; a draw with none, or more than one,
+has no \code{CTmax}. Near an asymptote the LT at an absolute \code{p} can be
+undefined at some temperatures (\code{p} outside the fitted asymptotes there);
+it is then treated as zero (upper asymptote at or below \code{p}) or infinite
+(lower asymptote at or above \code{p}), so a crossing next to such a
+temperature is still found.
 }
 \examples{
 \dontrun{

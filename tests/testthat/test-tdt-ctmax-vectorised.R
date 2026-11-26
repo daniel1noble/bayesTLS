@@ -1,8 +1,11 @@
 # The vectorised CTmax crossing in tls_invert_logLT() (engine pure-math layer)
 # must reproduce the original per-draw stats::approx() inverse interpolation
-# exactly (machine precision), including non-monotone bent curves routed to the
-# fallback. We feed SYNTHETIC logLT matrices directly (no brms fit, no
-# coefficient parsing), which is precisely the matrix tls_invert_logLT consumes.
+# exactly (machine precision) for monotone curves. A non-monotone (bent) row
+# takes its single falling crossing; the original y-sorted approx() fallback
+# mixed the branches of a U- or cap-shaped row and could return a temperature
+# that is not a crossing (fixed 2026-11-26). We feed SYNTHETIC logLT matrices
+# directly (no brms fit), which is precisely the matrix tls_invert_logLT
+# consumes.
 
 grid <- seq(28, 42, by = 0.05)
 
@@ -35,15 +38,34 @@ test_that("monotone curves: vectorised tls_invert_logLT == approx-loop (machine 
   expect_equal(sum(rowSums(dM >= 0) > 0), 0L)            # all monotone (vectorised path)
 })
 
-test_that("non-monotone bent curves route to the exact fallback and still match", {
+# Reference for a non-monotone row, written independently: the single step
+# where the row falls through the target (from above to at-or-below as
+# temperature rises), interpolated linearly; NA for no such step or several.
+ref_falling <- function(M, grid, target) {
+  vapply(seq_len(nrow(M)), function(i) {
+    d <- M[i, ] - target; n <- length(d)
+    j <- which(d[-n] > 0 & d[-1] <= 0)
+    if (length(j) != 1L) return(NA_real_)
+    grid[j] + d[j] * (grid[j + 1] - grid[j]) / (d[j] - d[j + 1])
+  }, numeric(1))
+}
+
+test_that("non-monotone bent curves take their single falling crossing", {
   set.seed(2); np <- 400; gc <- grid - mean(grid)
   inter <- stats::rnorm(np, 1.5, 0.3)
   slope <- stats::rnorm(np, 0.05, 0.01)
   curve <- stats::rnorm(np, 0.03, 0.01)                  # quadratic term bends logLT
   M <- inter - outer(slope, gc) + outer(curve, gc^2)
-  expect_invert_equivalent(M)
+  target <- stats::median(M)
+  got <- tls_invert_logLT(M, target, grid)
+  expect_equal(got, ref_falling(M, grid, target), tolerance = 1e-10)   # NA pattern too
   dM <- M[, -1] - M[, -ncol(M)]
   expect_gt(sum(rowSums(dM >= 0) > 0), 0L)               # fallback actually exercised
+  expect_gt(sum(is.finite(got)), 100L)
+  # every value returned is a crossing of the piecewise-linear curve
+  fin <- which(is.finite(got))
+  at  <- vapply(fin, function(i) stats::approx(grid, M[i, ], xout = got[i])$y, numeric(1))
+  expect_equal(at, rep(target, length(fin)), tolerance = 1e-8)
 })
 
 test_that("rows with < 2 finite values yield NA (no crossing)", {

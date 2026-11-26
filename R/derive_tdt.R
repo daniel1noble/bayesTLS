@@ -1,7 +1,10 @@
-# Classical TDT quantities (z, CTmax, T_crit) derived from a fitted 4PL via
-# either the 4PL `mid` parameter directly (relative threshold; default) or
-# numerical inversion of the posterior survival surface at an absolute
-# survival probability.
+# Classical TDT quantities (z, CTmax, T_crit) derived from a fitted 4PL. The LT
+# at a survival threshold is read per draw from the shared engine
+# (tls_eval_subpars()): the 4PL `mid` for the relative threshold (default), and
+# `mid` plus the model's closed-form offset for an absolute survival
+# probability. Temperatures at a fixed exposure use the exact closed form when
+# that LT curve is a straight line in temperature, and invert it on a grid
+# otherwise.
 
 #' Normalise a `target_surv` argument
 #'
@@ -53,19 +56,24 @@ resolve_target_surv <- function(target_surv) {
 #'   numerical inversion. When `low` is about 0 and `up` about 1 it coincides with
 #'   the classical LT50.
 #' - `"absolute"` (or a numeric `p` in `(0, 1)`): the duration at which
-#'   survival crosses the literal probability `p` (0.5 by default). The
-#'   inversion is numerical — predict survival on a dense duration grid,
-#'   then `approx()` through `p`.
+#'   survival crosses the literal probability `p` (0.5 by default), read
+#'   exactly from each draw's fitted curve (the midpoint plus the model's own
+#'   closed-form correction, as in [tls()]), so no duration grid bounds the
+#'   answer. A draw whose curve never reaches `p` at that temperature (`p`
+#'   outside its asymptotes) has no crossing; such draws are dropped from the
+#'   summary with a warning.
 #'
 #' This is the **horizontal** read of the survival surface: fix a survival
 #' threshold, read off the time required to reach it at each temperature.
 #'
 #' @param workflow         Fitted `bayes_tls`.
 #' @param temp_grid        Numeric vector of temperatures (°C).
-#' @param duration_grid    Numeric vector of durations along which to search.
-#'                         Only used in `"absolute"` mode. Default: 350
-#'                         log-spaced values spanning 0.2× to 5× the training
-#'                         data's duration range.
+#' @param duration_grid    Deprecated and ignored, with a message if supplied
+#'                         (in either threshold mode): absolute crossings are
+#'                         now computed exactly per draw, so no search grid is
+#'                         needed. It used to bound the numerical search,
+#'                         silently dropping draws whose crossing lay beyond
+#'                         it.
 #' @param target_surv      Threshold mode. `"relative"` (default; = `(low + up)/2`),
 #'                         `"absolute"` (= 0.5), or a numeric in `(0, 1)`.
 #' @param ndraws           Posterior draws to use; `NULL` (default) uses the full
@@ -85,7 +93,8 @@ resolve_target_surv <- function(target_surv) {
 #'                         `NULL` (default) uses the fit's recorded moderators;
 #'                         a single-condition fit returns one ungrouped curve.
 #' @return A list with `draws` (per-draw threshold durations; `target_surv`
-#'         column is a character label), `summary` (quantile summary by
+#'         column is a character label; a duration too long or too short to
+#'         represent is `Inf` or 0), `summary` (quantile summary by
 #'         temperature, plus moderator columns for grouped fits), `target_surv`
 #'         (the label), `time_multiplier`, `output_time_unit`, and `by`.
 #' @examples
@@ -106,11 +115,17 @@ derive_tdt_curve <- function(workflow,
                              by               = NULL) {
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
+  tdt_check_ndraws(ndraws)
+  temp_grid <- tdt_finite_grid(temp_grid)
+  if (!is.null(duration_grid))
+    message("`duration_grid` is no longer used: derive_tdt_curve() reads ",
+            "absolute crossings exactly from each draw's fitted curve.")
 
   # brms::posterior_linpred() errors if `ndraws` exceeds the posterior size, so
-  # clamp here (the default ndraws = 1000 otherwise crashes the relative-mode
-  # call below on any fit with fewer draws, e.g. 2 chains x 400). The absolute
-  # branch goes through posterior_linpred_tdt(), which clamps the same way.
+  # clamp it for the relative branch's single posterior_linpred(ndraws =) call
+  # (a fit with fewer draws, e.g. 2 chains x 400, would otherwise crash). The
+  # absolute branch subsamples through tls_draw_ids(), which uses all draws
+  # when `ndraws` is at least the posterior size.
   if (!is.null(ndraws)) {
     total <- tryCatch(brms::ndraws(workflow$fit), error = function(e) NA_integer_)
     if (is.finite(total)) ndraws <- min(ndraws, total)
@@ -148,47 +163,42 @@ derive_tdt_curve <- function(workflow,
       draw_list[[i]] <- d
     }
   } else {
-    if (is.null(duration_grid)) {
-      drange <- range(workflow$data$duration, na.rm = TRUE)
-      duration_grid <- 10 ^ seq(log10(drange[1] / 5),
-                                log10(drange[2] * 5),
-                                length.out = 350)
-    }
-    nd   <- new_tdt_grid(workflow, temps = temp_grid, durations = duration_grid,
-                         by = by)
-    pred <- posterior_linpred_tdt(workflow, nd, ndraws = ndraws,
-                                   re_formula = NA)
-    if (is.null(by)) {
-      keys <- data.frame(.grp = "all", temp = unique(nd$temp),
-                         stringsAsFactors = FALSE)
-    } else {
-      keys <- unique(nd[, c(by, ".grp", "temp"), drop = FALSE])
-      rownames(keys) <- NULL
-    }
-    draw_list <- vector("list", nrow(keys))
-    for (i in seq_len(nrow(keys))) {
-      t_i <- keys$temp[i]
-      idx <- if (is.null(by)) nd$temp == t_i else nd$.grp == keys$.grp[i] & nd$temp == t_i
-      thr <- threshold_x_by_draw(pred_mat = pred[, idx, drop = FALSE],
-                                 x        = nd$duration[idx],
-                                 target   = ts$prob)
+    # Exact per-draw LT from the shared engine (midpoint + the model's
+    # closed-form offset), the same logLT that tls(), derive_z() and
+    # derive_temperature_for_duration() read. The old numerical search on a
+    # duration grid silently dropped every draw whose crossing lay beyond the
+    # grid, so cool temperatures were summarised from a biased few draws.
+    fit <- workflow$fit
+    nd  <- new_tdt_grid(workflow, temps = temp_grid, durations = 1, by = by)
+    did <- tls_draw_ids(fit, ndraws)   # one subsample for all four sub-parameters
+    sp  <- tls_eval_subpars(fit, nd, tdt_workflow_bounds(workflow), draw_ids = did,
+                            mode = "absolute", p = ts$prob)
+    duration_model_mat <- 10 ^ sp$logLT   # NA where p lies outside the asymptotes
+
+    draw_list <- vector("list", nrow(nd))
+    for (i in seq_len(nrow(nd))) {
+      dmod <- duration_model_mat[, i]
       d <- data.frame(
-        .draw            = seq_along(thr),
-        temp             = t_i,
+        .draw            = seq_along(dmod),
+        temp             = nd$temp[i],
         target_surv      = ts$label,
-        duration_model   = thr,
-        duration_out     = thr * time_multiplier,
+        duration_model   = dmod,
+        duration_out     = dmod * time_multiplier,
         stringsAsFactors = FALSE
       )
       if (!is.null(by)) {
-        d <- cbind(keys[rep(i, nrow(d)), by, drop = FALSE], d, row.names = NULL)
+        d <- cbind(nd[rep(i, nrow(d)), by, drop = FALSE], d, row.names = NULL)
       }
       draw_list[[i]] <- d
     }
   }
 
+  # Keep durations too long or too short to represent (10^logLT overflows to
+  # Inf, e.g. a target just above the lower asymptote, or underflows to 0):
+  # dropping them would silently cut the most extreme draws from the summary.
+  # Only undefined draws (NA: target outside the asymptotes) are dropped.
   draws <- dplyr::bind_rows(draw_list) |>
-    dplyr::filter(is.finite(duration_model), duration_model > 0)
+    dplyr::filter(!is.na(duration_model))
 
   group_vars <- c(if (!is.null(by)) by, "target_surv", "temp")
   summary <- draws |>
@@ -218,18 +228,34 @@ derive_tdt_curve <- function(workflow,
 #'
 #' Threshold modes (via `target_surv`) match [derive_tdt_curve()]:
 #'
-#' - `"relative"` (default) → temperature at which `mid(T) = log10(exposure_duration)`
-#'   per draw. The inversion is done analytically per draw: extract
-#'   `posterior_linpred(nlpar = "mid")` over `temp_grid`, then `approx()` to
-#'   the target log10-time.
-#' - `"absolute"` (= 0.5) or numeric `p` in `(0, 1)` → existing numerical
-#'   inversion of the 4PL survival surface at the literal probability `p`.
+#' - `"relative"` (default) → temperature at which
+#'   `mid(T) = log10(exposure_duration)` per draw.
+#' - `"absolute"` (= 0.5) or numeric `p` in `(0, 1)` → temperature at which
+#'   the LT at the literal survival probability `p` (the midpoint plus the
+#'   model's closed-form offset) equals the exposure.
 #'
-#' This is the primitive used by [tls()] to derive CTmax at `t_ref`.
+#' Each draw's temperature comes from the exact closed form whenever its
+#' `log10(LT)` is a straight line in temperature: every relative threshold of
+#' a fit whose midpoint is linear in temperature (midpoint and direct fits
+#' alike), and an absolute threshold when the asymptotes and steepness do not
+#' change with temperature. A curve that bends (temperature effects on the
+#' asymptotes or steepness, under an absolute threshold) is inverted on
+#' `temp_grid` by linear interpolation between its points, taking the crossing
+#' where the LT shortens through the exposure as temperature rises; draws that
+#' do not cross on it are searched outward beyond each end, and draws left
+#' without a single crossing are reported in a warning. Where an absolute
+#' target lies outside the fitted asymptotes at a temperature, the LT there is
+#' treated as zero or infinite, so a crossing next to it is still found.
+#' [tls()] reads `CTmax` at `t_ref` the same way.
 #'
 #' @param workflow         Fitted `bayes_tls`.
 #' @param exposure_duration Numeric scalar — the fixed duration (model units).
-#' @param temp_grid        Numeric vector of temperatures to search over.
+#' @param temp_grid        Numeric vector of temperatures (°C) to search over
+#'                         when the curve bends; it is extended beyond each end
+#'                         by the data's temperature range (or its own width,
+#'                         if wider). Not needed for a straight curve, which
+#'                         is solved exactly. `NULL` (default): 11 points over
+#'                         the observed temperatures.
 #' @param target_surv      Threshold mode. `"relative"` (default), `"absolute"`,
 #'                         or a numeric in `(0, 1)`.
 #' @param ndraws           Posterior draws to use; `NULL` (default) uses the
@@ -255,7 +281,7 @@ derive_tdt_curve <- function(workflow,
 #' @export
 derive_temperature_for_duration <- function(workflow,
                                             exposure_duration,
-                                            temp_grid,
+                                            temp_grid   = NULL,
                                             target_surv = "relative",
                                             ndraws      = NULL,
                                             probs       = c(0.025, 0.5, 0.975),
@@ -271,25 +297,58 @@ derive_temperature_for_duration <- function(workflow,
   fit <- get_brmsfit(workflow)
   did <- tls_draw_ids(fit, ndraws)
 
-  # Relative: closed-form inverse of the linear midpoint (2-temp grid). Absolute:
-  # numerical inversion of the bent logLT curve over the search grid.
-  if (ts$mode == "relative") {
-    nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1))
-    sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, draw_ids = did, mode = "relative")
-  } else {
-    nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = temp_grid - tbar)
-    sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, draw_ids = did,
-                           mode = "absolute", p = ts$prob %||% 0.5)
-  }
+  # Evaluate logLT per group at temp_c = 0 and 1 (the closed-form anchor and
+  # slope) and over the search grid (the inversion of a bent curve). Rows
+  # within a group keep this order (tls_build_grid()), so columns 1 and 2 are
+  # temp_c = 0 and 1 and the rest the grid.
+  if (is.null(temp_grid))
+    temp_grid <- seq(min(workflow$data$temp), max(workflow$data$temp), length.out = 11)
+  tg <- sort(unique(tdt_finite_grid(temp_grid) - tbar))
+  bounds <- tdt_workflow_bounds(workflow)
+  pp     <- if (is.na(ts$prob)) 0.5 else ts$prob
+  width  <- diff(range(fit$data$temp_c, na.rm = TRUE))
+  nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1, tg))
+  sp <- tls_eval_subpars(fit, nd, bounds, draw_ids = did, mode = ts$mode, p = pp)
 
-  per_group <- lapply(unique(nd$.grp), function(g) {
+  # Per group: a straight logLT(T) is solved exactly at any temperature; a
+  # bent one is inverted on the grid (sign-safely at an absolute threshold),
+  # then the draws without a crossing there are searched outward, all groups
+  # together (tls_extend_crossings()).
+  p_abs  <- if (identical(ts$mode, "absolute")) pp else NA_real_
+  model  <- tdt_model(fit)
+  groups <- unique(nd$.grp)
+  Tcs <- list(); bent <- list()
+  for (g in groups) {
     gi <- which(nd$.grp == g)
-    Tc <- if (ts$mode == "relative") {
-      c0 <- gi[which(nd$temp_c[gi] == 0)]; c1 <- gi[which(nd$temp_c[gi] == 1)]
-      tbar + (target - sp$mid[, c0]) / (sp$mid[, c1] - sp$mid[, c0])
+    M  <- sp$logLT[, gi, drop = FALSE]
+    if (tls_group_is_linear(M, c(0, 1, tg))) {
+      Tcs[[g]] <- tbar + (target - M[, 1]) / (M[, 2] - M[, 1])
     } else {
-      tls_invert_logLT(sp$logLT[, gi, drop = FALSE], target, temp_grid)
+      spg <- lapply(sp[c("low", "up", "k", "mid", "logLT")],
+                    function(m) m[, gi[-(1:2)], drop = FALSE])
+      R   <- if (is.na(p_abs)) NULL else tls_surv_resid(spg, target, p_abs, model)
+      Tcs[[g]] <- tls_invert_logLT(tls_clamp_logLT(spg, p_abs), target, tg + tbar, R = R)
+      bent[[g]] <- list(newrow = nd[gi[1], , drop = FALSE], tg = tg, sp = spg,
+                        crossings = list(v = Tcs[[g]]), targets = list(v = target))
     }
+  }
+  uncrossed <- character(0)
+  if (length(bent)) {
+    bent <- tls_extend_crossings(fit, bent, "temp_c", width = width, Tbar = tbar,
+                                 draw_ids = did, bounds = bounds, mode = ts$mode,
+                                 p = p_abs, model = model)
+    for (g in names(bent)) {
+      Tcs[[g]] <- bent[[g]]$crossings$v
+      n_miss <- sum(!is.finite(Tcs[[g]]))
+      if (n_miss > 0L)
+        uncrossed <- c(uncrossed, sprintf("%s%d of %d draws",
+                                          if (is.null(by)) "" else paste0(g, ": "),
+                                          n_miss, length(Tcs[[g]])))
+    }
+  }
+  per_group <- lapply(groups, function(g) {
+    gi <- which(nd$.grp == g)
+    Tc <- Tcs[[g]]
     d <- tibble::tibble(.draw = seq_along(Tc), target_surv = ts$label, temp = Tc) |>
       dplyr::filter(is.finite(temp))
     q <- stats::quantile(d$temp, probs, names = FALSE, na.rm = TRUE)
@@ -301,6 +360,19 @@ derive_temperature_for_duration <- function(workflow,
     }
     list(draws = d, summary = s)
   })
+  if (length(uncrossed)) {
+    ext <- range(tls_extend_grid(tg, width)) + tbar
+    warning(sprintf(paste0(
+      "derive_temperature_for_duration(): some draws have no single crossing ",
+      "of the exposure within %.4g to %.4g degrees C (temp_grid extended beyond ",
+      "each end by the data's temperature range or its own width, whichever is ",
+      "larger): %s. They are left out of the summary, which can then ",
+      "under-represent the extremes. A draw has none when its curve stays on ",
+      "one side of the target over the search (the crossing lies further out, ",
+      "or the target is outside the fitted asymptotes there) or crosses it more ",
+      "than once; a wider temp_grid helps only in the first case."),
+      ext[1], ext[2], paste(uncrossed, collapse = "; ")), call. = FALSE)
+  }
 
   list(draws             = dplyr::bind_rows(lapply(per_group, `[[`, "draws")),
        summary           = dplyr::bind_rows(lapply(per_group, `[[`, "summary")),
@@ -402,7 +474,7 @@ derive_z <- function(workflow,
   # z(T) = -1 / central-difference. Linear (relative) mid -> exact; absolute ->
   # local slope of the bent curve. Same maths as before, posterior_linpred source.
   nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(tc - h, tc + h))
-  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, draw_ids = did,
+  sp <- tls_eval_subpars(fit, nd, tdt_workflow_bounds(workflow), draw_ids = did,
                          mode = if (ts$mode == "relative") "relative" else "absolute",
                          p = ts$prob %||% 0.5)
 

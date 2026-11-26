@@ -137,7 +137,8 @@ test_that("tls() CTmax and z match each fitted model's own threshold line, per d
                      -(temps[2] - temps[1]) / (M[, 2] - M[, 1]),
                      tolerance = 1e-8, info = lab)
       }
-      ab   <- tls(wf, params = c("z", "ctmax"), t_ref = tr, target_surv = 0.3)$draws
+      ab   <- muffle_uncrossed(tls(wf, params = c("z", "ctmax"), t_ref = tr,
+                                   target_surv = 0.3))$draws
       want <- tls_invert_logLT(A[, on_t], log10(tr / 60), temps)
       got  <- pick(ab, "CTmax", ids)
       ok   <- is.finite(want) & is.finite(got)

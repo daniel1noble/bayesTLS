@@ -59,16 +59,51 @@ tdt_resolve_by <- function(workflow, by) {
   NULL
 }
 
+# Validate a user-facing `ndraws`: NULL (all draws) or one whole number >= 1.
+# brms used to check this when `ndraws` was passed straight to
+# posterior_linpred(); the readers now subsample through tls_draw_ids().
+tdt_check_ndraws <- function(ndraws) {
+  if (is.null(ndraws)) return(invisible(NULL))
+  if (!is.numeric(ndraws) || length(ndraws) != 1L || !is.finite(ndraws) ||
+      ndraws < 1 || ndraws != round(ndraws))
+    stop("`ndraws` must be NULL (all draws) or a single whole number >= 1.",
+         call. = FALSE)
+  invisible(ndraws)
+}
+
+# Drop non-finite temperatures from a user temp_grid, with a warning; error if
+# none remain. NULL passes through (the caller's default grid). An Inf left in
+# a grid would otherwise make every crossing search fail silently.
+tdt_finite_grid <- function(temp_grid) {
+  if (is.null(temp_grid)) return(NULL)
+  fin <- is.finite(temp_grid)
+  if (!any(fin)) stop("`temp_grid` has no finite temperatures.", call. = FALSE)
+  if (!all(fin))
+    warning("Dropping ", sum(!fin), " non-finite value(s) from `temp_grid`.",
+            call. = FALSE)
+  temp_grid[fin]
+}
+
 # Subsample draw indices reproducibly, matching the retired tdt_extract_pars()
 # selection (`d[sort(sample.int(n, ndraws)), ]`) so the single-condition readers
 # stay bit-identical to the coefficient-parsing implementation. Returns NULL
 # (use all draws, in order) when `ndraws` is NULL or >= the available draws. The
 # caller is responsible for set.seed() beforehand.
 tls_draw_ids <- function(fit, ndraws) {
+  tdt_check_ndraws(ndraws)
   if (is.null(ndraws)) return(NULL)
   n <- brms::ndraws(fit)
-  if (!is.finite(ndraws) || ndraws >= n) return(NULL)
+  if (ndraws >= n) return(NULL)
   sort(sample.int(n, ndraws))
+}
+
+# Asymptote windows of the disjoint-bounds reparameterisation for a workflow:
+# the ones it was fitted with (meta$bounds), else rebuilt from its response
+# bounds (meta$lower / meta$upper, default 0 / 1), as tls() does. A workflow
+# from fit_4pl() always carries meta$bounds; a hand-built bayes_tls may not.
+tdt_workflow_bounds <- function(workflow) {
+  workflow$meta$bounds %||%
+    compute_4pl_bounds(workflow$meta$lower %||% 0, workflow$meta$upper %||% 1)
 }
 
 # Evaluate the four 4PL sub-parameters at `newdata`, returning per-draw matrices
@@ -76,14 +111,25 @@ tls_draw_ids <- function(fit, ndraws) {
 # logLT (relative: mid; absolute p: mid + the model's offset, see
 # tdt_abs_offset()). This is the
 # ONLY engine layer that calls brms — the gate boundary for fast vs gated tests.
-# `draw_ids` selects specific posterior draws (see tls_draw_ids); `ndraws` is the
-# brms count-based subsample (used by tls()); pass at most one.
+# `draw_ids` selects specific posterior draws (see tls_draw_ids), shared by all
+# four posterior_linpred() calls. There is deliberately no `ndraws` argument:
+# brms draws a fresh random subsample on every call, which would pair the four
+# sub-parameters from different posterior draws. `warn = FALSE` silences the
+# out-of-asymptote warning (for tls_extend_crossings(), whose extrapolated
+# cells report through the caller's own warning).
 tls_eval_subpars <- function(fit, newdata, bounds,
                              nlpars = c("lowraw", "upraw", "logk", "mid"),
-                             re_formula = NA, ndraws = NULL, draw_ids = NULL,
-                             mode = "absolute", p = 0.5) {
+                             re_formula = NA, draw_ids = NULL,
+                             mode = "absolute", p = 0.5, warn = TRUE) {
+  need <- c("low_min", "low_w", "up_min", "up_w")
+  if (!is.list(bounds) ||
+      !all(vapply(need, function(nm) is.numeric(bounds[[nm]]) &&
+                    length(bounds[[nm]]) == 1L, logical(1))))
+    stop("Internal error: `bounds` must be a compute_4pl_bounds() list ",
+         "(low_min, low_w, up_min, up_w). For a workflow use ",
+         "tdt_workflow_bounds(workflow).", call. = FALSE)
   lp <- function(np) brms::posterior_linpred(fit, newdata = newdata, nlpar = np,
-                                             re_formula = re_formula, ndraws = ndraws,
+                                             re_formula = re_formula,
                                              draw_ids = draw_ids)
   low <- bounds$low_min + stats::plogis(lp(nlpars[1])) * bounds$low_w
   up  <- bounds$up_min  + stats::plogis(lp(nlpars[2])) * bounds$up_w
@@ -101,25 +147,263 @@ tls_eval_subpars <- function(fit, newdata, bounds,
     offset <- tdt_abs_offset(tdt_model(fit), low, up, k, p)
     bad    <- is.na(offset)
     logLT  <- mid + offset
-    if (any(bad)) {
-      warning(sprintf(
-        paste0("target_surv = %.3g (absolute) lies outside the fitted curve's ",
-               "asymptotes for %.0f%% of draw-by-temperature cells: survival there ",
-               "spans ~[%.2f, %.2f], so the LT at %.3g survival is undefined and ",
-               "those cells are dropped from the summary. Use a threshold within ",
-               "the asymptote range, or target_surv = \"relative\" (the per-draw ",
-               "midpoint, always defined)."),
-        p, 100 * mean(bad, na.rm = TRUE),
-        stats::median(low, na.rm = TRUE), stats::median(up, na.rm = TRUE), p),
-        call. = FALSE)
-    }
+    if (any(bad) && isTRUE(warn))
+      warning(tls_abs_outside_message(bad, low, up, p), call. = FALSE)
   } else {
     logLT <- mid
   }
   list(low = low, up = up, k = k, mid = mid, logLT = logLT)
 }
 
+# Warning text for an absolute threshold p lying outside the fitted asymptotes
+# (pure; raised by tls_eval_subpars()). `bad`, `low`, `up` are the
+# [draws x evaluation points] matrices; the points can repeat a temperature
+# (tls() evaluates each one three times), so the message counts draws and
+# gives the share of evaluations, with the side p falls on.
+tls_abs_outside_message <- function(bad, low, up, p) {
+  bad <- as.matrix(bad)
+  n_bad <- sum(bad)
+  n_up  <- sum(bad & !is.na(up)  & up  <= p)
+  n_low <- sum(bad & !is.na(low) & low >= p)
+  n_na  <- n_bad - n_up - n_low
+  sides <- sprintf(paste0("the upper asymptote is at or below %.3g (survival ",
+                          "starts below the target) in %d of them and the ",
+                          "lower asymptote at or above %.3g (survival never ",
+                          "falls to it) in %d"), p, n_up, p, n_low)
+  if (n_na > 0L) sides <- sprintf("%s; %d have undefined asymptotes", sides, n_na)
+  sprintf(paste0(
+    "target_surv = %.3g (absolute) is outside the fitted curve's asymptotes for ",
+    "%d of %d draws at one or more of the temperatures evaluated (%d of %d ",
+    "evaluations, %s%%): %s. The LT at %.3g survival does not exist there. Use a ",
+    "threshold within the asymptote range, or target_surv = \"relative\" (the ",
+    "per-draw midpoint, always defined)."),
+    p, sum(rowSums(bad) > 0L), nrow(bad), n_bad, length(bad),
+    formatC(100 * n_bad / length(bad), digits = 2, format = "fg"), sides, p)
+}
+
 # --- pure math on already-evaluated matrices (no brms; fast-testable) ---------
+
+# Per draw, TRUE when the evaluated logLT is a straight line in temperature:
+# every point lies on the line through the lowest- and highest-temperature
+# points, to within `tol` of the line's rise across them (rounding error is
+# ~1e-12 of it). The reference-exposure crossing then has an exact closed
+# form at any temperature, beyond the evaluated grid too. This holds for every
+# relative threshold of a 4PL whose midpoint is linear in temperature
+# (midpoint and direct fits alike) and for an absolute threshold when the
+# asymptotes and steepness do not change with temperature. NA for a draw with
+# a non-finite value. `M` is `[ndraws x length(temps)]`; `temps` need not be
+# sorted or unique.
+tls_linear_draws <- function(M, temps, tol = 1e-7) {
+  lo <- which.min(temps); hi <- which.max(temps)
+  span <- temps[hi] - temps[lo]
+  if (!is.finite(span) || span <= 0) return(rep(NA, nrow(M)))
+  slope <- (M[, hi] - M[, lo]) / span
+  pred  <- M[, lo] + outer(slope, temps - temps[lo])
+  dev   <- apply(abs(M - pred), 1L, max)
+  lin   <- dev <= tol * pmax(abs(slope) * span, 1e-6)
+  lin[!is.finite(dev) | !is.finite(slope)] <- NA
+  lin
+}
+
+# The temperatures a bent LT curve is searched over beyond the requested grid:
+# the sorted grid `tg` plus points beyond each end, out to `width` (at least
+# the grid's own width and 1 degree) at a quarter of the grid's median spacing
+# (`refine`; at most `max_per_side` points a side), finer than the grid itself
+# because an extrapolated curve bends more. Inside the grid the points -- and
+# so any crossing found there -- are unchanged.
+tls_extend_grid <- function(tg, width = NULL, refine = 4L, max_per_side = 80L) {
+  tg <- sort(unique(tg))
+  w  <- max(width %||% 0, diff(range(tg)), 1)
+  s  <- (if (length(tg) > 1L) stats::median(diff(tg)) else w) / refine
+  n  <- min(max_per_side, max(1L, ceiling(w / s - 1e-9)))
+  s  <- w / n
+  c(min(tg) - s * rev(seq_len(n)), tg, max(tg) + s * seq_len(n))
+}
+
+# Sign-safe logLT for inverting an absolute-threshold LT curve. Where the
+# target p lies outside a draw's fitted asymptotes the LT at p does not exist:
+# survival is below p at every duration when up <= p (an LT of zero) and above
+# p at every duration when low >= p (an infinite LT). Those cells get logLT =
+# -Inf / +Inf, so the sign of logLT - target is right everywhere; NA stays NA
+# (undefined sub-parameters). `sp` is a tls_eval_subpars() list; a relative
+# threshold (p = NA) returns sp$logLT unchanged.
+tls_clamp_logLT <- function(sp, p) {
+  L <- sp$logLT
+  if (is.na(p)) return(L)
+  L[is.na(L) & !is.na(sp$up)  & sp$up  <= p] <- -Inf
+  L[is.na(L) & !is.na(sp$low) & sp$low >= p] <-  Inf
+  L
+}
+
+# Survival at log10 duration `target`, minus p. It is finite wherever the
+# sub-parameters are and has the sign of logLT - target (survival at t is above
+# p exactly when the LT at p is longer than t), so it places a crossing next to
+# a cell where logLT is infinite (tls_clamp_logLT()).
+tls_surv_resid <- function(sp, target, p, model) {
+  tdt_as_model_spec(model)$curve(sp$low, sp$up, sp$k * (target - sp$mid)) - p
+}
+
+# Root of a straight line through (ta, da) and (tb, db), interpolated on d =
+# logLT - target when both ends are finite, else on the survival residual r
+# (tls_surv_resid()); NA when neither is usable.
+tls_interp_root <- function(da, db, ta, tb, ra = NULL, rb = NULL) {
+  if (is.finite(da) && is.finite(db) && da != db) return(ta + da * (tb - ta) / (da - db))
+  if (length(ra) && length(rb) && is.finite(ra) && is.finite(rb) && ra != rb)
+    return(ta + ra * (tb - ta) / (ra - rb))
+  NA_real_
+}
+
+# The single FALLING crossing in a row d = logLT - target (sign-safe: +-Inf
+# allowed, NA undefined): the step where d goes from > 0 to <= 0 as temperature
+# rises, i.e. where the LT shortens through t_ref. NA when there is none, or
+# more than one: a rising crossing (the LT lengthening with temperature) only
+# appears where a bent curve is extrapolated or near an asymptote, and two
+# falling crossings leave CTmax ambiguous. `r` (optional) is the row's
+# survival residual, used when d is infinite at an end of the step.
+tls_falling_crossing <- function(d, grid, r = NULL) {
+  n <- length(d)
+  if (n < 2L) return(NA_real_)
+  a <- d[-n]; b <- d[-1L]
+  j <- which(!is.na(a) & !is.na(b) & a > 0 & b <= 0)
+  if (length(j) != 1L) return(NA_real_)
+  tls_interp_root(d[j], d[j + 1L], grid[j], grid[j + 1L], r[j], r[j + 1L])
+}
+
+# Which way to search beyond the grid for a draw with no crossing on it: +1
+# (hotter) when the curve lies above the target across the grid, -1 (cooler)
+# when it lies at or below it, 0 otherwise (undefined at that end, or a row
+# with a rising crossing only). `dI` is the grid row of logLT - target
+# (sign-safe).
+tls_outward_side <- function(dI) {
+  ok <- !is.na(dI); n <- length(dI)
+  if (n && ok[n] && all(dI[ok] > 0))  return(1L)
+  if (n && ok[1] && all(dI[ok] <= 0)) return(-1L)
+  0L
+}
+
+# Per-draw crossing of `target`, searched first on the requested grid itself
+# (columns `inner` of M, exactly as tls_invert_logLT()), then -- only for a draw
+# with no crossing there whose curve lies wholly on one side of the target
+# (tls_outward_side()) -- outward along the extension on the side the curve
+# points to (above: hotter, since logLT falls with temperature; below: cooler),
+# taking the first crossing beyond the grid: the one nearest the data. A bent
+# curve extrapolated far from the data can turn back and cross the target
+# again, so a plain inversion over the whole extended grid could return that
+# spurious second crossing. The search stops (NA) at an undefined cell. `M` is
+# sign-safe logLT (tls_clamp_logLT()); `R` its survival residuals, or NULL for
+# a relative threshold. `grid` is sorted increasing (tls_extend_grid()) and
+# `inner` the contiguous columns of the requested grid.
+tls_invert_outward <- function(M, target, grid, inner = seq_along(grid), R = NULL) {
+  Tc <- tls_invert_logLT(M[, inner, drop = FALSE], target, grid[inner],
+                         R = if (is.null(R)) NULL else R[, inner, drop = FALSE])
+  lo <- min(inner); hi <- max(inner); nc <- ncol(M)
+  if (lo == 1L && hi == nc) return(Tc)
+  for (i in which(!is.finite(Tc))) {
+    side <- tls_outward_side(M[i, inner] - target)
+    path <- if (side > 0L && hi < nc) c(hi, (hi + 1L):nc)
+            else if (side < 0L && lo > 1L) c(lo, (lo - 1L):1L) else next
+    d <- M[i, path] - target
+    k <- if (side > 0L) which(is.na(d) | d <= 0)[1] else which(is.na(d) | d > 0)[1]
+    if (is.na(k) || is.na(d[k])) next
+    Tc[i] <- tls_interp_root(d[k - 1L], d[k], grid[path[k - 1L]], grid[path[k]],
+                             if (is.null(R)) NULL else R[i, path[k - 1L]],
+                             if (is.null(R)) NULL else R[i, path[k]])
+  }
+  Tc
+}
+
+# Second pass for bent LT curves, all groups together. Each element of `groups`
+# is one group whose crossings were inverted on its grid:
+#   newrow    one-row data frame (moderators + filled columns);
+#   tg        its sorted, unique centred grid;
+#   sp        the tls_eval_subpars() list (low, up, k, mid, logLT) on the grid
+#             columns, rows = the first pass's draws;
+#   crossings named list of per-draw crossings (original scale; NA = none);
+#   targets   matching named list of log10 reference durations (model units).
+# The draws with no crossing on the grid whose curve points off it
+# (tls_outward_side()) are evaluated, for those draws only, on the grid's
+# extension (tls_extend_grid(tg, width)) and searched outward
+# (tls_invert_outward()). posterior_linpred() has a large fixed cost per call,
+# so the groups share engine calls, batched to at most `max_cells` draws x rows
+# each. `draw_ids` are the first pass's posterior draw ids (NULL = all, in
+# order): row i of `sp` is posterior draw draw_ids[i]. Returns `groups` with the
+# crossings filled in.
+tls_extend_crossings <- function(fit, groups, temp, width, Tbar, draw_ids, bounds,
+                                 nlpars = c("lowraw", "upraw", "logk", "mid"),
+                                 re_formula = NA, mode = "absolute", p = NA,
+                                 model = NULL, max_cells = 3e6) {
+  pp   <- if (identical(mode, "absolute")) p else NA_real_
+  plan <- lapply(groups, function(g) {
+    L <- tls_clamp_logLT(g$sp, pp)
+    need <- sort(unique(unlist(lapply(names(g$crossings), function(nm) {
+      i <- which(!is.finite(g$crossings[[nm]]))
+      i[vapply(i, function(r) tls_outward_side(L[r, ] - g$targets[[nm]]) != 0L,
+               logical(1))]
+    }))))
+    if (!length(need)) return(NULL)
+    grid <- tls_extend_grid(g$tg, width = width)
+    inner <- match(g$tg, grid)
+    list(need = need, grid = grid, inner = inner, ext = setdiff(seq_along(grid), inner))
+  })
+  todo <- which(!vapply(plan, is.null, logical(1)))
+  if (!length(todo)) return(groups)
+  batches <- list(); cur <- integer(0)
+  for (gi in todo) {
+    cand  <- c(cur, gi)
+    cells <- length(unique(unlist(lapply(plan[cand], `[[`, "need")))) *
+      sum(vapply(plan[cand], function(x) length(x$ext), integer(1)))
+    if (length(cur) && cells > max_cells) {
+      batches[[length(batches) + 1L]] <- cur; cur <- gi
+    } else cur <- cand
+  }
+  batches[[length(batches) + 1L]] <- cur
+  nms <- c(low = "low", up = "up", k = "k", mid = "mid", logLT = "logLT")
+  for (b in batches) {
+    rows_u <- sort(unique(unlist(lapply(plan[b], `[[`, "need"))))
+    nd <- do.call(rbind, lapply(b, function(gi) {
+      x <- groups[[gi]]$newrow[rep(1L, length(plan[[gi]]$ext)), , drop = FALSE]
+      x[[temp]] <- plan[[gi]]$grid[plan[[gi]]$ext]
+      x
+    }))
+    rownames(nd) <- NULL
+    spe <- tls_eval_subpars(fit, nd, bounds, nlpars = nlpars, re_formula = re_formula,
+                            draw_ids = if (is.null(draw_ids)) rows_u else draw_ids[rows_u],
+                            mode = mode, p = if (is.na(pp)) 0.5 else pp, warn = FALSE)
+    col0 <- 0L
+    for (gi in b) {
+      pl <- plan[[gi]]; g <- groups[[gi]]
+      cols <- col0 + seq_along(pl$ext); col0 <- col0 + length(pl$ext)
+      ru   <- match(pl$need, rows_u)
+      spf  <- lapply(nms, function(nm) {
+        m <- matrix(NA_real_, length(pl$need), length(pl$grid))
+        m[, pl$inner] <- g$sp[[nm]][pl$need, , drop = FALSE]
+        m[, pl$ext]   <- spe[[nm]][ru, cols, drop = FALSE]
+        m
+      })
+      Lf <- tls_clamp_logLT(spf, pp)
+      for (nm in names(g$crossings)) {
+        v <- g$crossings[[nm]]
+        f <- which(!is.finite(v[pl$need]))
+        if (!length(f)) next
+        R <- if (is.na(pp)) NULL else
+          tls_surv_resid(lapply(spf, function(m) m[f, , drop = FALSE]),
+                         g$targets[[nm]], pp, model)
+        v[pl$need[f]] <- tls_invert_outward(Lf[f, , drop = FALSE], g$targets[[nm]],
+                                            Tbar + pl$grid, pl$inner, R = R)
+        groups[[gi]]$crossings[[nm]] <- v
+      }
+    }
+  }
+  groups
+}
+
+# TRUE when every finite draw of a group's logLT is a straight line in
+# temperature (tls_linear_draws()), so the closed-form crossing is exact; FALSE
+# when any draw bends (or no draw is finite), so the crossing is inverted.
+tls_group_is_linear <- function(M, temps) {
+  lin <- tls_linear_draws(M, temps)
+  any(!is.na(lin)) && all(lin, na.rm = TRUE)
+}
 
 # Local z(T) = -1 / d(logLT)/dT by central finite difference, plus the pooled z
 # (per-draw mean over the grid). `logLT_plus`/`logLT_minus` are the logLT
@@ -161,10 +445,16 @@ tls_local_z <- function(logLT_plus, logLT_minus, h, temp_grid,
 
 # Per-draw CTmax: temperature where logLT(T) = target, by vectorised inverse
 # linear interpolation across draws (the curve is monotone-decreasing in T for
-# the disjoint-bounds 4PL), with an exact per-row stats::approx fallback for any
-# non-monotone / non-finite draw. `M` is the evaluated logLT matrix
-# `[ndraws x length(temp_grid)]`. Mirrors the retired tdt_ctmax_from_pars().
-tls_invert_logLT <- function(M, target, temp_grid) {
+# the disjoint-bounds 4PL). `M` is the evaluated logLT matrix
+# `[ndraws x length(temp_grid)]`, `temp_grid` increasing; it may be sign-safe
+# (tls_clamp_logLT(): +-Inf where the target lies outside the asymptotes),
+# with `R` the matching survival residuals (tls_surv_resid()) to place a
+# crossing next to such a cell. A row that is not monotone or not finite takes
+# the single falling crossing (tls_falling_crossing()); it used to interpolate
+# temperature against y-sorted values, which mixes the branches of a U- or
+# cap-shaped row and can return a temperature that is not a crossing at all.
+# Mirrors the retired tdt_ctmax_from_pars() for monotone rows.
+tls_invert_logLT <- function(M, target, temp_grid, R = NULL) {
   np <- nrow(M); nT <- length(temp_grid)
   Tc <- rep(NA_real_, np)
   j  <- rowSums(M > target, na.rm = TRUE)
@@ -175,20 +465,9 @@ tls_invert_logLT <- function(M, target, temp_grid) {
     (target - y1) * (temp_grid[jj + 1L] - temp_grid[jj]) / (y2 - y1)
   dM  <- M[, -1, drop = FALSE] - M[, -nT, drop = FALSE]
   bad <- !is.finite(rowSums(M)) | rowSums(dM >= 0, na.rm = TRUE) > 0
-  for (i in which(bad)) {
-    y <- M[i, ]; fin <- is.finite(y)
-    # A degenerate (flat) draw -- all finite values equal -- has no unique
-    # crossing and would make stats::approx() abort the ENTIRE vectorised call
-    # ("need at least two non-NA values to interpolate"), as would a draw with
-    # < 2 finite points. Return NA for these instead of crashing. Non-flat
-    # fallback draws reproduce the original order() + approx() inverse
-    # interpolation exactly (see test-tdt-ctmax-vectorised.R).
-    if (sum(fin) < 2L || diff(range(y[fin])) == 0) { Tc[i] <- NA_real_; next }
-    o <- order(y[fin])
-    Tc[i] <- suppressWarnings(tryCatch(
-      stats::approx(y[fin][o], temp_grid[fin][o], xout = target)$y,
-      error = function(e) NA_real_))
-  }
+  for (i in which(bad))
+    Tc[i] <- tls_falling_crossing(M[i, ] - target, temp_grid,
+                                  if (is.null(R)) NULL else R[i, ])
   Tc
 }
 
@@ -197,45 +476,71 @@ tls_invert_logLT <- function(M, target, temp_grid) {
 # kept derive_* readers, so results are identical by construction: z is always the
 # central-difference local z pooled over `z_grid` (tls_local_z; exact for a
 # linear relative midpoint, accurate for a bent absolute curve), and the CTmax /
-# 1-hour anchor use the exact closed form for a linear relative midpoint
-# (`use_closed = TRUE`) or a true per-draw inversion of the bent LT curve
+# 1-hour anchor use the exact closed form when the logLT curve is a straight
+# line in temperature or a true per-draw inversion of the bent LT curve
 # (tls_invert_logLT) otherwise. RNG-free -- the T_crit rate draws stay with the
 # caller so each keeps its own reproducibility contract.
 #
 # logLT_plus / logLT_minus : [ndraws x length(z_grid)] logLT at z_grid +/- h.
 # logLT_ctmax              : [ndraws x length(ctmax_grid)] logLT at ctmax_grid
 #                            (`ctmax_grid` on the ORIGINAL temperature scale, so
-#                            the returned CTmax is too).
+#                            the returned CTmax is too; sorted increasing).
 # mid0                     : [ndraws] logLT at temp_c = 0 (closed-form anchor).
 # target / target_1hr      : log10 reference exposures on the model time scale.
 # Tbar                     : temperature-centring constant (temp_mean).
+# use_closed               : NA (default) decides from the curve itself
+#                            (tls_group_is_linear() over every evaluated
+#                            point); TRUE / FALSE force the closed form / the
+#                            inversion. The parameterisation alone cannot
+#                            decide: a direct fit's relative midpoint is
+#                            linear, while a midpoint written with a
+#                            non-linear temperature term is not.
 # want_ctmax / want_ct1    : compute the CTmax / 1-hour anchor (skipped, left
 #                            NULL, when a caller does not need them -- e.g.
 #                            tls(params = "z")).
+# sp_ctmax, p, model       : for an absolute threshold p, the tls_eval_subpars()
+#                            list on the ctmax columns and the fit's model, so
+#                            a bent curve is inverted sign-safely next to cells
+#                            where p lies outside the asymptotes
+#                            (tls_clamp_logLT(), tls_surv_resid()). p = NA
+#                            (relative) inverts logLT_ctmax as is.
 # Returns list(z = <tls_local_z output>, ctmax = <per-draw vector or NULL>,
-#              ct1 = <per-draw vector or NULL>).
+#              ct1 = <per-draw vector or NULL>, closed = <logical or NA when
+#              neither CTmax nor the anchor was asked for>).
 tls_zct_draws <- function(logLT_plus, logLT_minus, h, z_grid,
                           logLT_ctmax, ctmax_grid, mid0,
-                          target, target_1hr, Tbar, use_closed,
+                          target, target_1hr, Tbar, use_closed = NA,
                           z_local = FALSE, want_ctmax = TRUE, want_ct1 = FALSE,
-                          probs = c(0.025, 0.5, 0.975)) {
+                          probs = c(0.025, 0.5, 0.975), sp_ctmax = NULL,
+                          p = NA, model = NULL) {
   z_obj <- tls_local_z(logLT_plus, logLT_minus, h, z_grid,
                        probs = probs, local = isTRUE(z_local))
-  ctmax <- NULL; ct1 <- NULL
+  ctmax <- NULL; ct1 <- NULL; closed <- NA
   if (isTRUE(want_ctmax) || isTRUE(want_ct1)) {
-    if (isTRUE(use_closed)) {
-      # Linear relative midpoint: logLT(T) = mid(T) is exactly linear, so the
-      # t_ref crossing is closed-form. `slope` is the mean central-difference
-      # slope, which equals b_mid_temp_c for a linear midpoint.
+    Tb <- Tbar %||% 0
+    closed <- if (is.na(use_closed)) {
+      tls_group_is_linear(cbind(mid0, logLT_minus, logLT_plus, logLT_ctmax),
+                          c(0, z_grid - h, z_grid + h, ctmax_grid - Tb))
+    } else isTRUE(use_closed)
+    if (closed) {
+      # Straight logLT(T) (e.g. any linear relative midpoint, midpoint or
+      # direct): the t_ref crossing is closed-form at any temperature.
+      # `slope` is the mean central-difference slope, which equals
+      # b_mid_temp_c for a linear midpoint.
       slope <- rowMeans((logLT_plus - logLT_minus) / (2 * h))
-      if (isTRUE(want_ctmax)) ctmax <- Tbar + (target     - mid0) / slope
-      if (isTRUE(want_ct1))   ct1   <- Tbar + (target_1hr - mid0) / slope
+      if (isTRUE(want_ctmax)) ctmax <- Tb + (target     - mid0) / slope
+      if (isTRUE(want_ct1))   ct1   <- Tb + (target_1hr - mid0) / slope
     } else {
-      # Bent absolute curve (or a `direct` fit): invert the fitted logLT surface
-      # per draw at the reference exposure.
-      if (isTRUE(want_ctmax)) ctmax <- tls_invert_logLT(logLT_ctmax, target,     ctmax_grid)
-      if (isTRUE(want_ct1))   ct1   <- tls_invert_logLT(logLT_ctmax, target_1hr, ctmax_grid)
+      # Bent curve (an absolute threshold whose asymptotes or steepness change
+      # with temperature): invert the fitted logLT surface per draw at the
+      # reference exposure on the grid. Draws that do not cross there are left
+      # NA for the caller's outward search (tls_extend_crossings()).
+      abs_p <- !is.null(sp_ctmax) && !is.na(p)
+      L  <- if (abs_p) tls_clamp_logLT(sp_ctmax, p) else logLT_ctmax
+      Rf <- function(tgt) if (abs_p) tls_surv_resid(sp_ctmax, tgt, p, model) else NULL
+      if (isTRUE(want_ctmax)) ctmax <- tls_invert_logLT(L, target,     ctmax_grid, R = Rf(target))
+      if (isTRUE(want_ct1))   ct1   <- tls_invert_logLT(L, target_1hr, ctmax_grid, R = Rf(target_1hr))
     }
   }
-  list(z = z_obj, ctmax = ctmax, ct1 = ct1)
+  list(z = z_obj, ctmax = ctmax, ct1 = ct1, closed = closed)
 }

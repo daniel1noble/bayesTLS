@@ -53,11 +53,20 @@
 #' @param temp_mean Centring constant mapping `temp` back to temperature, needed
 #'   for `CTmax`/`T_crit`. Taken from a `bayes_tls` workflow's metadata when
 #'   available; supply it for a raw `brmsfit`.
-#' @param temp_grid Temperatures (on the `temp` scale) at which the LT curve is
-#'   evaluated: `z` is the local `z(T)` pooled over this grid and `CTmax` is the
-#'   per-draw crossing of `t_ref` inverted on it. Default: 11 points over the
-#'   observed range. For an absolute threshold, ensure the grid brackets the
-#'   `CTmax` crossing (extend it if `CTmax` falls outside the observed range).
+#' @param temp_grid Temperatures **on the centred `temp` scale** (temperature
+#'   minus `temp_mean`, unlike the derive_*() readers, which take degrees C) at
+#'   which the LT curve is evaluated. `z` is the local `z(T)` pooled over this
+#'   grid. `CTmax` (and the 1-hour anchor of `T_crit`) is exact when the LT
+#'   curve is a straight line in temperature; when it bends (see Details) it is
+#'   inverted on this grid by linear interpolation between its points (a finer
+#'   grid reduces that error), and draws that do not cross on it are searched
+#'   outward, beyond each end by the data's temperature range or the grid's own
+#'   width, whichever is larger. Draws left without a crossing are reported in
+#'   a warning. Default: 11 points over the observed range. A grid lying
+#'   entirely outside the observed temperatures, or reaching more than the
+#'   data's own temperature range beyond them, warns, since that is what a
+#'   grid given in degrees C usually looks like (the check cannot tell the
+#'   scales apart for data near 0 degrees C).
 #' @param re_formula Passed to [brms::posterior_linpred()]; default `NA`
 #'   (fixed effects only) -- EXCEPT when a `by` variable enters the model only
 #'   as a random-effect grouping factor (e.g. a phylogenetic
@@ -71,7 +80,9 @@
 #'   Read from a `bayes_tls` workflow (the bounds it was fitted with); supply
 #'   them for a bare `brmsfit` fitted with non-default bounds, or to override.
 #' @param nlpars Non-linear parameter names, ordered low / up / k / mid (raw scale).
-#' @param ndraws Optional number of posterior draws to subsample.
+#' @param ndraws Optional number of posterior draws to subsample: one
+#'   subsample, shared by all four sub-parameters. A value at least the
+#'   posterior size uses all draws.
 #' @param newdata Optional explicit moderator x temperature grid; overrides the
 #'   `by`/`temp_grid` construction.
 #' @param probs Summary quantiles (lower, median, upper). Default `c(.025,.5,.975)`.
@@ -87,13 +98,23 @@
 #' threshold. `z` is the central-difference local `z(T)` (negative reciprocal of
 #' the local slope of `log10(LT)` on temperature) pooled over `temp_grid`;
 #' `CTmax` is the per-draw temperature at which the fitted LT curve crosses
-#' `t_ref`, from the exact closed form when the relative midpoint is linear and
-#' from a true per-draw inversion of the (possibly bent) curve otherwise. Under
-#' `target_surv = "relative"` (the default) `log10(LT) = mid(T)` is linear, so
-#' `z` is constant in temperature and equals `-1 / b_mid_temp_c`; under an
-#' absolute threshold with temperature effects on the asymptotes or steepness
-#' the curve bends and both the local `z(T)` and the inversion account for it,
-#' with no linear approximation.
+#' `t_ref`: from the exact closed form whenever `log10(LT)` is a straight line
+#' in temperature (checked on the evaluated curve, for every draw), and by
+#' per-draw inversion of the bent curve otherwise. Under
+#' `target_surv = "relative"` (the default) `log10(LT) = mid(T)` is linear for
+#' midpoint and direct fits alike, so `z` is constant in temperature and
+#' equals `-1 / b_mid_temp_c`, and `CTmax` is exact even far outside the data;
+#' an absolute threshold is linear too when the asymptotes and steepness do
+#' not change with temperature. With temperature effects on the asymptotes or
+#' steepness, an absolute threshold bends the curve: the local `z(T)` follows
+#' it, and `CTmax` is the curve's crossing of `t_ref`, interpolated linearly
+#' between grid points. The crossing taken is the one where the LT shortens
+#' through `t_ref` as temperature rises; a draw with none, or more than one,
+#' has no `CTmax`. Near an asymptote the LT at an absolute `p` can be
+#' undefined at some temperatures (`p` outside the fitted asymptotes there);
+#' it is then treated as zero (upper asymptote at or below `p`) or infinite
+#' (lower asymptote at or above `p`), so a crossing next to such a
+#' temperature is still found.
 #' @examples
 #' \dontrun{
 #' tls(joint_sex_fit, by = "sex", lethal = TRUE, temp_mean = 36.1)  # z, CTmax, T_crit per sex
@@ -176,6 +197,8 @@ tls <- function(object, by = NULL, params = "all",
     stop("Temperature column `", temp, "` not found in the model data.",
          call. = FALSE)
   }
+  temp_grid <- tdt_finite_grid(temp_grid)
+  tls_check_temp_grid(temp_grid, mdata[[temp]], temp_mean)
 
   # Auto-resolve re_formula when a `by` variable enters the model ONLY as a
   # random-effect grouping factor (e.g. phylogenetic fits with
@@ -209,19 +232,20 @@ tls <- function(object, by = NULL, params = "all",
 
   # tls() derives z / CTmax / T_crit through the shared tls_zct_draws() engine:
   # the central-difference local z pooled over the grid, and either the exact
-  # closed form (a linear relative midpoint) or a true per-draw inversion of the
-  # -- possibly bent -- absolute LT curve. To do that we evaluate logLT at, per
-  # group, temp_c = 0 (the closed-form midpoint anchor), the grid +/- h (local
-  # z), and the grid itself (the CTmax inversion). This replaces the earlier
-  # single global least-squares slope, which was exact only for a linear
-  # (relative) LT curve and a ~linear approximation of a bent (absolute) one.
+  # closed form (when logLT is a straight line in temperature) or a true
+  # per-draw inversion of the bent LT curve. To do that we evaluate logLT at,
+  # per group, temp_c = 0 (the closed-form anchor), the grid +/- h (local z),
+  # and the grid itself (the CTmax inversion). A bent curve's draws that do not
+  # cross t_ref on the grid get a second, outward search beyond it
+  # (tls_extend_crossings()). This replaces the earlier single global
+  # least-squares slope, which was exact only for a linear (relative) LT curve
+  # and a ~linear approximation of a bent (absolute) one.
   h          <- 1e-3
   log_tref   <- log10(t_ref / time_multiplier)        # CTmax target (model units)
   target_1hr <- log10(60   / time_multiplier)         # T_crit 1-hour anchor
-  # A linear relative midpoint has a closed-form crossing; an absolute threshold
-  # or a `direct` fit is inverted numerically.
-  mid_rel_closed <- identical(mode, "relative") &&
-    !identical(meta$parameterization %||% "midpoint", "direct")
+  # The outward search reaches the data's temperature range (or the grid's own
+  # width, if wider) beyond each end of the grid.
+  obs_width  <- diff(range(mdata[[temp]], na.rm = TRUE))
 
   groups   <- unique(base_grid$.grp)
   grp_cols <- list(); aug_parts <- list(); offset <- 0L
@@ -236,7 +260,7 @@ tls <- function(object, by = NULL, params = "all",
     a$.grp    <- g
     aug_parts[[length(aug_parts) + 1L]] <- a
     grp_cols[[g]] <- list(
-      tg = tg, L = L,
+      tg = tg, L = L, modrow = modrow,
       mod   = if (is.null(by)) NULL else base_grid[rows[1], by, drop = FALSE],
       mid0  = offset + 1L,
       minus = offset + 1L + seq_len(L),
@@ -247,33 +271,89 @@ tls <- function(object, by = NULL, params = "all",
   aug <- do.call(rbind, aug_parts)
   rownames(aug) <- NULL
 
-  # Reproducibility: seed the posterior_linpred draw subsample (when `ndraws` is
+  # Reproducibility: seed the draw subsample (tls_draw_ids(), when `ndraws` is
   # set) and the T_crit rate draws below from one stream. The augmented grid adds
   # rows, not draws, so the subsample -- and hence seeded T_crit -- is unchanged.
   if (!is.null(seed)) set.seed(seed)
+  # One draw subsample shared by the four sub-parameters. Passing `ndraws`
+  # straight to posterior_linpred() drew a fresh random subsample for each of
+  # the four (low, up, k, mid), so they came from mismatched draws (which
+  # mattered for absolute thresholds).
+  draw_ids <- tls_draw_ids(fit, ndraws)
 
   # --- evaluate sub-parameters at every grid row (shared engine) -------------
-  logLT <- tls_eval_subpars(fit, aug, bounds,
+  sp    <- tls_eval_subpars(fit, aug, bounds,
                             nlpars = nlpars, re_formula = re_formula,
-                            ndraws = ndraws, mode = mode, p = p)$logLT
-  np <- nrow(logLT)
+                            draw_ids = draw_ids, mode = mode, p = p)
+  logLT <- sp$logLT
+  np    <- nrow(logLT)
+  p_abs <- if (identical(mode, "absolute")) p else NA_real_
+  model <- tdt_model(fit)
 
   want_z     <- "z"     %in% params
   want_ctmax <- "ctmax" %in% params
   want_tcrit <- "tcrit" %in% params
 
-  # --- derive per-group quantities from the shared draws ---------------------
+  # --- per-group z / CTmax / 1-hour anchor from the shared draws -------------
+  res  <- list()   # per group: z, ctmax, ct1, closed
+  bent <- list()   # groups whose bent curve needs the outward second pass
+  for (g in groups) {
+    gi <- grp_cols[[g]]
+    if (gi$L < 2L) {
+      # A single-temperature grid cannot define a slope or bracket an inversion
+      # (the ill-posed case the old LS slope returned NaN for). NA the group and
+      # warn, rather than reporting a spurious single-point derivative.
+      res[[g]] <- list(z = rep(NA_real_, np), ctmax = rep(NA_real_, np),
+                       ct1 = rep(NA_real_, np), closed = NA)
+      next
+    }
+    # ctmax_grid on the ORIGINAL temperature scale, so the inverted CTmax is
+    # too (temp_mean is guaranteed non-NULL whenever CTmax / T_crit are asked).
+    ctmax_grid <- if (is.null(temp_mean)) gi$tg else gi$tg + temp_mean
+    spc <- lapply(sp[c("low", "up", "k", "mid", "logLT")],
+                  function(m) m[, gi$ctmax, drop = FALSE])
+    zc <- tls_zct_draws(logLT[, gi$plus,  drop = FALSE],
+                        logLT[, gi$minus, drop = FALSE], h, gi$tg,
+                        spc$logLT, ctmax_grid, logLT[, gi$mid0],
+                        target = log_tref, target_1hr = target_1hr,
+                        Tbar = temp_mean, z_local = FALSE,
+                        want_ctmax = want_ctmax, want_ct1 = want_tcrit,
+                        sp_ctmax = spc, p = p_abs, model = model)
+    z_full <- rep(NA_real_, np)
+    z_full[zc$z$draws$.draw] <- zc$z$draws$z      # pooled per-draw z (NA where non-finite)
+    res[[g]] <- list(z = z_full, ctmax = zc$ctmax %||% rep(NA_real_, np),
+                     ct1 = zc$ct1 %||% rep(NA_real_, np), closed = zc$closed)
+    # A bent curve was inverted on the grid only: the draws that do not cross
+    # there get an outward search beyond it, all groups together.
+    if (isFALSE(zc$closed)) {
+      keep <- c(if (want_ctmax) "ctmax", if (want_tcrit) "ct1")
+      bent[[g]] <- list(newrow = gi$modrow, tg = gi$tg, sp = spc,
+                        crossings = res[[g]][keep],
+                        targets = list(ctmax = log_tref, ct1 = target_1hr)[keep])
+    }
+  }
+  if (length(bent)) {
+    bent <- tls_extend_crossings(fit, bent, temp, width = obs_width,
+                                 Tbar = temp_mean %||% 0, draw_ids = draw_ids,
+                                 bounds = bounds, nlpars = nlpars,
+                                 re_formula = re_formula, mode = mode, p = p_abs,
+                                 model = model)
+    for (g in names(bent)) res[[g]][names(bent[[g]]$crossings)] <- bent[[g]]$crossings
+  }
+
+  # --- summarise per group (T_crit rate draws in group order, as before) -----
   summ <- list(); drw <- list()
   allna_groups <- character(0)   # groups whose z/CTmax draws are all non-finite
+  uncrossed    <- character(0)   # groups with draws whose crossing was not found
   for (g in groups) {
     gi    <- grp_cols[[g]]
     gcols <- gi$mod
     add <- function(q, v) {
       # Summarise on the finite draws only. A near-flat LT curve sends
-      # z = -1/slope to +/-Inf, a curve that never crosses t_ref within the grid
-      # gives an NA CTmax, and a single-temperature group is NA'd below; without
-      # this, stats::quantile() aborts ("missing values not allowed") and takes
-      # down the whole tls() call. The raw draws (Inf/NaN included) are still
+      # z = -1/slope to +/-Inf, a curve with no crossing of its target gives an
+      # NA CTmax, and a single-temperature group is NA'd above; without this,
+      # stats::quantile() aborts ("missing values not allowed") and takes down
+      # the whole tls() call. The raw draws (Inf/NaN included) are still
       # returned in `$draws`.
       vf <- v[is.finite(v)]
       if (!length(vf)) allna_groups <<- union(allna_groups, as.character(g))
@@ -291,46 +371,51 @@ tls <- function(object, by = NULL, params = "all",
       summ[[length(summ) + 1L]] <<- s
       drw[[length(drw) + 1L]]   <<- d
     }
-
-    if (gi$L < 2L) {
-      # A single-temperature grid cannot define a slope or bracket an inversion
-      # (the ill-posed case the old LS slope returned NaN for). NA the group and
-      # warn, rather than reporting a spurious single-point derivative.
-      z_full <- ctmax_full <- ct1_full <- rep(NA_real_, np)
-    } else {
-      # ctmax_grid on the ORIGINAL temperature scale, so the inverted CTmax is
-      # too (temp_mean is guaranteed non-NULL whenever CTmax / T_crit are asked).
-      ctmax_grid <- if (is.null(temp_mean)) gi$tg else gi$tg + temp_mean
-      zc <- tls_zct_draws(logLT[, gi$plus,  drop = FALSE],
-                          logLT[, gi$minus, drop = FALSE], h, gi$tg,
-                          logLT[, gi$ctmax, drop = FALSE], ctmax_grid,
-                          logLT[, gi$mid0],
-                          target = log_tref, target_1hr = target_1hr,
-                          Tbar = temp_mean, use_closed = mid_rel_closed,
-                          z_local = FALSE,
-                          want_ctmax = want_ctmax, want_ct1 = want_tcrit)
-      z_full <- rep(NA_real_, np)
-      z_full[zc$z$draws$.draw] <- zc$z$draws$z      # pooled per-draw z (NA where non-finite)
-      ctmax_full <- zc$ctmax %||% rep(NA_real_, np)
-      ct1_full   <- zc$ct1   %||% rep(NA_real_, np)
-    }
-
-    if (want_z)     add("z", z_full)
-    if (want_ctmax) add("CTmax", ctmax_full)
+    r <- res[[g]]
+    if (want_z)     add("z", r$z)
+    if (want_ctmax) add("CTmax", r$ctmax)
     if (want_tcrit) {
       u <- stats::runif(np, log10(TC_rate_range[1] / 100),
                         log10(TC_rate_range[2] / 100))
-      add("Tcrit", ct1_full + z_full * u)
+      add("Tcrit", r$ct1 + r$z * u)
+    }
+    # Report the draws a bent curve left without a crossing, per quantity and
+    # target (a quantity with no finite draw at all is reported below instead).
+    if (isFALSE(r$closed)) {
+      miss <- function(v) { n <- sum(!is.finite(v)); if (n < np) n else 0L }
+      parts <- c(if (want_ctmax && miss(r$ctmax) > 0L)
+                   sprintf("CTmax %d of %d draws (t_ref = %g min)", miss(r$ctmax), np, t_ref),
+                 if (want_tcrit && miss(r$ct1) > 0L)
+                   sprintf("T_crit %d of %d draws (its 1-hour anchor)", miss(r$ct1), np))
+      if (length(parts)) {
+        ext <- range(tls_extend_grid(gi$tg, width = obs_width)) + (temp_mean %||% 0)
+        uncrossed <- c(uncrossed, sprintf("%s: %s; searched %.4g to %.4g",
+                                          g, paste(parts, collapse = ", "),
+                                          ext[1], ext[2]))
+      }
     }
   }
 
+  if (length(uncrossed)) {
+    warning("tls(): some draws have no single crossing of their target exposure ",
+            "within the temperatures searched, so they are NA and left out of ",
+            "the summary, which can then under-represent the extremes. ",
+            paste(uncrossed, collapse = "; "), ". A draw has none when its ",
+            "curve stays on one side of the target over the search (the crossing ",
+            "lies further out, or the target is outside the fitted asymptotes ",
+            "there) or crosses it more than once. The search covers temp_grid ",
+            "extended beyond each end by the data's temperature range or the ",
+            "grid's own width, whichever is larger; a wider temp_grid (centred ",
+            "scale) helps only when the crossing lies further out.",
+            call. = FALSE)
+  }
   if (length(allna_groups)) {
     warning("tls(): all z/CTmax draws were non-finite for group(s) ",
             paste(allna_groups, collapse = ", "),
             "; their summary rows are NA (e.g. a near-flat LT curve, a curve ",
-            "that never crosses t_ref within the temperature grid, or a ",
-            "single-temperature group). Do not read these as valid estimates.",
-            call. = FALSE)
+            "with no crossing of its target within the temperatures searched, ",
+            "or a single-temperature group). Do not read these as valid ",
+            "estimates.", call. = FALSE)
   }
 
   out <- list(
@@ -378,4 +463,35 @@ tls_resolve_by <- function(object, fit, by, newdata = NULL) {
     stop("This brmsfit appears to vary CTmax/z (or mid) by a moderator. Pass ",
          "`by = <column(s)>` to tls() to extract per group.", call. = FALSE)
   NULL
+}
+
+# Warn when a tls() temp_grid looks like degrees C rather than centred
+# temperatures: it lies entirely outside the observed (centred) temperatures, or
+# reaches more than the data's own temperature range beyond them. tls() reads
+# temp_grid on the centred scale, so a grid given in degrees C (as the
+# derive_*() readers take it) lands off the data and silently returns nonsense
+# z / CTmax. A centred grid that overlaps the data and extends moderately
+# beyond it (e.g. to bracket an absolute CTmax) stays silent. The two scales
+# cannot be told apart when the centring temperature is small next to the
+# data's temperature range (data near 0 degrees C), so the check can miss
+# those.
+tls_check_temp_grid <- function(temp_grid, temp_obs, temp_mean = NULL) {
+  if (is.null(temp_grid) || !length(temp_grid)) return(invisible(FALSE))
+  rng   <- range(temp_obs, na.rm = TRUE)
+  w     <- max(diff(rng), 1)
+  gr    <- range(temp_grid, na.rm = TRUE)
+  apart <- gr[1] > rng[2] || gr[2] < rng[1]
+  far   <- gr[1] < rng[1] - w || gr[2] > rng[2] + w
+  if (!isTRUE(apart) && !isTRUE(far)) return(invisible(FALSE))
+  hint <- if (!is.null(temp_mean) && is.finite(temp_mean))
+    sprintf(" If you meant degrees C, pass temp_grid - %.4g (the centring temperature).",
+            temp_mean) else ""
+  warning(sprintf(paste0(
+    "`temp_grid` (%.4g to %.4g) %s the observed temperatures (%.4g to %.4g on ",
+    "the centred scale). tls() reads temp_grid as centred temperatures ",
+    "(temperature minus the centring temperature), so the z and CTmax read on ",
+    "this grid are extrapolations.%s"),
+    gr[1], gr[2], if (isTRUE(apart)) "lies entirely outside" else
+      "reaches far outside", rng[1], rng[2], hint), call. = FALSE)
+  invisible(TRUE)
 }

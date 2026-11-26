@@ -484,7 +484,8 @@ test_that("tls() reads CTmax and z off each model's own threshold line (no Stan)
     }, numeric(length(ids)))
     on_ct <- match(t_ct, t_abs)
     for (tr in c(60, 30)) {
-      res  <- tls(wf, params = c("z", "ctmax"), t_ref = tr, target_surv = 0.3)
+      res  <- muffle_uncrossed(tls(wf, params = c("z", "ctmax"), t_ref = tr,
+                                   target_surv = 0.3))
       want <- tls_invert_logLT(A[, on_ct], log10(tr / 60), t_ct)
       got  <- pick(res$draws, "CTmax", ids)
       ok   <- is.finite(want) & is.finite(got)
@@ -550,23 +551,28 @@ test_that("each new model recovers z and CTmax from data simulated under it", {
     pc <- predict_survival_curves(wf, temps = c(30, 33, 36))
     expect_true(is.list(pc) || is.data.frame(pc))
     # Absolute thresholds use each model's own correction. The engine's closed
-    # form is checked per draw against derive_tdt_curve(), which inverts brms's
-    # predicted curve numerically and knows nothing about the corrections.
+    # form is checked per draw against brms's predicted curve, inverted
+    # numerically here on a dense duration grid, which knows nothing about the
+    # corrections. (derive_tdt_curve() now reads the engine itself, so it can
+    # no longer serve as the independent side of this check.)
     fit   <- get_brmsfit(wf)
     tbar  <- wf$meta$temp_mean
     temps <- c(30, 33, 36)
     nd    <- tls_build_grid(fit$data, by = NULL, temp = "temp_c",
                             temp_grid = temps - tbar)
+    drange <- range(wf$data$duration)
+    nd2  <- new_tdt_grid(wf, temps = temps,
+                         durations = 10^seq(log10(drange[1] / 5), log10(drange[2] * 5),
+                                            length.out = 350))
+    pred <- posterior_linpred_tdt(wf, nd2, re_formula = NA)
     for (p in c(0.3, 0.7)) {
       eng <- suppressWarnings(tls_eval_subpars(fit, nd, wf$meta$bounds,
                                                mode = "absolute", p = p))$logLT
-      num <- suppressWarnings(derive_tdt_curve(wf, temp_grid = temps,
-                                               target_surv = p))$draws
-      tt  <- sort(unique(num$temp))
       for (j in seq_along(temps)) {
-        nj <- num[num$temp == tt[j], ]
-        dd <- abs(log10(nj$duration_model) - eng[nj$.draw, j])
-        dd <- dd[is.finite(dd)]
+        idx <- nd2$temp == temps[j]
+        thr <- threshold_x_by_draw(pred[, idx, drop = FALSE], nd2$duration[idx], p)
+        dd  <- abs(log10(thr) - eng[, j])
+        dd  <- dd[is.finite(dd)]
         expect_gt(length(dd), 0.9 * nrow(eng))
         expect_lt(stats::median(dd), 0.002)
         expect_lt(max(dd), 0.02)

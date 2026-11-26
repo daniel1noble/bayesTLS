@@ -29,6 +29,80 @@
 
 ## Bug fixes
 
+* `derive_tdt_curve()` with an absolute threshold now reads each draw's LT
+  exactly from its fitted curve: the midpoint plus the model's closed-form
+  correction, the same values `tls()` and `derive_z()` use. It used to
+  search a duration grid and silently drop every draw whose crossing lay
+  beyond it, so cool temperatures were summarised from a biased few draws
+  (on the snow gum fit, dark recovery at 40 degrees C came from 1 of 400
+  draws). `duration_grid` is no longer used, and a message says so if it is
+  given. Draws whose curve never reaches the target (outside its
+  asymptotes) are dropped with a warning, as elsewhere.
+* `tls()` and `derive_temperature_for_duration()` no longer silently drop
+  draws whose CTmax lies outside the temperature grid, which made intervals
+  too narrow. When the LT curve is a straight line in temperature, CTmax
+  (and the 1-hour anchor of T_crit) now come from the exact closed form at
+  any temperature. That covers every relative threshold, for midpoint and
+  direct fits alike, and absolute thresholds whose asymptotes and steepness
+  do not change with temperature. `tls()` used to invert direct fits on the
+  grid, dropping draws even at the default reference exposure. A bent curve
+  (an absolute threshold with temperature effects on the asymptotes or
+  steepness) is still inverted on the grid, and draws that do not cross
+  there are now searched outward, up to the data's temperature range (or
+  the grid's own width, if larger) beyond each end, taking the crossing
+  nearest the data (an extrapolated bent curve can turn back and cross
+  again further out). Draws still without a crossing are counted, per
+  quantity, in a warning. Crossings found on the grid are unchanged, so in
+  the supplement only the zebrafish normoxia CTmax moves (10 of 8000 draws
+  had been dropped). `derive_temperature_for_duration()` no longer assumes
+  a straight relative midpoint (one that bends is inverted instead), and
+  its `temp_grid` now defaults to 11 points over the observed temperatures.
+* Absolute thresholds near an asymptote (for example `target_surv = 0.9`
+  when the upper asymptote falls with temperature): where the target lies
+  outside a draw's fitted asymptotes at some temperatures, the LT there is
+  undefined, and the CTmax inversion used to drop every draw with such a
+  temperature on its grid. It now treats that LT as zero (upper asymptote
+  at or below the target) or infinite (lower asymptote at or above it) and
+  locates a crossing next to it from the survival curve, which is defined
+  everywhere. On a test fit at `target_surv = 0.8`, 1000 of 1000 draws now
+  have a CTmax, against 2 before.
+* The grid inversion of a bent LT curve that is not monotone over the grid
+  (U- or cap-shaped near an asymptote) used to interpolate temperature
+  against the sorted LT values, which mixes the two branches and can return
+  a temperature that is not a crossing at all (by up to about 10 degrees C
+  for some draws of a real fit at `target_surv = 0.9`). It now takes the
+  single crossing where the LT shortens through the target as temperature
+  rises; a draw with none, or more than one, gets no CTmax and is counted
+  in the warning. Relative thresholds and `target_surv = 0.5` were not
+  affected on any fit checked.
+* `tls()` with `ndraws` now uses one posterior subsample for all four 4PL
+  sub-parameters. Each of the four (low, up, k, mid) used to come from its
+  own random subsample, so they were mismatched draws, which distorted
+  absolute-threshold results (relative thresholds use the midpoint only and
+  were unaffected). Seeded results with `ndraws` change, since the
+  subsample is drawn differently. An `ndraws` at least the posterior size
+  now uses all draws instead of erroring, and every reader with an
+  `ndraws` argument (including `predict_survival_curves()`,
+  `derive_tdt_landscape()` and `predict_heat_injury()`) now requires it to
+  be `NULL` or a whole number of at least 1.
+* `tls()` warns when `temp_grid` looks like degrees C rather than centred
+  temperatures: when it lies entirely outside the observed (centred)
+  temperatures, or reaches more than the data's own temperature range
+  beyond them. A degrees-C grid used to give nonsense silently. The check
+  cannot tell the two scales apart for data near 0 degrees C. Non-finite
+  `temp_grid` values are now dropped with a warning in `tls()`,
+  `derive_tdt_curve()` and `derive_temperature_for_duration()`; an `Inf`
+  used to make the crossing search fail silently.
+* The warning for an absolute `target_surv` outside the fitted asymptotes
+  now gives the number of draws affected and on which side of the curve
+  the target falls. It used to round the share of evaluations (it could
+  say "0%" while dropping some) and print asymptote medians over all of
+  them.
+* `derive_tdt_curve()`, `derive_z()`, `derive_temperature_for_duration()`,
+  `tdt_parameter_table()`, `extract_4pl_pars()` and the heat-injury
+  functions now work on a hand-built `bayes_tls` that lacks `meta$bounds`,
+  rebuilding the bounds from `meta$lower` and `meta$upper` as `tls()` does.
+  Absolute thresholds used to return nothing, with a misleading warning.
 * `tls()` with `by = NULL` on a grouped fit (e.g. `ctmax = ~ 0 + recovery`)
   now reports every group, as `derive_z()` and the other readers already
   did. Previously it filled the moderator from the first data row and

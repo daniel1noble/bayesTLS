@@ -81,7 +81,7 @@ extract_4pl_pars <- function(workflow, temps = NULL, by = NULL,
 
   draw_ids <- if (is.null(ndraws)) NULL else tls_draw_ids(fit, ndraws)
   nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = temp_grid)
-  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative",
+  sp <- tls_eval_subpars(fit, nd, tdt_workflow_bounds(workflow), mode = "relative",
                          re_formula = re_formula, draw_ids = draw_ids)
 
   ndr <- nrow(sp$mid)
@@ -136,7 +136,7 @@ extract_4pl_pars <- function(workflow, temps = NULL, by = NULL,
 hi_pars <- function(workflow, by = NULL) {
   fit <- get_brmsfit(workflow)
   nd  <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = c(0, 1))
-  sp  <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
+  sp  <- tls_eval_subpars(fit, nd, tdt_workflow_bounds(workflow), mode = "relative")
 
   per_group <- lapply(unique(nd$.grp), function(g) {
     gi <- which(nd$.grp == g)
@@ -182,7 +182,7 @@ hi_local_curves <- function(workflow, by = NULL, temps_unique) {
   temp_mean <- workflow$meta$temp_mean %||% 0
   temp_grid <- temps_unique - temp_mean
   nd <- tls_build_grid(fit$data, by = by, temp = "temp_c", temp_grid = temp_grid)
-  sp <- tls_eval_subpars(fit, nd, workflow$meta$bounds, mode = "relative")
+  sp <- tls_eval_subpars(fit, nd, tdt_workflow_bounds(workflow), mode = "relative")
   ndr <- nrow(sp$mid)
 
   out <- lapply(unique(nd$.grp), function(g) {
@@ -780,6 +780,7 @@ predict_heat_injury <- function(trace, workflow,
   varying_method <- match.arg(varying_method)
   if (!has_fit(workflow))
     stop("workflow$fit is NULL. Fit the model first.", call. = FALSE)
+  tdt_check_ndraws(ndraws)
   if (nrow(trace) < 2L)
     stop("trace must have at least 2 rows.", call. = FALSE)
   if (!all(c("time", "temp") %in% names(trace)))

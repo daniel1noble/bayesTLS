@@ -65,8 +65,8 @@ test_that("an absolute target_surv outside the fitted asymptotes warns clearly",
   # 0.1 lies below the lower asymptote for some draws -> LT undefined there:
   # a clear, reasoned warning instead of a bare "NaNs produced".
   expect_warning(
-    tls(wf, by = "grp", target_surv = 0.1, ndraws = NULL,
-        temp_mean = wf$meta$temp_mean),
+    muffle_uncrossed(tls(wf, by = "grp", target_surv = 0.1, ndraws = NULL,
+                         temp_mean = wf$meta$temp_mean)),
     "outside the fitted curve's asymptotes")
   # an in-range absolute threshold does not raise that warning
   asymp_warn <- FALSE
@@ -178,4 +178,361 @@ test_that("tls() on a bare grouped brmsfit asks for by (gated)", {
   expect_error(tls(fit, params = "z", temp_mean = wf$meta$temp_mean), "Pass `by")
   s <- tls(fit, by = "grp", params = "z", temp_mean = wf$meta$temp_mean, t_ref = 60)$summary
   expect_equal(nrow(s), 2)
+})
+
+# --- Exact absolute crossings and shared draw subsamples (fixed 2026-11-26) ----
+
+test_that("tls_check_temp_grid() warns only for a grid far outside the data", {
+  obs <- c(-3, 0, 3)                                   # centred temperatures
+  expect_silent(tls_check_temp_grid(NULL, obs, 33))
+  expect_silent(tls_check_temp_grid(c(-3, 0, 3), obs, 33))
+  expect_silent(tls_check_temp_grid(c(-8, 8), obs, 33))  # within one range width
+  expect_warning(tls_check_temp_grid(c(30, 33, 36), obs, 33), "temp_grid - 33")
+  expect_warning(tls_check_temp_grid(c(-12, 0), obs, NULL), "far outside")
+})
+
+test_that("tls() warns when temp_grid looks like degrees C (gated)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_beta()
+  expect_warning(tls(wf, params = "z", t_ref = 60, temp_grid = c(30, 33, 36)),
+                 "centring temperature")
+  expect_no_warning(tls(wf, params = "z", t_ref = 60,
+                        temp_grid = c(30, 33, 36) - wf$meta$temp_mean))
+})
+
+test_that("tls() uses one draw subsample for all four sub-parameters (gated)", {
+  skip_unless_brms()
+  wf  <- load_fixture_workflow_beta()
+  fit <- get_brmsfit(wf)
+  sub  <- muffle_uncrossed(tls(wf, params = c("z", "ctmax"), t_ref = 60,
+                               target_surv = 0.3, ndraws = 60, seed = 4))$draws
+  full <- muffle_uncrossed(tls(wf, params = c("z", "ctmax"), t_ref = 60,
+                               target_surv = 0.3))$draws
+  set.seed(4)
+  ids <- tls_draw_ids(fit, 60)
+  for (q in c("z", "CTmax")) {
+    a <- sub[sub$quantity == q, ]
+    b <- full[full$quantity == q, ]
+    expect_equal(a$value[order(a$.draw)], b$value[match(ids, b$.draw)])
+  }
+})
+
+test_that("derive_tdt_curve() reads absolute crossings exactly, beyond any grid (gated)", {
+  skip_unless_brms()
+  wf  <- load_fixture_workflow_beta()
+  fit <- get_brmsfit(wf)
+  temps <- c(15, 33)                    # 15 C crosses far beyond the data's durations
+  nd  <- new_tdt_grid(wf, temps = temps, durations = 1)
+  for (p in c(0.3, 0.5)) {              # 0.5 is also the default: test another p too
+    # At p = 0.3 some 15 C cells lie outside the asymptotes (the engine warns)
+    cur <- suppressWarnings(derive_tdt_curve(wf, temp_grid = temps, target_surv = p,
+                                             time_multiplier = 1,
+                                             output_time_unit = "hours"))
+    eng <- suppressWarnings(tls_eval_subpars(fit, nd, wf$meta$bounds,
+                                             mode = "absolute", p = p))$logLT
+    for (j in seq_along(temps)) {
+      d <- cur$draws[cur$draws$temp == temps[j], ]
+      expect_equal(nrow(d), sum(is.finite(eng[, j])))        # only undefined draws dropped
+      expect_equal(d$duration_model, 10^eng[d$.draw, j], tolerance = 1e-10)
+      if (p == 0.5) expect_equal(nrow(d), brms::ndraws(fit)) # none at p = 0.5
+    }
+  }
+  cur <- derive_tdt_curve(wf, temp_grid = temps, target_surv = 0.5,
+                          time_multiplier = 1, output_time_unit = "hours")
+  expect_gt(cur$summary$duration_median[cur$summary$temp == 15],
+            5 * max(wf$data$duration))                       # beyond the old grid
+  # With ndraws, the four sub-parameters share one subsample.
+  set.seed(9)
+  ids <- tls_draw_ids(fit, 40)
+  set.seed(9)
+  cur40 <- derive_tdt_curve(wf, temp_grid = temps, target_surv = 0.5, ndraws = 40,
+                            time_multiplier = 1, output_time_unit = "hours")
+  eng40 <- tls_eval_subpars(fit, nd, wf$meta$bounds, draw_ids = ids,
+                            mode = "absolute", p = 0.5)$logLT
+  d40 <- cur40$draws[cur40$draws$temp == 33, ]
+  expect_equal(log10(d40$duration_model), eng40[d40$.draw, 2], tolerance = 1e-10)
+  # The retired search grid is ignored, with a message, in either mode.
+  expect_message(derive_tdt_curve(wf, temp_grid = 33, target_surv = 0.5,
+                                  duration_grid = c(1, 10)), "no longer used")
+  expect_message(derive_tdt_curve(wf, temp_grid = 33, duration_grid = c(1, 10)),
+                 "no longer used")
+})
+
+test_that("derive_tdt_curve() absolute is wired per group (gated)", {
+  skip_unless_brms()
+  wf  <- load_fixture_workflow_2group_beta_direct()
+  fit <- get_brmsfit(wf)
+  cur <- derive_tdt_curve(wf, temp_grid = c(30, 36), target_surv = 0.3, by = "grp",
+                          time_multiplier = 1, output_time_unit = "hours")
+  nd  <- new_tdt_grid(wf, temps = c(30, 36), durations = 1, by = "grp")
+  eng <- tls_eval_subpars(fit, nd, wf$meta$bounds, mode = "absolute", p = 0.3)$logLT
+  expect_setequal(unique(cur$draws$grp), unique(as.character(nd$grp)))
+  for (i in seq_len(nrow(nd))) {
+    d <- cur$draws[cur$draws$grp == nd$grp[i] & cur$draws$temp == nd$temp[i], ]
+    expect_equal(log10(d$duration_model), eng[d$.draw, i], tolerance = 1e-10)
+  }
+  # the two groups really differ at 36 C (so a collapsed grouping would show)
+  s36 <- cur$summary[cur$summary$temp == 36, ]
+  expect_gt(abs(diff(log10(s36$duration_median))), 0.1)
+})
+
+# --- CTmax crossings outside the temperature grid (fixed 2026-11-26) ----------
+
+test_that("tls() reads a direct fit's relative CTmax in closed form, with no draw dropped (gated)", {
+  skip_unless_brms()
+  wd <- load_fixture_workflow_direct()
+  fd <- get_brmsfit(wd)
+  mid <- brms::posterior_linpred(fd, newdata = tls_build_grid(fd$data, temp_grid = c(0, 1)),
+                                 nlpar = "mid", re_formula = NA)
+  tm  <- wd$meta$temp_mean
+  for (tr in c(6, 60)) {                                 # 6 min: CTmax beyond the data
+    v  <- tls(wd, params = "ctmax", t_ref = tr)$draws$value
+    cf <- tm + (log10(tr / 60) - mid[, 1]) / (mid[, 2] - mid[, 1])
+    expect_true(all(is.finite(v)))
+    expect_equal(v, cf, tolerance = 1e-9)
+    if (tr == 6) expect_gt(max(cf), max(wd$data$temp))   # some draws lie off the grid
+  }
+  tt <- derive_temperature_for_duration(wd, exposure_duration = 1)$draws$temp
+  expect_equal(tt, tls(wd, params = "ctmax", t_ref = 60)$draws$value, tolerance = 1e-9)
+})
+
+test_that("tls() searches a bent curve outward and agrees with a fine brute-force search (gated)", {
+  skip_unless_brms()
+  wb  <- load_fixture_workflow_beta()
+  fit <- get_brmsfit(wb); tm <- wb$meta$temp_mean
+  target <- log10(6 / 60)                                # t_ref = 6 min, model in hours
+  expect_warning(res <- tls(wb, params = "ctmax", target_surv = 0.3, t_ref = 6),
+                 "no single crossing of their target exposure")
+  new <- res$draws$value
+  tc   <- fit$data$temp_c
+  tg   <- seq(min(tc), max(tc), length.out = 11)         # tls()'s default grid
+  w    <- diff(range(tc))                                # the outward search's reach
+  fine <- seq(min(tg) - w, max(tg) + w, by = 0.01)
+  sp <- suppressWarnings(tls_eval_subpars(fit, tls_build_grid(fit$data, temp_grid = c(tg, fine)),
+                                          wb$meta$bounds, mode = "absolute", p = 0.3))
+  Min <- sp$logLT[, seq_along(tg)]; Mf <- sp$logLT[, length(tg) + seq_along(fine)]
+  inside <- is.finite(tls_invert_logLT(Min, target, tg + tm))
+  expect_equal(new[inside], tls_invert_logLT(Min, target, tg + tm)[inside],
+               tolerance = 1e-12)
+  first_out <- function(i) {                             # brute force, nearest the data
+    y <- Min[i, ]
+    cols <- if (all(y > target)) which(fine >= max(tg)) else
+      if (all(y < target)) rev(which(fine <= min(tg))) else return(NA)
+    yy <- Mf[i, cols]; s <- sign(yy - target); k <- which(!is.finite(s) | s != s[1])[1]
+    if (is.na(k) || !is.finite(s[k])) return(NA)
+    tt <- fine[cols]
+    tm + tt[k - 1] + (target - yy[k - 1]) * (tt[k] - tt[k - 1]) / (yy[k] - yy[k - 1])
+  }
+  out <- which(!inside)
+  bf  <- vapply(out, first_out, numeric(1))
+  expect_gt(length(out), 1000)                           # most draws cross off the grid
+  expect_identical(is.finite(new[out]), is.finite(bf))   # same draws found
+  expect_lt(max(abs(new[out] - bf), na.rm = TRUE), 0.01)
+})
+
+test_that("tls() and derive_temperature_for_duration() agree per draw on a bent curve (gated)", {
+  skip_unless_brms()
+  wb <- load_fixture_workflow_beta()
+  a <- suppressWarnings(tls(wb, params = "ctmax", target_surv = 0.3, t_ref = 6))$draws$value
+  expect_warning(b <- derive_temperature_for_duration(wb, exposure_duration = 6 / 60,
+                                                      target_surv = 0.3),
+                 "no single crossing of the exposure")
+  bb <- rep(NA_real_, length(a)); bb[b$draws$.draw] <- b$draws$temp
+  expect_equal(bb, a, tolerance = 1e-8)
+})
+
+test_that("tls() with ndraws keeps the outward search on the right draws (gated)", {
+  skip_unless_brms()
+  wb  <- load_fixture_workflow_beta()
+  fit <- get_brmsfit(wb)
+  sub  <- suppressWarnings(tls(wb, params = "ctmax", target_surv = 0.3, t_ref = 6,
+                               ndraws = 80, seed = 11))$draws
+  full <- suppressWarnings(tls(wb, params = "ctmax", target_surv = 0.3, t_ref = 6))$draws
+  set.seed(11)
+  ids <- tls_draw_ids(fit, 80)
+  expect_equal(sub$value, full$value[ids])
+})
+
+test_that("tls() and the readers reject an invalid ndraws (gated)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_beta()
+  for (bad in list(0, -5, NA, 2.5)) {
+    expect_error(tls(wf, params = "z", t_ref = 60, ndraws = bad), "whole number")
+    expect_error(derive_tdt_curve(wf, temp_grid = 33, ndraws = bad), "whole number")
+    expect_error(derive_tdt_curve(wf, temp_grid = 33, target_surv = 0.5, ndraws = bad),
+                 "whole number")
+  }
+  big <- tls(wf, params = "z", t_ref = 60, ndraws = 1e6)$draws    # more than the posterior
+  expect_equal(nrow(big), brms::ndraws(get_brmsfit(wf)))
+})
+
+test_that("readers work on a hand-built workflow without meta$bounds (gated)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_beta()
+  wrap <- wf
+  wrap$meta$bounds <- NULL                               # e.g. a hand-built bayes_tls
+  expect_equal(derive_tdt_curve(wrap, temp_grid = c(30, 36), target_surv = 0.5)$summary,
+               derive_tdt_curve(wf,   temp_grid = c(30, 36), target_surv = 0.5)$summary)
+  expect_equal(derive_z(wrap, target_surv = 0.5, seed = 1)$summary,
+               derive_z(wf,   target_surv = 0.5, seed = 1)$summary)
+  expect_equal(tdt_parameter_table(wrap), tdt_parameter_table(wf))
+})
+
+# --- Absolute targets near an asymptote; search wiring (second review) --------
+
+# Reference CTmax per draw, independent of the LT: survival at t_ref minus p on
+# a fine temperature grid (defined everywhere, also where the LT at p is not),
+# taking the single falling crossing inside the data's temperatures, else the
+# first crossing outward (up to one data range beyond each end).
+ref_surv_ctmax <- function(wf, p, t_ref, step = 0.01, by = NULL) {
+  fit <- get_brmsfit(wf); tm <- wf$meta$temp_mean
+  target <- log10(t_ref / tdt_resolve_time_multiplier(NULL, wf$meta, "min"))
+  tc <- fit$data$temp_c; lo <- min(tc); hi <- max(tc); w <- hi - lo
+  fine <- seq(lo - w, hi + w, by = step)
+  nd <- tls_build_grid(fit$data, by = by, temp_grid = fine)
+  sp <- suppressWarnings(tls_eval_subpars(fit, nd, wf$meta$bounds, mode = "absolute", p = p))
+  rr <- tdt_as_model_spec(tdt_model(fit))$curve(sp$low, sp$up, sp$k * (target - sp$mid)) - p
+  ins <- which(fine >= lo - 1e-9 & fine <= hi + 1e-9)
+  out <- lapply(split(seq_len(nrow(nd)), nd$.grp), function(gi) apply(rr[, gi, drop = FALSE], 1, function(y) {
+    yi <- y[ins]; j <- which(yi[-length(yi)] > 0 & yi[-1] <= 0)
+    if (length(j) == 1) { t1 <- fine[ins][j]; t2 <- fine[ins][j + 1]
+      return(tm + t1 + yi[j] * (t2 - t1) / (yi[j] - yi[j + 1])) }
+    if (length(j) > 1) return(NA_real_)
+    up_ <- all(yi > 0)
+    cols <- if (up_) which(fine >= hi - 1e-9) else if (all(yi <= 0)) rev(which(fine <= lo + 1e-9)) else return(NA_real_)
+    yy <- y[cols]; k <- which(if (up_) yy <= 0 else yy > 0)[1]
+    if (is.na(k)) return(NA_real_)
+    t1 <- fine[cols][k - 1]; t2 <- fine[cols][k]
+    tm + t1 + yy[k - 1] * (t2 - t1) / (yy[k - 1] - yy[k])
+  }))
+  if (is.null(by)) out[[1]] else out
+}
+
+test_that("tls() finds CTmax next to an asymptote, matching a survival-curve reference (gated)", {
+  skip_unless_brms()
+  ws <- load_fixture_workflow_shape()          # temperature on all four parameters
+  for (p in c(0.8, 0.85)) {
+    got <- suppressWarnings(tls(ws, params = "ctmax", target_surv = p, t_ref = 60))$draws$value
+    ref <- ref_surv_ctmax(ws, p, 60)
+    expect_identical(is.finite(got), is.finite(ref))
+    expect_equal(sum(is.finite(got)), length(got))      # every draw has a CTmax (2 at HEAD at 0.8)
+    expect_lt(max(abs(got - ref)), 0.15)                 # coarse-grid interpolation
+    expect_lt(max(abs(stats::quantile(got, c(.025, .5, .975)) -
+                      stats::quantile(ref, c(.025, .5, .975)))), 0.03)
+    dd <- suppressWarnings(derive_temperature_for_duration(ws, 1, target_surv = p))$draws
+    expect_equal(dd$temp, got[dd$.draw], tolerance = 1e-8)
+  }
+  wb  <- load_fixture_workflow_beta()           # upper asymptote below 0.9 at the hot end
+  got <- muffle_uncrossed(suppressWarnings(tls(wb, params = "ctmax", target_surv = 0.9, t_ref = 60)))
+  v   <- got$draws$value
+  expect_gt(sum(is.finite(v)), 900)                     # 636 before this fix
+  expect_lt(abs(v[1] - 29.4629), 2e-3)                 # crossing just below the grid
+})
+
+test_that("T_crit's 1-hour anchor gets the same outward search, and the warning counts per quantity (gated)", {
+  skip_unless_brms()
+  wb <- load_fixture_workflow_beta()
+  # TC_rate_range = c(100, 100) makes the rate term zero, so T_crit = its anchor
+  a <- muffle_uncrossed(tls(wb, params = "tcrit", lethal = TRUE, target_surv = 0.3,
+                            t_ref = 6, TC_rate_range = c(100, 100)))$draws$value
+  d <- muffle_uncrossed(derive_temperature_for_duration(wb, 1, target_surv = 0.3))$draws
+  full <- rep(NA_real_, length(a)); full[d$.draw] <- d$temp
+  expect_equal(a, full, tolerance = 1e-8)
+  expect_gt(sum(is.finite(a)), 1495)                    # 1491 on the grid alone
+  w <- character(0)
+  r <- withCallingHandlers(
+    tls(wb, params = c("ctmax", "tcrit"), lethal = TRUE, target_surv = 0.3, t_ref = 20, seed = 1),
+    warning = function(c) { w <<- c(w, conditionMessage(c)); invokeRestart("muffleWarning") })
+  nc <- sum(!is.finite(r$draws$value[r$draws$quantity == "CTmax"]))
+  nt <- sum(!is.finite(r$draws$value[r$draws$quantity == "Tcrit"]))
+  uw <- grep("no single crossing", w, value = TRUE)
+  expect_length(uw, 1L)
+  if (nc > 0) expect_match(uw, sprintf("CTmax %d of 1500 draws", nc), fixed = TRUE)
+  else expect_false(grepl("CTmax [0-9]+ of", uw))
+  expect_match(uw, sprintf("T_crit %d of 1500 draws", nt), fixed = TRUE)
+  expect_match(uw, "searched 24 to 42", fixed = TRUE)
+})
+
+test_that("the outward search reaches the data's range from a narrow grid, and derive_* is wired alike (gated)", {
+  skip_unless_brms()
+  wb  <- load_fixture_workflow_beta()
+  fit <- get_brmsfit(wb)
+  narrow <- muffle_uncrossed(tls(wb, params = "ctmax", target_surv = 0.3, t_ref = 6,
+                                 temp_grid = c(-1, 0, 1)))$draws$value
+  expect_gt(sum(is.finite(narrow)), 1400)               # reach 6 C, not the grid's 2 C
+  dn <- muffle_uncrossed(derive_temperature_for_duration(wb, 0.1, target_surv = 0.3,
+                                                         temp_grid = c(32, 33, 34)))$draws
+  expect_equal(dn$temp, narrow[dn$.draw], tolerance = 1e-8)
+  expect_warning(derive_temperature_for_duration(wb, 0.1, target_surv = 0.3,
+                                                 temp_grid = c(32, 33, 34)),
+                 "within 26 to 40 degrees C", fixed = TRUE)   # -1..1 +/- 6 (data range)
+  # a reversed grid gives the same result; ndraws keeps the right draws
+  rev_g <- muffle_uncrossed(derive_temperature_for_duration(
+    wb, 0.1, target_surv = 0.3, temp_grid = rev(seq(30, 36, length.out = 11))))$draws
+  fwd_g <- muffle_uncrossed(derive_temperature_for_duration(
+    wb, 0.1, target_surv = 0.3, temp_grid = seq(30, 36, length.out = 11)))$draws
+  expect_equal(rev_g, fwd_g)
+  sub  <- muffle_uncrossed(derive_temperature_for_duration(wb, 0.1, target_surv = 0.3,
+                                                           ndraws = 80, seed = 11))$draws
+  full <- muffle_uncrossed(derive_temperature_for_duration(wb, 0.1, target_surv = 0.3))$draws
+  set.seed(11); ids <- tls_draw_ids(fit, 80)
+  fv <- rep(NA_real_, brms::ndraws(fit)); fv[full$.draw] <- full$temp
+  sv <- rep(NA_real_, 80); sv[sub$.draw] <- sub$temp
+  expect_equal(sv, fv[ids])
+})
+
+test_that("tls() drops non-finite temp_grid values with a warning (gated)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow()
+  expect_warning(a <- tls(wf, params = "ctmax", t_ref = 60, temp_grid = c(-3, 0, 3, Inf)),
+                 "non-finite")
+  expect_equal(a$draws, tls(wf, params = "ctmax", t_ref = 60, temp_grid = c(-3, 0, 3))$draws)
+})
+
+test_that("more readers work on a workflow without meta$bounds (gated)", {
+  skip_unless_brms()
+  wf <- load_fixture_workflow_beta()
+  wrap <- wf
+  wrap$meta$bounds <- NULL
+  expect_equal(muffle_uncrossed(derive_temperature_for_duration(wrap, 1, target_surv = 0.5))$summary,
+               muffle_uncrossed(derive_temperature_for_duration(wf,   1, target_surv = 0.5))$summary)
+  expect_equal(extract_4pl_pars(wrap), extract_4pl_pars(wf))
+  tr <- data.frame(time = seq(0, 2, by = 0.25), temp = 33)
+  expect_equal(predict_heat_injury(tr, wrap, ndraws = 50, seed = 1)$summary,
+               predict_heat_injury(tr, wf,   ndraws = 50, seed = 1)$summary)
+})
+
+test_that("the batched outward search keeps each group's own extension (gated)", {
+  skip_unless_brms()
+  wg <- load_fixture_workflow_shape_grouped()   # both groups cross above the data at p = 0.3
+  # (p, t_ref): at 0.3 / 120 min group A needs the outward search for all 1000
+  # draws and group B for a subset of 814, so the shared batch must map rows
+  # to each group's own draws.
+  for (cs in list(c(0.3, 60), c(0.3, 120), c(0.8, 60))) {
+    p <- cs[1]; tr <- cs[2]
+    r   <- muffle_uncrossed(suppressWarnings(tls(wg, params = "ctmax", target_surv = p,
+                                                 t_ref = tr)))$draws
+    ref <- ref_surv_ctmax(wg, p, tr, by = "grp")
+    for (g in names(ref)) {
+      got <- r$value[as.character(r$grp) == g]
+      lab <- paste("group", g, "p", p, "t_ref", tr)
+      expect_lt(mean(xor(is.finite(got), is.finite(ref[[g]]))), 0.01, label = lab)
+      ok  <- is.finite(got) & is.finite(ref[[g]])
+      expect_gt(sum(ok), 500, label = lab)
+      expect_lt(max(abs(got[ok] - ref[[g]][ok])), 0.35, label = lab)   # coarse-grid steps
+      expect_lt(abs(stats::median(got[ok]) - stats::median(ref[[g]][ok])), 0.02, label = lab)
+    }
+  }
+})
+
+test_that("a group with no CTmax at all gets one warning, not two (gated)", {
+  skip_unless_brms()
+  ws <- load_fixture_workflow_shape()          # CTmax at 6 min lies beyond the search
+  w <- character(0)
+  r <- withCallingHandlers(tls(ws, params = "ctmax", target_surv = 0.5, t_ref = 6),
+         warning = function(c) { w <<- c(w, conditionMessage(c)); invokeRestart("muffleWarning") })
+  expect_equal(sum(is.finite(r$draws$value)), 0)
+  expect_length(w, 1L)
+  expect_match(w, "all z/CTmax draws were non-finite", fixed = TRUE)
+  expect_match(w, "within the temperatures searched", fixed = TRUE)
 })
