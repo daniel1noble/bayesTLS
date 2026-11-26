@@ -50,7 +50,24 @@ Noble et al. incorporate repair using a previously published approach (but they 
 
 Noble et al. claim novelty in a "one stage" instead of "two stage" approach, which allows them to propagate uncertainty and changes in shape and thresholds across temperatures. Bullard et al. 2026 is also a one stage approach but they emphasize the fitting to full distributions rather than just using the mean or median survival. I find that characterization of the approach more compelling.
 
-**Response**: We are not quite sure what Reviewer 1 means by "fitting to full distributions", but we agree we probably overstated this, but it wasn't entirely clear in our initial reading of Bullard et al. 2026 if this was done in a single joint model. We have spent some time looking at Bullard et al's (2026) code and we see now better what they have done. It is indeed a single stage model, but just the We agree in principle but it will depend on the question being asked which approach one finds more compelling. If one is interested in survival directly, yes, we agree. However, if one is interested in z and CTmax, then one needs to have z and CTmax modelled. Again, we do not think these are competing approaches but rather different derivations of common underlying survival model. 
+**Response**: Thanks for this comment. We agree we may have misunderstood what was done on our initial read of Bullard et al. (2026). To clarify, we went directly to the code to have a closer inspection. We disagree with the description of Bullard et al.'s (2026) increasing-variance prediction workflow as a one-stage analysis. Their implementation fits a log-logistic survival curve separately at each temperature, then regresses the fitted parameters on temperature. The function `llogis.mod()` makes these two stages explicit ([increasing_var_mod_functions.Rmd, lines 26–44, release v1.0.0](https://github.com/gbullard87/Beyond_Mean_TDT_2025/blob/v1.0.0/increasing_var_mod_functions.Rmd#L26-L44)). For example, the relevant code is below, with formatting adjusted and unrelated lines omitted:
+
+```r
+for (j in unique(TDT.dat$Tref)) {
+  mod.j = flexsurvreg(
+    Surv(time,event) ~ 1,
+    data = TDT.dat[(TDT.dat$Tref==j),], dist = "llogis")
+  shape.vec = c(shape.vec,mod.j$coefficients[[1]])
+  scale.vec = c(scale.vec,exp(mod.j$coefficients[[2]]))
+}
+
+shape.lm = lm(shape.vec ~ unique(TDT.dat$Tref))
+scale.lm = lm(log10(scale.vec) ~ unique(TDT.dat$Tref))
+```
+
+The subset `TDT.dat$Tref == j` restricts each survival fit to one temperature, and `~ 1` fits it without a temperature predictor. The subsequent `lm()` calls estimate temperature effects from the fitted parameter estimates. First-stage variances are stored but are not used by these regressions. This is the implementation used for the fluctuating-temperature predictions: the main analysis script repeats the function ([lines 1729–1755](https://github.com/gbullard87/Beyond_Mean_TDT_2025/blob/v1.0.0/plosBio_supp_code_2025.Rmd#L1729-L1755)) and calls it for those predictions ([lines 2237–2251](https://github.com/gbullard87/Beyond_Mean_TDT_2025/blob/v1.0.0/plosBio_supp_code_2025.Rmd#L2237-L2251)). Fitting full failure-time distributions within each temperature does not make this across-temperature estimation a one-stage analysis as Reviewer 1 suggests. 
+
+Our model jointly estimates temperature effects from the raw response data across temperatures and durations. There is no separate linear regression which is why the joint 4PL model is much more powerful. Unless we are misunderstanding what Bullard et al. 2026 really did (possible of course) the Bullard approach is precisely what we recommend not doing in our paper. Our approach properly propagates uncertainty within one hierarchical fit, and supports fixed and random effects directly on $CT_{max}$ and $z$.  We have clarified this distinction in the revised manuscript and it supports our statement of our one-stage fit being novel.
 
 Bullard et al. (2026) show empirically that the shape parameter changes with temperature (in violation of the assumptions of previous models). Mentioning this finding in the current manuscript could bolster the motivation for the approach. Noble et al. do include a nice validation of the approach with simulated data. Bullard et al. 2026 discuss the utility of hazard estimates in understanding responses to thermal stress, which could be useful to mention in the current manuscript.
 
