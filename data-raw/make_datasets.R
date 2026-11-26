@@ -22,8 +22,12 @@ ext <- function(f) {
 }
 
 ## 1. Snow gum leaf — PSII functional impairment (continuous proportion) -----
-# Arnold et al. (2026) preprint open data (CC BY-NC 4.0; bioRxiv
-# 10.64898/2026.04.09.717599), Experiment 1 (light vs dark recovery), snow gum
+# Arnold et al. (2026) preprint (bioRxiv 10.64898/2026.04.09.717599); data from
+# the authors' public repository github.com/pieterarnold/TLS_FvFm (MIT licence;
+# Zenodo 10.5281/zenodo.21403347), Data/Exp1_wide.csv, species "Euc" (the 408
+# rows less 12 without an initial Fv/Fm; all 396 rows match on Temp, Time,
+# recovery, day, final and initial Fv/Fm, checked 2026-11-26). Experiment 1
+# (light vs dark recovery), snow gum
 # (Eucalyptus pauciflora) slice. ~1 cm^2 leaf sections were heat-treated in a
 # water bath under sub-saturating light (Temp 30-56 C x Time 5-120 min), then
 # left for 90 min in moderate light OR in darkness post-heat (`Recovery_cond`),

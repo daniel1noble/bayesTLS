@@ -29,11 +29,17 @@ treats them as left-censored (true value below 0.1) instead of clamping
 them to a small value.
 }
 \source{
-Arnold PA, Harris RJ, Aitken SM, Hoek MM, Cook AM, Leigh A, Nicotra AB
-(2026) Towards a standard approach to investigating the thermal load
-sensitivity of photosystem II via chlorophyll fluorescence. bioRxiv
-\doi{10.64898/2026.04.09.717599} (CC BY-NC 4.0), Experiment 1, snow gum
-slice. Raw file:
+Study: Arnold PA, Harris RJ, Aitken SM, Hoek MM, Cook AM, Leigh A,
+Nicotra AB (2026) Towards a standard approach to investigating the thermal
+load sensitivity of photosystem II via chlorophyll fluorescence. bioRxiv
+\doi{10.64898/2026.04.09.717599}. Data: the authors' public data and code
+repository (\url{https://github.com/pieterarnold/TLS_FvFm}, archived as
+\doi{10.5281/zenodo.21403347}; MIT licence, Copyright (c) 2026 Pieter
+Arnold, notice installed as
+\code{system.file("COPYRIGHTS", package = "bayesTLS")}), file
+\code{Data/Exp1_wide.csv},
+species \code{"Euc"}: its 408 rows less the 12 without an initial
+\eqn{F_v/F_m}. Raw file as shipped:
 \code{system.file("extdata", "data_function_PSII_TDT_snowgum.csv", package = "bayesTLS")}.
 }
 \usage{
@@ -53,10 +59,19 @@ C) and exposure durations (5--120 min). After heat, paired arrays were held for
 response is the continuous proportion \code{fvfm_prop} (post/pre ratio),
 modelled with a Beta likelihood. The model-ready frame for the leaf PSII case
 study (sublethal, continuous-proportion endpoint). The light/dark contrast is a
-two-group categorical moderator; in the source experiment post-heat light
-lowered apparent heat tolerance.
+two-group categorical moderator; Arnold et al. (2026) report that post-heat
+light lowered apparent heat tolerance.
 }
 \details{
+The design is a split plot. Each heat run (one \code{Temp} x \code{Time}
+combination on one \code{meas_day}) heated a pair of arrays together, one
+leaf section per tree on each array; afterwards one array recovered in the
+light and the other in the dark. The recovery treatment was therefore applied
+to whole arrays, so the array, not the leaf section, is the unit of
+replication for the light/dark contrast. Run and array labels can be built
+from \code{Temp}, \code{Time}, \code{meas_day} and \code{recovery} (see the
+example).
+
 Two of the 396 raw rows have post/pre \eqn{F_v/F_m} marginally above 1 (both
 Dark, low dose) where a leaf measured slightly higher after heat than before;
 retained function cannot exceed 1, so these are treated as measurement noise
@@ -66,6 +81,11 @@ and excluded, leaving 394 rows.
 std <- standardize_data(snowgum_psii, temp = "Temp", duration = "Time",
                         proportion = "fvfm_prop",
                         random_effects = "plant",
-                        duration_unit = "minutes")
+                        duration_unit = "minutes",
+                        detection_limit = 0.1)
+# Split-plot labels: heat run (whole plot) and recovery array (subplot)
+std$run   <- interaction(std$Temp, std$Time, std$meas_day, drop = TRUE)
+std$array <- interaction(std$Temp, std$Time, std$recovery, std$meas_day,
+                         drop = TRUE)
 }
 \keyword{datasets}

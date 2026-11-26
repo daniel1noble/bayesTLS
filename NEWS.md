@@ -131,6 +131,18 @@
   user-supplied `newdata` grid, `by = NULL` still treats the grid as one
   group. Single-condition fits are unaffected.
 
+## Documentation
+
+* `?snowgum_psii` now credits the data to the authors' public repository
+  (GitHub pieterarnold/TLS_FvFm, archived on Zenodo; MIT licence), against
+  which all 396 raw rows were checked, instead of giving the preprint's
+  CC BY-NC 4.0 licence. It also describes the split-plot design: each heat
+  run heated a light and a dark array together, so the array, not the leaf
+  section, is the unit of replication for the light/dark contrast. The
+  example censors the zero readings and builds run and array labels. The
+  MIT copyright and permission notice that covers these data is installed
+  as `system.file("COPYRIGHTS", package = "bayesTLS")`.
+
 # bayesTLS 1.2.0
 
 ## New features
