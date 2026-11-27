@@ -197,11 +197,11 @@ if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE)
 #| echo: true
 #
 # Cached simulation outputs + model fits live on the public OSF deposit (node
-# c6dxy). Download them ONLY if they are not already present locally. Note that, you will need to have downloaded the GitHub repo and started your directory from that folder.
-.have_results <- length(Sys.glob(here::here("output", "sim_twostage", "per_sim_*.rds"))) > 0
-.have_models  <- length(Sys.glob(here::here("output", "models", "*.rds"))) > 0
+# c6dxy). scripts/fetch_artifacts.R downloads an archive only if files it
+# provides are missing locally, and otherwise exits without going online, so it
+# is safe to call here. Note that, you will need to have downloaded the GitHub repo and started your directory from that folder.
 .fetch_script <- here::here("scripts", "fetch_artifacts.R")
-if (!(.have_results && .have_models) && file.exists(.fetch_script)) {
+if (file.exists(.fetch_script)) {
   try(system2("Rscript", .fetch_script, stdout = FALSE, stderr = FALSE), silent = TRUE)
 }
 ```
@@ -214,7 +214,7 @@ Noble, D.W.A., Arnold, P.A., Nakagawa, S. & Pottier, P. (2026). A flexible model
 
 The supplement has two parts. The first introduces the `bayesTLS` R package using simulated data and empirical case studies. The second reports the detailed models fit for each case study, extended simulation results and provides the code used to reproduce the main manuscript figures.
 
-Simulation outputs and model fits are large! There are several chunks below that read relevant simulation files via `readRDS()` and use these to reproduce output and figures. All the files are archived on the public OSF deposit (node `c6dxy`). They are fetched automatically when this document is rendered (the setup chunk above runs `scripts/fetch_artifacts.R`, which downloads only the files not already present locally), or you can pull them ahead of time with `make data`.
+Simulation outputs and model fits are large! There are several chunks below that read relevant simulation files via `readRDS()` and use these to reproduce output and figures. All the files are archived on the public OSF deposit (node `c6dxy`). They are fetched automatically when this document is rendered (the setup chunk above runs `scripts/fetch_artifacts.R`, which downloads all the relevant files only if they are not already present locally), or you can pull them ahead of time with `make data`.
 
 # **Introduction to `bayesTLS` R Package**
 
@@ -222,10 +222,10 @@ We use the [**`bayesTLS`**](https://github.com/daniel1noble/bayesTLS) R package 
 
 All the data used throughout the manuscript and supplement are already preloaded into **`bayesTLS`**, so are easily accessible. 
 
-The **`bayesTLS`** package is complemented by [**`freqTLS`**](https://github.com/itchyshin/freqTLS), which fits the same models in a frequentist likelihood framework. `freqTLS` is faster and useful for large datasets, while `bayesTLS` is useful when posterior draws are needed for uncertainty propagation as it's much easier to propagate uncertainty into derived estimates. We show in @sec-freqtls that the two packages recover the same $z$ and $CT_{max_{1hr}}$ on one of the case studies.
+The **`bayesTLS`** package is complemented by [**`freqTLS`**](https://github.com/itchyshin/freqTLS), which fits the same log-logistic models in a frequentist likelihood framework. `freqTLS` is faster and useful for large datasets, while `bayesTLS` is useful when posterior draws are needed for uncertainty propagation as it's much easier to propagate uncertainty into derived estimates. We show in @sec-freqtls that the two packages recover the same $z$ and $CT_{max_{1hr}}$ on one of the case studies.
 
 
-This tutorial focuses on **`bayesTLS`**, which is available on CRAN. Installing `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
+This tutorial focuses on **`bayesTLS`**. Install the development version from GitHub: the current CRAN release predates some features used here, such as `fit_lognormal()`, `fit_weibull()` and the `detection_limit` argument of `standardize_data()`. Installing `bayesTLS` pulls in its modelling dependencies (`brms`, `dplyr`, `ggplot2`,
 `posterior`, `tibble`, `patchwork`) automatically; the tutorial also uses a few
 small helper packages:
 
@@ -233,12 +233,11 @@ small helper packages:
 #| eval: false
 #| echo: true
 #| code-fold: show
-# Install the released version of bayesTLS from CRAN.
-install.packages("bayesTLS")
-
-# Or install the development version from GitHub:
+# Install the development version of bayesTLS from GitHub (used in this
+# supplement); the CRAN release predates fit_lognormal(), fit_weibull() and
+# standardize_data(detection_limit = ).
 # install.packages("remotes")   # if needed
-# remotes::install_github("daniel1noble/bayesTLS")
+remotes::install_github("daniel1noble/bayesTLS")
 
 # Install helper packages used in the tutorial.
 install.packages(c("here", "purrr", "tidyr"))
@@ -315,7 +314,7 @@ tinytable::tt(tdt_function_core, escape = TRUE)
 ```
 
 #### *Full package functions*
-There are many helper functions in the package that maybe useful for various users. @tbl-function-tour lists every exported function in the library, grouped by pipeline stage with a description of what they are designed to do.
+There are many helper functions in the package that may be useful for various users. @tbl-function-tour lists every exported function in the library, grouped by pipeline stage with a description of what they are designed to do.
 
 ```{r function-tour-table}
 #| label: tbl-function-tour
@@ -328,7 +327,11 @@ tdt_function_tour <- tibble::tribble(
   "Data",             "standardize_data()",                 "Rename raw columns to project schema; attach metadata.",
   "Model spec",       "make_4pl_priors()",                  "Weakly informative priors for the disjoint-bounds 4PL.",
   "Model spec",       "make_4pl_formula()",                 "brms non-linear formula; identity link, all four sub-parameters get temp_c. Midpoint or direct CTmax/z parameterisation; `by` fits `~ temp_c * moderator` on all four sub-parameters, `mid` sets the midpoint sub-model explicitly.",
+  "Model spec",       "make_tdt_priors()",                  "Default priors for the curve chosen by `model` (\"log-logistic\", \"log-normal\", \"weibull1\" or \"weibull2\"), built as in `make_4pl_priors()`; only the prior mean of `logk` changes, so that every curve has the same prior on the slope at the midpoint.",
+  "Model spec",       "make_tdt_formula()",                 "brms non-linear formula for the curve chosen by `model`, built as in `make_4pl_formula()`; with the direct parameterisation and `threshold = \"absolute\"`, that curve's own correction is built into `mid`.",
   "Fit",              "fit_4pl()",                          "Joint Bayesian 4PL fit; returns a `bayes_tls` object (use `print()`, `summary()`, `plot()`). Group by a moderator with `by = \"<moderator>\"` (midpoint) or `ctmax = ~ 0 + <moderator>` (direct); the moderator is recorded so downstream readers auto-group.",
+  "Fit",              "fit_lognormal()",                    "As `fit_4pl()` (same arguments and `bayes_tls` output), but with the four-parameter log-normal (probit) curve; `mid`, z and CTmax mean the same as in `fit_4pl()`.",
+  "Fit",              "fit_weibull()",                      "As `fit_4pl()`, but with a four-parameter Weibull curve: `type = 1` (default; Gompertz-shaped on log time) or `type = 2`. Both are written with `mid` as the midpoint, so z and CTmax mean the same as in `fit_4pl()`.",
   "Inspection",       "print.bayes_tls()",                  "Compact one-screen header: data shape, T_bar, asymptote bounds, random-effect grouping, fit status (draws if fitted, spec only otherwise).",
   "Inspection",       "summary.bayes_tls()",                "Delegates to `summary()` on the underlying `brmsfit`; returns a `summary.brmsfit` with the population-level coefficient table, group-level SDs, family parameters, and HMC diagnostics laid out by brms. Extra arguments (e.g. `prob`, `robust`) are passed through.",
   "Inspection",       "plot.bayes_tls()",                   "Delegates to `plot()` on the underlying `brmsfit`; returns brms's default `mcmc_combo` (density + post-warmup trace, chains coloured) for inspecting MCMC mixing. Extra arguments (e.g. `variable`, `combo`) are passed through.",
@@ -1699,7 +1702,7 @@ The flat trace stays below $T_c$ for its entire duration and so accrues zero HI,
 
 # **Empirical model specifications used in the manuscript** {#sec-empirical-model-specs}
 
-The manuscript case studies all use the same 4PL response surface, but we show how sub-lethal meausures can be fit using variant models (@sec-sublethal-dros). As discussed, there are two ways to parameterise the 4PL model: indirect and direct. In the indirect approach we derive estimates from the **midpoint**. As such, temperature enters the midpoint (and possibly all other parameters) directly:
+The manuscript case studies all use the same 4PL response surface, but we show how sub-lethal measures can be fit using variant models (@sec-sublethal-dros). As discussed, there are two ways to parameterise the 4PL model: indirect and direct. In the indirect approach we derive estimates from the **midpoint**. As such, temperature enters the midpoint (and possibly all other parameters) directly:
 
 $$
 \text{mid}_{ij} = \beta_0 + \beta_1(T_{ij} - \bar T) + \mathbf{x}_{ij}^{\top}\boldsymbol{\gamma} + b_j,
@@ -1738,13 +1741,13 @@ To connect these curves to the TLS framework, we must distinguish their standard
 
 Column 4 expresses $\text{mid}(T)$ as the TDT line, allowing us to estimate relative $CT_{max}$ and $z$ directly (Equation 7 of the manuscript). Using the standard Weibull location instead shifts the line by approximately $0.367/k$, changing $CT_{max}$. If $k$ also varies with temperature, the offset varies too, so a straight-line fit can give a different $z$ (@fig-alt-kernels c). Log-logistic and log-normal curves need no location adjustment.
 
-Columns 5 and 6 give relative and absolute $\log_{10}t_{50}$, respectively. The relative value is $\text{mid}(T)$; the absolute value adds a correction obtained by solving $p = 0.5$, provided $\text{low} < 0.5 < \text{up}$. For every curve, the correction vanishes when $\text{low} + \text{up} = 1$. A correction that stays constant across temperatures leaves $z$ unchanged and shifts $CT_{max}$ by $z$ times the correction (Equation 5 of the manuscript). Otherwise, we solve the fitted curve for the target survival probability at each temperature. For the log-logistic model, `tls(target_surv = "absolute")` performs this calculation using the correction in Equation 4 of the manuscript (derived in @sec-ms-derive). Replacing 0.5 with another survival probability gives other thresholds (Equation 6 of the manuscript).
+Columns 5 and 6 give relative and absolute $\log_{10}t_{50}$, respectively. The relative value is $\text{mid}(T)$; the absolute value adds a correction obtained by solving $p = 0.5$, provided $\text{low} < 0.5 < \text{up}$. For every curve, the correction vanishes when $\text{low} + \text{up} = 1$. A correction that stays constant across temperatures leaves $z$ unchanged and shifts $CT_{max}$ by $z$ times the correction (Equation 5 of the manuscript). Otherwise, we solve the fitted curve for the target survival probability at each temperature. `tls(target_surv = "absolute")` performs this calculation for all four curves, using the fitted curve's correction in column 6. For the log-logistic, this is the correction in Equation 4 of the manuscript (derived in @sec-ms-derive). Replacing 0.5 with another survival probability gives other thresholds (Equation 6 of the manuscript).
 
 **Hazards and survival models (column 7).** With $\text{low} = 0$ and $\text{up} = 1$, the four curves describe log-logistic, log-normal, Weibull and Fréchet (inverse-Weibull) distributions of individual death times. The log-logistic case matches the survival model of @bullard2026, whose shape parameter is $k/\ln 10$ in our notation. When $k$ stays constant across temperatures, all four are accelerated failure time (AFT) models: increasing temperature by $z$ °C divides the time to any fixed survival probability by 10. Here, temperature rescales time, while $k$ controls the spread of death times.
 
 Column 7 gives the hazard, the instantaneous death rate among individuals still alive at time $t$ (@fig-alt-kernels b); the cumulative hazard is $-\ln p$. With constant $k$, only the Weibull type 1 model also has proportional hazards: changing temperature multiplies the hazard by a factor that stays constant over time. @bullard2026 rejected this assumption for *Drosophila* knockdown times. We also show that temperature dependence in $k$ and the asymptotes can affect absolute estimates of $CT_{max}$ and $z$ (@sec-joint-extend).
 
-`bayesTLS` and `freqTLS` fit the log-logistic model. The same $k$ does not imply the same steepness across families: the midpoint slope against $\log_{10}t$ is $-k(\text{up} - \text{low})$ multiplied by approximately 0.25, 0.40, 0.35 and 0.35, respectively. Priors on $k$ therefore need to reflect the chosen curve.
+`bayesTLS` fits all four curves: `fit_4pl()` fits the log-logistic, `fit_lognormal()` the log-normal and `fit_weibull()` either Weibull curve (`type = 1` or `type = 2`). `freqTLS` fits only the log-logistic. The same $k$ does not imply the same steepness across families: the midpoint slope against $\log_{10}t$ is $-k(\text{up} - \text{low})$ multiplied by approximately 0.25, 0.40, 0.35 and 0.35, respectively. Priors on $k$ therefore need to reflect the chosen curve.
 
 ```{r}
 #| label: alt-kernels-pars
@@ -1931,7 +1934,7 @@ top / pc + plot_layout(heights = c(1.1, 1))
 
 # **Case Study 1: Zebrafish heat tolerance across an oxygen gradient** {#sec-zebrafish-o2}
 
-@saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (26 °C controls plus 38–40 °C) and exposure durations (3.8–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The 26 °C control rows are retained for normoxia, but hyperoxia was only assayed at stressful temperatures (38–40 °C), so prediction plots below show only observed treatment-temperature combinations. While this is a **sparse** experiemntal design, we show that the 4PL can still be used to recover tolerance and sensitivity where it would be challenging with a classical two-stage analysis. 
+@saruhashi2026 tested the oxygen- and capacity-limited thermal tolerance (OCLTT) hypothesis — that oxygen availability sets the upper thermal limit — by scoring survival of zebrafish (*Danio rerio*) larvae across assay temperatures (26 °C controls plus 38–40 °C) and exposure durations (3.8–240 min) under different oxygen treatments. We take the diploid larvae and compare **normoxia** with **hyperoxia**, letting both the critical temperature ($CT_{max}$) and the thermal sensitivity ($z$) depend on oxygen inside one joint 4PL. The 26 °C control rows are retained for normoxia, but hyperoxia was only assayed at stressful temperatures (38–40 °C), so prediction plots below show only observed treatment-temperature combinations. While this is a **sparse** experimental design, we show that the 4PL can still be used to recover tolerance and sensitivity where it would be challenging with a classical two-stage analysis. 
 
 ## Data and standardisation {#sec-zf-o2-data}
 
@@ -2236,7 +2239,7 @@ Two patterns stand out (@tbl-aphid-age). **Heat tolerance rises with age in all 
 
 We recovered similar findings to @li2023 because, in essence, their data generally follow assumptions met by the two-stage analysis (our simulations show this should be the case; see the [strict-equivalence baseline](#strict-equivalence-baseline)). 
 
-However, the $R^2$ is inflated in their models (@li2023 report $R^2$ = 0.97-0.996) because much of the variation in survival outcomes is disposed of during stage-1. Our 4PL model provides much more realistic $R^2$ (again, `r with(bayes_R2_tls(wf_aphid), sprintf("%.3f [95%% CI: %.3f to %.3f]", estimate, lower, upper))`).
+However, the $R^2$ is inflated in their models (@li2023 report $R^2$ = 0.97–0.99) because much of the variation in survival outcomes is disposed of during stage-1. Our 4PL model provides much more realistic $R^2$ (again, `r with(bayes_R2_tls(wf_aphid), sprintf("%.3f [95%% CI: %.3f to %.3f]", estimate, lower, upper))`).
 
 ## Heat injury across species under a field temperature trace {#sec-aphid-hi}
 
