@@ -3,8 +3,9 @@
 # them under output/, so a fresh clone can render the paper / reproduce results
 # without re-fitting models or re-running the simulation.
 #
-#   Rscript scripts/fetch_artifacts.R           # default tiers: results + models (~85 MB)
-#   Rscript scripts/fetch_artifacts.R full      # ALSO the 2.6 GB raw/draws re-derivation tier
+#   Rscript scripts/fetch_artifacts.R           # default tiers: results + models (~205 MB)
+#   Rscript scripts/fetch_artifacts.R full      # only the 2.6 GB raw/draws re-derivation tier
+#                                               # (make data-full fetches all three tiers)
 #   Rscript scripts/fetch_artifacts.R results   # one named tier
 #   Rscript scripts/fetch_artifacts.R --force   # re-download even if already present
 #
@@ -22,11 +23,25 @@ NODE     <- "c6dxy"
 OUT      <- here::here("output")
 MANIFEST <- here::here("data-raw", "osf_manifest.json")
 
-# Tier -> zip name + a marker glob (output-relative). A tier counts as already
-# present if the marker matches any local file. Keep in sync with osf_publish.R.
+# Tier -> zip name + marker globs (output-relative). A tier counts as already
+# present only if EVERY marker matches a local file. The models markers are the
+# fits ms/ms.qmd and ms/supplement.qmd read that only models.zip provides: git
+# tracks a few small .rds files in output/models/, so the old "models/*.rds"
+# marker matched on a fresh clone and the fits were never downloaded. Add a fit
+# here when a document starts reading it. Keep tiers in sync with osf_publish.R.
+MODEL_FITS <- c(
+  "aphid_species", "aphid_species_age",
+  "fit_dsuzukii_coma_4pl", "fit_dsuzukii_coma_linear",
+  "fit_dsuzukii_mortality_4pl_F", "fit_dsuzukii_mortality_4pl_M",
+  "fit_dsuzukii_mortality_sex_direct", "fit_dsuzukii_mortality_sex_joint",
+  "fit_dsuzukii_prod_hurdle_gamma", "fit_dsuzukii_prod_hurdle_lognormal",
+  "fit_leaf_recovery_4pl_cens", "fit_leaf_recovery_4pl_cens_run_array",
+  "sim_4pl_direct", "zf_oxygen_normhyper"
+)
 TIERS <- list(
   results = list(zip = "results.zip",  marker = "sim_twostage/per_sim_*.rds"),
-  models  = list(zip = "models.zip",   marker = "models/*.rds"),
+  models  = list(zip = "models.zip",
+                 marker = file.path("models", paste0(MODEL_FITS, ".rds"))),
   full    = list(zip = "sim_full.zip", marker = "sim_twostage/draws_*.rds")
 )
 DEFAULT <- c("results", "models")
@@ -42,7 +57,8 @@ if (length(bad)) stop("unknown tier(s): ", paste(bad, collapse = ", "),
                       call. = FALSE)
 
 # ---- helpers ---------------------------------------------------------------
-have_it <- function(marker) length(Sys.glob(file.path(OUT, marker))) > 0
+have_it <- function(marker)
+  all(vapply(marker, function(m) length(Sys.glob(file.path(OUT, m))) > 0, logical(1)))
 
 read_manifest <- function() if (file.exists(MANIFEST))
   fromJSON(MANIFEST, simplifyVector = FALSE) else list(tiers = list())

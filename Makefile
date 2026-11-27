@@ -206,7 +206,7 @@ data:
 	@Rscript scripts/fetch_artifacts.R $(TIER)
 
 data-full:
-	@Rscript scripts/fetch_artifacts.R full
+	@Rscript scripts/fetch_artifacts.R results models full
 
 # ---- OSF artifact publishing ----------------------------------------------
 

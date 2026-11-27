@@ -31,7 +31,7 @@ This preprint is the primary citation for both the statistical framework and
 the `bayesTLS` package. You can also run `citation("bayesTLS")` in R for the
 formatted reference and a BibTeX entry.
 
-**Data and Code Availability**: This repository not only contains the `bayesTLS` R package but also the code and data used in the above manuscript. The four case-study datasets ship with the R package as documented data objects (`aphid_tdt`, `dsuzukii`, `snowgum_psii`, `zebrafish_o2`). INstall the `bayesTLS` R package and you have these. Raw source files and the scripts that build them are in `data-raw/` folder. The full case-study analyses are in `ms/supplement.qmd` and rendered at https://daniel1noble.github.io/bayesTLS/. The simulation is run by `scripts/simulations/run_simulations.R`. Cached simulation outputs and model fits are archived on OSF (https://osf.io/c6dxy) and fetched with `make data`.  
+**Data and Code Availability**: This repository not only contains the `bayesTLS` R package but also the code and data used in the above manuscript. The four case-study datasets ship with the R package as documented data objects (`aphid_tdt`, `dsuzukii`, `snowgum_psii`, `zebrafish_o2`). Install the `bayesTLS` R package and you have these. Raw source files and temperature traces are in `inst/extdata/`, and the scripts that build the data objects from them are in `data-raw/`. The full case-study analyses are in `ms/supplement.qmd` and rendered at https://daniel1noble.github.io/bayesTLS/. The simulation is run by `scripts/simulations/run_simulations.R`. Cached simulation outputs and model fits are archived on OSF (https://osf.io/c6dxy) and fetched with `make data`.  
 
 ## Installing the `bayesTLS` package
 
@@ -171,7 +171,7 @@ Use this map to find the files and outputs involved in reproduction:
    model fits), which are not stored in the repository:
 
    ```sh
-   make data        # results + model fits (~85 MB) -- enough to render the paper
+   make data        # results + model fits (~205 MB) -- enough to render the paper
    make data-full   # ALSO the 2.6 GB raw/draws tier (only to re-aggregate sims)
    ```
 
@@ -206,12 +206,13 @@ with `make data`:
 
 | Command | Downloads | Size | Use |
 |---|---|---|---|
-| `make data` | `results.zip` + `models.zip` | ~85 MB | render the paper (default) |
+| `make data` | `results.zip` + `models.zip` | ~205 MB | render the paper (default) |
 | `make data-full` | the above **plus** `sim_full.zip` | +2.6 GB | re-aggregate the raw simulation |
 
 `make data` is idempotent — a tier already present under `output/` is skipped
 (pass `TIER=--force` to re-download), each download is md5-verified against
-`data-raw/osf_manifest.json`, and the archives unpack straight into `output/`.
+`data-raw/osf_manifest.json` when that file is present (`make osf-push` writes
+it; it is not committed), and the archives unpack straight into `output/`.
 No credentials are required. Maintainers refresh the deposit with `make osf-push`
 (needs an `OSF_PAT` token); see `scripts/osf_publish.R`.
 
