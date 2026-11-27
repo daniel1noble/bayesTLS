@@ -13,8 +13,7 @@
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-brightgreen.svg)](https://github.com/daniel1noble/bayesTLS)
 <!-- badges: end -->
 
-`bayesTLS` is an R package for fitting joint Bayesian four-parameter logistic
-(4PL) models to thermal death time (TDT) and thermal load sensitivity (TLS) data.
+`bayesTLS` is an R package for fitting joint Bayesian dose-response models to thermal death time (TDT) and thermal load sensitivity (TLS) data.
 It works with raw counts or continuous proportions, extracts classical quantities
 such as *z*, CTmax, *T*~crit~, and LT curves as posterior summaries, and provides
 tools for uncertainty propagation, group contrasts, heat-injury prediction, and
