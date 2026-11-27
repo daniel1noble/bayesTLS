@@ -209,4 +209,7 @@ unc <- checks |>
                    max_uncrossed_now   = max(uncrossed, na.rm = TRUE), .groups = "drop")
 before_after <- dplyr::left_join(before_after, unc, by = "scenario")
 saveRDS(before_after, file.path(OUT_DIR, "rerun_2026-11-26_before_after.rds"))
+# A copy in output/data (the OSF results tier) for the supplement's table of
+# draws left out at the absolute threshold.
+saveRDS(before_after, here::here("output", "data", "sim_rerun_before_after.rds"))
 print(as.data.frame(before_after), digits = 4)

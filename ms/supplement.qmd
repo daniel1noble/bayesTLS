@@ -1994,9 +1994,22 @@ zf_tls$summary
 .zg <- function(ox, q) zf_tls$summary$median[zf_tls$summary$oxygen == ox &
                                               zf_tls$summary$quantity == q]
 zf_ctmax_norm  <- .zg("normoxia",  "CTmax");  zf_ctmax_hyper <- .zg("hyperoxia", "CTmax")
+# Hyperoxia minus normoxia per posterior draw, summarised as in the
+# manuscript's contrasts: median [95% interval], pMCMC.
+.zf_diff <- function(q) {
+  w <- tidyr::pivot_wider(
+    dplyr::select(dplyr::filter(zf_tls$draws, quantity == q), .draw, oxygen, value),
+    names_from = oxygen, values_from = value)
+  d <- w$hyperoxia - w$normoxia; d <- d[is.finite(d)]
+  p <- 2 * min(mean(d > 0), mean(d < 0))
+  sprintf("%.1f [%.1f, %.1f] °C, pMCMC %s", stats::median(d),
+          stats::quantile(d, 0.025), stats::quantile(d, 0.975),
+          if (p < 0.001) "< .001" else paste("=", sub("^0", "", sprintf("%.2f", p))))
+}
+zf_dct_txt <- .zf_diff("CTmax"); zf_dz_txt <- .zf_diff("z")
 ```
 
-The joint fit recasts @saruhashi2026's OCLTT result as two linked components of the thermal tolerance landscape. Hyperoxia raises $CT_{max_{1hr}}$ to `r round(zf_ctmax_hyper, 1)` °C, above the normoxic `r round(zf_ctmax_norm, 1)` °C, confirming that hyperoxic water shifts the thermal limit upward. The model also estimates $z$ from the same response surface, asking a second biological question: does oxygen change how quickly tolerance time declines once temperatures are stressful? This distinction is useful because @saruhashi2026 conclude that oxygen effects depend on stress intensity and exposure duration. In these data, the strongest support is for the upward shift in $CT_{max_{1hr}}$ under hyperoxia, while the normoxic $z$ is less precise because survival plateaus across much of the tested duration range. The 4PL therefore does more than confirm that hyperoxia improves heat tolerance; it identifies which part of the OCLTT signal is well supported by the data (a higher thermal limit) and which part would require more duration information to estimate sharply (oxygen differences in thermal sensitivity).
+Hyperoxia lowers $z$ (hyperoxia − normoxia: `r zf_dz_txt`): tolerance time falls faster with warming under hyperoxia. $CT_{max_{1hr}}$ is higher under hyperoxia (`r round(zf_ctmax_hyper, 1)` vs `r round(zf_ctmax_norm, 1)` °C), as @saruhashi2026 found, but the difference is not resolved (`r zf_dct_txt`). The normoxic $z$ is imprecise because survival plateaus across much of the tested duration range.
 
 ```{r zfo2-survival}
 #| label: fig-zfo2-survival
@@ -2453,7 +2466,7 @@ leaf_dct_plant <- c(med = stats::median(.d), stats::quantile(.d, c(.025, .975), 
                     p = 2 * min(mean(.d > 0), mean(.d < 0)))
 ```
 
-The point estimates of $CT_{max_{1hr}}$ follow the direction @arnold_psii_2026 report, `r round(leaf_ctmax_light, 1)` °C after 90 min of post-heat light against `r round(leaf_ctmax_dark, 1)` °C after dark recovery; $z$ is `r round(leaf_z_light, 1)` °C and `r round(leaf_z_dark, 1)` °C. But the Light − Dark difference is `r .fmt_con(leaf_dct)` for $CT_{max_{1hr}}$ and `r .fmt_con(leaf_dz)` for $z$: both intervals include zero. Arrays vary considerably (standard deviation of their $CT_{max}$ intercepts `r round(leaf_sd_array, 1)` °C, against `r round(leaf_sd_run, 1)` °C for heat runs), and each array carries only one recovery condition, so with arrays as the replicates these data do not resolve a light effect on either the tolerance limit or the sensitivity. Treating the six leaf sections on an array as independent replicates instead (the plant random effect alone) gives a Light − Dark difference in $CT_{max_{1hr}}$ of `r .fmt_con(leaf_dct_plant)`, an apparently clear light penalty: its precision comes from counting sections rather than arrays. The hierarchical model makes the unit of replication explicit. 
+The point estimates of $CT_{max_{1hr}}$ follow the direction @arnold_psii_2026 report, `r round(leaf_ctmax_light, 1)` °C after 90 min of post-heat light against `r round(leaf_ctmax_dark, 1)` °C after dark recovery; $z$ is `r round(leaf_z_light, 1)` °C and `r round(leaf_z_dark, 1)` °C. Both are lower under light (Light − Dark: `r .fmt_con(leaf_dct)` for $CT_{max_{1hr}}$ and `r .fmt_con(leaf_dz)` for $z$), but both intervals include zero. Arrays vary considerably (posterior median standard deviation of their $CT_{max}$ intercepts `r round(leaf_sd_array, 1)` °C, against `r round(leaf_sd_run, 1)` °C for heat runs), and each array carries only one recovery condition, so with arrays as the replicates these data do not resolve a light effect on either the tolerance limit or the sensitivity. Treating the six leaf sections on an array as independent replicates instead (the plant random effect alone) gives a Light − Dark difference in $CT_{max_{1hr}}$ of `r .fmt_con(leaf_dct_plant)`, an apparently clear light penalty: its precision comes from counting sections rather than arrays. The hierarchical model makes the unit of replication explicit. 
 
 ## Retained PSII function curves with observed overlay {#sec-leaf-survival-curves}
 
@@ -2676,7 +2689,7 @@ We could ask whether males and females are significantly different or not from e
 
 ```
 
-The median difference in *z* between males and females is `r round(median(diff_sex_z), 2)` °C (95% CI: `r round(quantile(diff_sex_z, 0.025), 2)` to `r round(quantile(diff_sex_z, 0.975), 2)` °C; pMCMC = `r round(pmcmc_sex_z, 2)`). The interval spans zero, so the sexes' thermal sensitivities are not clearly distinguishable.
+Females have a slightly lower *z* than males (female − male: `r round(median(diff_sex_z), 2)` °C, 95% CI: `r round(quantile(diff_sex_z, 0.025), 2)` to `r round(quantile(diff_sex_z, 0.975), 2)` °C; pMCMC = `r round(pmcmc_sex_z, 2)`), but the interval spans zero, so the difference is not resolved.
 
 #### Fitting a model to compare sexes directly - indirect method
 
@@ -2722,7 +2735,7 @@ plot_survival_curves(psc_sex, observed = std_sex, log_time = TRUE,
                      clip_to_observed = FALSE)
 ```
 
-We can see here that the model is estimating a survival reduction at high temperatures but there doesn't appear to be much difference between the sexes. Of course, we haven't fully tested this on all parameters, but we could! Either way, we can see from the model output that the interaction `mid_sexM:temp_c` spans zero, supporting little evidence for sex differences in $z$.
+We can see here that the model is estimating a survival reduction at high temperatures but there doesn't appear to be much difference between the sexes. Of course, we haven't fully tested this on all parameters, but we could! Either way, the sex-by-temperature interaction on the midpoint (`mid_sexM:temp_c` = `r with(as.list(brms::fixef(get_brmsfit(joint_sex_fit))["mid_sexM:temp_c", ]), sprintf("%.3f [%.3f, %.3f]", Estimate, Q2.5, Q97.5))` log10 minutes per °C) spans zero: the males' midpoint falls slightly less steeply with temperature, giving a slightly larger $z$, but the difference is not resolved.
 
 We can now do some manual manipulation to show how to recover the same $z$ and $CT_{max_{4hr}}$ that `tls()` and the individual per-sex models return. We do this in two steps: **Step 1** reads the *relative* values off the midpoint line ($z = -1/\text{slope}$), and **Step 2** computes the *absolute* values (adding the asymmetry correction so the line follows the full-4PL LT$_{50}$). Rather than printing each value, we collect them into one table (@tbl-dros-sex-byhand).
 
@@ -3442,6 +3455,28 @@ For each scenario we also tabulate the root-mean-square error (RMSE, in °C) of
 Normal- and *t*-quantile two-stage CI variants share a value and are reported
 once each.
 
+```{r tbl-sim-abs-uncrossed}
+#| label: tbl-sim-abs-uncrossed
+#| tbl-cap: "Joint 4PL (absolute) $CT_{max_{1hr}}$: posterior draws left out because they have no single falling crossing of 1 h within 30 °C of the assayed temperatures, in the re-run cells where any were left out. Each cell has 1,000 simulated datasets and each fit 1,000 posterior draws; simulations that were not re-run kept all their draws."
+#| echo: false
+#| warning: false
+#| message: false
+
+# Draws left out at the absolute threshold, per re-run cell (written by
+# scripts/simulations/rerun_abs_truncation.R).
+.unc <- readRDS(here::here("output", "data", "sim_rerun_before_after.rds")) |>
+  dplyr::filter(sims_uncrossed_now > 0) |>
+  dplyr::mutate(pct = 100 * draws_uncrossed_now / 1e6)
+.unc65 <- .unc[.unc$scenario == "scen7_u0_065", ]
+tinytable::tt(dplyr::transmute(.unc,
+  Cell = scenario,
+  `Fits leaving draws out (of 1,000)` = sims_uncrossed_now,
+  `Draws left out (% of all)` = ifelse(pct < 0.01, "< 0.01", sprintf("%.2f", pct)),
+  `Most left out in one fit (of 1,000)` = max_uncrossed_now), escape = TRUE)
+```
+
+At the absolute threshold, a posterior draw gives a $CT_{max_{1hr}}$ only if its 50% survival time crosses 1 h once, falling as temperature rises, within 30 °C of the assayed temperatures. Draws without such a crossing (for example, one whose lethal time lengthens with temperature) are left out of that fit's summary, as `tls()` does (@tbl-sim-abs-uncrossed). They are rare except in the low-asymptote, sparse-grid and single-replicate cells; with $\text{up}_0$ = 0.65, `r .unc65$sims_uncrossed_now` of 1,000 fits left out some draws (`r sprintf("%.1f", .unc65$pct)`% of all draws). The relative threshold has a closed form for every draw and uses them all.
+
 ```{r sim-supp-setup}
 #| label: sim-supp-setup
 #| echo: false
@@ -4025,26 +4060,15 @@ aphid_f4 <- tls_to_fig4(aphid_tls, "species",  "Cereal aphids")
 leaf_f4  <- tls_to_fig4(leaf_tls,  "recovery", "Snow gum leaf PSII")
 zf_f4    <- tls_to_fig4(zf_tls,    "oxygen",   "Zebrafish (oxygen)")
 
-# Vinegar fly mortality, by sex: separate per-sex fits (absolute 4 h threshold).
-fly_draws <- dplyr::bind_rows(
-    Female = get_tls_est(tdt_dros_f, "draws", c("z", "CTmax")),
-    Male   = get_tls_est(tdt_dros_m, "draws", c("z", "CTmax")),
-    .id    = "group"
-  ) |>
-  dplyr::transmute(
-    case_study = "Vinegar fly (mortality)",
-    group,
-    quantity = ifelse(quantity == "CTmax", "CTmax_4hr", "z"),
-    value, .draw
-  )
-fly_summary <- dros_sex_sum |>
-  dplyr::filter(quantity %in% c("z", "CTmax")) |>
-  dplyr::transmute(
-    case_study = "Vinegar fly (mortality)",
-    group      = Sex,
-    quantity   = ifelse(quantity == "CTmax", "CTmax_4hr", "z"),
-    median, lower, upper
-  )
+# Vinegar fly mortality, by sex: the joint 4PL with sex on the midpoint
+# (joint_sex_fit), read at the absolute 4 h threshold, so the sex contrast is
+# estimated within one model, as in the other panels.
+fly_tls <- tls(joint_sex_fit, by = "sex", target_surv = "absolute", t_ref = 60 * 4,
+               lethal = FALSE)
+fly_f4  <- tls_to_fig4(fly_tls, "sex", "Vinegar fly (mortality)", ctmax_lab = "CTmax_4hr")
+.sex_lab    <- c(F = "Female", M = "Male")
+fly_draws   <- dplyr::mutate(fly_f4$draws,   group = unname(.sex_lab[group]))
+fly_summary <- dplyr::mutate(fly_f4$summary, group = unname(.sex_lab[group]))
 
 fig4_draws <- dplyr::bind_rows(aphid_f4$draws, leaf_f4$draws, zf_f4$draws, fly_draws) |>
   dplyr::filter(is.finite(value))
@@ -4519,15 +4543,13 @@ case_contrasts <- list(
   sg_ct = .tlsdiff(leaf_tls$draws, "recovery", "CTmax", "Light", "Dark"),
   sg_z  = .tlsdiff(leaf_tls$draws, "recovery", "z",     "Light", "Dark")
 )
-# Vinegar fly: sex contrast (separate per-sex fits -> difference of posteriors)
-.zd <- dplyr::inner_join(get_tls_est(tdt_dros_m, "draws", "z"),
-                         get_tls_est(tdt_dros_f, "draws", "z"),
-                         by = ".draw", suffix = c("M", "F"))
-.cd <- dplyr::inner_join(get_tls_est(tdt_dros_m, "draws", "CTmax"),
-                         get_tls_est(tdt_dros_f, "draws", "CTmax"),
-                         by = ".draw", suffix = c("M", "F"))
-case_contrasts$fly_z  <- .con(.zd$valueM - .zd$valueF)
-case_contrasts$fly_ct <- .con(.cd$valueM - .cd$valueF)
+# Vinegar fly: sex contrast (male - female) within the joint model, on the same
+# draws as the Figure 5d panel.
+case_contrasts$fly_z  <- .tlsdiff(fly_tls$draws, "sex", "z",     "M", "F")
+case_contrasts$fly_ct <- .tlsdiff(fly_tls$draws, "sex", "CTmax", "M", "F")
+# Bayesian R2 of the per-sex fits (Table S19), for the manuscript's fit summary.
+case_contrasts$fly_r2 <- c(Female = bayes_R2_tls(wf_dros_mort_F)$estimate,
+                           Male   = bayes_R2_tls(wf_dros_mort_M)$estimate)
 
 # Repair effect on end-of-window survival, on PAIRED draws (same posterior draws
 # with vs without the repair kernel) -- a downstream contrast the two-stage cannot
