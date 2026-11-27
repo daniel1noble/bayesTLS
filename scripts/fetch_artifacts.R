@@ -36,7 +36,12 @@ MODEL_FITS <- c(
   "fit_dsuzukii_mortality_sex_direct", "fit_dsuzukii_mortality_sex_joint",
   "fit_dsuzukii_prod_hurdle_gamma", "fit_dsuzukii_prod_hurdle_lognormal",
   "fit_leaf_recovery_4pl_cens", "fit_leaf_recovery_4pl_cens_run_array",
-  "sim_4pl_direct", "zf_oxygen_normhyper"
+  "sim_4pl_direct", "zf_oxygen_normhyper",
+  # alternative dose-response curves (supplement curve-comparison section)
+  paste0(rep(c("zf_oxygen_normhyper", "aphid_species",
+               "fit_dsuzukii_mortality_4pl_F", "fit_dsuzukii_mortality_4pl_M",
+               "fit_leaf_recovery_4pl_cens_run_array"), each = 3),
+         c("_lognormal", "_weibull1", "_weibull2"))
 )
 TIERS <- list(
   results = list(zip = "results.zip",  marker = "sim_twostage/per_sim_*.rds"),
