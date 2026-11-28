@@ -201,8 +201,9 @@ tdt_parameter_table <- function(workflow, by = NULL) {
 #'
 #' A thin tidy wrapper around [brms::bayes_R2()] for a fitted `bayes_tls`
 #' workflow: it pulls the underlying `brmsfit` (erroring clearly on an unfitted
-#' workflow, via [get_brmsfit()]) and returns the posterior median \eqn{R^2}
-#' with its standard error and 95% credible interval as a one-row tibble, rather
+#' workflow, via [get_brmsfit()]) and returns the posterior mean \eqn{R^2}
+#' (the median with `robust = TRUE`, passed via `...`) with its standard error
+#' and 95% credible interval as a one-row tibble, rather
 #' than the bare matrix `brms::bayes_R2()` returns. Pass `...` straight through
 #' to [brms::bayes_R2()] (e.g. `re_formula = NA` to exclude group-level effects,
 #' or `ndraws =` to subsample). Map over a named list of workflows to build a

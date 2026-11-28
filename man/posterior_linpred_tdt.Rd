@@ -13,14 +13,14 @@ posterior_linpred_tdt(workflow, newdata, ndraws = NULL, re_formula = NA)
 
 \item{ndraws}{Integer number of posterior draws to use, or \code{NULL} for all.}
 
-\item{re_formula}{Passed to \code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}}. \code{NA} (default)
+\item{re_formula}{Passed to \code{\link[brms:posterior_linpred]{brms::posterior_linpred()}}. \code{NA} (default)
 marginalises random effects.}
 }
 \value{
 Numeric matrix \verb{[ndraws x nrow(newdata)]} of survival probabilities.
 }
 \description{
-Thin wrapper around \code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}} with \code{transform = TRUE} so
+Thin wrapper around \code{\link[brms:posterior_linpred]{brms::posterior_linpred()}} with \code{transform = TRUE} so
 it returns survival probabilities on the natural scale. Random effects are
 marginalised out by default (\code{re_formula = NA}) so the result is a
 population-level prediction.

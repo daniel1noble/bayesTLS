@@ -9,7 +9,7 @@ bayes_R2_tls(workflow, ...)
 \arguments{
 \item{workflow}{A fitted \code{bayes_tls} workflow returned by \code{\link[=fit_4pl]{fit_4pl()}}.}
 
-\item{...}{Further arguments passed to \code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}}.}
+\item{...}{Further arguments passed to \code{\link[brms:bayes_R2]{brms::bayes_R2()}}.}
 }
 \value{
 A one-row tibble with columns \code{estimate}, \code{est_error}, \code{lower}, and
@@ -17,12 +17,13 @@ A one-row tibble with columns \code{estimate}, \code{est_error}, \code{lower}, a
 controlled by \code{probs} passed via \code{...}).
 }
 \description{
-A thin tidy wrapper around \code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}} for a fitted \code{bayes_tls}
+A thin tidy wrapper around \code{\link[brms:bayes_R2]{brms::bayes_R2()}} for a fitted \code{bayes_tls}
 workflow: it pulls the underlying \code{brmsfit} (erroring clearly on an unfitted
-workflow, via \code{\link[=get_brmsfit]{get_brmsfit()}}) and returns the posterior median \eqn{R^2}
-with its standard error and 95\% credible interval as a one-row tibble, rather
+workflow, via \code{\link[=get_brmsfit]{get_brmsfit()}}) and returns the posterior mean \eqn{R^2}
+(the median with \code{robust = TRUE}, passed via \code{...}) with its standard error
+and 95\% credible interval as a one-row tibble, rather
 than the bare matrix \code{brms::bayes_R2()} returns. Pass \code{...} straight through
-to \code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}} (e.g. \code{re_formula = NA} to exclude group-level effects,
+to \code{\link[brms:bayes_R2]{brms::bayes_R2()}} (e.g. \code{re_formula = NA} to exclude group-level effects,
 or \verb{ndraws =} to subsample). Map over a named list of workflows to build a
 multi-fit table. For a fit with censored readings
 (\code{\link[=standardize_data]{standardize_data()}}'s \code{detection_limit}), those readings enter
@@ -39,5 +40,5 @@ purrr::imap_dfr(list(binom = wf1, beta = wf2),
 }
 }
 \seealso{
-\code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}}, \code{\link[=diagnose_tdt_fit]{diagnose_tdt_fit()}}
+\code{\link[brms:bayes_R2]{brms::bayes_R2()}}, \code{\link[=diagnose_tdt_fit]{diagnose_tdt_fit()}}
 }

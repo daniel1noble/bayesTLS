@@ -27,6 +27,7 @@ Useful links:
 
 Authors:
 \itemize{
+  \item Daniel W. A. Noble \email{daniel.noble@anu.edu.au}
   \item Pieter A. Arnold
   \item Shinichi Nakagawa
   \item Patrice Pottier \email{patrice.pottier@bioenv.gu.se}

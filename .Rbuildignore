@@ -62,6 +62,7 @@ gbullard87-Beyond_Mean_TDT_2025-a575198/
 ^inst/extdata/kristineberg$
 ^inst/extdata/orsted_2024$
 ^inst/extdata/data_temp_trace_aphid_summer2016\.csv$
+^inst/extdata/data_function_PSII_TDT_snowgum_glasshouse\.csv$
 ^CRAN-SUBMISSION$
 
 # Stray top-level overview PDF (not package material).

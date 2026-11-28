@@ -13,9 +13,9 @@ get_brmsfit(workflow)
 The \code{brmsfit} object stored in the workflow.
 }
 \description{
-Returns the underlying \link[brms:brmsfit-class]{brms::brmsfit} object held in a \code{bayes_tls}
+Returns the underlying \link[brms:brmsfit]{brms::brmsfit} object held in a \code{bayes_tls}
 workflow, ready for any brms / posterior / bayesplot helper (e.g.
-\code{\link[brms:bayes_R2.brmsfit]{brms::bayes_R2()}}, \code{\link[brms:mcmc_plot.brmsfit]{brms::mcmc_plot()}}, \code{\link[posterior:draws_df]{posterior::as_draws_df()}}).
+\code{\link[brms:bayes_R2]{brms::bayes_R2()}}, \code{\link[brms:mcmc_plot]{brms::mcmc_plot()}}, \code{\link[posterior:as_draws_df]{posterior::as_draws_df()}}).
 Prefer this over reaching into \code{workflow$fit} directly: it errors clearly
 on an unfitted workflow instead of silently returning \code{NULL}. Pairs with
 the predicate \code{\link[=has_fit]{has_fit()}}.

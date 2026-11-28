@@ -48,8 +48,9 @@ extends above 48 hours (converted to \code{ltx$output_time_unit}), both panels'
 y-axes are clamped to 48 hours so the readable part of the curve isn't
 compressed by an extreme upper tail at cool temperatures. If the data
 already stay below 48 hours, no limits are applied and \code{ggplot2} chooses
-a data-driven range. Callers can override either way by appending their
-own \code{+ ggplot2::coord_cartesian(ylim = ...)} to the returned plot.
+a data-driven range. To override it, append \code{+ ggplot2::coord_cartesian(ylim = ...)} to a single-panel plot (\code{panels = "linear"} or \code{"log"}). For the
+two-panel default, use patchwork's \code{&} so the limits reach both panels, with
+a positive lower limit because one axis is logarithmic.
 }
 \examples{
 \dontrun{
@@ -57,8 +58,11 @@ ltx <- derive_tdt_curve(wf, temp_grid = seq(29, 37, by = 0.5))
 plot_tdt_curve(ltx)                  # two-panel default
 plot_tdt_curve(ltx, panels = "log")  # classical TDT view only
 
-# Override the internal 48-h cap by appending a coord_cartesian:
-plot_tdt_curve(ltx) +
+# Override the internal 48-h cap on one panel by appending a coord_cartesian:
+plot_tdt_curve(ltx, panels = "linear") +
   ggplot2::coord_cartesian(ylim = c(0, 240))
+# ... or on both panels with patchwork's `&` (the log axis needs a lower
+# limit above 0):
+plot_tdt_curve(ltx) & ggplot2::coord_cartesian(ylim = c(1, 240))
 }
 }

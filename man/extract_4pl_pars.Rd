@@ -24,7 +24,7 @@ unique assay temperatures.}
 returns the ungrouped tibble. A grouped fit prepends the moderator
 column(s).}
 
-\item{re_formula}{Passed to \code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}}. \code{NA} (default)
+\item{re_formula}{Passed to \code{\link[brms:posterior_linpred]{brms::posterior_linpred()}}. \code{NA} (default)
 marginalises out group-level (random) effects so the result is a
 population-level curve; \code{NULL} conditions on the fitted random effects.}
 

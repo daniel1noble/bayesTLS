@@ -101,7 +101,7 @@ data's own temperature range beyond them, warns, since that is what a
 grid given in degrees C usually looks like (the check cannot tell the
 scales apart for data near 0 degrees C).}
 
-\item{re_formula}{Passed to \code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}}; default \code{NA}
+\item{re_formula}{Passed to \code{\link[brms:posterior_linpred]{brms::posterior_linpred()}}; default \code{NA}
 (fixed effects only) -- EXCEPT when a \code{by} variable enters the model only
 as a random-effect grouping factor (e.g. a phylogenetic
 \code{(1 | gr(species, cov = A))} term): the default then auto-includes
@@ -146,7 +146,7 @@ One call that derives the classical TDT quantities — thermal sensitivity
 from a fitted joint 4PL, including hand-written \code{brms} models with moderators
 (sex, life stage, clone, ...) on any sub-parameter. The four sub-parameters
 are evaluated at a moderator x temperature grid with
-\code{\link[brms:posterior_linpred.brmsfit]{brms::posterior_linpred()}}, then \code{z}, \code{CTmax} and \code{T_crit} are derived from
+\code{\link[brms:posterior_linpred]{brms::posterior_linpred()}}, then \code{z}, \code{CTmax} and \code{T_crit} are derived from
 the same posterior draws (so they are mutually consistent and \code{T_crit} pairs
 \code{CTmax} and \code{z} per draw).
 }

@@ -1,147 +1,162 @@
-# bayesTLS (development version)
+# bayesTLS 1.3.0
+
+This is the first CRAN update since 1.0.0. Versions 1.1.0 and 1.2.0 were
+released on GitHub only, so their changes (listed below) are also new on CRAN.
 
 ## New features
 
 * Censored continuous-proportion readings. `standardize_data()` gains
   `detection_limit` for a `proportion` response whose instrument cannot
-  resolve values beyond a limit (e.g. a fluorometer that records 0 below
-  what it can read, or values capped at a ceiling). Give it as one number
-  (a lower limit), `c(lower, upper)`, or per-row limit columns. Readings
-  below the lower limit are flagged left-censored and readings at or above
-  the upper limit right-censored (a new `censored` column, with the limit as
-  the response). The fitters (`fit_4pl()`, `fit_lognormal()`,
-  `fit_weibull()`) then add brms's `cens()` term to the Beta response, so
-  those readings contribute the probability of lying beyond the limit
-  instead of a density at a clamped value; `make_4pl_formula()` and
-  `make_tdt_formula()` gain `censored`. The fitted curve keeps its meaning,
-  so `tls()` and every prediction helper are unchanged.
-* Plots (`plot_survival_curves()`, `plot_tdt_landscape()`) and
+  resolve values beyond a limit, for example a fluorometer that records 0
+  below the lowest value it can read, or readings capped at a ceiling. Give
+  one number (a lower limit), `c(lower, upper)`, or the names of columns that
+  hold per-row limits. Readings below the lower limit are flagged
+  left-censored and readings at or above the upper limit right-censored, in a
+  new `censored` column, with the limit stored as the response. `fit_4pl()`,
+  `fit_lognormal()` and `fit_weibull()` then add brms's `cens()` term to the
+  Beta response, so each censored reading contributes the probability of
+  lying beyond the limit instead of a density at a clamped value.
+  `make_4pl_formula()` and `make_tdt_formula()` gain a matching `censored`
+  argument. The fitted curve keeps its meaning, so `tls()` and the prediction
+  helpers are unchanged.
+* `plot_survival_curves()`, `plot_tdt_landscape()` and
   `summarise_observed_survival()` show censored readings as recorded
-  (`survival_recorded`), `print()` reports the censored counts, and
-  `bayes_R2_tls()` warns that R^2 is only a rough guide when readings are
+  (`survival_recorded`). `print()` reports the number of censored readings,
+  and `bayes_R2_tls()` warns that R^2 is only a rough guide when readings are
   censored. A censored fit scores censored readings as probabilities in
   `log_lik()`, `loo()` and `waic()`, so compare it only with fits to the same
   data and the same `detection_limit`, never with a fit whose readings were
-  clamped. The new arguments come last in each signature, so existing
-  positional calls are unchanged. Without `detection_limit` nothing changes,
-  except that `proportion_eps` must now be one number in (0, 0.5) (values
-  outside that range gave degenerate or invalid responses before).
+  clamped.
+* The new arguments come last in each signature, so existing positional calls
+  are unchanged. Without `detection_limit` nothing changes, except that
+  `proportion_eps` must now be a single number in (0, 0.5). Values outside
+  that range gave degenerate or invalid responses before.
 
 ## Bug fixes
 
 * `derive_tdt_curve()` with an absolute threshold now reads each draw's LT
-  exactly from its fitted curve: the midpoint plus the model's closed-form
-  correction, the same values `tls()` and `derive_z()` use. It used to
+  exactly from its fitted curve (the midpoint plus the model's closed-form
+  correction), the same values that `tls()` and `derive_z()` use. It used to
   search a duration grid and silently drop every draw whose crossing lay
-  beyond it, so cool temperatures were summarised from a biased few draws
-  (on the snow gum fit, dark recovery at 40 degrees C came from 1 of 400
-  draws). `duration_grid` is no longer used, and a message says so if it is
-  given. Draws whose curve never reaches the target (outside its
-  asymptotes) are dropped with a warning, as elsewhere.
+  beyond it, so cool temperatures were summarised from a biased few draws. On
+  the snow gum fit, dark recovery at 40 degrees C came from 1 of 400 draws.
+  `duration_grid` is no longer used, and a message says so if it is given.
+  Draws whose curve never reaches the target (outside its asymptotes) are
+  dropped with a warning, as elsewhere.
 * `tls()` and `derive_temperature_for_duration()` no longer silently drop
   draws whose CTmax lies outside the temperature grid, which made intervals
-  too narrow. When the LT curve is a straight line in temperature, CTmax
-  (and the 1-hour anchor of T_crit) now come from the exact closed form at
-  any temperature. That covers every relative threshold, for midpoint and
-  direct fits alike, and absolute thresholds whose asymptotes and steepness
-  do not change with temperature. `tls()` used to invert direct fits on the
-  grid, dropping draws even at the default reference exposure. A bent curve
-  (an absolute threshold with temperature effects on the asymptotes or
-  steepness) is still inverted on the grid, and draws that do not cross
-  there are now searched outward, up to the data's temperature range (or
-  the grid's own width, if larger) beyond each end, taking the crossing
-  nearest the data (an extrapolated bent curve can turn back and cross
-  again further out). Draws still without a crossing are counted, per
-  quantity, in a warning. The grid is first refined so that neighbouring
-  points are at most 0.05 degrees C apart, or a twentieth of the original
-  spacing where that is wider than 1 degree C (the snow gum default's
-  2.6-degree steps become 0.13): interpolating linearly between 11 coarse
-  points could put a crossing up to about 2 degrees C from the curve's own
-  crossing next to an asymptote. Against a brute-force search on a fine
-  grid, the largest per-draw error fell from 0.26 to 0.03 degrees C on the
-  test fits and from 2.1 to 0.06 degrees C on a censored snow gum fit, with
-  medians within 0.002 degrees C. In the supplement, the zebrafish normoxia
-  CTmax moves by 0.01 degrees C (10 of its 8000 draws had been dropped) and
-  every other number by less than 0.003 degrees C. The search evaluates a
-  group's draws in bounded chunks and keeps, between its two passes, only
-  the draws still without a crossing, so its memory no longer grows with
-  the number of groups.
-  `derive_temperature_for_duration()` no longer assumes
-  a straight relative midpoint (one that bends is inverted instead), and
-  its `temp_grid` now defaults to 11 points over the observed temperatures.
-  Its check for a straight curve no longer looks only at the requested
-  temperatures, so a `temp_grid` of the centring temperature and/or one
-  degree above it cannot make a bent curve look straight (it used to be
-  solved as the line through those two temperatures, off by up to 2 degrees
-  C per draw on a test fit). A one-point `temp_grid` is searched outward at
-  a fine step instead of in quarters of the data's temperature range, and a
-  grouped call in which one group has no crossing gives that group an `NA`
-  summary row, with the warning, instead of an error.
-* Absolute thresholds near an asymptote (for example `target_surv = 0.9`
-  when the upper asymptote falls with temperature): where the target lies
-  outside a draw's fitted asymptotes at some temperatures, the LT there is
-  undefined, and the CTmax inversion used to drop every draw with such a
-  temperature on its grid. It now treats that LT as zero (upper asymptote
-  at or below the target) or infinite (lower asymptote at or above it) and
-  locates a crossing next to it from the survival curve, which is defined
-  everywhere. On a test fit at `target_surv = 0.8`, 1000 of 1000 draws now
-  have a CTmax, against 2 before.
+  too narrow. When the LT curve is a straight line in temperature, CTmax (and
+  the 1-hour anchor of T_crit) now come from the exact closed form at any
+  temperature. That covers every relative threshold, for midpoint and direct
+  fits alike, and absolute thresholds whose asymptotes and steepness do not
+  change with temperature. `tls()` used to invert direct fits on the grid,
+  dropping draws even at the default reference exposure.
+* A bent LT curve (an absolute threshold with temperature effects on the
+  asymptotes or steepness) is still inverted on the grid, but the grid is now
+  first refined so that neighbouring points are at most 0.05 degrees C apart,
+  or a twentieth of the original spacing where that is wider than 1 degree C
+  (the snow gum default's 2.6-degree steps become 0.13). Interpolating
+  linearly between 11 coarse points could put a crossing up to about 2 degrees
+  C from the curve's own crossing next to an asymptote. Draws that do not
+  cross on the grid are searched outward, up to the data's temperature range
+  (or the grid's own width, if larger) beyond each end, taking the crossing
+  nearest the data, because an extrapolated bent curve can turn back and
+  cross again further out. Draws still without a crossing are counted, per
+  quantity, in a warning. Against a brute-force search on a fine grid, the
+  largest per-draw error fell from 0.26 to 0.03 degrees C on the test fits and
+  from 2.1 to 0.06 degrees C on a censored snow gum fit, with medians within
+  0.002 degrees C. The search evaluates a group's draws in bounded chunks, so
+  its memory no longer grows with the number of groups. Together with the
+  previous fix, this moves the zebrafish normoxia CTmax in the accompanying
+  paper's case studies by 0.01 degrees C (10 of its 8000 draws had been
+  dropped) and every other estimate there by less than 0.003 degrees C.
+* `derive_temperature_for_duration()` no longer assumes a straight relative
+  midpoint (one that bends is inverted instead), and its `temp_grid` now
+  defaults to 11 points over the observed temperatures. Its check for a
+  straight curve no longer looks only at the requested temperatures, so a
+  `temp_grid` of the centring temperature and/or one degree above it cannot
+  make a bent curve look straight. Such a curve used to be solved as the line
+  through those two temperatures, off by up to 2 degrees C per draw on a test
+  fit. A one-point `temp_grid` is searched outward at a fine step instead of
+  in quarters of the data's temperature range, and in a grouped call a group
+  with no crossing now gets an `NA` summary row, with the warning, instead of
+  an error.
+* The CTmax inversion now handles absolute thresholds near an asymptote, for
+  example `target_surv = 0.9` when the upper asymptote falls with
+  temperature. Where the target lies outside a draw's fitted asymptotes at
+  some temperatures, the LT there is undefined, and the inversion used to
+  drop every draw with such a temperature on its grid. It now treats that LT
+  as zero (upper asymptote at or below the target) or infinite (lower
+  asymptote at or above it) and locates a crossing next to it from the
+  survival curve, which is defined everywhere. On a test fit at
+  `target_surv = 0.8`, 1000 of 1000 draws now have a CTmax, against 2 before.
 * The grid inversion of a bent LT curve that is not monotone over the grid
-  (U- or cap-shaped near an asymptote) used to interpolate temperature
-  against the sorted LT values, which mixes the two branches and can return
-  a temperature that is not a crossing at all (by up to about 10 degrees C
-  for some draws of a real fit at `target_surv = 0.9`). It now takes the
-  single crossing where the LT shortens through the target as temperature
-  rises; a draw with none, or more than one, gets no CTmax and is counted
-  in the warning. Relative thresholds and `target_surv = 0.5` were not
-  affected on any fit checked.
+  (U- or cap-shaped near an asymptote) used to interpolate temperature against
+  the sorted LT values. That mixes the two branches and can return a
+  temperature that is not a crossing at all, by up to about 10 degrees C for
+  some draws of a real fit at `target_surv = 0.9`. It now takes the single
+  crossing where the LT shortens through the target as temperature rises. A
+  draw with none, or more than one, gets no CTmax and is counted in the
+  warning. Relative thresholds and `target_surv = 0.5` were not affected on
+  any fit checked.
 * `tls()` with `ndraws` now uses one posterior subsample for all four 4PL
-  sub-parameters. Each of the four (low, up, k, mid) used to come from its
-  own random subsample, so they were mismatched draws, which distorted
+  sub-parameters. Each of the four (low, up, k, mid) used to come from its own
+  random subsample, so they were mismatched draws, which distorted
   absolute-threshold results (relative thresholds use the midpoint only and
-  were unaffected). Seeded results with `ndraws` change, since the
-  subsample is drawn differently. An `ndraws` at least the posterior size
-  now uses all draws instead of erroring, and every reader with an
-  `ndraws` argument (including `predict_survival_curves()`,
-  `derive_tdt_landscape()` and `predict_heat_injury()`) now requires it to
-  be `NULL` or a whole number of at least 1.
+  were unaffected). Seeded results with `ndraws` change, since the subsample
+  is drawn differently. An `ndraws` at least the posterior size now uses all
+  draws instead of erroring, and every function with an `ndraws` argument
+  (including `predict_survival_curves()`, `derive_tdt_landscape()` and
+  `predict_heat_injury()`) now requires it to be `NULL` or a whole number of
+  at least 1.
 * `tls()` warns when `temp_grid` looks like degrees C rather than centred
-  temperatures: when it lies entirely outside the observed (centred)
-  temperatures, or reaches more than the data's own temperature range
-  beyond them. A degrees-C grid used to give nonsense silently. The check
-  cannot tell the two scales apart for data near 0 degrees C. Non-finite
-  `temp_grid` values are now dropped with a warning in `tls()`,
-  `derive_tdt_curve()` and `derive_temperature_for_duration()`; an `Inf`
-  used to make the crossing search fail silently.
-* The warning for an absolute `target_surv` outside the fitted asymptotes
-  now gives the number of draws affected and on which side of the curve
-  the target falls. It used to round the share of evaluations (it could
-  say "0%" while dropping some) and print asymptote medians over all of
-  them.
+  temperatures, that is, when it lies entirely outside the observed (centred)
+  temperatures or reaches more than the data's own temperature range beyond
+  them. A degrees-C grid used to give nonsense silently. The check cannot tell
+  the two scales apart for data near 0 degrees C. Non-finite `temp_grid`
+  values are now dropped with a warning in `tls()`, `derive_tdt_curve()` and
+  `derive_temperature_for_duration()`. An `Inf` used to make the crossing
+  search fail silently.
+* The warning for an absolute `target_surv` outside the fitted asymptotes now
+  gives the number of draws affected and on which side of the curve the
+  target falls. It used to round the share of evaluations (it could say "0%"
+  while dropping some) and print asymptote medians over all of them.
 * `derive_tdt_curve()`, `derive_z()`, `derive_temperature_for_duration()`,
-  `tdt_parameter_table()`, `extract_4pl_pars()` and the heat-injury
-  functions now work on a hand-built `bayes_tls` that lacks `meta$bounds`,
+  `tdt_parameter_table()`, `extract_4pl_pars()` and the heat-injury functions
+  now work on a hand-built `bayes_tls` object that lacks `meta$bounds`,
   rebuilding the bounds from `meta$lower` and `meta$upper` as `tls()` does.
   Absolute thresholds used to return nothing, with a misleading warning.
 * `tls()` with `by = NULL` on a grouped fit (e.g. `ctmax = ~ 0 + recovery`)
-  now reports every group, as `derive_z()` and the other readers already
-  did. Previously it filled the moderator from the first data row and
-  silently returned that one group without a group label. A bare `brmsfit`
-  whose CTmax/z (or midpoint) vary by a moderator now asks for `by`; with a
+  now reports every group, as `derive_z()` and the other readers already did.
+  Previously it filled the moderator from the first data row and silently
+  returned that one group without a group label. A bare `brmsfit` whose
+  CTmax/z (or midpoint) vary by a moderator now asks for `by`. With a
   user-supplied `newdata` grid, `by = NULL` still treats the grid as one
   group. Single-condition fits are unaffected.
 
 ## Documentation
 
 * `?snowgum_psii` now credits the data to the authors' public repository
-  (GitHub pieterarnold/TLS_FvFm, archived on Zenodo; MIT licence), against
+  (GitHub pieterarnold/TLS_FvFm, archived on Zenodo, MIT licence), against
   which all 396 raw rows were checked, instead of giving the preprint's
-  CC BY-NC 4.0 licence. It also describes the split-plot design: each heat
+  CC BY-NC 4.0 licence. It also describes the split-plot design. Each heat
   run heated a light and a dark array together, so the array, not the leaf
   section, is the unit of replication for the light/dark contrast. The
-  example censors the zero readings and builds run and array labels. The
-  MIT copyright and permission notice that covers these data is installed
-  as `system.file("COPYRIGHTS", package = "bayesTLS")`.
+  example censors the zero readings and builds run and array labels. The MIT
+  copyright and permission notice that covers these data is installed as
+  `system.file("COPYRIGHTS", package = "bayesTLS")`.
+* `citation("bayesTLS")` and the package description now cite the bioRxiv
+  preprint of the accompanying paper (Noble, Arnold, Nakagawa and Pottier
+  2026, doi:10.64898/2026.07.16.738378).
+* The unused file `extdata/data_function_PSII_TDT_snowgum_glasshouse.csv`, an
+  earlier snow gum dataset that no function or help page refers to, is no
+  longer installed.
+* `?bayes_R2_tls` now says that the estimate is the posterior mean (the median
+  with `robust = TRUE`), as `brms::bayes_R2()` returns, not the median.
+* `?plot_tdt_curve` now shows how to change the y-axis limits correctly. A
+  `+ coord_cartesian()` reaches only one panel of the two-panel default, so the
+  example applies it to a single panel, or to both with patchwork's `&` and a
+  lower limit above 0 for the log axis. The old example stopped with an error.
 
 # bayesTLS 1.2.0
 
