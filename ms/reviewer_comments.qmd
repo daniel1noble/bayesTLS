@@ -141,7 +141,7 @@ Computational Requirements and Convergence Diagnostics. The paper provides no di
 
 I would recommend to add guidance on how to interpret wide vs. narrow credible intervals in predictions, and how to translate them into risk assessments or management thresholds (e.g., "if lower 95% CI for survival falls below X%, apply intervention").
 
-**Response**: This is a very good comment. Thanks. We agree this would be helpful. We have now added a few sentences to address this point. [TO DO: these sentences are not in the manuscript yet; add them or reword this reply.]
+**Response**: This is a very good comment. Thanks. We agree this would be helpful. We have now added a sentence to the Discussion on how credible intervals on predicted survival can help inform decisions (Discussion, lines YY–YY).
 
 319-329. Sublethal Endpoints and Hurdle Models. The vinegar fly analysis includes a hurdle model separating reproductive failure from offspring-number changes, but this extension is mentioned only briefly and relegated to the supplement.
 I would recommend to elevate one sublethal endpoint (e.g., heat coma or productivity) to the main text with full model specification and biological interpretation. This would demonstrate the framework's flexibility more compellingly.
