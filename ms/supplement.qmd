@@ -1729,7 +1729,7 @@ The manuscript examples use the following model specifications:
 - **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). The lower asymptote was allowed to differ by oxygen treatment but not temperature (`low = ~ 0 + oxygen`), while the upper asymptote and steepness were shared (`up = ~ 1`, `k = ~ 1`). No random effects were included. Because the design lacks a benign-temperature control for the hyperoxia treatment, we report $z$ and $CT_{max}$ but not $T_{crit}$ (`lethal = FALSE`).
 - **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood, with zero readings left-censored at 0.1 (`detection_limit = 0.1`). Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with random intercepts on $CT_{max}$ for plant, heat run and array, the unit to which recovery was applied (`ctmax = ~ 0 + recovery + (1 | plant) + (1 | run) + (1 | array)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
 - **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with @orsted_suzukii_2024 uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model sex contrasts reported in the manuscript use the same absolute threshold and 4-hour reference. The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the @orsted_suzukii_2024 NicheMapR [@kearney2017] workflow.
-- **Vinegar fly sublethal endpoints**: heat coma (the proportion of flies still awake after each exposure) and fertility (the proportion of surviving flies that produced any offspring) were fit with beta-binomial 4PLs that place sex directly on the thermal limit and $z$ (`ctmax = ~ 0 + sex`, `z = ~ 0 + sex`), with temperature effects on the asymptotes and steepness (`low = ~ temp_c`, `up = ~ temp_c`, `k = ~ temp_c`). Each includes a random intercept for assay temperature on the limit, shared by the sexes for heat coma (`(1 | temp_f)`) and separate for each temperature × sex group for fertility (`(1 | temp_sex)`), chosen by LOO (@sec-dros-coma-temp, @sec-dros-fertility). Both limits are read at the absolute 50% threshold after a 4-hour exposure. @sec-sublethal-dros also fits a censored log-time regression to heat coma and a hurdle model to productivity.
+- **Vinegar fly sublethal endpoints**: heat coma (the proportion of flies still awake after each exposure) and fertility (the proportion of surviving flies that produced any offspring) were fit with beta-binomial 4PLs that place sex directly on the thermal limit and $z$ (`ctmax = ~ 0 + sex`, `z = ~ 0 + sex`), with temperature effects on the asymptotes and steepness (`low = ~ temp_c`, `up = ~ temp_c`, `k = ~ temp_c`). Each includes a random intercept for assay temperature on the limit, shared by the sexes for heat coma (`(1 | temp_f)`, because an offset at one assay temperature would affect both sexes; LOO could not separate it from per-sex deviations, @sec-dros-coma-temp) and separate for each temperature × sex group for fertility (`(1 | temp_sex)`, preferred by LOO, @sec-dros-fertility). Both limits are read at the absolute 50% threshold after a 4-hour exposure. @sec-sublethal-dros also fits a censored log-time regression to heat coma and a hurdle model to productivity.
 
 The exact formulas, sampler settings and diagnostics are shown in the code chunks for each case study. All case-study 4PL models use the default priors of `bayesTLS`, which we describe and test in @sec-prior-sensitivity. The censored log-time and hurdle models in @sec-sublethal-dros use the priors given in their code, or `brms` defaults where none are given. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
@@ -3103,7 +3103,7 @@ Heat-coma time can be analysed in two equivalent ways. The classical route fits 
 
 ## Knockdown: time to coma {#sec-dros-coma}
 
-Each fly was exposed for a fixed duration, scored as awake or in heat coma, and assigned a coma time if it lost the righting response during the exposure. Flies still awake at the end of the exposure had not yet reached the endpoint, so their coma times are **right-censored** at the exposure duration. Overall, `r round(100*mean(is.na(dsuzukii$t_coma)))`% of flies are censored.
+Each fly was exposed for a fixed duration, scored as awake or in heat coma, and assigned a coma time if it stopped moving completely when its vial was tapped during the exposure [@orsted_suzukii_2024]. Flies still awake at the end of the exposure had not yet reached the endpoint, so their coma times are **right-censored** at the exposure duration. Overall, `r round(100*mean(is.na(dsuzukii$t_coma)))`% of flies are censored.
 
 Censoring potentially matters because dropping censored flies would select for individuals that entered coma early and potentially bias the $z$ estimate. We retain all flies in two complementary analyses. The **linear** model fits a right-censored log-time regression, treating the exposure duration of censored flies as a lower bound on their unobserved coma time. The **4PL** model instead analyses the binary awake/coma outcome as proportion-awake counts across exposure durations, matching the `awake ~ time` dose-response used by @orsted_suzukii_2024.
 
@@ -3315,16 +3315,20 @@ tinytable::tt(coma_compare, escape = TRUE)
 ```{r}
 #| label: dros-coma-sex-contrast
 #| include: false
-# Female - male CTmax_1hr from the censored log-time model (paired draws)
+#| cache: false
+# Range of heat-coma z across the two routes, and female - male CTmax_1hr from the
+# censored log-time model (paired draws)
+coma_z_rng <- range(c(median(z_coma_lin_F), median(z_coma_lin_M),
+                       get_tls_est(coma_4pl_tls, "summary", "z")$median))
 coma_lin_d <- ct_coma_lin_F - ct_coma_lin_M
 coma_lin_p <- 2 * min(mean(coma_lin_d > 0), mean(coma_lin_d < 0))
 ```
 
-Both Bayesian routes agree closely with each other and with @orsted_suzukii_2024 (@tbl-dros-coma-compare). Ørsted's male values lie inside our 95% credible intervals, while their female $CT_{max_{1hr}}$ and $z$ sit at or just below the lower edge. Heat-coma $z$ is about 2.3–2.4 °C in both sexes. Females, however, enter coma at slightly higher temperatures than males (female − male $CT_{max_{1hr}}$ = `r sprintf("%.2f [%.2f, %.2f]", median(coma_lin_d), quantile(coma_lin_d, 0.025), quantile(coma_lin_d, 0.975))` °C in the censored log-time model, `r if (coma_lin_p < 0.001) "pMCMC < 0.001" else sprintf("pMCMC = %.3f", coma_lin_p)`), a difference that the two-stage analysis of @orsted_suzukii_2024 did not detect.
+Both Bayesian routes agree closely with each other and with @orsted_suzukii_2024 (@tbl-dros-coma-compare). Ørsted's male values lie inside our 95% credible intervals, while their female $CT_{max_{1hr}}$ and $z$ sit at or just below the lower edge. Heat-coma $z$ is about `r sprintf("%.1f–%.1f", coma_z_rng[1], coma_z_rng[2])` °C in both sexes. Females, however, enter coma at slightly higher temperatures than males (female − male $CT_{max_{1hr}}$ = `r sprintf("%.2f [%.2f, %.2f]", median(coma_lin_d), quantile(coma_lin_d, 0.025), quantile(coma_lin_d, 0.975))` °C in the censored log-time model, `r if (coma_lin_p < 0.001) "pMCMC < 0.001" else sprintf("pMCMC = %.3f", coma_lin_p)`), a difference that the two-stage analysis of @orsted_suzukii_2024 did not detect.
 
 ### Allowing for variation among assay temperatures {#sec-dros-coma-temp}
 
-Some assay temperatures sit off the straight TDT line, for example males at 37 °C. @orsted_suzukii_2024 assayed both sexes at every temperature and exposure, so we let both sexes share each temperature's deviation. We refit the 4PL with `fit_4pl()`, adding a random intercept for assay temperature on $CT_{max}$. A second fit gives each temperature × sex group its own deviation. The shared version gives the heat-coma estimates in manuscript Figure 6, read after a 4-hour exposure as for mortality (@sec-lethal-dros).
+Some assay temperatures sit off the straight TDT line, for example males at 37 °C. @orsted_suzukii_2024 assayed both sexes at every temperature, although for sex-specific durations (fractions of each sex's predicted time to coma), and ran the longest exposures at 37 and 38 °C in males only. An offset that affects a whole assay temperature, such as the bath temperature, would shift both sexes, so we let both sexes share each temperature's deviation. We refit the 4PL with `fit_4pl()`, adding a random intercept for assay temperature on $CT_{max}$. A second fit gives each temperature × sex group its own deviation. The shared version gives the heat-coma estimates in manuscript Figure 6, read after a 4-hour exposure as for mortality (@sec-lethal-dros).
 
 ```{r}
 #| label: dros-coma-temp-fits
@@ -3368,7 +3372,9 @@ coma_loo <- loo::loo_compare(list(
   "Temperature x sex"            = brms::loo(get_brmsfit(coma_tempsex_fit))))
 coma_loo
 coma_cmp <- as.data.frame(coma_loo)
-stopifnot(coma_cmp$model[1] == "Temperature, shared by sexes")   # the text below assumes this ranking
+# the text below assumes this ranking
+stopifnot(identical(coma_cmp$model[1], "Temperature, shared by sexes"),
+          setequal(coma_cmp$model, c("No temperature term", "Temperature, shared by sexes", "Temperature x sex")))
 
 # z and CTmax after a 4-h exposure (absolute 50% threshold), and female - male CTmax
 coma_temp_tls    <- tls(coma_temp_fit,    by = "sex", target_surv = "absolute", t_ref = 240)
@@ -3382,15 +3388,16 @@ coma_tempsex_d <- get_tls_est(coma_tempsex_tls, "draws", "CTmax") |>
   dplyr::mutate(d = F - M) |> dplyr::pull(d)
 coma_temp_d    <- coma_temp_d[is.finite(coma_temp_d)]
 coma_tempsex_d <- coma_tempsex_d[is.finite(coma_tempsex_d)]
+coma_temp_p    <- 2 * min(mean(coma_temp_d > 0), mean(coma_temp_d < 0))
 ```
 
-By LOO, the shared temperature term is `r with(coma_cmp[coma_cmp$model == "No temperature term", ], sprintf("%.1f (SE %.1f)", -elpd_diff, se_diff))` ahead of the 4PL without it, and `r with(coma_cmp[coma_cmp$model == "Temperature x sex", ], sprintf("%.1f (SE %.1f)", -elpd_diff, se_diff))` ahead of separate deviations for each sex, so those two versions fit about equally well. With the shared term, $CT_{max}$ after 4 h is `r with(coma_temp_sum[coma_temp_sum$sex == "F", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for females and `r with(coma_temp_sum[coma_temp_sum$sex == "M", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for males (female − male `r sprintf("%.2f [%.2f, %.2f]", median(coma_temp_d), quantile(coma_temp_d, 0.025), quantile(coma_temp_d, 0.975))` °C, pMCMC = `r sprintf("%.3f", 2 * min(mean(coma_temp_d > 0), mean(coma_temp_d < 0)))`). The temperature term widens each sex's interval but not the contrast, because a temperature that sits off the line shifts both sexes together. If each sex may deviate on its own, the contrast is similar in size but no longer resolved (female − male `r sprintf("%.2f [%.2f, %.2f]", median(coma_tempsex_d), quantile(coma_tempsex_d, 0.025), quantile(coma_tempsex_d, 0.975))` °C, pMCMC = `r sprintf("%.2f", 2 * min(mean(coma_tempsex_d > 0), mean(coma_tempsex_d < 0)))`).
+By LOO, the shared temperature term is `r with(coma_cmp[coma_cmp$model == "No temperature term", ], sprintf("%.1f (SE %.1f)", -elpd_diff, se_diff))` ahead of the 4PL without it, and `r with(coma_cmp[coma_cmp$model == "Temperature x sex", ], sprintf("%.1f (SE %.1f)", -elpd_diff, se_diff))` ahead of separate deviations for each sex, so those two versions fit about equally well. With the shared term, $CT_{max}$ after 4 h is `r with(coma_temp_sum[coma_temp_sum$sex == "F", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for females and `r with(coma_temp_sum[coma_temp_sum$sex == "M", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for males (female − male `r sprintf("%.2f [%.2f, %.2f]", median(coma_temp_d), quantile(coma_temp_d, 0.025), quantile(coma_temp_d, 0.975))` °C, `r if (coma_temp_p < 0.001) "pMCMC < 0.001" else sprintf("pMCMC = %.3f", coma_temp_p)`). The temperature term widens each sex's interval but not the contrast, because a temperature that sits off the line shifts both sexes together. If each sex may deviate on its own, the contrast is similar in size but no longer resolved (female − male `r sprintf("%.2f [%.2f, %.2f]", median(coma_tempsex_d), quantile(coma_tempsex_d, 0.025), quantile(coma_tempsex_d, 0.975))` °C, pMCMC = `r sprintf("%.2f", 2 * min(mean(coma_tempsex_d > 0), mean(coma_tempsex_d < 0)))`).
 
 ## Productivity: reproductive output {#sec-dros-productivity}
 
 Reproductive output has two parts: *whether* a fly reproduced at all, and *how many* offspring it produced if it did. Such data are zero-inflated — many flies produce nothing — which a single curve handles poorly. A **hurdle model** deals with this by splitting the response into two pieces that are fit together: a yes/no part for whether a fly clears the "hurdle" of producing any offspring, and a count part for how many it produces once it has. Keeping the two pieces separate lets thermal stress act differently on *whether* a fly reproduces and on *how much* it produces.
 
-The yes/no part connects directly to the rest of this paper: it is **just a simplified 4PL**. It describes the probability of reproducing as exposure lengthens with the same S-shaped logistic curve as the survival 4PL, only with the upper and lower asymptotes fixed at 1 and 0 (the 4PL with $\text{up}=1$ and $\text{low}=0$). So "whether a fly reproduces" is itself a thermal-tolerance curve, and we read its $z$ and $CT_{max_{1hr}}$ from it exactly as we do for survival. The full 4PL simply restores the freedom for those asymptotes to differ from 0 and 1 — useful when, say, a fixed fraction of flies never reproduces no matter how brief the exposure. Given the asymptotes in the flies don't differ dramatically from 0/1 here, we will make this simplifying assumption. These same assumptions could be made in the 4PL models above.  The count part (clutch size) is the genuinely new piece the hurdle adds.
+The yes/no part connects directly to the rest of this paper: it is **just a simplified 4PL**. It describes the probability of reproducing as exposure lengthens with the same S-shaped logistic curve as the survival 4PL, only with the upper and lower asymptotes fixed at 1 and 0 (the 4PL with $\text{up}=1$ and $\text{low}=0$). So "whether a fly reproduces" is itself a thermal-tolerance curve, and we read its $z$ and $CT_{max_{1hr}}$ from it exactly as we do for survival. The full 4PL simply restores the freedom for those asymptotes to differ from 0 and 1 — useful when, say, a fixed fraction of flies never reproduces no matter how brief the exposure. This is a simplification here, because even after the shortest exposures only `r round(100 * mean(dsuzukii$prod[dsuzukii$lvl == min(dsuzukii$lvl) & dsuzukii$sex == "F"] > 0))`% of females and `r round(100 * mean(dsuzukii$prod[dsuzukii$lvl == min(dsuzukii$lvl) & dsuzukii$sex == "M"] > 0))`% of males produced offspring, so @sec-dros-fertility also fits a 4PL with free asymptotes. These same assumptions could be made in the 4PL models above.  The count part (clutch size) is the genuinely new piece the hurdle adds.
 
 As with the 4PL endpoints, productivity changes with exposure duration and temperature. Instead of fitting separate dose-response curves at each temperature and then regressing thresholds, we derive the thermal-death-time quantities directly from the single joint model using the duration and temperature coefficients for each hurdle component.
 
@@ -3697,12 +3704,12 @@ fmt_q <- function(x) format_interval(stats::median(x, na.rm = TRUE),
 prod_inc_tbl <- tibble::tribble(
   ~Source,                       ~`z (F)`,            ~`z (M)`,            ~`CTmax 1h (F)`,        ~`CTmax 1h (M)`,
   "Incidence (this study)",      fmt_q(prod_hurd_F$z), fmt_q(prod_hurd_M$z), fmt_q(prod_hurd_F$ctmax),  fmt_q(prod_hurd_M$ctmax),
-  "Ørsted et al. (2024), drc",   "3.27",              "3.46",              "36.27",               "36.66"
+  "Ørsted et al. (2024), drc",   "3.27",              "3.46",              "36.27",               "36.65"
 )
 tinytable::tt(prod_inc_tbl, escape = TRUE)
 ```
 
-The *whether-it-reproduces* part behaves like a normal tolerance endpoint, because it has a natural halfway mark — the point where half the flies still reproduce. Its $z$ is about `r round(stats::median(prod_hurd_F$z),1)` °C for females and `r round(stats::median(prod_hurd_M$z),1)` °C for males, with $CT_{max_{1hr}}$ from `r round(stats::median(prod_hurd_F$ctmax),1)` to `r round(stats::median(prod_hurd_M$ctmax),1)` °C — close to the fecundity values reported by @orsted_suzukii_2024 (@tbl-dros-prod-incidence). The male and female intervals overlap, so we cannot confirm the male-greater-than-female $z$ difference they report. (Exposure time and temperature interact, so the tolerance line bends; we therefore report the average $z$ across the tested temperatures.) For the main text we instead estimate a fertility limit with the 4PL (@sec-dros-fertility).
+The *whether-it-reproduces* part behaves like a normal tolerance endpoint, because it has a natural halfway mark — the point where half the flies still reproduce. Its $z$ is about `r round(stats::median(prod_hurd_F$z),1)` °C for females and `r round(stats::median(prod_hurd_M$z),1)` °C for males, with $CT_{max_{1hr}}$ from `r round(stats::median(prod_hurd_F$ctmax),1)` to `r round(stats::median(prod_hurd_M$ctmax),1)` °C — close to the fecundity values reported by @orsted_suzukii_2024 (@tbl-dros-prod-incidence). The male and female intervals overlap, so we cannot confirm the male-greater-than-female $z$ difference they report. (Exposure time and temperature interact, so the tolerance line bends; we therefore report the average $z$ across the tested temperatures.) Because this part fixes its asymptotes at 0 and 1, these limits should be read with caution, and for the main text we instead estimate a fertility limit with the 4PL (@sec-dros-fertility).
 
 The *how-many-offspring* part answers a different question. Clutch size simply rises or falls — it has no 0–100% scale and so no natural halfway mark — so a conventional $z$ does not apply. What we *can* read off is how steeply clutch size drops as exposure lengthens, $b(T) = \mathrm{d}\log_{10}(\text{clutch})/\mathrm{d}\log_{10}(\text{exposure})$, and this changes a lot with temperature (@tbl-dros-prod-magnitude):
 
@@ -3729,7 +3736,7 @@ Splitting reproduction into these two parts shows something a single fecundity c
 
 ### Fertility limit among survivors {#sec-dros-fertility}
 
-The yes/no part of the hurdle model fixes its asymptotes at 0 and 1 and treats each fly as independent counting flies that died as not reproducing. Even after the shortest exposures some flies produced no offspring, and flies assayed together share conditions. For Figure 6 in the manuscript we therefore estimate a thermal fertility limit with the 4PL. Following @bretman2024, a fly is fertile if it produced at least one offspring, and the limit (TFL~50~) is the temperature at which half of the surviving flies are sterile. We use the flies alive two days after exposure for the anlaysis, when mortality was scored [@orsted_suzukii_2024]. We then included a temperature × exposure × sex cell. As for heat coma, we compare models without a temperature term, with a random intercept for assay temperature on the limit shared by the sexes, and with one for each temperature × sex group.
+The yes/no part of the hurdle model fixes its asymptotes at 0 and 1, treats each fly as independent and includes the flies that died, almost all of which left no offspring. Even after the shortest exposures some flies produced no offspring, and flies assayed together share conditions. For Figure 6 in the manuscript we therefore estimate a thermal fertility limit with the 4PL. Following @bretman2024, a fly is fertile if it produced at least one offspring, and the limit (TFL~50~) is the temperature at which half of the surviving flies are sterile. For the analysis we use the flies alive two days after exposure, when mortality was scored [@orsted_suzukii_2024], with counts summed within each temperature × exposure × sex cell. As for heat coma, we compare models without a temperature term, with a random intercept for assay temperature on the limit shared by the sexes, and with one for each temperature × sex group.
 
 ```{r}
 #| label: dros-fert-data
@@ -3796,7 +3803,9 @@ fert_loo <- loo::loo_compare(list(
   "Temperature x sex"            = brms::loo(get_brmsfit(fert_tempsex_fit))))
 fert_loo
 fert_cmp <- as.data.frame(fert_loo)
-stopifnot(fert_cmp$model[1] == "Temperature x sex")   # the text below assumes this ranking
+# the text below assumes this ranking
+stopifnot(identical(fert_cmp$model[1], "Temperature x sex"),
+          setequal(fert_cmp$model, c("No temperature term", "Temperature, shared by sexes", "Temperature x sex")))
 
 # TFL50 and z after a 4-h exposure (absolute 50% threshold), and female - male TFL50
 fert_tempsex_tls <- tls(fert_tempsex_fit, by = "sex", target_surv = "absolute", t_ref = 240)
@@ -3816,7 +3825,7 @@ fert_in   <- mean(fert_obs >= apply(fert_yrep, 2, stats::quantile, 0.025) &
 fert_dead_rep <- table(factor(dsuzukii$sex[dsuzukii$dead == 1 & dsuzukii$prod > 0], levels = c("F", "M")))
 ```
 
-The temperature × sex term is clearly better supported than a shared term (`r with(fert_cmp[fert_cmp$model == "Temperature, shared by sexes", ], sprintf("%.1f, SE %.1f", -elpd_diff, se_diff))`) or no term (`r with(fert_cmp[fert_cmp$model == "No temperature term", ], sprintf("%.1f, SE %.1f", -elpd_diff, se_diff))`). It mainly absorbs the females at 36 °C, whose survival and fertility were low even after the shortest exposures. Of the `r nrow(fert_panel)` observed counts (`r sum(fert_panel$n_total)` surviving flies), `r round(100 * fert_in)`% fall inside their 95% posterior predictive intervals. With this term, TFL~50~ after 4 h is `r with(fert_tempsex_sum[fert_tempsex_sum$sex == "F", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for females and `r with(fert_tempsex_sum[fert_tempsex_sum$sex == "M", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for males (female − male `r sprintf("%.2f [%.2f, %.2f]", median(fert_tempsex_d), quantile(fert_tempsex_d, 0.025), quantile(fert_tempsex_d, 0.975))` °C, pMCMC = `r sprintf("%.2f", 2 * min(mean(fert_tempsex_d > 0), mean(fert_tempsex_d < 0)))`). These are close to the 4-hour lethal limits of the joint mortality model (`r with(tls_sex_summary_abs[tls_sex_summary_abs$quantity == "CTmax" & tls_sex_summary_abs$sex == "F", ], sprintf("%.1f", median))` °C for females and `r with(tls_sex_summary_abs[tls_sex_summary_abs$quantity == "CTmax" & tls_sex_summary_abs$sex == "M", ], sprintf("%.1f", median))` °C for males; @sec-lethal-dros), so flies that survive remain largely fertile almost up to lethal temperatures. Because the limit is measured on survivors, it leaves out the `r sum(fert_dead_rep)` flies that produced offspring but were dead two days after exposure (`r fert_dead_rep[["M"]]` males and `r fert_dead_rep[["F"]]` females).
+The temperature × sex term is better supported than a shared term (`r with(fert_cmp[fert_cmp$model == "Temperature, shared by sexes", ], sprintf("%.1f, SE %.1f", -elpd_diff, se_diff))`) or no term (`r with(fert_cmp[fert_cmp$model == "No temperature term", ], sprintf("%.1f, SE %.1f", -elpd_diff, se_diff))`), although with fewer than 100 observations these SEs may be too small. It mainly absorbs the females at 36 °C, whose survival and fertility were low even after the shortest exposures. Of the `r nrow(fert_panel)` observed counts (`r sum(fert_panel$n_total)` surviving flies), `r round(100 * fert_in)`% fall inside their 95% posterior predictive intervals, a weak check because the cells hold few flies. With this term, TFL~50~ after 4 h is `r with(fert_tempsex_sum[fert_tempsex_sum$sex == "F", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for females and `r with(fert_tempsex_sum[fert_tempsex_sum$sex == "M", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for males (female − male `r sprintf("%.2f [%.2f, %.2f]", median(fert_tempsex_d), quantile(fert_tempsex_d, 0.025), quantile(fert_tempsex_d, 0.975))` °C, pMCMC = `r sprintf("%.2f", 2 * min(mean(fert_tempsex_d > 0), mean(fert_tempsex_d < 0)))`). These are close to the 4-hour lethal limits of the joint mortality model (`r with(tls_sex_summary_abs[tls_sex_summary_abs$quantity == "CTmax" & tls_sex_summary_abs$sex == "F", ], sprintf("%.1f", median))` °C for females and `r with(tls_sex_summary_abs[tls_sex_summary_abs$quantity == "CTmax" & tls_sex_summary_abs$sex == "M", ], sprintf("%.1f", median))` °C for males; @sec-lethal-dros), so heat sterilises surviving flies at about the same temperatures at which it kills them. Because the limit is measured on survivors, it leaves out the `r sum(fert_dead_rep)` flies that produced offspring but were dead two days after exposure (`r fert_dead_rep[["M"]]` males and `r fert_dead_rep[["F"]]` females).
 
 # **Comparisons with other dose-response models** {#sec-curve-comparison}
 
@@ -4424,7 +4433,7 @@ This section provides more detail on the simulation results from the
 various scenarios we explored to understand bias and coverage of *z*
 and $CT_{max}$. The main manuscript figures summarize bias estimates retrieved from the 4PL and two-stage approaches using two data-generating scenarios (shifting upper asymptote `up`, varying slope `k`).
 
-Here we document the remaining scenarios we explored: the strict-equivalence baseline, likelihood misspecification alone, symmetric asymptote compression, and changes in experimental design structure and replication. We also present how shifts in upper asymptote and slope affects coverage, which was only partially reported in the main text.
+Here we document the remaining scenarios we explored: the strict-equivalence baseline, likelihood misspecification alone, symmetric asymptote compression, and changes in experimental design structure and replication. We also present how shifts in upper asymptote and slope affects coverage, which was only partially reported in the main text, and the bias when the upper asymptote departs from 1, which was a main-text figure at submission (@sec-sim-upbias).
 
 
 For each scenario we also tabulate the root-mean-square error (RMSE, in °C) of
@@ -4756,10 +4765,10 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 
 # Plot coverage for simulation scenario 6.
 .d <- .load_screened("scen6") |>
-  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000)
+  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 10)
 .plot_sweep_cov(.d, "sweep_x",
                 expression(beta[up]~"(percentage points / °C, shift of "*plain(up)*" with T)"),
-                x_breaks = c(-0.019, -0.015, -0.010, -0.005))
+                x_breaks = c(-1.9, -1.5, -1.0, -0.5))
 ```
 
 ```{r}
@@ -4769,9 +4778,9 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 #| message: false
 # Format the RMSE table for simulation scenario 6.
 .load_screened("scen6") |>
-  dplyr::mutate(bu   = -as.numeric(sub("scen6_ub_m", "", scenario)) / 1000,
-                Cell = factor(sprintf("%.3f", bu),
-                              levels = sprintf("%.3f", sort(unique(bu))))) |>
+  dplyr::mutate(bu   = -as.numeric(sub("scen6_ub_m", "", scenario)) / 10,
+                Cell = factor(sprintf("%.1f", bu),
+                              levels = sprintf("%.1f", sort(unique(bu))))) |>
   .rmse_table(cell_name = "beta_up (pp/°C)")
 ```
 
@@ -5104,7 +5113,7 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
 
 ## *Bias when the upper asymptote departs from 1* {#sec-sim-upbias}
 
-Two-stage bias grows as a constant upper asymptote falls further below 1 (panel a). When the upper asymptote declines with temperature (panel b), two-stage bias in $z$ grows with the steepness of the decline, whereas bias in $CT_{max_{1hr}}$ shrinks. The joint 4PL is much less biased in both scenarios. Coverage for these scenarios is shown in @fig-sim-supp-scen7cov (panel a) and @fig-sim-supp-scen6cov (panel b).
+Two-stage bias grows as a constant upper asymptote falls further below 1 (panel a). When the upper asymptote declines with temperature (panel b), two-stage estimates of $z$ shift from slight over- to increasing under-estimation as the decline steepens, whereas bias in $CT_{max_{1hr}}$ shrinks. The joint 4PL is much less biased in both scenarios. Coverage for these scenarios is shown in @fig-sim-supp-scen7cov (panel a) and @fig-sim-supp-scen6cov (panel b).
 
 ```{r}
 #| label: fig-sim-supp-upbias
@@ -5241,6 +5250,8 @@ local({
     theme(legend.position = "bottom")
 })
 ```
+
+<!-- These section IDs keep their submission-era names (sec-ms-fig5 holds manuscript Figure 4, sec-ms-fig6 holds Figure 5) so that existing links stay valid. -->
 
 # **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig5}
 
@@ -5802,11 +5813,11 @@ saveRDS(case_contrasts, here::here("output", "data", "case_study_contrasts.rds")
 
 # **Manuscript Figure 6: Vinegar-fly sublethal limits** {#sec-ms-fig6-fly}
 
-This figure compiles the posterior distributions of $z$ and the 4-hour thermal limit for heat coma (@sec-dros-coma-temp) and fertility among survivors (@sec-dros-fertility), drawn like Figure 4. Both limits use the absolute 50% threshold after a 4-hour exposure, as @orsted_suzukii_2024 did, so they can be compared directly with the mortality limits in Figure 4d.
+This figure compiles the posterior distributions of $z$ and the 4-hour thermal limit for heat coma (@sec-dros-coma-temp) and fertility among survivors (@sec-dros-fertility), drawn like manuscript Figure 4. Both limits are read after a 4-hour exposure, the reference @orsted_suzukii_2024 used, and at the absolute 50% threshold, as for the mortality limits in manuscript Figure 4d, so the three can be compared directly.
 
 ```{r ms-fig6-fly-sublethal}
 #| label: fig-ms-fig6-fly-sublethal
-#| fig-cap: "Manuscript Figure 6. Posterior distributions of thermal sensitivity $z$ (a) and the thermal limit after a 4-hour exposure (b) for two sublethal endpoints in the vinegar fly (*Drosophila suzukii*), by sex. Heat coma ($CT_{max}$) is the temperature at which half of the flies are in coma, and fertility (TFL~50~) the temperature at which half of the surviving flies produce no offspring. Each 4PL includes a random intercept for assay temperature on the limit, shared by the sexes for heat coma and separate for each sex for fertility. Filled ridges are posterior densities, coloured by sex, and the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. Brackets give the pMCMC for the female–male difference within each model."
+#| fig-cap: "Manuscript Figure 6. Posterior distributions of thermal sensitivity $z$ (a) and the thermal limit after a 4-hour exposure (b) for two sublethal endpoints in the vinegar fly (*Drosophila suzukii*), by sex. Heat coma ($CT_{max}$) is the temperature at which half of the flies are in coma, and fertility (TFL~50~) the temperature at which half of the surviving flies produce no offspring. Each 4PL includes a random intercept for assay temperature on the limit, shared by the sexes for heat coma and separate for each sex for fertility. Filled ridges are posterior densities, coloured by sex, and the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. Brackets give the pMCMC for the difference between the sexes within each model."
 #| fig-align: center
 #| out-width: "70%"
 #| cache: false
