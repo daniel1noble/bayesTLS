@@ -89,6 +89,12 @@ sim_design_grid <- function(design = "full") {
 #'   T = T_bar). `NULL` keeps the preset.
 #' @param u_beta1,ell_beta1,k_beta1 Optional overrides for the temperature
 #'   slopes of u, ell, k. `NULL` keeps the preset.
+#' @param batch_sd SD of a random shift of each day's midpoints (log10 min), drawn anew for
+#'   every dataset. 0 (the default) gives the paper's main scenarios.
+#' @param schedule Which cups a day holds (see `fig_batch_sequence.R`): `"A"` one temperature
+#'   per day, `"B"` every temperature every day, with replicate cup r on day r, `"C"` each
+#'   temperature on two days (one temperature a day; its first ceiling(n_reps / 2) replicate cups
+#'   on one day and the rest on another).
 #' @param design Design label; controls the grid the OLS truth is evaluated on.
 #' @param family `"beta_binomial"` (default, overdispersed) or `"binomial"`.
 #'   Travels with the truth so a forgotten override can't silently switch
@@ -100,6 +106,8 @@ sim_truth <- function(dgp       = "baseline",
                       u_beta1   = NULL,
                       ell_beta1 = NULL,
                       k_beta1   = NULL,
+                      batch_sd  = 0,
+                      schedule  = c("A", "B", "C"),
                       design    = "full",
                       family    = c("beta_binomial", "binomial")) {
   family <- match.arg(family)
@@ -121,6 +129,11 @@ sim_truth <- function(dgp       = "baseline",
   if (!is.null(u_beta1))   out$u_beta1   <- u_beta1
   if (!is.null(ell_beta1)) out$ell_beta1 <- ell_beta1
   if (!is.null(k_beta1))   out$k_beta1   <- k_beta1
+  # Day (batch) effects for the non-independence simulation (2026-11-28; off in the paper's
+  # main scenarios, whose truth lists stay unchanged).
+  schedule <- match.arg(schedule)
+  if (batch_sd > 0)    out$batch_sd <- batch_sd
+  if (schedule != "A") out$schedule <- schedule
 
   out$dgp    <- dgp
   out$design <- design
@@ -188,7 +201,8 @@ compute_ols_truth <- function(p, design = "full") {
 #' @param seed Integer seed.
 #' @param truth Truth list from [sim_truth()].
 #' @param n_ind_range Length-2 range for N per cup. Default `c(10, 20)`.
-#' @return Tibble: `T`, `t`, `log10_t`, `T_c`, `rep`, `n`, `y`, `p_true`.
+#' @return Tibble: `T`, `t`, `log10_t`, `T_c`, `rep`, `day`, `shift` (the cup's day shift, log10 min),
+#'   `n`, `y`, `p_true`.
 sim_dataset <- function(n_reps, seed, truth, n_ind_range = c(10, 20)) {
   if (missing(truth))
     stop("sim_dataset(): `truth` is required; pass sim_truth(...).", call. = FALSE)
@@ -201,6 +215,14 @@ sim_dataset <- function(n_reps, seed, truth, n_ind_range = c(10, 20)) {
   ell_T <- truth$ell + truth$ell_beta1 * design$T_c
   k_T   <- truth$k   + truth$k_beta1   * design$T_c
   mid_T <- truth$m_beta0 + truth$m_beta1 * design$T_c
+  # Day of each cup. Each day shifts the midpoint of every cup it holds.
+  Ts <- sort(unique(design$T))
+  design$day <- switch(truth$schedule %||% "A",
+    A = match(design$T, Ts),                                     # one temperature per day
+    B = design$rep,                                              # every temperature every day
+    C = match(design$T, Ts) + length(Ts) * (design$rep > ceiling(n_reps / 2)))  # each temperature on two days
+  design$shift <- if ((truth$batch_sd %||% 0) > 0) stats::rnorm(max(design$day), 0, truth$batch_sd)[design$day] else 0
+  mid_T <- mid_T + design$shift
   p_true <- ell_T + (u_T - ell_T) / (1 + exp(k_T * (design$log10_t - mid_T)))
 
   n   <- sample(seq(n_ind_range[1], n_ind_range[2]), nrow(design), replace = TRUE)
