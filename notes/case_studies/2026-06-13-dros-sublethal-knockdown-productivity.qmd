@@ -87,6 +87,12 @@ knitr::kable(subset(tls4, quantity %in% c("z","CTmax")), digits = 2,
 36.3$–36.5 for both sexes, matching Ørsted's coma values (2.23 / 2.33) within the
 credible intervals. Sexes are statistically indistinguishable.
 
+**Correction (2026-11-28).** Both statements are superseded. Ørsted's female coma
+$z$ (2.23) and converted female $CT_{max_{1hr}}$ sit at or just below the lower edge of
+our intervals. The paired female − male $CT_{max}$ contrast is about +0.2 °C
+(censored model p < .001), a difference that overlapping per-sex intervals
+hid. See Supplement 10.1 and `2026-11-28-fly-sublethal-main-figure.qmd`.
+
 ## Productivity (reproductive output)
 
 **Family.** `prod` is continuous with a large zero-mass (≈55%). brms has no
