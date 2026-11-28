@@ -85,6 +85,10 @@ check-cran: document
 #     species illustrations: danio life stages, shrimp, euca, dros, etc.)
 #   - `here::here("inst", "extdata", ...)` resolves to the project's `inst/`
 #     (Figure 5 reads the Rezende 2020 Chilean hourly temperature CSV)
+#   - `here::here("scripts", ...)` resolves to the project's `scripts/`
+#     (the simulation-design figures read design_spec() from
+#     scripts/simulations/sim_functions.R; the downloads chunk runs
+#     scripts/fetch_artifacts.R)
 #
 # R/ symlinks are intentionally NOT created here: the analytical functions
 # now live in the bayesTLS R package, which the supplement loads via
@@ -106,11 +110,13 @@ sync-sources:
 	@ln -sfn $(abspath data)   $(BUILDROOT)/data
 	@ln -sfn $(abspath pics)   $(BUILDROOT)/pics
 	@ln -sfn $(abspath inst)   $(BUILDROOT)/inst
+	@ln -sfn $(abspath scripts) $(BUILDROOT)/scripts
 	@ln -sfn $(abspath bib)    $(BUILD_MS)/bib
 	@ln -sfn $(abspath output) $(BUILD_MS)/output
 	@ln -sfn $(abspath data)   $(BUILD_MS)/data
 	@ln -sfn $(abspath pics)   $(BUILD_MS)/pics
 	@ln -sfn $(abspath inst)   $(BUILD_MS)/inst
+	@ln -sfn $(abspath scripts) $(BUILD_MS)/scripts
 
 # Render <source.qmd> to <format> with output filename <basename.ext>.
 # All work happens in $(BUILD_MS); only the final artefact is copied to
