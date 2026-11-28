@@ -46,7 +46,10 @@ MODEL_FITS <- c(
   paste0(rep(c("zf_oxygen_normhyper", "aphid_species"), each = 2), c("_prior_weak", "_prior_strong")),
   # 2PL refits with both asymptotes fixed at 0 and 1 (supplement 2PL comparison)
   paste0(c("zf_oxygen_normhyper", "aphid_species", "fit_dsuzukii_mortality_4pl_F",
-           "fit_dsuzukii_mortality_4pl_M"), "_fixed01")
+           "fit_dsuzukii_mortality_4pl_M"), "_fixed01"),
+  # sublethal fly 4PLs behind manuscript Figure 6 (supplement Section 10)
+  "fit_dsuzukii_coma_4pl_temp", "fit_dsuzukii_coma_4pl_tempsex",
+  "fit_dsuzukii_fertility_4pl", "fit_dsuzukii_fertility_4pl_temp", "fit_dsuzukii_fertility_4pl_tempsex"
 )
 TIERS <- list(
   results = list(zip = "results.zip",  marker = "sim_twostage/per_sim_*.rds"),
