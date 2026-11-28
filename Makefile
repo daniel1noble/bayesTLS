@@ -81,10 +81,10 @@ check-cran: document
 #   - `here::here("output", "models")` from chunks evaluated in BUILD_MS
 #     resolves to the project's `output/models/` (brms-cached fits)
 #   - `here::here("data", ...)` resolves to the project's `data/` (shrimp xlsx)
-#   - `here::here("pics", ...)` resolves to the project's `pics/` (Figure 4
-#     species illustrations: danio life stages, shrimp, euca, dros, etc.)
+#   - `here::here("pics", ...)` resolves to the project's `pics/` (Figures 4 and
+#     6 species illustrations: aphids, snow gum, danio larvae, dros)
 #   - `here::here("inst", "extdata", ...)` resolves to the project's `inst/`
-#     (Figure 5 reads the Rezende 2020 Chilean hourly temperature CSV)
+#     (Figure 5 reads the Wuhan aphid trace and the Ørsted 2024 Rennes microclimate files)
 #   - `here::here("scripts", ...)` resolves to the project's `scripts/`
 #     (the simulation-design figures read design_spec() from
 #     scripts/simulations/sim_functions.R; the downloads chunk runs
