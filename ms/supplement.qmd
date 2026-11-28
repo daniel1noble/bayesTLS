@@ -1755,7 +1755,7 @@ diag_txt <- function(d) {
           if (n_div == 1) "is" else "are", n_div, if (n_div == 1) "" else "s")
 }
 ```
-We also compare each case-study model with a simpler two-parameter log-logistic (2PL), in which both asymptotes are fixed at 0 and 1 (@sec-2pl-compare).
+We also compare the zebrafish, cereal aphid and vinegar-fly mortality models with a simpler two-parameter log-logistic (2PL), in which both asymptotes are fixed at 0 and 1 (@sec-2pl-compare).
 
 # **Re-parameterisation of alternative dose-response models into TLS models** {#sec-alt-kernels}
 
@@ -1771,7 +1771,7 @@ Columns 5 and 6 give relative and absolute $\log_{10}t_{50}$, respectively. The 
 
 **Hazards and survival models (column 7).** With $\text{low} = 0$ and $\text{up} = 1$, the four curves describe log-logistic, log-normal, Weibull and Fréchet (inverse-Weibull) distributions of individual death times. The log-logistic case matches the survival model of @bullard2026, whose shape parameter is $k/\ln 10$ in our notation. When $k$ stays constant across temperatures, all four are accelerated failure time (AFT) models: increasing temperature by $z$ °C divides the time to any fixed survival probability by 10. Here, temperature rescales time, while $k$ controls the spread of death times.
 
-Column 7 gives the hazard, the instantaneous death rate among individuals still alive at time $t$ (@fig-alt-kernels b); the cumulative hazard is $-\ln p$. With constant $k$, only the Weibull type 1 model also has proportional hazards. Changing temperature multiplies the hazard by a factor that stays constant over time. @bullard2026 rejected this assumption for *Drosophila* knockdown times. We also show that temperature dependence in $k$ and the asymptotes can affect absolute estimates of $CT_{max}$ and $z$ (@sec-joint-extend).
+Column 7 gives the hazard, the instantaneous death rate among individuals still alive at time $t$ (@fig-alt-kernels b); the cumulative hazard is $-\ln p$. With constant $k$, only the Weibull type 1 model also has proportional hazards. In that model, changing temperature multiplies the hazard by a factor that stays constant over time. @bullard2026 rejected this assumption for *Drosophila* knockdown times. We also show that temperature dependence in $k$ and the asymptotes can affect absolute estimates of $CT_{max}$ and $z$ (@sec-joint-extend).
 
 `bayesTLS` fits all four curves: `fit_4pl()` fits the log-logistic, `fit_lognormal()` the log-normal and `fit_weibull()` either Weibull curve (`type = 1` or `type = 2`). `freqTLS` fits only the log-logistic. The same $k$ does not imply the same steepness across families: the midpoint slope against $\log_{10}t$ is $-k(\text{up} - \text{low})$ multiplied by approximately 0.25, 0.40, 0.35 and 0.35, respectively. Priors on $k$ therefore need to reflect the chosen curve.
 
@@ -2743,7 +2743,7 @@ plot(wf_dros_mort_M)
 plot(wf_dros_mort_F)
 ```
 
-## Extracting *z* and $CT_{max_{1hr}}$ for males and females
+## Extracting *z* and $CT_{max_{4hr}}$ for males and females
 
 We can extract the TDT parameters now as we have done in other case studies:
 
@@ -3016,9 +3016,9 @@ diff_sex_z_joint  <- z_joint$F - z_joint$M
 pmcmc_sex_z_joint <- 2 * min(mean(diff_sex_z_joint > 0), mean(diff_sex_z_joint < 0))
 ```
 
-The joint model estimates the sex difference in $z$ more precisely than the separate fits (female − male: `r round(median(diff_sex_z_joint), 2)` °C, 95% CI: `r round(quantile(diff_sex_z_joint, 0.025), 2)` to `r round(quantile(diff_sex_z_joint, 0.975), 2)` °C; pMCMC = `r round(pmcmc_sex_z_joint, 2)`, against pMCMC = `r round(pmcmc_sex_z, 2)` from the separate fits), because both sexes share the asymptotes and steepness, which are therefore estimated from all flies. The manuscript reports this joint-model contrast, and both analyses agree that the sexes do not differ detectably.
+The joint model estimates the sex difference in $z$ more precisely than the separate fits (female − male: `r sprintf("%.2f", median(diff_sex_z_joint))` °C, 95% CI: `r sprintf("%.2f", quantile(diff_sex_z_joint, 0.025))` to `r sprintf("%.2f", quantile(diff_sex_z_joint, 0.975))` °C, against `r sprintf("%.2f", quantile(diff_sex_z, 0.025))` to `r sprintf("%.2f", quantile(diff_sex_z, 0.975))` °C from the separate fits; pMCMC = `r sprintf("%.2f", pmcmc_sex_z_joint)` and `r sprintf("%.2f", pmcmc_sex_z)`), because both sexes share the asymptotes, steepness and overdispersion, which are therefore estimated from all flies. The manuscript reports this joint-model contrast, and both analyses agree that the sexes do not differ detectably.
 
-## Fitting a model to compare $z$ and $Ct_{max_{1hr}}$ between sexes directly - direct method
+## Fitting a model to compare $z$ and $CT_{max_{4hr}}$ between sexes directly - direct method
 
 Now, lets refit this model in the **direct** form and estimate $z$ and $CT_{max_{4hr}}$ for each of the sexes.
 
@@ -3947,7 +3947,7 @@ There is also little difference among the dose-response models for vinegar fly m
 
 ## Comparing 4PL fits to simplified models (2PL) {#sec-2pl-compare}
 
-Our log-logistic model has more parameters than log-logistic models that, for example, fix the upper and lower asymptotes (the two-parameter log-logistic, 2PL). We prefer the 4PL because it should estimate absolute thresholds more accurately, but at times its extra parameters may not be supported. `bayesTLS` makes it easy to simplify the model, because `fix_asymptotes = TRUE` fixes both asymptotes at 0 and 1. We therefore refitted each case-study model as a 2PL, keeping its data, other formulas and sampler settings, and compared the 2PL with the 4PL by LOO and WAIC.
+Our log-logistic model has more parameters than log-logistic models that, for example, fix the upper and lower asymptotes (the two-parameter log-logistic, 2PL). We prefer the 4PL because it should estimate absolute thresholds more accurately, but at times its extra parameters may not be supported. `bayesTLS` makes it easy to simplify the model, because `fix_asymptotes = TRUE` fixes both asymptotes at 0 and 1. We therefore refitted the zebrafish, cereal aphid and vinegar-fly mortality models as 2PLs, keeping their data, other formulas and sampler settings, and compared each 2PL with its 4PL by LOO and WAIC.
 
 ```{r}
 #| label: asym-fits
@@ -3981,7 +3981,7 @@ wf_dros_M_2pl <- fit_4pl(std_mort_M, fix_asymptotes = TRUE,
 
 ```{r}
 #| label: tbl-asym-compare
-#| tbl-cap: "Case-study models with estimated asymptotes (4PL) and with both asymptotes fixed at 0 and 1 (2PL). Difference in ELPD from the better-supported model, by LOO and WAIC (0 = better). Pareto k > 0.7 counts observations for which LOO is unreliable."
+#| tbl-cap: "Case-study models with estimated asymptotes (4PL) and with both asymptotes fixed at 0 and 1 (2PL). Difference in ELPD from the better-supported model, by LOO and WAIC (0 = better). Pareto k > 0.7 counts observations for which LOO may be unreliable (see text)."
 #| cache: false
 # Model comparison table, LOO and WAIC, for every case study
 asym_fits <- list(
@@ -4015,7 +4015,14 @@ asym_gap <- sapply(asym_cmp, function(lc) {
   r <- lc[lc$model == "2PL", ]
   sprintf("%.1f (SE %.1f)", -r$elpd_diff, r$se_diff)
 })
-asym_k  <- sum(asym_loo[["Zebrafish"]][["2PL"]]$diagnostics$pareto_k > 0.7)
+# Zebrafish 2PL observations with Pareto k > 0.7, and how many are controls
+# (coolest temperature) in which every larva survived
+zf_2pl_dat  <- get_brmsfit(wf_zf_2pl)$data
+zf_hk       <- asym_loo[["Zebrafish"]][["2PL"]]$diagnostics$pareto_k > 0.7
+asym_k      <- sum(zf_hk)
+asym_k_ctrl <- sum(zf_hk & zf_2pl_dat$temp_c == min(zf_2pl_dat$temp_c) &
+                     zf_2pl_dat$n_surv == zf_2pl_dat$n_total)
+zf_temps    <- sort(unique(zf_raw$temp))
 zf_pars <- tdt_parameter_table(wf_zf, by = "oxygen")
 zf_low  <- zf_pars$median[zf_pars$oxygen == "normoxia" & grepl("^low", zf_pars$parameter)]
 leaf_up <- tdt_parameter_table(wf_leaf, by = "recovery")
@@ -4024,7 +4031,7 @@ leaf_up <- if (leaf_up[1] == leaf_up[2]) paste(leaf_up[1], "in both recovery tre
   paste(leaf_up[1], "to", leaf_up[2], "in the two recovery treatments")
 ```
 
-Fixing the asymptotes lowered the expected log predictive density in every case study (@tbl-asym-compare) by: 1) `r asym_gap[["Zebrafish"]]` for the zebrafish, 2) `r asym_gap[["Cereal aphids"]]` for the cereal aphids, and 3) `r asym_gap[["Vinegar fly, females"]]` and `r asym_gap[["Vinegar fly, males"]]` for female and male vinegar flies. Estimating the asymptotes is clearly better supported for the zebrafish and both fly sexes, and favoured but not clearly so for the aphids, for which either model could be used. For the zebrafish, `r asym_k` observations have Pareto k > 0.7 under the 2PL, so its LOO is unreliable and the difference is probably understated. In otherwords, the 2PL cannot capture the lower asymptote of `r sprintf("%.2f", zf_low)` under normoxia. We did not fit a 2PL to the snow gum because its response is PSII function (post- relative to pre-exposure $F_v/F_m$), not survival, so the curve has no reason to start at 1, and its upper asymptote was estimated at `r leaf_up`.
+Fixing the asymptotes lowered the expected log predictive density in all four comparisons (@tbl-asym-compare), by 1) `r asym_gap[["Zebrafish"]]` for the zebrafish, 2) `r asym_gap[["Cereal aphids"]]` for the cereal aphids, and 3) `r asym_gap[["Vinegar fly, females"]]` and `r asym_gap[["Vinegar fly, males"]]` for female and male vinegar flies. Estimating the asymptotes is clearly better supported for the zebrafish and both fly sexes. It is also favoured for the cereal aphids, but by less than twice its SE, so not clearly. For the zebrafish, `r asym_k` observations have Pareto k > 0.7 under the 2PL, but `r if (asym_k_ctrl == asym_k) "all" else asym_k_ctrl` of them are `r zf_temps[1]` °C controls in which every larva survived. Their likelihood is almost the same in every posterior draw, so these high k values do not make the comparison unreliable, and WAIC gives the same difference. The 2PL predicts the `r zf_temps[2]`–`r max(zf_temps)` °C exposures less well, especially under normoxia, where it cannot capture the lower asymptote of `r sprintf("%.2f", zf_low)`. We did not refit the snow gum model, which took `r fit_time(wf_leaf)` to fit, because its data already place the upper asymptote below 1. At the coolest assay temperature (`r min(snowgum_psii$Temp)` °C), mean retained PSII function (post- relative to pre-exposure $F_v/F_m$) was only `r sprintf("%.2f", mean(snowgum_psii$fvfm_prop[snowgum_psii$Temp == min(snowgum_psii$Temp)], na.rm = TRUE))`, and the fitted upper asymptote at the mean assay temperature was `r leaf_up`.
 
 # **Prior sensitivity** {#sec-prior-sensitivity}
 
