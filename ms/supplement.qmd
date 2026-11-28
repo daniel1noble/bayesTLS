@@ -1748,7 +1748,7 @@ fit_time <- function(x) {
 # columns; several rows (e.g. one per sex) are summarised together
 diag_txt <- function(d) {
   n_div <- sum(d$divergences)
-  sprintf(paste("the largest R-hat is %.3f, the smallest bulk and tail effective",
+  sprintf(paste("The largest R-hat is %.3f, the smallest bulk and tail effective",
                 "sample sizes are %s and %s, and there %s %d divergent transition%s"),
           max(d$rhat_max), format(min(d$ess_bulk_min), big.mark = ","),
           format(min(d$ess_tail_min), big.mark = ","),
@@ -2019,7 +2019,7 @@ zf_diag
 
 ```{r}
 #| label: fig-zf-ppc
-#| fig-cap: "Posterior predictive check for the zebrafish model: the proportion of larvae surviving in each replicate (dark line) and in 100 datasets simulated from the posterior (light lines)."
+#| fig-cap: "Posterior predictive check for the zebrafish model, comparing the proportion of larvae surviving in each replicate (dark line) with the same proportion in 100 datasets simulated from the posterior (light lines)."
 #| fig-width: 6
 #| fig-height: 3.2
 #| cache: false
@@ -2033,7 +2033,7 @@ bayesplot::ppc_dens_overlay(zf_fit$data$n_surv / zf_fit$data$n_total,
   ggplot2::labs(x = "Proportion surviving")
 ```
 
-The chains converged: `r diag_txt(zf_diag)`. The proportions surviving in the simulated datasets match the observed ones, including the many replicates in which all or no larvae survived (@fig-zf-ppc).
+The chains converged. `r diag_txt(zf_diag)`. The proportions surviving in the simulated datasets match the observed ones, including the many replicates in which all or no larvae survived (@fig-zf-ppc).
 
 ## Per-treatment thermal limits and OCLTT check {#sec-zf-o2-extract}
 
@@ -2165,7 +2165,7 @@ aphid_diag
 
 ```{r}
 #| label: fig-aphid-ppc
-#| fig-cap: "Posterior predictive check for the cereal aphid model: the proportion of aphids surviving in each replicate (dark line) and in 100 datasets simulated from the posterior (light lines)."
+#| fig-cap: "Posterior predictive check for the cereal aphid model, comparing the proportion of aphids surviving in each replicate (dark line) with the same proportion in 100 datasets simulated from the posterior (light lines)."
 #| fig-width: 6
 #| fig-height: 3.2
 #| cache: false
@@ -2179,7 +2179,7 @@ bayesplot::ppc_dens_overlay(aphid_fit$data$n_surv / aphid_fit$data$n_total,
   ggplot2::labs(x = "Proportion surviving")
 ```
 
-The chains converged: `r diag_txt(aphid_diag)`. The simulated proportions surviving reproduce the main features of the observed ones, including the many replicates with low survival, although more replicates than predicted had about half of their aphids surviving (@fig-aphid-ppc).
+The chains converged. `r diag_txt(aphid_diag)`. The simulated proportions surviving reproduce the main features of the observed ones, including the many replicates with low survival, although more replicates than predicted had about half of their aphids surviving (@fig-aphid-ppc).
 
 ## Per-species thermal limits {#sec-aphid-extract}
 
@@ -2454,7 +2454,7 @@ wf_leaf <- fit_4pl(
 summary(wf_leaf)
 ```
 
-Fitting this model took `r fit_time(wf_leaf)`, far longer than the other case studies. The longer chains explain only part of this: each iteration was also much slower, reflecting the three random effects, the censored zeros and the high `adapt_delta` (0.999), which makes the sampler take smaller steps.
+Fitting this model took `r fit_time(wf_leaf)`, far longer than the other case studies. The longer chains explain only part of this. Each iteration was also much slower, reflecting the three random effects, the censored zeros and the high `adapt_delta` (0.999), which makes the sampler take smaller steps.
 
 ```{r leaf-diagnostics}
 #| label: tbl-leaf-diagnostics
@@ -2467,7 +2467,7 @@ tinytable::tt(leaf_fit_diag, digits = 3, escape = TRUE)
 
 ```{r}
 #| label: fig-leaf-ppc
-#| fig-cap: "Posterior predictive check for the snow gum model: the retained PSII function of each reading (dark line) and of 100 datasets simulated from the posterior (light lines). Simulated values below the detection limit are set to 0.1, as the observed zeros are."
+#| fig-cap: "Posterior predictive check for the snow gum model, comparing the retained PSII function of each reading (dark line) with that of 100 datasets simulated from the posterior (light lines). Simulated values below the detection limit are set to 0.1, as the observed zeros are."
 #| fig-width: 6
 #| fig-height: 3.2
 #| cache: false
@@ -2481,7 +2481,7 @@ bayesplot::ppc_dens_overlay(leaf_fit$data$survival, leaf_yrep) +
   ggplot2::labs(x = "Retained PSII function")
 ```
 
-The chains converged: `r diag_txt(leaf_fit_diag)` among `r format(brms::ndraws(leaf_fit), big.mark = ",")` post-warmup draws (@tbl-leaf-diagnostics). Once censored in the same way as the data, the simulated readings match the observed distribution (@fig-leaf-ppc): `r sprintf("%.1f", 100 * mean(leaf_yrep == 0.1))`% of simulated readings fall below the detection limit, against `r sprintf("%.1f", 100 * mean(leaf_fit$data$censored == "left"))`% of observed readings. Readings near full function are slightly more concentrated than predicted.
+The chains converged. `r diag_txt(leaf_fit_diag)` among `r format(brms::ndraws(leaf_fit), big.mark = ",")` post-warmup draws (@tbl-leaf-diagnostics). Once censored in the same way as the data, the simulated readings match the observed distribution (@fig-leaf-ppc). Of the simulated readings, `r sprintf("%.1f", 100 * mean(leaf_yrep == 0.1))`% fall below the detection limit, against `r sprintf("%.1f", 100 * mean(leaf_fit$data$censored == "left"))`% of observed readings. Readings near full function are slightly more concentrated than predicted.
 
 ## Per-condition thermal limits {#sec-leaf-extract}
 
@@ -2708,7 +2708,7 @@ dros_diag
 
 ```{r}
 #| label: fig-dros-ppc
-#| fig-cap: "Posterior predictive checks for the vinegar fly mortality models of (a) females and (b) males: the proportion of flies surviving in each replicate (dark line) and in 100 datasets simulated from each posterior (light lines)."
+#| fig-cap: "Posterior predictive checks for the vinegar fly mortality models of (a) females and (b) males, comparing the proportion of flies surviving in each replicate (dark line) with the same proportion in 100 datasets simulated from each posterior (light lines)."
 #| fig-width: 7.5
 #| fig-height: 3.2
 #| cache: false
@@ -2729,7 +2729,7 @@ patchwork::wrap_plots(
   guides = "collect")
 ```
 
-Both models converged: `r diag_txt(dros_diag)`. For both sexes the observed proportions surviving lie within the spread of the simulated datasets, which is wide because each sex has fewer than 50 observations (@fig-dros-ppc). Trace plots of the chains can be drawn with `plot(wf_dros_mort_F)` and `plot(wf_dros_mort_M)`.
+Both models converged. `r diag_txt(dros_diag)`. For both sexes the observed proportions surviving lie within the spread of the simulated datasets, which is wide because each sex has fewer than 50 observations (@fig-dros-ppc). Trace plots of the chains can be drawn with `plot(wf_dros_mort_F)` and `plot(wf_dros_mort_M)`.
 
 ```{r}
 #| label: dros_chains
@@ -3254,7 +3254,7 @@ coma_diag
 
 ```{r}
 #| label: fig-coma-ppc
-#| fig-cap: "Posterior predictive check for the heat-coma 4PL: the proportion of flies still awake in each replicate (dark line) and in 100 datasets simulated from the posterior (light lines)."
+#| fig-cap: "Posterior predictive check for the heat-coma 4PL, comparing the proportion of flies still awake in each replicate (dark line) with the same proportion in 100 datasets simulated from the posterior (light lines)."
 #| fig-width: 6
 #| fig-height: 3.2
 #| cache: false
@@ -3267,7 +3267,7 @@ bayesplot::ppc_dens_overlay(fit_coma_4pl$data$n_surv / fit_coma_4pl$data$n_total
   ggplot2::labs(x = "Proportion awake")
 ```
 
-The chains converged: `r diag_txt(coma_diag)`. The simulated proportions awake match the observed distribution, apart from fewer intermediate observed proportions (around 0.5) than predicted (@fig-coma-ppc).
+The chains converged. `r diag_txt(coma_diag)`. The simulated proportions awake match the observed distribution, apart from fewer intermediate observed proportions (around 0.5) than predicted (@fig-coma-ppc).
 
 ```{r}
 #| label: dros-coma-4pl-tls
@@ -3400,7 +3400,7 @@ prod_diag
 
 ```{r}
 #| label: fig-prod-ppc
-#| fig-cap: "Posterior predictive check for the hurdle-Gamma productivity model: the clutch size of each fly, including the zeros of flies that did not reproduce (dark line), and 100 datasets simulated from the posterior (light lines), on a log(1 + x) axis."
+#| fig-cap: "Posterior predictive check for the hurdle-Gamma productivity model, comparing the clutch size of each fly, including the zeros of flies that did not reproduce (dark line), with 100 datasets simulated from the posterior (light lines), on a log(1 + x) axis."
 #| fig-width: 6
 #| fig-height: 3.2
 #| cache: false
@@ -3413,7 +3413,7 @@ bayesplot::ppc_dens_overlay(fit_prod_ga$data$prod, prod_yrep) +
   ggplot2::labs(x = "Clutch size (log(1 + x) axis)")
 ```
 
-Both hurdle models converged: `r diag_txt(prod_diag)`. The hurdle-Gamma model reproduces the share of flies with no offspring (`r sprintf("%.1f", 100 * mean(prod_yrep == 0))`% in the simulated datasets, against `r sprintf("%.1f", 100 * mean(fit_prod_ga$data$prod == 0))`% observed) and the spread of clutch sizes among the flies that reproduced (@fig-prod-ppc).
+Both hurdle models converged. `r diag_txt(prod_diag)`. The hurdle-Gamma model reproduces the share of flies with no offspring (`r sprintf("%.1f", 100 * mean(prod_yrep == 0))`% in the simulated datasets, against `r sprintf("%.1f", 100 * mean(fit_prod_ga$data$prod == 0))`% observed) and the spread of clutch sizes among the flies that reproduced (@fig-prod-ppc).
 
 We read both reproductive summaries straight from the fitted model, one for each part of the hurdle. For *whether* a fly reproduces, we get the exposure time at which half the flies still reproduce and how that shifts with temperature — i.e. a thermal-tolerance curve. For *how many* offspring (among flies that did reproduce), we get how quickly clutch size falls as exposure lengthens. Both are computed from the fitted coefficients on every posterior draw, so they carry full uncertainty.
 
@@ -3726,7 +3726,7 @@ wf_zf_ln <- fit_lognormal(zf_std,
 ```{r tbl-zf-curves}
 #| label: tbl-zf-curves
 #| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("zf_oxygen_normhyper", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
-#| tbl-cap: "Zebrafish: difference in expected log predictive density (ELPD) from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
+#| tbl-cap: "Zebrafish. Difference in expected log predictive density (ELPD) from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC
 zf_fits <- list("Log-logistic" = wf_zf_ll, "Log-normal" = wf_zf_ln,
                 "Weibull type 1" = wf_zf_w1, "Weibull type 2" = wf_zf_w2)
@@ -3735,7 +3735,7 @@ zf_waic <- lapply(zf_fits, function(x) brms::waic(get_brmsfit(x)))
 curve_table(zf_loo, zf_waic)
 ```
 
-As we can see from @tbl-zf-curves, there is little difference among the dose-response models for the zebrafish: the largest LOO difference is `r curve_gap(zf_loo)`.
+As we can see from @tbl-zf-curves, there is little difference among the dose-response models for the zebrafish. The largest LOO difference is `r curve_gap(zf_loo)`.
 
 ## Snow gum model comparisons
 
@@ -3788,7 +3788,7 @@ wf_leaf_ln <- fit_lognormal(leaf_std,
 ```{r tbl-leaf-curves}
 #| label: tbl-leaf-curves
 #| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("fit_leaf_recovery_4pl_cens_run_array", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
-#| tbl-cap: "Snow gum: difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
+#| tbl-cap: "Snow gum. Difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC
 leaf_fits <- list("Log-logistic" = wf_leaf_ll, "Log-normal" = wf_leaf_ln,
                   "Weibull type 1" = wf_leaf_w1, "Weibull type 2" = wf_leaf_w2)
@@ -3815,7 +3815,7 @@ leaf_min <- sapply(leaf_fits, function(x)
   max(rowSums(rstan::get_elapsed_time(get_brmsfit(x)$fit)))) / 60
 ```
 
-For the snow gum, the log-logistic is `r sprintf("%.1f (SE %.1f)", -leaf_ll$elpd_diff, leaf_ll$se_diff)` behind the best-supported curve, `r leaf_cmp$model[1]` (@tbl-leaf-curves), but this comparison is less reliable than the others. Every fit has `r min(leaf_k07)` to `r max(leaf_k07)` observations with Pareto k > 0.7, for which PSIS-LOO is unreliable (`r min(leaf_k1)` to `r max(leaf_k1)` of them above 1), and WAIC is unreliable for up to `r max(leaf_pw)` of the `r leaf_n` readings (p_waic > 0.4). The two Weibull fits also did not sample cleanly: the Weibull type 2 fit has `r leaf_diag[["Weibull type 2"]]$divergences` divergent transitions, and the Weibull type 1 fit a maximum R-hat of `r sprintf("%.3f", leaf_diag[["Weibull type 1"]]$rhat_max)`. Readings on one array also share temperature, duration, recovery treatment and array effect, so standard errors that treat readings as independent may be too small, and we did not refit the high-k observations, because each snow gum fit took `r sprintf("%.0f to %.0f", min(leaf_min), max(leaf_min))` minutes. The `r knitr::combine_words(sub("^Log", "log", leaf_far))` curves fall more than 4 units and more than twice their SE behind the best, but given these problems we would not read much into the ranking.
+For the snow gum, the log-logistic is `r sprintf("%.1f (SE %.1f)", -leaf_ll$elpd_diff, leaf_ll$se_diff)` behind the best-supported curve, `r leaf_cmp$model[1]` (@tbl-leaf-curves), but this comparison is less reliable than the others. Every fit has `r min(leaf_k07)` to `r max(leaf_k07)` observations with Pareto k > 0.7, for which PSIS-LOO is unreliable (`r min(leaf_k1)` to `r max(leaf_k1)` of them above 1), and WAIC is unreliable for up to `r max(leaf_pw)` of the `r leaf_n` readings (p_waic > 0.4). The two Weibull fits also did not sample cleanly. The Weibull type 2 fit has `r leaf_diag[["Weibull type 2"]]$divergences` divergent transitions, and the Weibull type 1 fit a maximum R-hat of `r sprintf("%.3f", leaf_diag[["Weibull type 1"]]$rhat_max)`. Readings on one array also share temperature, duration, recovery treatment and array effect, so standard errors that treat readings as independent may be too small, and we did not refit the high-k observations, because each snow gum fit took `r sprintf("%.0f to %.0f", min(leaf_min), max(leaf_min))` minutes. The `r knitr::combine_words(sub("^Log", "log", leaf_far))` curves fall more than 4 units and more than twice their SE behind the best, but given these problems we would not read much into the ranking.
 
 
 ## Aphid model comparisons
@@ -3858,7 +3858,7 @@ wf_aphid_ln <- fit_lognormal(aphid_std,
 ```{r tbl-aphid-curves}
 #| label: tbl-aphid-curves
 #| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("aphid_species", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
-#| tbl-cap: "Cereal aphids: difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
+#| tbl-cap: "Cereal aphids. Difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC
 aphid_fits <- list("Log-logistic" = wf_aphid_ll, "Log-normal" = wf_aphid_ln,
                    "Weibull type 1" = wf_aphid_w1, "Weibull type 2" = wf_aphid_w2)
@@ -3867,7 +3867,7 @@ aphid_waic <- lapply(aphid_fits, function(x) brms::waic(get_brmsfit(x)))
 curve_table(aphid_loo, aphid_waic)
 ```
 
-For the cereal aphids, no curve is clearly better supported (@tbl-aphid-curves): the largest LOO difference, `r curve_gap(aphid_loo)`, is less than twice its SE.
+For the cereal aphids, no curve is clearly better supported (@tbl-aphid-curves). The largest LOO difference, `r curve_gap(aphid_loo)`, is less than twice its SE.
 
 ## Fly model comparisons
 
@@ -3943,11 +3943,11 @@ dros_M_waic <- lapply(dros_M_fits, function(x) brms::waic(get_brmsfit(x)))
 curve_table(dros_M_loo, dros_M_waic)
 ```
 
-There is also little difference among the dose-response models for vinegar fly mortality: the largest LOO difference is `r curve_gap(dros_F_loo)` for females (@tbl-dros-curves-f) and `r curve_gap(dros_M_loo)` for males (@tbl-dros-curves-m). With fewer than 100 observations per sex, small differences would be hard to detect.
+There is also little difference among the dose-response models for vinegar fly mortality. The largest LOO difference is `r curve_gap(dros_F_loo)` for females (@tbl-dros-curves-f) and `r curve_gap(dros_M_loo)` for males (@tbl-dros-curves-m). With fewer than 100 observations per sex, small differences would be hard to detect.
 
 ## Comparing 4PL fits to simplified models (2PL) {#sec-2pl-compare}
 
-Our log-logistic model has more parameters than log-logistic models that, for example, fix the upper and lower asymptotes (the two-parameter log-logistic, 2PL). We prefer the 4PL because it should estimate absolute thresholds more accurately, but at times its extra parameters may not be supported. `bayesTLS` makes it easy to simplify the model: `fix_asymptotes = TRUE` fixes both asymptotes at 0 and 1. We therefore refitted each case-study model as a 2PL, keeping its data, other formulas and sampler settings, and compared the 2PL with the 4PL by LOO and WAIC.
+Our log-logistic model has more parameters than log-logistic models that, for example, fix the upper and lower asymptotes (the two-parameter log-logistic, 2PL). We prefer the 4PL because it should estimate absolute thresholds more accurately, but at times its extra parameters may not be supported. `bayesTLS` makes it easy to simplify the model, because `fix_asymptotes = TRUE` fixes both asymptotes at 0 and 1. We therefore refitted each case-study model as a 2PL, keeping its data, other formulas and sampler settings, and compared the 2PL with the 4PL by LOO and WAIC.
 
 ```{r}
 #| label: asym-fits
@@ -3981,7 +3981,7 @@ wf_dros_M_2pl <- fit_4pl(std_mort_M, fix_asymptotes = TRUE,
 
 ```{r}
 #| label: tbl-asym-compare
-#| tbl-cap: "Case-study models with estimated asymptotes (4PL) and with both asymptotes fixed at 0 and 1 (2PL): difference in ELPD from the better-supported model, by LOO and WAIC (0 = better). Pareto k > 0.7 counts observations for which LOO is unreliable."
+#| tbl-cap: "Case-study models with estimated asymptotes (4PL) and with both asymptotes fixed at 0 and 1 (2PL). Difference in ELPD from the better-supported model, by LOO and WAIC (0 = better). Pareto k > 0.7 counts observations for which LOO is unreliable."
 #| cache: false
 # Model comparison table, LOO and WAIC, for every case study
 asym_fits <- list(
@@ -4670,7 +4670,7 @@ This scenario varies experimental design while holding the data-generating proce
 #| cache: false
 #| fig-width: 6.5
 #| fig-height: 6.6
-#| fig-cap: "Simulated designs in Scen 8: full (5 temperatures × 6 durations) and sparse (3 × 4) temperature–duration grids, each with one, three or five replicate vials per treatment. Each square is one temperature × exposure-duration treatment; coloured squares were tested (shaded by temperature) and the white dots show the number of vials, each holding 10–20 organisms. Scen 1–7 use the full grid with three or five vials."
+#| fig-cap: "Simulated designs in Scen 8, with full (5 temperatures × 6 durations) and sparse (3 × 4) temperature–duration grids, each with one, three or five replicate vials per treatment. Each square is one temperature × exposure-duration treatment; coloured squares were tested (shaded by temperature) and the white dots show the number of vials, each holding 10–20 organisms. Scen 1–7 use the full grid with three or five vials."
 library(ggplot2)
 # Designs straight from the simulation code
 .dz_env <- new.env()
@@ -4808,7 +4808,7 @@ Thermal-tolerance assays are often limited by how long they can run. Long exposu
 #| cache: false
 #| fig-width: 7
 #| fig-height: 2.3
-#| fig-cap: "Simulated designs in Scen 9: maximum exposure durations of 60, 120, 240 or 405 min, each with six durations from 1 min up to the maximum at the five temperatures and five vials per treatment (symbols as in @fig-sim-design-grid). The bar under each grid shows its maximum exposure relative to 405 min; the 405-min window is the full grid."
+#| fig-cap: "Simulated designs in Scen 9, with maximum exposure durations of 60, 120, 240 or 405 min, each with six durations from 1 min up to the maximum at the five temperatures and five vials per treatment (symbols as in @fig-sim-design-grid). The bar under each grid shows its maximum exposure relative to 405 min; the 405-min window is the full grid."
 # Maximum exposure duration, full temperatures, 5 vials (helpers from fig-sim-design-grid)
 .dz_win <- c(tmax060 = "Max. 60 min", tmax120 = "Max. 120 min", tmax240 = "Max. 240 min", tmax405 = "Max. 405 min")
 .dz_b <- do.call(rbind, lapply(names(.dz_win), function(d) {
