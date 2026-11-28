@@ -1728,7 +1728,7 @@ The manuscript examples use the following model specifications:
 - **Cereal aphids**: lethal survival counts were fit with a beta-binomial 4PL, placing species directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + species`, `z = ~ 0 + species`). No random effects were included. The fitted species-specific posterior was then projected under the unmodified Wuhan May-June 2016 air-temperature trace with `predict_heat_injury(by = "species")`.
 - **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). The lower asymptote was allowed to differ by oxygen treatment but not temperature (`low = ~ 0 + oxygen`), while the upper asymptote and steepness were shared (`up = ~ 1`, `k = ~ 1`). No random effects were included. Because the design lacks a benign-temperature control for the hyperoxia treatment, we report $z$ and $CT_{max}$ but not $T_{crit}$ (`lethal = FALSE`).
 - **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood, with zero readings left-censored at 0.1 (`detection_limit = 0.1`). Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with random intercepts on $CT_{max}$ for plant, heat run and array, the unit to which recovery was applied (`ctmax = ~ 0 + recovery + (1 | plant) + (1 | run) + (1 | array)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
-- **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with @orsted_suzukii_2024 uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model summary uses the relative midpoint threshold (also at a 4-hour reference to be more comparable to the study). The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the @orsted_suzukii_2024 NicheMapR [@kearney2017] workflow.
+- **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with @orsted_suzukii_2024 uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model sex contrasts reported in the manuscript use the same absolute threshold and 4-hour reference. The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the @orsted_suzukii_2024 NicheMapR [@kearney2017] workflow.
 
 The exact formulas, sampler settings and diagnostics are shown in the code chunks for each case study. All case-study models use the default priors of `bayesTLS`, which we describe and test in @sec-prior-sensitivity. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
@@ -2976,8 +2976,9 @@ Switching to the **absolute** LT~50~ threshold — matching the Step-2 by-hand c
 set.seed(123)
 # target_surv = "absolute" reads the curve at the 0.5 absolute-survival crossing
 # (adding the asymmetry correction), matching the Step-2 by-hand calculation.
-tls_sex_summary_abs <- tls(joint_sex_fit, by = "sex", target_surv = "absolute",
-                           lethal = TRUE, t_ref = 60 * 4)$summary
+tls_sex_abs <- tls(joint_sex_fit, by = "sex", target_surv = "absolute",
+                   lethal = TRUE, t_ref = 60 * 4)
+tls_sex_summary_abs <- tls_sex_abs$summary
 
 ```
 
@@ -3003,6 +3004,18 @@ tinytable::tt(tls_sex_table_abs, escape = TRUE)
 ```
 
 The two `tls()` calls reproduce the by-hand calculations: the relative-threshold summary (@tbl-dros-sex-joint) matches the relative columns of @tbl-dros-sex-byhand, and the absolute-threshold summary (@tbl-dros-sex-joint-abs) matches the absolute columns. Relative and absolute estimates barely differ here because the fitted asymptotes change little with temperature, so the asymmetry correction is nearly constant; `tls()` additionally returns $T_{crit}$, which is similar under both thresholds.
+
+```{r}
+#| label: dros-sex-joint-contrast
+#| code-fold: show
+# Female minus male z from the joint model, paired by posterior draw
+z_joint <- get_tls_est(tls_sex_abs, "draws", "z") |>
+  tidyr::pivot_wider(id_cols = .draw, names_from = sex, values_from = value)
+diff_sex_z_joint  <- z_joint$F - z_joint$M
+pmcmc_sex_z_joint <- 2 * min(mean(diff_sex_z_joint > 0), mean(diff_sex_z_joint < 0))
+```
+
+The joint model estimates the sex difference in $z$ more precisely than the separate fits (female − male: `r round(median(diff_sex_z_joint), 2)` °C, 95% CI: `r round(quantile(diff_sex_z_joint, 0.025), 2)` to `r round(quantile(diff_sex_z_joint, 0.975), 2)` °C; pMCMC = `r round(pmcmc_sex_z_joint, 2)`, against pMCMC = `r round(pmcmc_sex_z, 2)` from the separate fits), because both sexes share the asymptotes and steepness, which are therefore estimated from all flies. The manuscript reports this joint-model contrast, and both analyses agree that the sexes do not differ detectably.
 
 ## Fitting a model to compare $z$ and $Ct_{max_{1hr}}$ between sexes directly - direct method
 
