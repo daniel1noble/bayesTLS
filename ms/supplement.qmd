@@ -84,6 +84,7 @@ format:
         % run fresh, and our tables don't use S-aligned columns.
         \usepackage{tabularray}
         \usepackage{float}
+        \floatplacement{table}{H}
         \usepackage{pdflscape}
         % The text font has no glyph for the approximately-equal sign, so it
         % went missing in the PDF; typeset it as the math symbol instead.
@@ -286,7 +287,7 @@ knitr::include_graphics(here::here("output", "figs", "bayesTLS_function_map.png"
 
 ## *Description of Functions* {#sec-function-tour}
 
-#### *Core functions*
+### *Core functions*
 
 @tbl-function-core lists the key functions that are part of the `bayesTLS` package. Generally, these are the ones users will use most. These functions are used for standardising data, modelling, deriving the TLS quantities of interest, and predicting heat injury and survival.
 
@@ -313,7 +314,7 @@ tdt_function_core <- tibble::tribble(
 tinytable::tt(tdt_function_core, escape = TRUE)
 ```
 
-#### *Full package functions*
+### *Full package functions*
 There are many helper functions in the package that may be useful for various users. @tbl-function-tour lists every exported function in the library, grouped by pipeline stage with a description of what they are designed to do.
 
 ```{r function-tour-table}
@@ -384,8 +385,8 @@ tinytable::tt(tdt_function_tour, escape = TRUE)
 
 This tutorial uses simulated data to show how the Bayesian hierarchical 4PL recovers thermal sensitivity ($z$) and $CT_{max_{1hr}}$ in both binomial and beta-binomial (overdispersed) settings. The joint model propagates uncertainty through downstream quantities and accommodates extensions that are less convenient in a two-stage analysis. The subsequent case studies apply the same workflow to data presented in the main manuscript.
 
-### *Simulating Data*
-#### Step 1 — Setting up parameters {#sec-sim-step1}
+## *Simulating Data*
+### Step 1 — Setting up parameters {#sec-sim-step1}
 
 We choose values that might be typical of a thermal mortality assay. The four parameters are the lower and upper asymptotes ($\text{low}, \text{up}$), the slope on the $\log_{10}$-time axis ($k$), and a midpoint that varies linearly with temperature: $\text{mid}(T) = \beta_0 + \beta_1(T - \bar T)$. Each value has a clear biological meaning (detailed in the code below).
 
@@ -428,7 +429,7 @@ true_CTmax  <- (log10(60) - true_alpha) / true_params$m_beta1
 true_T_crit <- true_CTmax - 2.5 * true_z
 ```
 
-#### Step 2 — Simulated study design {#sec-sim-step2}
+### Step 2 — Simulated study design {#sec-sim-step2}
 
 We mimic a well-replicated TDT experiment: five assay temperatures crossed with six log-spaced exposure durations, with 30 replicates of 30 individuals per cell. The resulting 900 trials and 27,000 individuals make parameter recovery clear, but the case studies below and simulations illustrate less information-rich designs.
 
@@ -459,7 +460,7 @@ design <- tidyr::expand_grid(
   )
 ```
 
-#### Step 3 — Look at the truth before simulating {#sec-sim-step3}
+### Step 3 — Look at the truth before simulating {#sec-sim-step3}
 
 Before generating noisy data, let's plot the *true* survival surface (@fig-true-surface) so we know what the model is being asked to recover. Each line is the 4PL at one assay temperature, plotted against $\log_{10}$ exposure time.
 
@@ -501,7 +502,7 @@ The known 4PL dose-response surface used to generate the simulated data, evaluat
 
 Notice the curves shift left as temperature rises: hotter temperatures kill faster, so the LT50 is reached at shorter durations.
 
-#### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
+### Step 4 — Generate noisy data: binomial and beta-binomial {#sec-sim-step4}
 
 Survival counts may exhibit two forms of variation. Under **binomial** sampling, each replicate's survival count is drawn from $\text{Binomial}(n, p)$, where $p$ is given by the 4PL surface. **Beta-binomial** sampling adds *overdispersion*: replicate-to-replicate variation in $p$, for example from cohort effects or unmodelled heterogeneity. When TDT data show this extra variation, the beta-binomial likelihood is more appropriate (note that our 4PL fit function defaults to beta-binomial to protect against mis-fits - over- or under-dispersion).
 
@@ -528,14 +529,14 @@ sim_bb <- design |>
   )
 ```
 
-### *The classical two-stage TDT pipeline* {#sec-twostage}
+## *The classical two-stage TDT pipeline* {#sec-twostage}
 
 We first run the simulated data through the **classical two-stage TDT pipeline** [@rezende_landscapes_2014; @orsted_finding_2022], which is dominant in the thermal-tolerance literature.
 
 1. **Stage 1.** At each assay temperature, fit a logistic dose-response curve to the count data and read off a point estimate of $\log_{10}\text{LT50}_T$.
 2. **Stage 2.** Regress those Stage-1 point estimates on assay temperature with ordinary least squares, then derive $z = -1/\beta_1$ and $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ from the fitted line.
 
-#### Stage 1 — Dose-response curves at each temperature {#sec-twostage-step1}
+### Stage 1 — Dose-response curves at each temperature {#sec-twostage-step1}
 
 We fit a binomial GLM with a logit link separately at each assay temperature. This is a common Stage-1 specification in the TDT literature: a two-parameter logistic with asymptotes constrained to 0% and 100% [e.g., @orsted_suzukii_2024]. The midpoint $\log_{10}\text{LT50}_T = -\beta_0/\beta_1$ falls out of the GLM's two coefficients.
 
@@ -583,7 +584,7 @@ tinytable::tt(stage1_table, digits = 3, escape = TRUE)
 
 With the simulation's true asymptotes near 0 and 1, the two-parameter dose-response function forced-asymptote constraint introduces negligible bias here, so each Stage-1 estimate sits close to the simulation truth.
 
-#### Stage 2 — log-linear TDT regression {#sec-twostage-step2}
+### Stage 2 — log-linear TDT regression {#sec-twostage-step2}
 
 Stage 2 regresses Stage-1 $\log_{10}\text{LT50}$ on assay temperature with ordinary least squares. The classical TDT quantities — $z = -1/\beta_1$ and $CT_{max_{1hr}} = (\log_{10} 60 - \alpha)/\beta_1$ — fall out of the fitted line.
 
@@ -662,11 +663,11 @@ Classical two-stage analyses often treat Stage-1 $LT_{50}$ estimates as known wh
 Despite being a potential issue, it is also challenging to correctly propagate error to $z$ and $CT_{max_{1hr}}$. Incorrectly doing so in Stage-2 may have bigger impacts. Without propagating uncertainty properly these will systematically bias sampling uncertainty in $z$ and $CT_{max_{1hr}}$ compromising inferences and leading to optimistic predictions. The Delta-method or bootstrap procedures can be used to propagate uncertainty, though, these are rarely used in practice. In addition, even if uncertainty was correctly propagated, a likelihood approach makes it harder to propogate uncertainty through downstream predictions (e.g., heat injury).
 :::
 
-### *A joint Bayesian 4PL* {#sec-joint}
+## *A joint Bayesian 4PL* {#sec-joint}
 
 Instead of fitting separate logistic curves and then regressing their LT50 estimates, the joint fit estimates $\text{low}$, $\text{up}$, $k$, $\beta_0$, and $\beta_1$ simultaneously from the raw counts. We use the same simulated data to derive $z$ and $CT_{max_{1hr}}$ directly from this model from the posteriors of these parameters.
 
-#### Specifying the 4PL in `brms` {#sec-joint-spec}
+### Specifying the 4PL in `brms` {#sec-joint-spec}
 
 The model has two pieces. The first is the 4PL itself — probability as a function of $\log_{10}$ exposure time:
 
@@ -712,7 +713,7 @@ The default model puts a `temp_c` slope on all four 4PL sub-parameters and inclu
 
 :::
 
-#### Standardising and fitting {#sec-joint-fit}
+### Standardising and fitting {#sec-joint-fit}
 
 The first step is to pass the simulated data through `standardize_data()` so the columns match the schema the rest of the library expects (`temp`, `duration`, `logd`, `temp_c`, `n_total`, `n_surv`). This function also keeps track of your reference temperature, time units and centering so it's important to use for calculations to be done correctly. 
 
@@ -800,7 +801,7 @@ bayes_r2_table(list(
 
 ```
 
-#### Checking parameter recovery {#sec-joint-recovery}
+### Checking parameter recovery {#sec-joint-recovery}
 
 We assess recovery of true values by comparing posterior medians and 95% credible intervals with the known generating values (@tbl-recovery). Given the large simulated sample, the posterior should concentrate near those values.
 
@@ -856,7 +857,7 @@ plot_survival_curves(psc_bin, observed = std_bin, log_time = TRUE) +
 Posterior fitted 4PL curves (solid lines, with shaded 95% credible bands) overlaid on the simulated binomial data (points). One panel-coloured line per assay temperature. Where the fitted curves track the simulated proportions across all five temperatures, the model has recovered the underlying dose-response surface.
 :::
 
-### *Deriving $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the posterior* {#sec-joint-derive}
+## *Deriving $z$, $CT_{max_{1hr}}$, and $T_{crit}$ from the posterior* {#sec-joint-derive}
 
 The classical TLS quantities are transformations of the fitted joint posterior. The general extractor `tls()` returns the first two quantities below, and the third when `lethal = TRUE`, via its `target_surv`, `t_ref` and `lethal` arguments:
 
@@ -1059,9 +1060,9 @@ stats::quantile(d_bin$T_crit,                qs)   # + rate uncertainty -> wider
 For real data, it is important to compare binomial and beta-binomial fits rather than assuming either likelihood is adequate. When extra dispersion is present, the choice can affect uncertainty and inference.
 :::
 
-### *Comparing the two pipelines* {#sec-compare}
+## *Comparing the two pipelines* {#sec-compare}
 
-#### Point-estimate agreement on the same data {#sec-compare-table}
+### Point-estimate agreement on the same data {#sec-compare-table}
 
 @tbl-twostage-compare puts the two-stage point estimates next to the joint Bayesian posterior medians for both simulated datasets.
 
@@ -1095,7 +1096,7 @@ compare_table |>
 
 All four estimators give similar point estimates for $z$ and $CT_{max_{1hr}}$, close to the simulation truth. Under this simple generating scenario, the joint Bayesian 4PL reproduces the classical pipeline's estimates while retaining a coherent posterior for downstream inference.
 
-#### One model, two parameterisations {#sec-compare-param}
+### One model, two parameterisations {#sec-compare-param}
 
 `fit_4pl()` can write the same model in two ways. The default **midpoint** version estimates how the curve midpoint changes with temperature, then `tls()` converts that slope into $z$ and $CT_{max}$. The **direct** version estimates $z$ and $CT_{max}$ inside the model itself; request it with `ctmax = ~ 1` and `z = ~ 1`. If the same data are fit with the same likelihood, the two versions should give the same $z$ and $CT_{max_{1hr}}$ estimates.
 
@@ -1173,7 +1174,7 @@ tinytable::tt(param_equiv, digits = 3, escape = TRUE)
 
 The two parameterisations recover essentially the same $z$ and $CT_{max_{1hr}}$ — each estimate sits well within the other's credible interval (@tbl-compare-param).
 
-### *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
+## *A worked example: temperature effects on every shape parameter* {#sec-joint-extend}
 
 The default `fit_4pl()` places a `temp_c` slope on $\text{low}$, $\text{up}$, and $k$, estimating temperature effects on curve shape alongside the linear midpoint. Strictly speaking, this isn't necessary if you are interested in *relative* measures so long as they are on the midpoint. However, these are needed for *absolute* measures because of the need for the correction factor to adjust to the desired probability threshold. 
 
@@ -1552,11 +1553,11 @@ Local $z(T)$ recovered from the per-draw $\log_{10}\text{LT50}(T)$ curve (blue m
 
 The same `fit_4pl()` fit, read through `tls()` and the `derive_*()` primitives, recovers the bent $\log_{10}\text{LT50}(T)$ curve, the assay-averaged $z$, and per-draw $CT_{max_{1hr}}$. Under the constant-shape truth in @sec-joint-derive, near-zero slopes on `up`, $\text{low}$, and $k$ reduce this calculation to the closed-form case.
 
-### Heat injury accumulation and survival under a fluctuating trace
+## Heat injury accumulation and survival under a fluctuating trace
 
 TLS models can translate dynamic field temperatures into predicted heat-injury (HI) accumulation toward a threshold such as $LT_{50}$ [@jorgensen_unifying_2021; @orsted_finding_2022; @arnold_thermal_2025; @noble2026; @rezende_drosophila_mortality_2020]. The joint 4PL posterior propagates uncertainty in $z$ and $CT_{max_{1hr}}$ through the HI integral and uses the fitted surface to predict survival fraction $S_{\text{pred}}(t)$ along the same trajectory (the predicted-survival relation, Equations 9–10 of the manuscript). `predict_heat_injury()` returns both trajectories in one call.
 
-#### A simulated temperature profile across 5 days
+### A simulated temperature profile across 5 days
 
 To mimic conditions for a moderately heat-tolerant ectotherm, we generate 5 days of hourly temperatures with a sinusoidal diurnal cycle, ranging from 12 °C overnight to a midday peak of 24 °C. We set the net-accumulation threshold $T_c$ to 20 °C, below which HI does not increase [@orsted_finding_2022; @jorgensen_unifying_2021]. The simulated organism has $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$ °C and $z \approx `r round(true_z, 1)`$ °C, so the daily peak remains below the 1-hour critical limit, yet damage accrues at every hour above $T_c$ and the integrated dose ultimately proves lethal.
 
@@ -1598,7 +1599,7 @@ ggplot2::ggplot(hi_trace, ggplot2::aes(time, temp)) +
 5-day diurnal temperature trace. The dashed line is the damage-accumulation threshold $T_c = 20$ °C; the dotted line is the simulated organism's $CT_{max_{1hr}} \approx `r round(true_CTmax, 1)`$°C — well above the daily peaks, yet the dose integrated over many sub-critical hours is ultimately lethal (@fig-hi-trajectory).
 :::
 
-#### Posterior HI and survival via `predict_heat_injury()`
+### Posterior HI and survival via `predict_heat_injury()`
 
 `predict_heat_injury()` takes a temperature trace plus a fitted workflow, propagates the full posterior of $(\text{low}, \text{up}, k, \beta_0, \beta_1)$ through the HI integral, and returns the median and 95% credible band of cumulative HI and predicted survival at every time point. We supply `T_c` to enforce zero damage accumulation below the threshold (matching the heat-injury integral, Equation 8 of the manuscript). The model time units here are minutes (because `standardize_data()` was called with `duration_unit = "minutes"`), so the trace's `time` is in hours and damage rates are computed accordingly internally.
 
@@ -1640,7 +1641,7 @@ Posterior heat-injury accumulation (top) and predicted survival fraction (bottom
 
 By the end of day 5 the posterior median HI is `r round(tail(hi$summary$hi_median, 1), 0)`% (95% CI: `r round(tail(hi$summary$hi_lower, 1), 0)`% to `r round(tail(hi$summary$hi_upper, 1), 0)`%), and median predicted survival is `r round(tail(hi$summary$surv_median, 1), 2)` (95% CI: `r round(tail(hi$summary$surv_lower, 1), 2)` to `r round(tail(hi$summary$surv_upper, 1), 2)`).
 
-### Validation: recovering known doses {#sec-hi-validation}
+## Validation: recovering known doses {#sec-hi-validation}
 
 Before trusting `predict_heat_injury()` on real field data, we validate it against analytical truth on three reference traces with known thermal loads. `make_temperature_scenarios()` builds the traces; `planted_dose_from_trace()` implements the classical HI integral (Equation 8 of the manuscript) directly given known `z` and `CTmax_1hr`. Posterior medians from `predict_heat_injury()` should sit near the analytical truth, and the 95% credible intervals should cover it.
 
@@ -1729,24 +1730,35 @@ The manuscript examples use the following model specifications:
 - **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood, with zero readings left-censored at 0.1 (`detection_limit = 0.1`). Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with random intercepts on $CT_{max}$ for plant, heat run and array, the unit to which recovery was applied (`ctmax = ~ 0 + recovery + (1 | plant) + (1 | run) + (1 | array)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
 - **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with @orsted_suzukii_2024 uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model summary uses the relative midpoint threshold (also at a 4-hour reference to be more comparable to the study). The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the @orsted_suzukii_2024 NicheMapR [@kearney2017] workflow.
 
-The exact formulas, priors, sampler settings and diagnostics are shown in the code chunks for each case study. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
+The exact formulas, sampler settings and diagnostics are shown in the code chunks for each case study. All case-study models use the default priors of `bayesTLS`, which we describe and test in @sec-prior-sensitivity. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
-All models were fitted on a laptop with an Apple M1 Max processor (10 cores, 32 GB RAM), running four chains in parallel. Each case study gives its fitting time: the sampling time of the slowest chain, excluding model compilation.
+All case-study models were fitted on a laptop with an Apple M1 Max processor (10 cores, 32 GB RAM), running four chains in parallel. Each case study gives its fitting time: the warm-up plus sampling time of the slowest chain, excluding model compilation. Each case study also reports sampling diagnostics from `diagnose_tdt_fit()`, for which healthy values are R-hat below 1.01, bulk and tail effective sample sizes above 400 and no divergent transitions, and a posterior predictive check, which compares the observed data with 100 datasets simulated from the posterior [@gabry_viz_2019].
 
 ```{r fit-time}
 #| echo: false
 #| cache: false
-# Sampling time of a fit: its slowest chain (chains run in parallel)
+# Warm-up plus sampling time of the slowest chain (chains run in parallel)
 fit_time <- function(x) {
   fit <- if (inherits(x, "brmsfit")) x else get_brmsfit(x)
   s <- max(rowSums(rstan::get_elapsed_time(fit$fit)))
-  if (s < 90) sprintf("%.0f seconds", s) else sprintf("%.1f minutes", s / 60)
+  if (s < 90) sprintf("%.1f seconds", s) else sprintf("%.1f minutes", s / 60)
+}
+
+# Convergence summary for the text, from a table with diagnose_tdt_fit()'s
+# columns; several rows (e.g. one per sex) are summarised together
+diag_txt <- function(d) {
+  n_div <- sum(d$divergences)
+  sprintf(paste("the largest R-hat is %.3f, the smallest bulk and tail effective",
+                "sample sizes are %s and %s, and there %s %d divergent transition%s"),
+          max(d$rhat_max), format(min(d$ess_bulk_min), big.mark = ","),
+          format(min(d$ess_tail_min), big.mark = ","),
+          if (n_div == 1) "is" else "are", n_div, if (n_div == 1) "" else "s")
 }
 ```
 
 # **Re-parameterisation of alternative dose-response models into TLS models** {#sec-alt-kernels}
 
-We use the four-parameter log-logistic curve (4PL; Equation 2 of the manuscript) for three reasons. First, its midpoint gives the $\log_{10}$-time to 50% mortality when the asymptotes are 0 and 1, directly linking the curve to TDT theory. Second, unlike two- or three-parameter forms, the 4PL estimates both asymptotes, allowing the response range to change with temperature. These changes can affect $CT_{max}$ and $z$ (@sec-joint-extend). Third, log-logistic models are widely used in dose-response analysis [@ritz_ecotox_2010] and fit thermal failure data well. For example, @bullard2026 found that alternative survival models did not consistently improve on the log-logistic fit to *Drosophila* knockdown times, but we acknowledge that there are few formal model comparisons in the TDT literature.
+We use the four-parameter log-logistic curve (4PL; Equation 2 of the manuscript) for three reasons. First, its midpoint gives the $\log_{10}$-time to 50% mortality when the asymptotes are 0 and 1, directly linking the curve to TDT theory. Second, unlike two- or three-parameter forms, the 4PL estimates both asymptotes, allowing the response range to change with temperature. These changes can affect $CT_{max}$ and $z$ (@sec-joint-extend). Third, log-logistic models are widely used in dose-response analysis [@ritz_ecotox_2010] and fit thermal failure data well. For example, @bullard2026 found that alternative survival models did not consistently improve on the log-logistic fit to *Drosophila* knockdown times, but we acknowledge that there are few formal model comparisons in the TDT literature. We compare the four curves on each case study in @sec-curve-comparison.
 
 While the log-logistic makes the clearest connection to the TDT literature, and is most often used, it is important to recognise that the same approach extends to other S-shaped dose-response curves. @tbl-alt-kernels shows four standard families [@ritz_ecotox_2010]: log-logistic, log-normal, Weibull type 1 (Gompertz-shaped on the log-time axis) and Weibull type 2. Each has a lower asymptote ($\text{low}$), an upper asymptote ($\text{up}$), a steepness parameter ($k$) and a location on the $\log_{10}$-time axis, but their shapes differ.
 
@@ -1995,6 +2007,33 @@ summary(wf_zf)
 
 Fitting this model took `r fit_time(wf_zf)`.
 
+```{r}
+#| label: zf-diagnostics
+#| cache: false
+#| code-fold: show
+# Sampling diagnostics: R-hat, effective sample sizes and divergent transitions
+zf_diag <- diagnose_tdt_fit(wf_zf)
+zf_diag
+```
+
+```{r}
+#| label: fig-zf-ppc
+#| fig-cap: "Posterior predictive check for the zebrafish model: the proportion of larvae surviving in each replicate (dark line) and in 100 datasets simulated from the posterior (light lines)."
+#| fig-width: 6
+#| fig-height: 3.2
+#| cache: false
+#| code-fold: show
+# Simulate 100 datasets from the posterior and compare the proportions surviving
+set.seed(123)
+zf_fit  <- get_brmsfit(wf_zf)
+zf_yrep <- brms::posterior_predict(zf_fit, ndraws = 100)
+bayesplot::ppc_dens_overlay(zf_fit$data$n_surv / zf_fit$data$n_total,
+                            sweep(zf_yrep, 2, zf_fit$data$n_total, "/")) +
+  ggplot2::labs(x = "Proportion surviving")
+```
+
+The chains converged: `r diag_txt(zf_diag)`. The proportions surviving in the simulated datasets match the observed ones, including the many replicates in which all or no larvae survived (@fig-zf-ppc).
+
 ## Per-treatment thermal limits and OCLTT check {#sec-zf-o2-extract}
 
 `tls(by = "oxygen")` derives $z$ and $CT_{max_{1hr}}$ for each treatment from the shared posterior, so each quantity carries full uncertainty. We set `lethal = FALSE` and do not report $T_{crit}$ here because the design has too few temperatures to estimate it correctly.
@@ -2113,6 +2152,33 @@ summary(wf_aphid)
 ```
 
 Overall, the model looks good and explains `r round(bayes_R2_tls(wf_aphid)[1]*100, 1)`% of variation [95% CI: `r round(bayes_R2_tls(wf_aphid)[3]*100, 1)` to `r round(bayes_R2_tls(wf_aphid)[4]*100, 1)`]. It took `r fit_time(wf_aphid)` to fit.
+
+```{r}
+#| label: aphid-diagnostics
+#| cache: false
+#| code-fold: show
+# Sampling diagnostics: R-hat, effective sample sizes and divergent transitions
+aphid_diag <- diagnose_tdt_fit(wf_aphid)
+aphid_diag
+```
+
+```{r}
+#| label: fig-aphid-ppc
+#| fig-cap: "Posterior predictive check for the cereal aphid model: the proportion of aphids surviving in each replicate (dark line) and in 100 datasets simulated from the posterior (light lines)."
+#| fig-width: 6
+#| fig-height: 3.2
+#| cache: false
+#| code-fold: show
+# Simulate 100 datasets from the posterior and compare the proportions surviving
+set.seed(123)
+aphid_fit  <- get_brmsfit(wf_aphid)
+aphid_yrep <- brms::posterior_predict(aphid_fit, ndraws = 100)
+bayesplot::ppc_dens_overlay(aphid_fit$data$n_surv / aphid_fit$data$n_total,
+                            sweep(aphid_yrep, 2, aphid_fit$data$n_total, "/")) +
+  ggplot2::labs(x = "Proportion surviving")
+```
+
+The chains converged: `r diag_txt(aphid_diag)`. The simulated proportions surviving reproduce the main features of the observed ones, including the many replicates with low survival, although more replicates than predicted had about half of their aphids surviving (@fig-aphid-ppc).
 
 ## Per-species thermal limits {#sec-aphid-extract}
 
@@ -2387,26 +2453,34 @@ wf_leaf <- fit_4pl(
 summary(wf_leaf)
 ```
 
-Fitting this model took `r fit_time(wf_leaf)`, mostly because of the long chains and conservative sampler settings (`adapt_delta = 0.999`, `max_treedepth = 15`).
+Fitting this model took `r fit_time(wf_leaf)`, far longer than the other case studies. The longer chains explain only part of this: each iteration was also much slower, reflecting the three random effects, the censored zeros and the high `adapt_delta` (0.999), which makes the sampler take smaller steps.
 
 ```{r leaf-diagnostics}
 #| label: tbl-leaf-diagnostics
-#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: Rhat < 1.01, high ESS."
+#| tbl-cap: "Sampling diagnostics for the leaf 4PL fit. Healthy targets: R-hat < 1.01, bulk and tail ESS > 400, no divergent transitions."
 #| cache: false
 
-tinytable::tt(diagnose_tdt_fit(wf_leaf), digits = 3, escape = TRUE)
+leaf_fit_diag <- diagnose_tdt_fit(wf_leaf)
+tinytable::tt(leaf_fit_diag, digits = 3, escape = TRUE)
 ```
 
-```{r leaf-divergence-facts}
-#| label: leaf-divergence-facts
-#| echo: false
-# Exact divergence count and rate, derived from the fit (no magic numbers).
-.leaf_div_n   <- diagnose_tdt_fit(wf_leaf)$divergences
-.leaf_div_tot <- brms::ndraws(get_brmsfit(wf_leaf))
-.leaf_div_pct <- round(100 * .leaf_div_n / .leaf_div_tot, 1)
+```{r}
+#| label: fig-leaf-ppc
+#| fig-cap: "Posterior predictive check for the snow gum model: the retained PSII function of each reading (dark line) and of 100 datasets simulated from the posterior (light lines). Simulated values below the detection limit are set to 0.1, as the observed zeros are."
+#| fig-width: 6
+#| fig-height: 3.2
+#| cache: false
+#| code-fold: show
+# Simulate 100 datasets and censor them at the detection limit (0.1),
+# as the observed zeros are
+set.seed(123)
+leaf_fit  <- get_brmsfit(wf_leaf)
+leaf_yrep <- pmax(brms::posterior_predict(leaf_fit, ndraws = 100), 0.1)
+bayesplot::ppc_dens_overlay(leaf_fit$data$survival, leaf_yrep) +
+  ggplot2::labs(x = "Retained PSII function")
 ```
 
-The fit has `r .leaf_div_n` divergent transitions out of `r format(.leaf_div_tot, big.mark = ",")` post-warmup draws (`r .leaf_div_pct`%).
+The chains converged: `r diag_txt(leaf_fit_diag)` among `r format(brms::ndraws(leaf_fit), big.mark = ",")` post-warmup draws (@tbl-leaf-diagnostics). Once censored in the same way as the data, the simulated readings match the observed distribution (@fig-leaf-ppc): `r sprintf("%.1f", 100 * mean(leaf_yrep == 0.1))`% of simulated readings fall below the detection limit, against `r sprintf("%.1f", 100 * mean(leaf_fit$data$censored == "left"))`% of observed readings. Readings near full function are slightly more concentrated than predicted.
 
 ## Per-condition thermal limits {#sec-leaf-extract}
 
@@ -2533,7 +2607,7 @@ We'll now turn our attention to a paper by @orsted_suzukii_2024, who measured TD
 
 We'll first load the data and start with the mortality data:
 
-#### Load the data
+## Load the data
 ```{r}
 #| label: flydat
 #| echo: true
@@ -2553,7 +2627,7 @@ mort_dros <- dsuzukii |>
 ```
 
 
-#### Fitting the 4PL model
+## Fitting the 4PL model
 Now that we have the data set up we'll fit the 4PL model. Just to showcase how we can use the posterior to make comparisons we'll first model the sexes separately.
 
 ```{r}
@@ -2619,7 +2693,42 @@ dplyr::bind_rows(
   tinytable::tt(escape = TRUE)
 ```
 
-We can see each model explains quite a bit of variance but not the >90% reported in the paper. That's because all the variance is retained in the joint fit. Regardless, its high!  Note that the models have converged well based on the Rhat, but we can also look at the MCMC chains if we need to as per below:
+We can see each model explains quite a bit of variance but not the >90% reported in the paper. That's because all the variance is retained in the joint fit. Regardless, its high!
+
+```{r}
+#| label: dros-diagnostics
+#| cache: false
+#| code-fold: show
+# Sampling diagnostics for each sex
+dros_diag <- dplyr::bind_rows(Female = diagnose_tdt_fit(wf_dros_mort_F),
+                              Male   = diagnose_tdt_fit(wf_dros_mort_M), .id = "Sex")
+dros_diag
+```
+
+```{r}
+#| label: fig-dros-ppc
+#| fig-cap: "Posterior predictive checks for the vinegar fly mortality models of (a) females and (b) males: the proportion of flies surviving in each replicate (dark line) and in 100 datasets simulated from each posterior (light lines)."
+#| fig-width: 7.5
+#| fig-height: 3.2
+#| cache: false
+#| code-fold: show
+# Simulate 100 datasets from each posterior and compare the proportions surviving
+set.seed(123)
+dros_F_fit  <- get_brmsfit(wf_dros_mort_F)
+dros_F_yrep <- brms::posterior_predict(dros_F_fit, ndraws = 100)
+dros_M_fit  <- get_brmsfit(wf_dros_mort_M)
+dros_M_yrep <- brms::posterior_predict(dros_M_fit, ndraws = 100)
+patchwork::wrap_plots(
+  bayesplot::ppc_dens_overlay(dros_F_fit$data$n_surv / dros_F_fit$data$n_total,
+                              sweep(dros_F_yrep, 2, dros_F_fit$data$n_total, "/")) +
+    ggplot2::labs(title = "a) Females", x = "Proportion surviving"),
+  bayesplot::ppc_dens_overlay(dros_M_fit$data$n_surv / dros_M_fit$data$n_total,
+                              sweep(dros_M_yrep, 2, dros_M_fit$data$n_total, "/")) +
+    ggplot2::labs(title = "b) Males", x = "Proportion surviving"),
+  guides = "collect")
+```
+
+Both models converged: `r diag_txt(dros_diag)`. For both sexes the observed proportions surviving lie within the spread of the simulated datasets, which is wide because each sex has fewer than 50 observations (@fig-dros-ppc). Trace plots of the chains can be drawn with `plot(wf_dros_mort_F)` and `plot(wf_dros_mort_M)`.
 
 ```{r}
 #| label: dros_chains
@@ -2633,7 +2742,7 @@ plot(wf_dros_mort_M)
 plot(wf_dros_mort_F)
 ```
 
-#### Extracting *z* and $CT_{max_{1hr}}$ for males and females
+## Extracting *z* and $CT_{max_{1hr}}$ for males and females
 
 We can extract the TDT parameters now as we have done in other case studies:
 
@@ -2713,7 +2822,7 @@ We could ask whether males and females are significantly different or not from e
 
 Females have a slightly lower *z* than males (female − male: `r round(median(diff_sex_z), 2)` °C, 95% CI: `r round(quantile(diff_sex_z, 0.025), 2)` to `r round(quantile(diff_sex_z, 0.975), 2)` °C; pMCMC = `r round(pmcmc_sex_z, 2)`), but the interval spans zero, so the difference is not resolved.
 
-#### Fitting a model to compare sexes directly - indirect method
+## Fitting a model to compare sexes directly - indirect method
 
 We can also fit the sex data in a single model, which is a more powerful approach. To do that, we need to add `sex` as a categorical predictor. We'll first use the indirect method by fiting to the midpoint paremeter.
 
@@ -2895,7 +3004,7 @@ tinytable::tt(tls_sex_table_abs, escape = TRUE)
 
 The two `tls()` calls reproduce the by-hand calculations: the relative-threshold summary (@tbl-dros-sex-joint) matches the relative columns of @tbl-dros-sex-byhand, and the absolute-threshold summary (@tbl-dros-sex-joint-abs) matches the absolute columns. Relative and absolute estimates barely differ here because the fitted asymptotes change little with temperature, so the asymmetry correction is nearly constant; `tls()` additionally returns $T_{crit}$, which is similar under both thresholds.
 
-#### Fitting a model to compare $z$ and $Ct_{max_{1hr}}$ between sexes directly - direct method
+## Fitting a model to compare $z$ and $Ct_{max_{1hr}}$ between sexes directly - direct method
 
 Now, lets refit this model in the **direct** form and estimate $z$ and $CT_{max_{4hr}}$ for each of the sexes.
 
@@ -2977,7 +3086,7 @@ The *Drosophila* dataset also includes two sublethal endpoints: heat-coma time a
 
 Heat-coma time can be analysed in two equivalent ways. The classical route fits a Bayesian hierarchical regression of $\log_{10}(\text{time to coma})$ on temperature and derives $z = -1/\beta_1$ and $CT_{max_{1hr}} = \bar{T} + (\log_{10} 60 - \beta_0)/\beta_1$ from the fitted coefficients. The joint route reformulates the same observations as proportion-awake counts and fits the 4PL, recovering the same quantities from the posterior. Below, we fit both models with `sex` as a moderator so one model estimates female- and male-specific parameters.
 
-##### Knockdown: time to coma {#sec-dros-coma}
+## Knockdown: time to coma {#sec-dros-coma}
 
 Each fly was exposed for a fixed duration, scored as awake or in heat coma, and assigned a coma time if it lost the righting response during the exposure. Flies still awake at the end of the exposure had not yet reached the endpoint, so their coma times are **right-censored** at the exposure duration. Overall, `r round(100*mean(is.na(dsuzukii$t_coma)))`% of flies are censored.
 
@@ -3113,6 +3222,40 @@ fit_coma_4pl <- brms::brm(
 This model took `r fit_time(fit_coma_4pl)` to fit.
 
 ```{r}
+#| label: coma-diagnostics
+#| cache: false
+#| code-fold: show
+# diagnose_tdt_fit() takes bayesTLS workflows, so for the hand-built brms models
+# in this section we compute the same diagnostics with posterior and brms
+brms_diag <- function(fit) {
+  s <- posterior::summarise_draws(fit, "rhat", "ess_bulk", "ess_tail")
+  data.frame(rhat_max     = max(s$rhat, na.rm = TRUE),
+             ess_bulk_min = round(min(s$ess_bulk, na.rm = TRUE)),
+             ess_tail_min = round(min(s$ess_tail, na.rm = TRUE)),
+             divergences  = sum(subset(brms::nuts_params(fit), Parameter == "divergent__")$Value))
+}
+coma_diag <- brms_diag(fit_coma_4pl)
+coma_diag
+```
+
+```{r}
+#| label: fig-coma-ppc
+#| fig-cap: "Posterior predictive check for the heat-coma 4PL: the proportion of flies still awake in each replicate (dark line) and in 100 datasets simulated from the posterior (light lines)."
+#| fig-width: 6
+#| fig-height: 3.2
+#| cache: false
+#| code-fold: show
+# Simulate 100 datasets from the posterior and compare the proportions awake
+set.seed(123)
+coma_yrep <- brms::posterior_predict(fit_coma_4pl, ndraws = 100)
+bayesplot::ppc_dens_overlay(fit_coma_4pl$data$n_surv / fit_coma_4pl$data$n_total,
+                            sweep(coma_yrep, 2, fit_coma_4pl$data$n_total, "/")) +
+  ggplot2::labs(x = "Proportion awake")
+```
+
+The chains converged: `r diag_txt(coma_diag)`. The simulated proportions awake match the observed distribution, apart from fewer intermediate observed proportions (around 0.5) than predicted (@fig-coma-ppc).
+
+```{r}
 #| label: dros-coma-4pl-tls
 #| echo: true
 #| code-fold: show
@@ -3156,7 +3299,7 @@ tinytable::tt(coma_compare, escape = TRUE)
 
 Both Bayesian routes agree and recover similar estimates to @orsted_suzukii_2024 within their credible intervals (@tbl-dros-coma-compare). Heat-coma sensitivity is $z \approx 2.3$-2.4 °C and $CT_{max_{1hr}} \approx 36.3$-36.5 °C for both sexes, with little evidence for sex differences.
 
-##### Productivity: reproductive output {#sec-dros-productivity}
+## Productivity: reproductive output {#sec-dros-productivity}
 
 Reproductive output has two parts: *whether* a fly reproduced at all, and *how many* offspring it produced if it did. Such data are zero-inflated — many flies produce nothing — which a single curve handles poorly. A **hurdle model** deals with this by splitting the response into two pieces that are fit together: a yes/no part for whether a fly clears the "hurdle" of producing any offspring, and a count part for how many it produces once it has. Keeping the two pieces separate lets thermal stress act differently on *whether* a fly reproduces and on *how much* it produces.
 
@@ -3207,7 +3350,7 @@ fit_prod_ln <- brms::add_criterion(fit_prod_ln, "loo")
 prod_loo    <- brms::loo_compare(fit_prod_ga, fit_prod_ln)
 ```
 
-The two productivity models took `r fit_time(fit_prod_ga)` and `r fit_time(fit_prod_ln)` to fit.
+The two productivity models took `r fit_time(fit_prod_ga)` (Gamma) and `r fit_time(fit_prod_ln)` (log-normal) to fit.
 
 ```{r}
 #| label: tbl-prod-loo
@@ -3230,6 +3373,33 @@ tinytable::tt(prod_loo_tbl, escape = TRUE)
 ```
 
 The Gamma version predicts the data better than the log-normal — by `r round(abs(prod_loo[2,"elpd_diff"]))` points on the leave-one-out predictive scale (`r round(prod_loo_dz, 1)` standard errors) — so we use it (`fit_prod_ga`) from here on.
+
+```{r}
+#| label: prod-diagnostics
+#| cache: false
+#| code-fold: show
+# Same diagnostics for the two hurdle models
+prod_diag <- dplyr::bind_rows(Gamma = brms_diag(fit_prod_ga),
+                              `log-normal` = brms_diag(fit_prod_ln), .id = "Model")
+prod_diag
+```
+
+```{r}
+#| label: fig-prod-ppc
+#| fig-cap: "Posterior predictive check for the hurdle-Gamma productivity model: the clutch size of each fly, including the zeros of flies that did not reproduce (dark line), and 100 datasets simulated from the posterior (light lines), on a log(1 + x) axis."
+#| fig-width: 6
+#| fig-height: 3.2
+#| cache: false
+#| code-fold: show
+# Simulate 100 datasets from the posterior and compare clutch sizes
+set.seed(123)
+prod_yrep <- brms::posterior_predict(fit_prod_ga, ndraws = 100)
+bayesplot::ppc_dens_overlay(fit_prod_ga$data$prod, prod_yrep) +
+  ggplot2::scale_x_continuous(trans = "log1p") +
+  ggplot2::labs(x = "Clutch size (log(1 + x) axis)")
+```
+
+Both hurdle models converged: `r diag_txt(prod_diag)`. The hurdle-Gamma model reproduces the share of flies with no offspring (`r sprintf("%.1f", 100 * mean(prod_yrep == 0))`% in the simulated datasets, against `r sprintf("%.1f", 100 * mean(fit_prod_ga$data$prod == 0))`% observed) and the spread of clutch sizes among the flies that reproduced (@fig-prod-ppc).
 
 We read both reproductive summaries straight from the fitted model, one for each part of the hurdle. For *whether* a fly reproduces, we get the exposure time at which half the flies still reproduce and how that shifts with temperature — i.e. a thermal-tolerance curve. For *how many* offspring (among flies that did reproduce), we get how quickly clutch size falls as exposure lengthens. Both are computed from the fitted coefficients on every posterior draw, so they carry full uncertainty.
 
@@ -3472,7 +3642,7 @@ Splitting reproduction into these two parts shows something a single fecundity c
 
 # **Comparisons with other dose-response models** {#sec-curve-comparison}
 
-As indicated above (@sec-alt-kernels) and in the main manuscript, other dose-response models could be fit to the data. `bayesTLS` can also fit these, and WAIC or LOO can be used to compare fits. Each of these dose-response models can estimate $CT_{max}$ and $z$, with slight differences. We demonstrate below how a model comparison can be made for each case study. Each alternative model uses the same data, model structure and sampler settings as the case-study fit. Only the dose-response curve changes. When comparing models with LOO or WAIC, differences in expected log predictive density (ELPD) smaller than about 4 units mean two models predict about equally well [@sivula2025]. We treat one model as better supported only if its ELPD is more than 4 units higher than another and the difference is about twice its standard error, following the conservative suggestion to double the standard error when samples are small [@vehtari_loo_2026]. In all our case studies, the log-logistic is nearly equally supported. As indicated in the manuscript, the log-logistic is widely used and often equally supported. It is also very convenient given its midpoint's connection to TLS theory.
+As indicated above (@sec-alt-kernels) and in the main manuscript, other dose-response models could be fit to the data. Each of these curves can be parameterised to estimate $CT_{max}$ and $z$ directly. `bayesTLS` can also fit these, and WAIC or LOO can be used to compare fits. We base our conclusions on PSIS-LOO, which is more robust than WAIC [@vehtari_loo_2017]. We demonstrate below how a model comparison can be made for each case study. Each alternative model uses the same data, model structure and sampler settings as the case-study fit. Only the dose-response curve changes, together with the default prior mean of $\log k$, which is shifted for each curve so that all four curves have the same prior on their slope at the midpoint (@sec-alt-kernels) (just to make the comparison fair). When comparing models with LOO or WAIC, differences in expected log predictive density (ELPD) smaller than about 4 units mean two models predict about equally well [@sivula2025]. We treat one model as better supported only if its ELPD is more than 4 units higher than another's and the difference is more than twice its standard error (SE); this is our own, conservative convention. With fewer than 100 observations, as in the fly data, the SE is likely to be underestimated [@sivula2025; @vehtari_loo_2026], so small differences there need extra caution. In all four case studies, the log-logistic predicts about as well as the best-supported curve, although the snow gum comparison is less reliable than the others. As noted in the manuscript, the log-logistic is also widely used in dose-response analysis [@ritz_ecotox_2010], was a better or equally supported model for heat knockdown times in most of the *Drosophila* species tested by @bullard2026, and its midpoint links directly to TDT theory.
 
 ```{r curve-helpers}
 #| code-fold: true
@@ -3489,8 +3659,8 @@ curve_table <- function(loos, waics) {
   wc <- wc[match(lc$model, wc$model), ]
   tinytable::tt(data.frame(
     Curve = lc$model,
-    `LOO difference (SE)`  = sprintf("%.1f (%.1f)", lc$elpd_diff, lc$se_diff),
-    `WAIC difference (SE)` = sprintf("%.1f (%.1f)", wc$elpd_diff, wc$se_diff),
+    `LOO difference (SE)`  = sub("^-0\\.0 ", "0.0 ", sprintf("%.1f (%.1f)", lc$elpd_diff, lc$se_diff)),
+    `WAIC difference (SE)` = sub("^-0\\.0 ", "0.0 ", sprintf("%.1f (%.1f)", wc$elpd_diff, wc$se_diff)),
     `Pareto k > 0.7` = sapply(loos[lc$model], function(l) sum(l$diagnostics$pareto_k > 0.7)),
     check.names = FALSE), escape = TRUE)
 }
@@ -3541,6 +3711,7 @@ wf_zf_ln <- fit_lognormal(zf_std,
 
 ```{r tbl-zf-curves}
 #| label: tbl-zf-curves
+#| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("zf_oxygen_normhyper", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
 #| tbl-cap: "Zebrafish: difference in expected log predictive density (ELPD) from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC
 zf_fits <- list("Log-logistic" = wf_zf_ll, "Log-normal" = wf_zf_ln,
@@ -3550,7 +3721,7 @@ zf_waic <- lapply(zf_fits, function(x) brms::waic(get_brmsfit(x)))
 curve_table(zf_loo, zf_waic)
 ```
 
-As we can see from @tbl-zf-curves, there is little difference among the dose-response models for the zebrafish (largest LOO difference `r curve_gap(zf_loo)`).
+As we can see from @tbl-zf-curves, there is little difference among the dose-response models for the zebrafish: the largest LOO difference is `r curve_gap(zf_loo)`.
 
 ## Snow gum model comparisons
 
@@ -3575,7 +3746,8 @@ wf_leaf_w1 <- fit_weibull(leaf_std, type = 1,
                           t_ref  = 60, iter = 10000, warmup = 5000, seed = 123,
                           control = list(adapt_delta = 0.999, max_treedepth = 15),
                           file_refit = "on_change",
-                          file = file.path(models_dir, "fit_leaf_recovery_4pl_cens_run_array_weibull1"))
+                          file = file.path(models_dir,
+                                           "fit_leaf_recovery_4pl_cens_run_array_weibull1"))
 
 wf_leaf_w2 <- fit_weibull(leaf_std, type = 2,
                           ctmax  = ~ 0 + recovery + (1 | plant) + (1 | run) + (1 | array),
@@ -3584,7 +3756,8 @@ wf_leaf_w2 <- fit_weibull(leaf_std, type = 2,
                           t_ref  = 60, iter = 10000, warmup = 5000, seed = 123,
                           control = list(adapt_delta = 0.999, max_treedepth = 15),
                           file_refit = "on_change",
-                          file = file.path(models_dir, "fit_leaf_recovery_4pl_cens_run_array_weibull2"))
+                          file = file.path(models_dir,
+                                           "fit_leaf_recovery_4pl_cens_run_array_weibull2"))
 
 # Fit lognormal
 wf_leaf_ln <- fit_lognormal(leaf_std,
@@ -3594,21 +3767,41 @@ wf_leaf_ln <- fit_lognormal(leaf_std,
                             t_ref  = 60, iter = 10000, warmup = 5000, seed = 123,
                             control = list(adapt_delta = 0.999, max_treedepth = 15),
                             file_refit = "on_change",
-                            file = file.path(models_dir, "fit_leaf_recovery_4pl_cens_run_array_lognormal"))
+                            file = file.path(models_dir,
+                                             "fit_leaf_recovery_4pl_cens_run_array_lognormal"))
 ```
 
 ```{r tbl-leaf-curves}
 #| label: tbl-leaf-curves
+#| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("fit_leaf_recovery_4pl_cens_run_array", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
 #| tbl-cap: "Snow gum: difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC
 leaf_fits <- list("Log-logistic" = wf_leaf_ll, "Log-normal" = wf_leaf_ln,
                   "Weibull type 1" = wf_leaf_w1, "Weibull type 2" = wf_leaf_w2)
 leaf_loo  <- lapply(leaf_fits, function(x) brms::loo(get_brmsfit(x)))
 leaf_waic <- lapply(leaf_fits, function(x) brms::waic(get_brmsfit(x)))
+leaf_diag <- lapply(leaf_fits, diagnose_tdt_fit)
 curve_table(leaf_loo, leaf_waic)
 ```
 
-For the snow gum, the log-logistic is again within one SE of the best-supported curve (@tbl-leaf-curves), but this comparison is less reliable than the others. Every fit has observations with Pareto k > 0.7, WAIC flags many observations, and the two Weibull fits did not sample cleanly (divergent transitions for type 2 and an R-hat above 1.01 for type 1). The log-normal and Weibull type 1 curves fall more than 4 units and about twice their SE behind the best, but given these problems we would not read much into the ranking.
+```{r leaf-curve-facts}
+#| echo: false
+#| cache: false
+# Values quoted in the text below, taken from the fits
+leaf_cmp <- curve_compare(leaf_loo)
+leaf_ll  <- leaf_cmp[leaf_cmp$model == "Log-logistic", ]
+leaf_k07 <- sapply(leaf_loo, function(l) sum(l$diagnostics$pareto_k > 0.7))
+leaf_k1  <- sapply(leaf_loo, function(l) sum(l$diagnostics$pareto_k > 1))
+leaf_pw  <- sapply(leaf_waic, function(w) sum(w$pointwise[, "p_waic"] > 0.4))
+leaf_n   <- nrow(leaf_waic[[1]]$pointwise)
+# curves more than 4 units and more than 2 SE behind the best
+leaf_far <- with(leaf_cmp, model[-elpd_diff > 4 & -elpd_diff > 2 * se_diff])
+# minutes taken by the slowest chain of each fit
+leaf_min <- sapply(leaf_fits, function(x)
+  max(rowSums(rstan::get_elapsed_time(get_brmsfit(x)$fit)))) / 60
+```
+
+For the snow gum, the log-logistic is `r sprintf("%.1f (SE %.1f)", -leaf_ll$elpd_diff, leaf_ll$se_diff)` behind the best-supported curve, `r leaf_cmp$model[1]` (@tbl-leaf-curves), but this comparison is less reliable than the others. Every fit has `r min(leaf_k07)` to `r max(leaf_k07)` observations with Pareto k > 0.7, for which PSIS-LOO is unreliable (`r min(leaf_k1)` to `r max(leaf_k1)` of them above 1), and WAIC is unreliable for up to `r max(leaf_pw)` of the `r leaf_n` readings (p_waic > 0.4). The two Weibull fits also did not sample cleanly: the Weibull type 2 fit has `r leaf_diag[["Weibull type 2"]]$divergences` divergent transitions, and the Weibull type 1 fit a maximum R-hat of `r sprintf("%.3f", leaf_diag[["Weibull type 1"]]$rhat_max)`. Readings on one array also share temperature, duration, recovery treatment and array effect, so standard errors that treat readings as independent may be too small, and we did not refit the high-k observations, because each snow gum fit took `r sprintf("%.0f to %.0f", min(leaf_min), max(leaf_min))` minutes. The `r knitr::combine_words(sub("^Log", "log", leaf_far))` curves fall more than 4 units and more than twice their SE behind the best, but given these problems we would not read much into the ranking.
 
 
 ## Aphid model comparisons
@@ -3650,6 +3843,7 @@ wf_aphid_ln <- fit_lognormal(aphid_std,
 
 ```{r tbl-aphid-curves}
 #| label: tbl-aphid-curves
+#| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("aphid_species", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
 #| tbl-cap: "Cereal aphids: difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC
 aphid_fits <- list("Log-logistic" = wf_aphid_ll, "Log-normal" = wf_aphid_ln,
@@ -3659,7 +3853,7 @@ aphid_waic <- lapply(aphid_fits, function(x) brms::waic(get_brmsfit(x)))
 curve_table(aphid_loo, aphid_waic)
 ```
 
-As with the zebrafish, there is little difference among the dose-response models for the cereal aphids (@tbl-aphid-curves): the largest LOO difference, `r curve_gap(aphid_loo)`, is less than twice its SE.
+For the cereal aphids, no curve is clearly better supported (@tbl-aphid-curves): the largest LOO difference, `r curve_gap(aphid_loo)`, is less than twice its SE.
 
 ## Fly model comparisons
 
@@ -3680,33 +3874,40 @@ wf_dros_M_ll <- fit_4pl(std_mort_M,
 wf_dros_F_w1 <- fit_weibull(std_mort_F, type = 1,
                             chains = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
                             control = list(adapt_delta = 0.99, max_treedepth = 12),
-                            file = file.path(models_dir, "fit_dsuzukii_mortality_4pl_F_weibull1"))
+                            file = file.path(models_dir,
+                                             "fit_dsuzukii_mortality_4pl_F_weibull1"))
 wf_dros_M_w1 <- fit_weibull(std_mort_M, type = 1,
                             chains = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
                             control = list(adapt_delta = 0.99, max_treedepth = 12),
-                            file = file.path(models_dir, "fit_dsuzukii_mortality_4pl_M_weibull1"))
+                            file = file.path(models_dir,
+                                             "fit_dsuzukii_mortality_4pl_M_weibull1"))
 wf_dros_F_w2 <- fit_weibull(std_mort_F, type = 2,
                             chains = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
                             control = list(adapt_delta = 0.99, max_treedepth = 12),
-                            file = file.path(models_dir, "fit_dsuzukii_mortality_4pl_F_weibull2"))
+                            file = file.path(models_dir,
+                                             "fit_dsuzukii_mortality_4pl_F_weibull2"))
 wf_dros_M_w2 <- fit_weibull(std_mort_M, type = 2,
                             chains = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
                             control = list(adapt_delta = 0.99, max_treedepth = 12),
-                            file = file.path(models_dir, "fit_dsuzukii_mortality_4pl_M_weibull2"))
+                            file = file.path(models_dir,
+                                             "fit_dsuzukii_mortality_4pl_M_weibull2"))
 
 # Fit lognormal
 wf_dros_F_ln <- fit_lognormal(std_mort_F,
                               chains = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
                               control = list(adapt_delta = 0.99, max_treedepth = 12),
-                              file = file.path(models_dir, "fit_dsuzukii_mortality_4pl_F_lognormal"))
+                              file = file.path(models_dir,
+                                               "fit_dsuzukii_mortality_4pl_F_lognormal"))
 wf_dros_M_ln <- fit_lognormal(std_mort_M,
                               chains = 4, iter = 8000, warmup = 4000, cores = 4, seed = 123,
                               control = list(adapt_delta = 0.99, max_treedepth = 12),
-                              file = file.path(models_dir, "fit_dsuzukii_mortality_4pl_M_lognormal"))
+                              file = file.path(models_dir,
+                                               "fit_dsuzukii_mortality_4pl_M_lognormal"))
 ```
 
 ```{r tbl-dros-curves-f}
 #| label: tbl-dros-curves-f
+#| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("fit_dsuzukii_mortality_4pl_F", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
 #| tbl-cap: "Vinegar fly mortality for females. Difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC (females)
 dros_F_fits <- list("Log-logistic" = wf_dros_F_ll, "Log-normal" = wf_dros_F_ln,
@@ -3718,6 +3919,7 @@ curve_table(dros_F_loo, dros_F_waic)
 
 ```{r tbl-dros-curves-m}
 #| label: tbl-dros-curves-m
+#| cache.extra: !expr tools::md5sum(file.path(models_dir, paste0("fit_dsuzukii_mortality_4pl_M", c("", "_lognormal", "_weibull1", "_weibull2"), ".rds")))
 #| tbl-cap: "Vinegar fly mortality for males. Difference in ELPD from the best-supported curve, by LOO and WAIC (0 = best). Pareto k > 0.7 counts observations for which LOO is unreliable."
 # Model comparison table, LOO and WAIC (males)
 dros_M_fits <- list("Log-logistic" = wf_dros_M_ll, "Log-normal" = wf_dros_M_ln,
@@ -3727,7 +3929,228 @@ dros_M_waic <- lapply(dros_M_fits, function(x) brms::waic(get_brmsfit(x)))
 curve_table(dros_M_loo, dros_M_waic)
 ```
 
-There is also little difference among the dose-response models for vinegar fly mortality, in females (@tbl-dros-curves-f; largest LOO difference `r curve_gap(dros_F_loo)`) or males (@tbl-dros-curves-m; `r curve_gap(dros_M_loo)`).
+There is also little difference among the dose-response models for vinegar fly mortality: the largest LOO difference is `r curve_gap(dros_F_loo)` for females (@tbl-dros-curves-f) and `r curve_gap(dros_M_loo)` for males (@tbl-dros-curves-m). With fewer than 100 observations per sex, small differences would be hard to detect.
+
+# **Prior sensitivity** {#sec-prior-sensitivity}
+
+All case-study models use the default priors of `bayesTLS`, which are weakly informative and centred on values typical of thermal-death-time data (@fig-default-priors). The lower and upper asymptotes are centred near 0.02 and 0.98 (normal priors with SD 1 on their logit scales), the steepness near $k = 2$ ($\log k \sim N(\log 2, 1)$), $z$ near 3 °C ($\log z \sim N(\log 3, 0.7)$), and $CT_{max}$ on the mean assay temperature with an SD of 10 °C. Temperature slopes and group contrasts have zero-centred normal priors, the beta-binomial precision a gamma(2, 0.1) prior, and random-effect SDs exponential(2) priors. 
+
+To test how much these choices affect $z$ and $CT_{max}$, we refitted the zebrafish and cereal aphid models with every normal prior's SD doubled (weaker priors) or halved (stronger priors), leaving the other priors unchanged. We chose these as these models fit quickly. It's a good idea to check sensitivity to priors, but one can also refit models with `freqTLS` and compare results. `freqTLS` is prior free (see @sec-freqtls).
+
+```{r fig-default-priors}
+#| label: fig-default-priors
+#| fig-dpi: 300
+#| echo: false
+#| cache: false
+#| fig-width: 7.5
+#| fig-height: 4.8
+#| fig-cap: "Default priors of `bayesTLS` and the weaker (SD × 2) and stronger (SD × 0.5) sets used to test prior sensitivity, on each parameter's natural scale for the zebrafish model. $k$ and $z$ are on log axes, $CT_{max}$ is shown relative to the mean assay temperature, and each density is scaled to a maximum of 1. The asymptote priors are normal on a logit scale, so weakening them moves prior mass towards the bounds rather than spreading it evenly."
+# Default prior centres and SDs (level priors), read from the package for the zebrafish model
+.pf_prior <- as.data.frame(make_tdt_priors(zf_std, ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen,
+                                           low = ~ 0 + oxygen, up = ~ 1, k = ~ 1,
+                                           prior_phi = "gamma(2, 0.1)"))
+.pf_prior <- .pf_prior[.pf_prior$class == "b" & .pf_prior$coef != "" & grepl("^normal", .pf_prior$prior), ]
+.pf_prior <- .pf_prior[!duplicated(.pf_prior$nlpar), ]
+.pf_mu <- setNames(as.numeric(sub("normal\\(([^,]+),.*", "\\1", .pf_prior$prior)), .pf_prior$nlpar)
+.pf_sd <- setNames(as.numeric(sub(".*, *([^)]+)\\)$", "\\1", .pf_prior$prior)), .pf_prior$nlpar)
+.pf_b  <- bayesTLS:::compute_4pl_bounds(0, 1)
+.pf_sets <- c(`Stronger (SD × 0.5)` = 0.5, Default = 1, `Weaker (SD × 2)` = 2)
+
+# Density on each parameter's natural scale (asymptotes: exact change of variables;
+# k and z: density of log k and log z on log axes), scaled to a maximum of 1
+.pf_curve <- function(x, dfun) do.call(rbind, lapply(names(.pf_sets), function(s) {
+  d <- dfun(x, .pf_sets[[s]]); data.frame(x = x, d = d / max(d[is.finite(d)]), set = s) }))
+.pf_asy <- function(lo, w, m, s) function(x, f) {
+  p <- (x - lo) / w; dnorm(qlogis(p), m, f * s) / (w * p * (1 - p)) }
+.pf_panel <- function(dat, title, logx = FALSE, ylab = NULL) {
+  dat$set <- factor(dat$set, levels = names(.pf_sets))
+  g <- ggplot2::ggplot(dat, ggplot2::aes(x, d, colour = set)) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::scale_colour_viridis_d(end = 0.85) +
+    ggplot2::labs(title = title, x = NULL, y = ylab, colour = NULL) +
+    ggplot2::theme_classic(base_size = 10) +
+    ggplot2::scale_y_continuous(breaks = c(0, 0.5, 1)) +
+    ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", size = 10, hjust = 0.5))
+  if (logx) g + ggplot2::scale_x_log10(labels = function(v) format(v, drop0trailing = TRUE, scientific = FALSE)) else g
+}
+patchwork::wrap_plots(
+  .pf_panel(.pf_curve(seq(.pf_b$low_min + 1e-5, 0.35, length.out = 800),
+                      .pf_asy(.pf_b$low_min, .pf_b$low_w, .pf_mu[["lowraw"]], .pf_sd[["lowraw"]])),
+            "Lower asymptote (low)", ylab = "Relative probability density"),
+  .pf_panel(.pf_curve(seq(0.65, .pf_b$up_min + .pf_b$up_w - 1e-5, length.out = 800),
+                      .pf_asy(.pf_b$up_min, .pf_b$up_w, .pf_mu[["upraw"]], .pf_sd[["upraw"]])),
+            "Upper asymptote (up)"),
+  .pf_panel(.pf_curve(10^seq(-2, 2.5, length.out = 800),
+                      function(x, f) dnorm(log(x), .pf_mu[["logk"]], f * .pf_sd[["logk"]])),
+            "Steepness, k", logx = TRUE),
+  .pf_panel(.pf_curve(10^seq(-1, 2, length.out = 800),
+                      function(x, f) dnorm(log(x), .pf_mu[["logz"]], f * .pf_sd[["logz"]])),
+            "z (°C)", logx = TRUE, ylab = "Relative probability density"),
+  .pf_panel(.pf_curve(seq(-40, 40, length.out = 800),
+                      function(x, f) dnorm(x, .pf_mu[["CTmaxdev"]], f * .pf_sd[["CTmaxdev"]])),
+            "CTmax − mean temperature (°C)"),
+  ncol = 3, guides = "collect") &
+  ggplot2::theme(legend.position = "bottom")
+```
+
+```{r prior-sens-fits}
+#| cache: false
+#| code-fold: show
+# Zebrafish: default priors (what fit_4pl() uses unless told otherwise)
+zf_prior_default <- make_tdt_priors(zf_std,
+                                    ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen,
+                                    low = ~ 0 + oxygen, up = ~ 1, k = ~ 1,
+                                    prior_phi = "gamma(2, 0.1)")
+zf_prior_default
+
+# Weaker priors: every SD doubled
+zf_prior_weak <- c(
+  brms::prior(normal(-3.227262, 2),  class = b, nlpar = lowraw,   coef = oxygennormoxia),
+  brms::prior(normal(-3.227262, 2),  class = b, nlpar = lowraw,   coef = oxygenhyperoxia),
+  brms::prior(normal(3.227262, 2),   class = b, nlpar = upraw,    coef = Intercept),
+  brms::prior(normal(0, 1),          class = b, nlpar = upraw),
+  brms::prior(normal(0.693147, 2),   class = b, nlpar = logk,     coef = Intercept),
+  brms::prior(normal(0, 0.6),        class = b, nlpar = logk),
+  brms::prior(normal(0, 20),         class = b, nlpar = CTmaxdev, coef = oxygennormoxia),
+  brms::prior(normal(0, 20),         class = b, nlpar = CTmaxdev, coef = oxygenhyperoxia),
+  brms::prior(normal(1.098612, 1.4), class = b, nlpar = logz,     coef = oxygennormoxia),
+  brms::prior(normal(1.098612, 1.4), class = b, nlpar = logz,     coef = oxygenhyperoxia),
+  brms::prior(gamma(2, 0.1),         class = phi))
+
+# Stronger priors: every SD halved
+zf_prior_strong <- c(
+  brms::prior(normal(-3.227262, 0.5),  class = b, nlpar = lowraw,   coef = oxygennormoxia),
+  brms::prior(normal(-3.227262, 0.5),  class = b, nlpar = lowraw,   coef = oxygenhyperoxia),
+  brms::prior(normal(3.227262, 0.5),   class = b, nlpar = upraw,    coef = Intercept),
+  brms::prior(normal(0, 0.25),         class = b, nlpar = upraw),
+  brms::prior(normal(0.693147, 0.5),   class = b, nlpar = logk,     coef = Intercept),
+  brms::prior(normal(0, 0.15),         class = b, nlpar = logk),
+  brms::prior(normal(0, 5),            class = b, nlpar = CTmaxdev, coef = oxygennormoxia),
+  brms::prior(normal(0, 5),            class = b, nlpar = CTmaxdev, coef = oxygenhyperoxia),
+  brms::prior(normal(1.098612, 0.35),  class = b, nlpar = logz,     coef = oxygennormoxia),
+  brms::prior(normal(1.098612, 0.35),  class = b, nlpar = logz,     coef = oxygenhyperoxia),
+  brms::prior(gamma(2, 0.1),           class = phi))
+
+# Fits: the default-prior model is wf_zf from the zebrafish case study
+zf_fits <- list(
+  default = wf_zf,
+  weak    = fit_4pl(zf_std,
+                    ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen,
+                    low = ~ 0 + oxygen, up = ~ 1, k = ~ 1,
+                    prior = zf_prior_weak,
+                    t_ref = 60, control = list(adapt_delta = 0.95),
+                    file_refit = "on_change",
+                    file = file.path(models_dir, "zf_oxygen_normhyper_prior_weak")),
+  strong  = fit_4pl(zf_std,
+                    ctmax = ~ 0 + oxygen, z = ~ 0 + oxygen,
+                    low = ~ 0 + oxygen, up = ~ 1, k = ~ 1,
+                    prior = zf_prior_strong,
+                    t_ref = 60, control = list(adapt_delta = 0.95),
+                    file_refit = "on_change",
+                    file = file.path(models_dir, "zf_oxygen_normhyper_prior_strong")))
+
+# Cereal aphids: default priors
+aphid_prior_default <- make_tdt_priors(aphid_std,
+                                       ctmax = ~ 0 + species, z = ~ 0 + species,
+                                       k = ~ temp_c, up = ~ 1, low = ~ 1,
+                                       prior_phi = "gamma(2, 0.1)")
+aphid_prior_default
+
+# Weaker priors: every SD doubled
+aphid_prior_weak <- c(
+  brms::prior(normal(-3.227262, 2),  class = b, nlpar = lowraw,   coef = Intercept),
+  brms::prior(normal(0, 1),          class = b, nlpar = lowraw),
+  brms::prior(normal(3.227262, 2),   class = b, nlpar = upraw,    coef = Intercept),
+  brms::prior(normal(0, 1),          class = b, nlpar = upraw),
+  brms::prior(normal(0.693147, 2),   class = b, nlpar = logk,     coef = Intercept),
+  brms::prior(normal(0, 0.6),        class = b, nlpar = logk),
+  brms::prior(normal(0, 20),         class = b, nlpar = CTmaxdev, coef = speciesM_dirhodum),
+  brms::prior(normal(0, 20),         class = b, nlpar = CTmaxdev, coef = speciesS_avenae),
+  brms::prior(normal(0, 20),         class = b, nlpar = CTmaxdev, coef = speciesR_padi),
+  brms::prior(normal(1.098612, 1.4), class = b, nlpar = logz,     coef = speciesM_dirhodum),
+  brms::prior(normal(1.098612, 1.4), class = b, nlpar = logz,     coef = speciesS_avenae),
+  brms::prior(normal(1.098612, 1.4), class = b, nlpar = logz,     coef = speciesR_padi),
+  brms::prior(gamma(2, 0.1),         class = phi))
+
+# Stronger priors: every SD halved
+aphid_prior_strong <- c(
+  brms::prior(normal(-3.227262, 0.5),  class = b, nlpar = lowraw,   coef = Intercept),
+  brms::prior(normal(0, 0.25),         class = b, nlpar = lowraw),
+  brms::prior(normal(3.227262, 0.5),   class = b, nlpar = upraw,    coef = Intercept),
+  brms::prior(normal(0, 0.25),         class = b, nlpar = upraw),
+  brms::prior(normal(0.693147, 0.5),   class = b, nlpar = logk,     coef = Intercept),
+  brms::prior(normal(0, 0.15),         class = b, nlpar = logk),
+  brms::prior(normal(0, 5),            class = b, nlpar = CTmaxdev, coef = speciesM_dirhodum),
+  brms::prior(normal(0, 5),            class = b, nlpar = CTmaxdev, coef = speciesS_avenae),
+  brms::prior(normal(0, 5),            class = b, nlpar = CTmaxdev, coef = speciesR_padi),
+  brms::prior(normal(1.098612, 0.35),  class = b, nlpar = logz,     coef = speciesM_dirhodum),
+  brms::prior(normal(1.098612, 0.35),  class = b, nlpar = logz,     coef = speciesS_avenae),
+  brms::prior(normal(1.098612, 0.35),  class = b, nlpar = logz,     coef = speciesR_padi),
+  brms::prior(gamma(2, 0.1),           class = phi))
+
+# Fits: the default-prior model is wf_aphid from the aphid case study
+aphid_fits <- list(
+  default = wf_aphid,
+  weak    = fit_4pl(aphid_std,
+                    ctmax = ~ 0 + species, z = ~ 0 + species,
+                    k = ~ temp_c, up = ~ 1, low = ~ 1,
+                    prior = aphid_prior_weak,
+                    t_ref = 60, silent = 2, refresh = 0,
+                    file_refit = "on_change",
+                    file = file.path(models_dir, "aphid_species_prior_weak")),
+  strong  = fit_4pl(aphid_std,
+                    ctmax = ~ 0 + species, z = ~ 0 + species,
+                    k = ~ temp_c, up = ~ 1, low = ~ 1,
+                    prior = aphid_prior_strong,
+                    t_ref = 60, silent = 2, refresh = 0,
+                    file_refit = "on_change",
+                    file = file.path(models_dir, "aphid_species_prior_strong")))
+```
+
+```{r tbl-prior-sens}
+#| label: tbl-prior-sens
+#| echo: false
+#| cache: false
+#| tbl-cap: "Posterior medians [95% credible intervals] of $z$ and $CT_{max_{1hr}}$ under the default, weaker (SD × 2) and stronger (SD × 0.5) priors."
+# z and CTmax under each prior set
+.ps_sum <- function(fits, by) do.call(rbind, lapply(names(fits), function(s) {
+  x <- as.data.frame(tls(fits[[s]], by = by, params = c("z", "ctmax"), t_ref = 60)$summary)
+  names(x)[1] <- "group"; x$group <- as.character(x$group); cbind(prior = s, x) }))
+.ps <- rbind(cbind(case = "Zebrafish", .ps_sum(zf_fits, "oxygen")),
+             cbind(case = "Cereal aphids", .ps_sum(aphid_fits, "species")))
+.ps$group <- sub("_", ". ", .ps$group)
+.ps$quantity <- ifelse(.ps$quantity == "z", "z (°C)", "CTmax,1h (°C)")
+
+# Numbers for the text: largest shifts in the posterior median from the default fit
+.ps_def <- .ps[.ps$prior == "default", ]
+.ps_shift <- function(set, rows = TRUE) {
+  x <- merge(.ps[.ps$prior == set, ], .ps_def, by = c("case", "group", "quantity"))
+  x$shift <- abs(x$median.x - x$median.y); x[rows(x), ]
+}
+.ps_w <- .ps_shift("weak", function(x) rep(TRUE, nrow(x)))
+ps_weak_z  <- sprintf("%.2f", max(.ps_w$shift[.ps_w$quantity == "z (°C)"]))
+ps_weak_ct <- sprintf("%.2f", max(.ps_w$shift[.ps_w$quantity != "z (°C)"]))
+.ps_s <- .ps_shift("strong", function(x) x$case == "Cereal aphids")
+ps_strong_aphid <- sprintf("%.2f", max(.ps_s$shift))
+ps_zf_norm <- sprintf("%.1f", .ps$median[.ps$case == "Zebrafish" & .ps$group == "normoxia" &
+                                           .ps$quantity == "z (°C)"][c(1, 3)])
+# Oxygen effect on z (hyperoxia - normoxia) under each prior set
+ps_dz <- sapply(zf_fits, function(wf) {
+  d <- tls(wf, by = "oxygen", params = "z", t_ref = 60)$draws
+  dz <- d$value[d$oxygen == "hyperoxia"][order(d$.draw[d$oxygen == "hyperoxia"])] -
+        d$value[d$oxygen == "normoxia"][order(d$.draw[d$oxygen == "normoxia"])]
+  sprintf("%.1f [%.1f, %.1f]", median(dz), quantile(dz, 0.025), quantile(dz, 0.975))
+})
+
+.ps$val <- sprintf("%.2f [%.2f, %.2f]", .ps$median, .ps$lower, .ps$upper)
+.ps_wide <- reshape(.ps[, c("case", "group", "quantity", "prior", "val")],
+                    idvar = c("case", "group", "quantity"), timevar = "prior", direction = "wide")
+names(.ps_wide) <- c("Case study", "Group", "Quantity", "Default priors",
+                     "Weaker priors (SD × 2)", "Stronger priors (SD × 0.5)")
+tinytable::tt(.ps_wide, escape = TRUE)
+```
+
+Doubling the prior SDs moved the posterior medians of $z$ by at most `r ps_weak_z` °C and of $CT_{max_{1hr}}$ by at most `r ps_weak_ct` °C (@tbl-prior-sens). Halving them changed the aphid estimates by at most `r ps_strong_aphid` °C, but pulled the zebrafish normoxia $z$ towards the prior median of 3 °C (from `r ps_zf_norm[1]` to `r ps_zf_norm[2]` °C), where the sparser data carry less information. The oxygen effect on $z$ (hyperoxia − normoxia, median [95% CrI]) was `r ps_dz[["default"]]` °C with the default priors, `r ps_dz[["weak"]]` °C with the weaker priors and `r ps_dz[["strong"]]` °C with the stronger priors, clearly negative under all three. The default priors are fairly good.  Weakening them changes little, and only stronger priors shift the estimates where data are sparse.
 
 # **Extended Simulation Results** {#sec-extendsims}
 
@@ -4142,11 +4565,12 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 
 ## *Experimental Design Impacts*
 
-#### *Different temperature time duration levels*
-This scenario varies experimental design while holding the data-generating process fixed. The designs are shown in @fig-sim-design-grid. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate cups per temperature-by-duration treatment. Each cup contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The data-generating process used the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$) and the sparsest design had only 12 'cups' total.
+### *Different temperature time duration levels*
+This scenario varies experimental design while holding the data-generating process fixed. The designs are shown in @fig-sim-design-grid. We crossed two temperature-duration grids (full: 5 temperatures × 6 durations; sparse: 3 temperatures × 4 durations) with three levels of replication, $n_{\text{reps}} \in \{1, 3, 5\}$. Here, $n_{\text{reps}}$ is the number of replicate vials per temperature-by-duration treatment. Each vial contained $N \sim \text{Uniform}\{10,\ldots,20\}$ organisms. The data-generating process used the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low} = 0.05$, $k = 8$, midpoint linear in $T$, $\phi = 5$) and the sparsest design had only 12 vials in total.
 
 ```{r fig-sim-design-grid}
 #| label: fig-sim-design-grid
+#| fig-dpi: 300
 #| echo: false
 #| cache: false
 #| fig-width: 6.5
@@ -4179,7 +4603,7 @@ sys.source(here::here("scripts", "simulations", "sim_functions.R"), envir = .dz_
   }))
 }
 .dz_full  <- .dz_spec("full")
-.dz_heat  <- scale_fill_gradient(low = "#FDAE61", high = "#A50026", limits = c(30, 38), na.value = "white")
+.dz_heat  <- scale_fill_gradient(low = "#FDAE61", high = "#A50026", limits = range(.dz_full$temps), na.value = "white")
 .dz_theme <- theme_classic(base_size = 10) +
   theme(strip.background = element_blank(),
         strip.text = element_text(face = "bold", size = 10),
@@ -4278,17 +4702,18 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
   .rmse_table(cell_name = "Design x reps")
 ```
 
-#### *Performance when estimating under short timeframes*
+### *Performance when estimating under short timeframes*
 
-Thermal-tolerance assays are often limited by how long they can run. Long exposures at cooler assay temperatures are costly, so experiments may stop before those treatments reach their LT50. This scenario isolates that cost. We held the data-generating process fixed at the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low}=0.05$, $k=8$, midpoint linear in $T$, $\phi=5$), used the full five-temperature design (30–38 °C) with $n_{\text{reps}} = 5$, and varied only the maximum exposure duration. Each design used six log-spaced durations capped at 60, 120, 240, or 405 min; the 405-min cap reproduces the full set of durations. The designs are shown in @fig-sim-design-tmax. Because the truth is identical across caps, changes in bias, coverage, and RMSE reflect only how well each design recovers the same $z$ and $CT_{max_{1hr}}$.
+Thermal-tolerance assays are often limited by how long they can run. Long exposures at cooler assay temperatures are costly, so experiments may stop before those treatments reach their LT50. This scenario isolates that cost. We held the data-generating process fixed at the baseline beta-binomial shape ($\text{up} = 0.92$, $\text{low}=0.05$, $k=8$, midpoint linear in $T$, $\phi=5$), used the full five-temperature design (30–38 °C) with $n_{\text{reps}} = 5$, and varied only the maximum exposure duration. Each design used six durations, from 1 min up to a cap of 60, 120, 240 or 405 min; the 405-min cap reproduces the full set of durations. The designs are shown in @fig-sim-design-tmax. Because the truth is identical across caps, changes in bias, coverage, and RMSE reflect only how well each design recovers the same $z$ and $CT_{max_{1hr}}$.
 
 ```{r fig-sim-design-tmax}
 #| label: fig-sim-design-tmax
+#| fig-dpi: 300
 #| echo: false
 #| cache: false
 #| fig-width: 7
 #| fig-height: 2.3
-#| fig-cap: "Simulated designs in Scen 9: maximum exposure durations of 60, 120, 240 or 405 min, each with six log-spaced durations at the five temperatures and five vials per treatment (symbols as in @fig-sim-design-grid). The bar under each grid shows its maximum exposure relative to 405 min; the 405-min window is the full grid."
+#| fig-cap: "Simulated designs in Scen 9: maximum exposure durations of 60, 120, 240 or 405 min, each with six durations from 1 min up to the maximum at the five temperatures and five vials per treatment (symbols as in @fig-sim-design-grid). The bar under each grid shows its maximum exposure relative to 405 min; the 405-min window is the full grid."
 # Maximum exposure duration, full temperatures, 5 vials (helpers from fig-sim-design-grid)
 .dz_win <- c(tmax060 = "Max. 60 min", tmax120 = "Max. 120 min", tmax240 = "Max. 240 min", tmax405 = "Max. 405 min")
 .dz_b <- do.call(rbind, lapply(names(.dz_win), function(d) {
