@@ -41,7 +41,9 @@ MODEL_FITS <- c(
   paste0(rep(c("zf_oxygen_normhyper", "aphid_species",
                "fit_dsuzukii_mortality_4pl_F", "fit_dsuzukii_mortality_4pl_M",
                "fit_leaf_recovery_4pl_cens_run_array"), each = 3),
-         c("_lognormal", "_weibull1", "_weibull2"))
+         c("_lognormal", "_weibull1", "_weibull2")),
+  # prior-sensitivity refits (supplement prior-sensitivity section)
+  paste0(rep(c("zf_oxygen_normhyper", "aphid_species"), each = 2), c("_prior_weak", "_prior_strong"))
 )
 TIERS <- list(
   results = list(zip = "results.zip",  marker = "sim_twostage/per_sim_*.rds"),
