@@ -217,7 +217,17 @@ cc <- readRDS(here::here("output", "data", "case_study_contrasts.rds"))
 # Display helpers: signed "x [lo, hi]", positive-magnitude version, pMCMC string, repair %.
 ci1  <- function(v) sprintf("%.1f [%.1f, %.1f]", v["med"], v["lo"], v["hi"])
 ci1a <- function(v) sprintf("%.1f [%.1f, %.1f]", abs(v["med"]), min(abs(v[c("lo", "hi")])), max(abs(v[c("lo", "hi")])))
-pmc  <- function(v) if (v["p"] < 1e-3) "$p_{\\mathrm{MCMC}}$ < .001" else paste0("$p_{\\mathrm{MCMC}}$ = ", sub("^0", "", sprintf("%.2f", v["p"])))
+pmc  <- function(v) if (v["p"] < 1e-3) "$p_{\\mathrm{MCMC}}$ < .001" else paste0("$p_{\\mathrm{MCMC}}$ = ",
+  sub("^0", "", sprintf(if (v["p"] < 0.01) "%.3f" else "%.2f", v["p"])))   # 3 dp below .01, so .002 does not print as .00
+# 2-dp version for small contrasts (as for the mortality CTmax contrast in the fly paragraph).
+ci2  <- function(v) sprintf("%.2f [%.2f, %.2f]", v["med"], v["lo"], v["hi"])
+# Vinegar-fly sublethal endpoints (Figure 6): heat coma and fertility, written by the
+# `fig-ms-fig6-fly-sublethal` chunk in ms/supplement.qmd. No typed-in fallback, as for cc above.
+f6   <- readRDS(here::here("output", "data", "fig6_fly_sublethal.rds"))
+g6ci <- function(ep, grp, q) {
+  r <- f6$summary[f6$summary$endpoint == ep & f6$summary$group == grp & f6$summary$quantity == q, ]
+  sprintf("%.1f [%.1f, %.1f]", r$median, r$lower, r$upper)
+}
 # Repair effect as "med [lo, hi]" percentage points. Whole-number rounding is too
 # coarse here: it collapsed R. padi's lower bound (0.28) to 0 and printed
 # M. dirhodum's ~7e-6% effect as "0 [0, 0]", implying an exact zero. When the
@@ -299,7 +309,7 @@ where $\text{mid}$ is the $\log_{10}$-time at which survival equals the midpoint
 
 When the experimental design estimates lower and upper limits of the response (i.e., $\text{low}$ and $\text{up}$) near 0 and 1, the 4PL midpoint is close to the classical $t_{50}$. The two are identical whenever $\text{low} + \text{up} = 1$, because survival at the midpoint, $(\text{low} + \text{up})/2$, is then exactly 50%. When $\text{low} = 0$ and $\text{up} = 1$, @eq-4pl also gives the log-logistic survival function used by @bullard2026, with scale $10^{\text{mid}}$ and shape $k/\ln 10$. However, @bullard2026 estimate the temperature dependence of scale and shape in two stages, which our model circumvents. When $\text{low}$ and $\text{up}$ are fixed at 0 and 1, @eq-mid-temp directly gives $z = -1/\beta_1$, and the critical thermal limit at any reference time $t_\text{ref}$ is $CT_{max}(t_\text{ref}) = \bar{T} + (\log_{10} t_\text{ref} - \beta_0)/\beta_1$ (with $t_\text{ref} = 60$ min for $CT_{max_{1hr}}$).
 
-More generally, the 4PL distinguishes between two related threshold definitions ([@fig-joint-4pl-conceptual]b). A *relative* threshold is defined by each curve's own midpoint, $p = (\text{up}+\text{low})/2$. On this scale, $\text{mid}(T)$ is exactly the relative $\log_{10}t_{50}$, so $z_\text{rel} = -1/\beta_1$ and $CT_{max,\text{rel}}$ is read directly from @eq-mid-temp. An *absolute* threshold instead asks when survival reaches a fixed probability, such as 50% survival, regardless of the fitted asymptotes. When the $\text{low}$ and $\text{up}$ asymptotes do not sum to 1 (e.g., $\text{low} = 0$ but $\text{up} < 1$), this absolute threshold no longer coincides with the midpoint and requires an asymmetry correction (see [Supplement Section 17](https://daniel1noble.github.io/bayesTLS/#sec-ms-derive)):
+More generally, the 4PL distinguishes between two related threshold definitions ([@fig-joint-4pl-conceptual]b). A *relative* threshold is defined by each curve's own midpoint, $p = (\text{up}+\text{low})/2$. On this scale, $\text{mid}(T)$ is exactly the relative $\log_{10}t_{50}$, so $z_\text{rel} = -1/\beta_1$ and $CT_{max,\text{rel}}$ is read directly from @eq-mid-temp. An *absolute* threshold instead asks when survival reaches a fixed probability, such as 50% survival, regardless of the fitted asymptotes. When the $\text{low}$ and $\text{up}$ asymptotes do not sum to 1 (e.g., $\text{low} = 0$ but $\text{up} < 1$), this absolute threshold no longer coincides with the midpoint and requires an asymmetry correction (see [Supplement Section 18](https://daniel1noble.github.io/bayesTLS/#sec-ms-derive)):
 
 $$
 \log_{10} t_{50}(T) \;=\; \text{mid}(T) \;+\; \tfrac{1}{k}\ln\!\left(\tfrac{\text{up} - 0.5}{0.5 - \text{low}}\right),
@@ -417,7 +427,7 @@ sim_z60_tcov_rng <- .sd_rng(.sd_cell$coverage[.sd_cell$scenario == "scen9_tmax_0
                                               .sd_cell$method %in% .sd_tci])
 ```
 
-In contrast, the two-stage approach resulted in biased *z* and $CT_{max_{1hr}}$, often with poor coverage, when temperature affected the upper asymptote (`up`) or the rate of decline (`k`) (@fig-sims). Bias for both *z* and $CT_{max_{1hr}}$ from the two-stage approaches was particularly severe as the upper survival threshold differed from 1, or decreased with temperature (@fig-sims2). These biases were consistent even with larger sample sizes ([Supplement 13.6](https://daniel1noble.github.io/bayesTLS/#experimental-design-impacts)), but they became most consequential under exactly the types of experimental designs used in practice: sparse temperature-duration grids, short exposure windows, and low replication (@fig-sim-design). The joint 4PL remained less biased than the two-stage approach across these designs, with coverage close to nominal throughout (`r sim_joint_cov_rng`). Two-stage bias was larger on sparse compared to full grids, and larger at the two shortest exposure caps (60 and 120 min) than at the longer ones. With the *t*-correction, two-stage coverage was close to nominal on sparse grids (`r sim_sparse_tcov_rng`), but with intervals `r sim_sparse_wratio_rng` times wider than the joint 4PL's, and its coverage of $CT_{max_{1hr}}$ fell below nominal on the full grid with three or five replicates (`r sim_ct_full_tcov_rng`). At the two shortest exposure caps, two-stage coverage of *z* fell sharply even with the *t*-correction, to `r sim_z60_tcov_rng` at 60 min (@fig-sim-design; full per-cell detail in [Supplement 13.6](https://daniel1noble.github.io/bayesTLS/#experimental-design-impacts)).
+In contrast, the two-stage approach resulted in biased *z* and $CT_{max_{1hr}}$, often with poor coverage, when temperature affected the upper asymptote (`up`) or the rate of decline (`k`) (@fig-sims). Two-stage bias also grew as a constant upper asymptote fell further below 1, and bias in *z* grew as the upper asymptote declined more steeply with temperature ([Supplement Section 13.7](https://daniel1noble.github.io/bayesTLS/#sec-sim-upbias)). These biases were consistent even with larger sample sizes ([Supplement 13.6](https://daniel1noble.github.io/bayesTLS/#experimental-design-impacts)), but they became most consequential under exactly the types of experimental designs used in practice: sparse temperature-duration grids, short exposure windows, and low replication (@fig-sim-design). The joint 4PL remained less biased than the two-stage approach across these designs, with coverage close to nominal throughout (`r sim_joint_cov_rng`). Two-stage bias was larger on sparse compared to full grids, and larger at the two shortest exposure caps (60 and 120 min) than at the longer ones. With the *t*-correction, two-stage coverage was close to nominal on sparse grids (`r sim_sparse_tcov_rng`), but with intervals `r sim_sparse_wratio_rng` times wider than the joint 4PL's, and its coverage of $CT_{max_{1hr}}$ fell below nominal on the full grid with three or five replicates (`r sim_ct_full_tcov_rng`). At the two shortest exposure caps, two-stage coverage of *z* fell sharply even with the *t*-correction, to `r sim_z60_tcov_rng` at 60 min (@fig-sim-design; full per-cell detail in [Supplement 13.6](https://daniel1noble.github.io/bayesTLS/#experimental-design-impacts)).
 
 ```{r}
 #| label: fig-sims
@@ -549,138 +559,6 @@ library(patchwork)
 
 
 ```{r}
-#| label: fig-sims2
-#| echo: false
-#| warning: false
-#| message: false
-#| fig-width: 9
-#| fig-height: 7
-#| fig-cap: "Bias in $z$ and $CT_{max_{1hr}}$ under two departures from a full upper asymptote. Panel a) (upper asymptote varies): $\\beta_{up} = 0$ (no temperature-dependent shift), but the upper asymptote is held at a reduced level across all temperatures, so the maximum attainable survival is lower throughout the grid. Panel b) (upper asymptote shifts with temperature): the upper asymptote at $T = \\bar T$ is fixed at $\\text{up}_0 = 0.92$ while its per-°C shift ($\\beta_{up}$) is varied, so $\\text{up}$ stays high at cool assays and declines progressively at hotter ones. Both panels: $\\text{low}=0.05$, $k=8$, mid linear in $T$ with slope $-0.15$, beta-binomial likelihood ($\\phi=5$), $n_{reps}=5$, $N_{sim}=1000$ datasets per simulated scenario. Points are mean signed bias with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE); dashed lines mark zero bias. Left column: $z$; right column: $CT_{max_{1hr}}$. Only the four distinct point-estimate methods are shown: the two-stage Normal- and t-quantile variants share point estimates within each Stage-1 family, so bias is identical between them. Coverage differences are presented in the supplement for [panel a, Supplement 13.5](https://daniel1noble.github.io/bayesTLS/#coverage-for-constant-but-reduced-up-textup_0) and [panel b, Supplement 13.4](https://daniel1noble.github.io/bayesTLS/#coverage-for-shifting-up-across-temperatures-beta_up)."
-
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(here)
-library(patchwork)
-
-# ---- Method ordering + colour palette ---------------------------------
-# Bias is identical for the Normal-CI and t-CI variants of each
-# two-stage Stage-1 family (they share point estimates; only Stage-2 CI
-# construction differs). For this bias-only figure we therefore plot
-# just the four distinct point-estimate methods: two_stage_bin,
-# two_stage_bb, joint_4pl (relative), joint_4pl_abs (absolute).
-.method_levels <- c("two_stage_bin", "two_stage_bb",
-                    "joint_4pl",     "joint_4pl_abs")
-.method_labels <- c("Two-stage bin", "Two-stage BB",
-                    "Joint 4PL (relative)", "Joint 4PL (absolute)")
-.method_cols <- setNames(c("#54278f", "#a63603", "#006d2c", "#a1d99b"),
-                         .method_labels)
-
-# ---- Two-truth constants (mid line is fixed across all 25 sim cells) --
-.TRUTH_REL <- c(z = -1 / -0.15,
-                CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
-
-# ---- BB Stage-1 pathology screening + two-truth aggregation -----------
-.load_screened <- function(prefix) {
-  files <- list.files(
-    here::here("output", "sim_twostage"),
-    pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
-    full.names = TRUE)
-  ps <- dplyr::bind_rows(lapply(files, readRDS))
-
-  bad <- ps |>
-    dplyr::filter(method == "two_stage_bb",
-                  (quantity == "z"         & abs(bias) > 20) |
-                  (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
-    dplyr::distinct(scenario, sim_id) |>
-    dplyr::mutate(bb_path = TRUE)
-
-  ps |>
-    dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
-    dplyr::filter(is.na(bb_path) |
-                  !(method %in% c("two_stage_bb", "two_stage_bb_t"))) |>
-    dplyr::select(-bb_path) |>
-    dplyr::mutate(
-      truth_use = ifelse(method == "joint_4pl",
-                         .TRUTH_REL[as.character(quantity)],
-                         truth),
-      bias    = estimate - truth_use,
-      covered = is.finite(lower) & is.finite(upper) &
-                lower <= truth_use & truth_use <= upper
-    ) |>
-    dplyr::filter(success) |>
-    dplyr::group_by(scenario, method, quantity) |>
-    dplyr::summarise(
-      n         = dplyr::n(),
-      mean_bias = mean(bias, na.rm = TRUE),
-      mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
-      .groups   = "drop"
-    )
-}
-
-.scen6 <- .load_screened("scen6") |>
-  dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 10,
-                sweep_label = "up shifts with T (varying beta_up, percentage points / degC)")
-
-.scen7 <- .load_screened("scen7") |>
-  dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
-                sweep_label = "up is constant but reduced (varying up_0)")
-
-.shape_fmt <- function(d) {
-  d |>
-    dplyr::filter(method %in% .method_levels) |>
-    dplyr::mutate(
-      method   = factor(method,   levels = .method_levels,
-                                  labels = .method_labels),
-      quantity = factor(quantity, levels = c("z", "CTmax_1hr"),
-                                  labels = c("z (°C)",
-                                             "CT[max,1h] (°C)")),
-      bias_lo = mean_bias - 1.96 * mcse_bias,
-      bias_hi = mean_bias + 1.96 * mcse_bias
-    )
-}
-
-.theme_proj <- theme_classic(base_size = 11) +
-  theme(strip.background = element_blank(),
-        strip.text       = element_text(face = "bold", size = 14),
-        axis.title       = element_text(size = 13),
-        axis.text        = element_text(size = 11),
-        legend.position  = "bottom",
-        legend.title     = element_blank(),
-        legend.text      = element_text(size = 12),
-        panel.spacing    = unit(0.8, "lines"))
-
-.qlab2 <- as_labeller(c(`z (°C)` = "italic(z)~(degree*C)",
-                        `CT[max,1h] (°C)` = "CT[max[1*hr]]~(degree*C)"), label_parsed)
-
-.build <- function(d, x_label, x_breaks) {
-  ggplot(d, aes(x = sweep_x, y = mean_bias, colour = method)) +
-    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-    geom_errorbar(aes(ymin = bias_lo, ymax = bias_hi), width = 0) +
-    geom_point(size = 2.4) +
-    geom_line() +
-    facet_wrap(~ quantity, scales = "free_y", nrow = 1, labeller = .qlab2) +
-    scale_colour_manual(values = .method_cols) +
-    scale_x_continuous(breaks = x_breaks) +
-    labs(x = x_label, y = "Mean bias (estimate - truth)") +
-    .theme_proj
-}
-
-.p6 <- .build(.shape_fmt(.scen6),
-              x_label  = "Temperature-dependent shift in upper asymptote (percentage points/°C)",
-              x_breaks = c(-1.9, -1.5, -1.0, -0.5)) +
-  ggtitle("b) Upper asymptote shifts with temperature")
-
-.p7 <- .build(.shape_fmt(.scen7),
-              x_label  = "Upper asymptote value",
-              x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99)) +
-  ggtitle("a) Upper asymptote varies")
-
-.p7 / .p6 + plot_layout(guides = "collect", heights = c(1, 1)) &
-  theme(legend.position = "bottom")
-```
-
-```{r}
 #| label: fig-sim-design
 #| echo: false
 #| warning: false
@@ -809,7 +687,7 @@ knitr::include_graphics(here::here("output","figs","fig_sim_design.png"))
 
 We applied the 4PL modelling framework to four case studies spanning lethal counts, continuous-proportion physiological data and sublethal responses using four case studies: 1) three cereal-aphid species [@li2023], 2) snow gum leaf PSII function [@arnold_psii_2026], 3) zebrafish larvae under varying oxygen levels [@saruhashi2026] and 4) vinegar fly mortality, heat coma and productivity [@orsted_suzukii_2024]. These examples show how the same fitted response surface can estimate $z$, $CT_{max}$ and, for lethal endpoints, $T_{crit}$, compare groups, and propagate uncertainty into heat-injury and survival predictions. The workflow is implemented in `bayesTLS`; the online supplement provides installation instructions, a tutorial and the full model specifications ([Supplement Sections 1–4](https://daniel1noble.github.io/bayesTLS/#sec-general-intro)).
 
-For the main grouped case studies, we used the direct parameterisation in @eq-empirical-direct, placing species, oxygen treatment or recovery condition directly on $CT_{max}$ and $z$. The vinegar-fly sex comparison was fit in the equivalent midpoint form, with `sex` and its temperature interaction on $\text{mid}$. Count responses were fit with beta-binomial likelihoods, while proportions in the snow gum example were fit with a beta likelihood, with zero readings treated as left-censored at the instrument's resolution. We fitted all models using a Bayesian implementation, with `brms` (v`r as.character(packageVersion("brms"))`; @burkner_brms_2017) and Stan (CmdStan v`r cmdstan_vers`; @carpenter2017) via `bayesTLS` (v`r as.character(packageVersion("bayesTLS"))`). Equivalent frequentist models are available via `freqTLS`, and we demonstrate their equivalence in [Supplement Section 16](https://daniel1noble.github.io/bayesTLS/#sec-freqtls).
+For the main grouped case studies, we used the direct parameterisation in @eq-empirical-direct, placing species, oxygen treatment or recovery condition directly on $CT_{max}$ and $z$. The vinegar-fly sex comparison was fit in the equivalent midpoint form, with `sex` and its temperature interaction on $\text{mid}$. Count responses were fit with beta-binomial likelihoods, while proportions in the snow gum example were fit with a beta likelihood, with zero readings treated as left-censored at the instrument's resolution. We fitted all models using a Bayesian implementation, with `brms` (v`r as.character(packageVersion("brms"))`; @burkner_brms_2017) and Stan (CmdStan v`r cmdstan_vers`; @carpenter2017) via `bayesTLS` (v`r as.character(packageVersion("bayesTLS"))`). Equivalent frequentist models are available via `freqTLS`, and we demonstrate their equivalence in [Supplement Section 17](https://daniel1noble.github.io/bayesTLS/#sec-freqtls).
 
 $$
 \begin{aligned}
@@ -881,7 +759,9 @@ Using field temperatures from the same site (Wuhan, China), we also show how the
 
 ## Vinegar fly (*Drosophila suzukii*)
 
-@orsted_suzukii_2024 found that heat coma and declines in productivity occur at temperatures below survival limits but follow traditional TDT relationships, implying that sublethal effects have large implications for population dynamics. Our re-analysis of their survival data recovers similar variation in thermal tolerance and sensitivity between sexes ($z$ = `r fly_z_f_ci` °C for females and `r fly_z_m_ci` °C for males; $CT_{max_{4hr}}$ ≈ `r fly_ct_4h` °C; [@fig-tls-comparison]d), but estimates the sex contrast directly in a unified model and finds no detectable difference. Males had a slightly higher $z$ than females ($\Delta z$ = `r ci1(cc$fly_z)` °C, `r pmc(cc$fly_z)`) and an almost identical $CT_{max_{4hr}}$ ($\Delta CT_{max_{4hr}}$ = `r sprintf("%.2f [%.2f, %.2f]", cc$fly_ct["med"], cc$fly_ct["lo"], cc$fly_ct["hi"])` °C, `r pmc(cc$fly_ct)`). As with the aphids, retaining the raw-response variance gives more realistic fit summaries (Bayesian $R^2$ = `r sprintf("%.2f", cc$fly_r2["Female"])` for females and `r sprintf("%.2f", cc$fly_r2["Male"])` for males; [Supplement Table S19](https://daniel1noble.github.io/bayesTLS/#tbl-r2-dros)). In the supplement, we also extend modelling approach to heat coma ([Supplement Section 10.1](https://daniel1noble.github.io/bayesTLS/#sec-dros-coma)) and productivity ([Supplement Section 10.2](https://daniel1noble.github.io/bayesTLS/#sec-dros-productivity)), including a hurdle model that separates reproductive failure from changes in offspring number among reproducing flies. 
+@orsted_suzukii_2024 found that heat coma and declines in productivity occur at temperatures below survival limits but follow traditional TDT relationships, implying that sublethal effects have large implications for population dynamics. Our re-analysis of their survival data recovers similar variation in thermal tolerance and sensitivity between sexes ($z$ = `r fly_z_f_ci` °C for females and `r fly_z_m_ci` °C for males; $CT_{max_{4hr}}$ ≈ `r fly_ct_4h` °C; [@fig-tls-comparison]d), but estimates the sex contrast directly in a unified model and finds no detectable difference. Males had a slightly higher $z$ than females ($\Delta z$ = `r ci1(cc$fly_z)` °C, `r pmc(cc$fly_z)`) and an almost identical $CT_{max_{4hr}}$ ($\Delta CT_{max_{4hr}}$ = `r sprintf("%.2f [%.2f, %.2f]", cc$fly_ct["med"], cc$fly_ct["lo"], cc$fly_ct["hi"])` °C, `r pmc(cc$fly_ct)`). As with the aphids, retaining the raw-response variance gives more realistic fit summaries (Bayesian $R^2$ = `r sprintf("%.2f", cc$fly_r2["Female"])` for females and `r sprintf("%.2f", cc$fly_r2["Male"])` for males; [Supplement Table S19](https://daniel1noble.github.io/bayesTLS/#tbl-r2-dros)). 
+
+We also fitted the same 4PL to two sublethal endpoints measured on these flies ([@fig-fly-sublethal]; [Supplement Section 10](https://daniel1noble.github.io/bayesTLS/#sec-sublethal-dros)). For heat coma, the response was the proportion of flies still awake after each exposure. For fertility, it was the proportion of surviving flies that produced any offspring defining the thermal fertility limit (TFL~50~) [@bretman2024]. Both models included a random intercept for assay temperature. Overall, heat coma tended to have a steeper TDT relationship than survival ($z$ = `r g6ci("Heat coma", "Female", "z")` vs `r fly_z_f_ci` °C in females). The fertility limit after 4 h (`r g6ci("Fertility", "Female", "limit_4hr")` °C in females, against `r fly_ct_4h` °C for survival) was close to the lethal limit, so flies that survived remained largely fertile. Females entered coma at slightly higher temperatures than males ($\Delta CT_{max_{4hr}}$ = `r ci2(f6$contrast[["Heat coma_limit_4hr"]])` °C, `r pmc(f6$contrast[["Heat coma_limit_4hr"]])`), whereas fertility limits did not differ detectably between the sexes ($\Delta$TFL~50~ = `r ci2(f6$contrast[["Fertility_limit_4hr"]])` °C, `r pmc(f6$contrast[["Fertility_limit_4hr"]])`). 
 
 We generated predictions on heat injury and predicted mortality using a microclimate temperature-time series for Rennes, France. Such modelling illustrates how patterns of population mortality for both sexes can be predicted in nature with and without repair ([@fig-heat-injury]a-c), showing how repair (even at small rates) can have important population-level consequences. 
 
@@ -901,6 +781,15 @@ knitr::include_graphics(here::here("output", "figs", "fig4_case_study_densities.
 #| fig-align: center
 #| out-width: "100%"
 knitr::include_graphics(here::here("output", "figs", "fig5_heat_injury.png"))
+```
+
+```{r}
+#| label: fig-fly-sublethal
+#| echo: false
+#| fig-cap: "Thermal sensitivity $z$ (a) and thermal limit after a 4-hour exposure (b) for two sublethal endpoints in vinegar flies (*Drosophila suzukii*) [@orsted_suzukii_2024]. Heat coma ($CT_{max}$) is the temperature at which half of the flies are in coma. Fertility (TFL~50~, the thermal fertility limit) is the temperature at which half of the surviving flies produce no offspring, among flies alive two days after exposure. Filled ridges are posterior densities, coloured by sex. Points and error bars correspond to posterior medians and 95% credible intervals, which are also printed beside each distribution. Brackets give the pMCMC for the female–male difference within each model. Mortality limits for the same flies are shown in [@fig-tls-comparison]d."
+#| fig-align: center
+#| out-width: "70%"
+knitr::include_graphics(here::here("output", "figs", "fig6_fly_sublethal.png"))
 ```
 
 # Discussion

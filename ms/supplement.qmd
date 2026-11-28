@@ -1729,8 +1729,9 @@ The manuscript examples use the following model specifications:
 - **Zebrafish oxygen experiment**: lethal survival counts were fit with a beta-binomial 4PL, placing oxygen treatment directly on $CT_{max_{1hr}}$ and $z$ (`ctmax = ~ 0 + oxygen`, `z = ~ 0 + oxygen`). The lower asymptote was allowed to differ by oxygen treatment but not temperature (`low = ~ 0 + oxygen`), while the upper asymptote and steepness were shared (`up = ~ 1`, `k = ~ 1`). No random effects were included. Because the design lacks a benign-temperature control for the hyperoxia treatment, we report $z$ and $CT_{max}$ but not $T_{crit}$ (`lethal = FALSE`).
 - **Snow gum PSII**: retained photosystem-II function was fit as a continuous proportion with a Beta likelihood, with zero readings left-censored at 0.1 (`detection_limit = 0.1`). Recovery treatment was placed directly on $CT_{max_{1hr}}$ and $z$, with random intercepts on $CT_{max}$ for plant, heat run and array, the unit to which recovery was applied (`ctmax = ~ 0 + recovery + (1 | plant) + (1 | run) + (1 | array)`, `z = ~ 0 + recovery`). Because this endpoint is sublethal, we report $z$ and $CT_{max}$ but not $T_{crit}$.
 - **Vinegar fly mortality**: mortality counts were fit with beta-binomial 4PLs. We fit separate sex-specific models for comparison with @orsted_suzukii_2024 and a joint midpoint model with sex and its temperature interaction on `mid` (`mid = ~ sex * temp_c`) to test sex differences. We also compare these with a direct parameterisation. The separate-fit comparison with @orsted_suzukii_2024 uses the absolute LT50 threshold and a 4-hour reference exposure; the joint-model sex contrasts reported in the manuscript use the same absolute threshold and 4-hour reference. The heat-injury forecasts use the relative threshold from the sex-specific lethal fits and the shaded Rennes microclimate trace from the @orsted_suzukii_2024 NicheMapR [@kearney2017] workflow.
+- **Vinegar fly sublethal endpoints**: heat coma (the proportion of flies still awake after each exposure) and fertility (the proportion of surviving flies that produced any offspring) were fit with beta-binomial 4PLs that place sex directly on the thermal limit and $z$ (`ctmax = ~ 0 + sex`, `z = ~ 0 + sex`), with temperature effects on the asymptotes and steepness (`low = ~ temp_c`, `up = ~ temp_c`, `k = ~ temp_c`). Each includes a random intercept for assay temperature on the limit, shared by the sexes for heat coma (`(1 | temp_f)`) and separate for each temperature × sex group for fertility (`(1 | temp_sex)`), chosen by LOO (@sec-dros-coma-temp, @sec-dros-fertility). Both limits are read at the absolute 50% threshold after a 4-hour exposure. @sec-sublethal-dros also fits a censored log-time regression to heat coma and a hurdle model to productivity.
 
-The exact formulas, sampler settings and diagnostics are shown in the code chunks for each case study. All case-study models use the default priors of `bayesTLS`, which we describe and test in @sec-prior-sensitivity. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
+The exact formulas, sampler settings and diagnostics are shown in the code chunks for each case study. All case-study 4PL models use the default priors of `bayesTLS`, which we describe and test in @sec-prior-sensitivity. The censored log-time and hurdle models in @sec-sublethal-dros use the priors given in their code, or `brms` defaults where none are given. Note that we suppress the intercept in these models (`~ 0 + group`) because it makes the priors easier to set: this coding gives each group its own $CT_{max}$ and $z$, so we can apply the same weakly-informative prior to every group. The alternative (`~ 1 + group`) instead estimates one reference group's values plus the *differences* of the other groups from it, which would place a different prior on the reference group than on the rest. This is a parameterisation choice, not a requirement for identifiability — `tls()` recovers the same per-group quantities under either coding. The direct zebrafish and aphid examples use the package's default four-chain sampler settings; the snow gum, vinegar-fly and sublethal-extension models use the longer or more conservative settings annotated beside each fit.
 
 All case-study models were fitted on a laptop with an Apple M1 Max processor (10 cores, 32 GB RAM), running four chains in parallel. Each case study gives its fitting time: the warm-up plus sampling time of the slowest chain, excluding model compilation. Each case study also reports sampling diagnostics from `diagnose_tdt_fit()`, for which healthy values are R-hat below 1.01, bulk and tail effective sample sizes above 400 and no divergent transitions, and a posterior predictive check, which compares the observed data with 100 datasets simulated from the posterior [@gabry_viz_2019].
 
@@ -2760,7 +2761,7 @@ We can extract the TDT parameters now as we have done in other case studies:
 # We'll use the get_tls_est() function. This allows us to extract the full posterior or the summary for any tls estimate (z, ctmax, tcrit). We'll extract all of them but we can specify which ones.
 # Combine the per-sex tidy-long summaries (quantity / median / lower / upper)
 # into one table, tagging each block with its Sex. This `dros_sex_sum` object
-# feeds both the per-sex TDT table below and the manuscript Figure 5 summary.
+# feeds both the per-sex TDT table below and the manuscript Figure 4 summary.
   dros_sex_sum <- dplyr::bind_rows(
     Female = get_tls_est(tdt_dros_f, "summary"),
     Male   = get_tls_est(tdt_dros_m, "summary"),
@@ -3285,7 +3286,7 @@ coma_4pl_tls <- tls(fit_coma_4pl, by = "sex", target_surv = "relative",
 
 ```{r}
 #| label: tbl-dros-coma-compare
-#| tbl-cap: "Thermal sensitivity $z$ and the 1-hour critical temperature $CT_{max_{1hr}}$ for *D. suzukii* heat coma, by sex, from the censored linear log-time regression and the joint 4PL on proportion-awake counts, compared with the two-stage drc estimates of @orsted_suzukii_2024 (their static $CT_{max,1h}$). Cells are the posterior median with the 95% credible interval in brackets; the Ørsted values are point estimates."
+#| tbl-cap: "Thermal sensitivity $z$ and the 1-hour critical temperature $CT_{max_{1hr}}$ for *D. suzukii* heat coma, by sex, from the censored linear log-time regression and the joint 4PL on proportion-awake counts, compared with the two-stage drc estimates of @orsted_suzukii_2024 (their 4-hour limits converted to 1 hour with their $z$). Cells are the posterior median with the 95% credible interval in brackets; the Ørsted values are point estimates."
 #| message: false
 #| warning: false
 
@@ -3311,7 +3312,79 @@ coma_compare <- tibble::tribble(
 tinytable::tt(coma_compare, escape = TRUE)
 ```
 
-Both Bayesian routes agree and recover similar estimates to @orsted_suzukii_2024 within their credible intervals (@tbl-dros-coma-compare). Heat-coma sensitivity is $z \approx 2.3$-2.4 °C and $CT_{max_{1hr}} \approx 36.3$-36.5 °C for both sexes, with little evidence for sex differences.
+```{r}
+#| label: dros-coma-sex-contrast
+#| include: false
+# Female - male CTmax_1hr from the censored log-time model (paired draws)
+coma_lin_d <- ct_coma_lin_F - ct_coma_lin_M
+coma_lin_p <- 2 * min(mean(coma_lin_d > 0), mean(coma_lin_d < 0))
+```
+
+Both Bayesian routes agree closely with each other and with @orsted_suzukii_2024 (@tbl-dros-coma-compare). Ørsted's male values lie inside our 95% credible intervals, while their female $CT_{max_{1hr}}$ and $z$ sit at or just below the lower edge. Heat-coma $z$ is about 2.3–2.4 °C in both sexes. Females, however, enter coma at slightly higher temperatures than males (female − male $CT_{max_{1hr}}$ = `r sprintf("%.2f [%.2f, %.2f]", median(coma_lin_d), quantile(coma_lin_d, 0.025), quantile(coma_lin_d, 0.975))` °C in the censored log-time model, `r if (coma_lin_p < 0.001) "pMCMC < 0.001" else sprintf("pMCMC = %.3f", coma_lin_p)`), a difference that the two-stage analysis of @orsted_suzukii_2024 did not detect.
+
+### Allowing for variation among assay temperatures {#sec-dros-coma-temp}
+
+Some assay temperatures sit off the straight TDT line, for example males at 37 °C. @orsted_suzukii_2024 assayed both sexes at every temperature and exposure, so we let both sexes share each temperature's deviation. We refit the 4PL with `fit_4pl()`, adding a random intercept for assay temperature on $CT_{max}$. A second fit gives each temperature × sex group its own deviation. The shared version gives the heat-coma estimates in manuscript Figure 6, read after a 4-hour exposure as for mortality (@sec-lethal-dros).
+
+```{r}
+#| label: dros-coma-temp-fits
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+# Assay temperature as a factor, alone and crossed with sex, for random intercepts on CTmax
+std_coma$temp_f   <- factor(std_coma$temp)
+std_coma$temp_sex <- interaction(std_coma$temp, std_coma$sex, drop = TRUE)
+
+# Temperature deviations shared by the sexes
+coma_temp_fit <- fit_4pl(std_coma, ctmax = ~ 0 + sex + (1 | temp_f), z = ~ 0 + sex,
+                         low = ~ temp_c, up = ~ temp_c, k = ~ temp_c, t_ref = 240,
+                         chains = 4, iter = 3000, warmup = 1000, cores = 4, seed = 123,
+                         control = list(adapt_delta = 0.95), refresh = 0, silent = 2,
+                         file = file.path(models_dir, "fit_dsuzukii_coma_4pl_temp"),
+                         file_refit = "on_change")
+
+# A separate deviation for each temperature x sex group
+coma_tempsex_fit <- fit_4pl(std_coma, ctmax = ~ 0 + sex + (1 | temp_sex), z = ~ 0 + sex,
+                            low = ~ temp_c, up = ~ temp_c, k = ~ temp_c, t_ref = 240,
+                            chains = 4, iter = 3000, warmup = 1000, cores = 4, seed = 123,
+                            control = list(adapt_delta = 0.95), refresh = 0, silent = 2,
+                            file = file.path(models_dir, "fit_dsuzukii_coma_4pl_tempsex"),
+                            file_refit = "on_change")
+```
+
+These two models took `r fit_time(coma_temp_fit)` and `r fit_time(coma_tempsex_fit)` to fit. `r diag_txt(dplyr::bind_rows(diagnose_tdt_fit(coma_temp_fit), diagnose_tdt_fit(coma_tempsex_fit)))`.
+
+```{r}
+#| label: dros-coma-temp-loo
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+# Compare with the 4PL above (no temperature term) by PSIS-LOO
+coma_loo <- loo::loo_compare(list(
+  "No temperature term"          = brms::loo(fit_coma_4pl),
+  "Temperature, shared by sexes" = brms::loo(get_brmsfit(coma_temp_fit)),
+  "Temperature x sex"            = brms::loo(get_brmsfit(coma_tempsex_fit))))
+coma_loo
+coma_cmp <- as.data.frame(coma_loo)
+stopifnot(coma_cmp$model[1] == "Temperature, shared by sexes")   # the text below assumes this ranking
+
+# z and CTmax after a 4-h exposure (absolute 50% threshold), and female - male CTmax
+coma_temp_tls    <- tls(coma_temp_fit,    by = "sex", target_surv = "absolute", t_ref = 240)
+coma_tempsex_tls <- tls(coma_tempsex_fit, by = "sex", target_surv = "absolute", t_ref = 240)
+coma_temp_sum    <- get_tls_est(coma_temp_tls, "summary", "CTmax")
+coma_temp_d <- get_tls_est(coma_temp_tls, "draws", "CTmax") |>
+  tidyr::pivot_wider(id_cols = .draw, names_from = sex, values_from = value) |>
+  dplyr::mutate(d = F - M) |> dplyr::pull(d)
+coma_tempsex_d <- get_tls_est(coma_tempsex_tls, "draws", "CTmax") |>
+  tidyr::pivot_wider(id_cols = .draw, names_from = sex, values_from = value) |>
+  dplyr::mutate(d = F - M) |> dplyr::pull(d)
+coma_temp_d    <- coma_temp_d[is.finite(coma_temp_d)]
+coma_tempsex_d <- coma_tempsex_d[is.finite(coma_tempsex_d)]
+```
+
+By LOO, the shared temperature term is `r with(coma_cmp[coma_cmp$model == "No temperature term", ], sprintf("%.1f (SE %.1f)", -elpd_diff, se_diff))` ahead of the 4PL without it, and `r with(coma_cmp[coma_cmp$model == "Temperature x sex", ], sprintf("%.1f (SE %.1f)", -elpd_diff, se_diff))` ahead of separate deviations for each sex, so those two versions fit about equally well. With the shared term, $CT_{max}$ after 4 h is `r with(coma_temp_sum[coma_temp_sum$sex == "F", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for females and `r with(coma_temp_sum[coma_temp_sum$sex == "M", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for males (female − male `r sprintf("%.2f [%.2f, %.2f]", median(coma_temp_d), quantile(coma_temp_d, 0.025), quantile(coma_temp_d, 0.975))` °C, pMCMC = `r sprintf("%.3f", 2 * min(mean(coma_temp_d > 0), mean(coma_temp_d < 0)))`). The temperature term widens each sex's interval but not the contrast, because a temperature that sits off the line shifts both sexes together. If each sex may deviate on its own, the contrast is similar in size but no longer resolved (female − male `r sprintf("%.2f [%.2f, %.2f]", median(coma_tempsex_d), quantile(coma_tempsex_d, 0.025), quantile(coma_tempsex_d, 0.975))` °C, pMCMC = `r sprintf("%.2f", 2 * min(mean(coma_tempsex_d > 0), mean(coma_tempsex_d < 0)))`).
 
 ## Productivity: reproductive output {#sec-dros-productivity}
 
@@ -3613,7 +3686,7 @@ mag_b_M <- mag_b(TRUE,  prod_post, prod_tc)
 
 ```{r}
 #| label: tbl-dros-prod-incidence
-#| tbl-cap: "Reproductive **incidence** thermal-death-time parameters for *D. suzukii* (whether a fly reproduces at all; the hurdle component of the hurdle-Gamma model), read analytically from the joint posterior, by sex, with the two-stage drc fecundity estimates of @orsted_suzukii_2024 (static $CT_{max,1h}$) for comparison. $z$ is the mean local $z$ over the assay range. Cells are the posterior median with the 95% credible interval; Ørsted values are point estimates."
+#| tbl-cap: "Reproductive **incidence** thermal-death-time parameters for *D. suzukii* (whether a fly reproduces at all; the hurdle component of the hurdle-Gamma model), read analytically from the joint posterior, by sex, with the two-stage drc fecundity estimates of @orsted_suzukii_2024 (their 4-hour limits converted to 1 hour with their $z$) for comparison. $z$ is the mean local $z$ over the assay range. Cells are the posterior median with the 95% credible interval; Ørsted values are point estimates."
 #| message: false
 #| warning: false
 
@@ -3629,7 +3702,7 @@ prod_inc_tbl <- tibble::tribble(
 tinytable::tt(prod_inc_tbl, escape = TRUE)
 ```
 
-The *whether-it-reproduces* part behaves like a normal tolerance endpoint, because it has a natural halfway mark — the point where half the flies still reproduce. Its $z$ is about `r round(stats::median(prod_hurd_F$z),1)` °C for females and `r round(stats::median(prod_hurd_M$z),1)` °C for males, with $CT_{max_{1hr}}$ from `r round(stats::median(prod_hurd_F$ctmax),1)` to `r round(stats::median(prod_hurd_M$ctmax),1)` °C — close to the fecundity values reported by @orsted_suzukii_2024 (@tbl-dros-prod-incidence). The male and female intervals overlap, so we cannot confirm the male-greater-than-female $z$ difference they report. (Exposure time and temperature interact, so the tolerance line bends slightly; we therefore report the average $z$ across the tested temperatures.)
+The *whether-it-reproduces* part behaves like a normal tolerance endpoint, because it has a natural halfway mark — the point where half the flies still reproduce. Its $z$ is about `r round(stats::median(prod_hurd_F$z),1)` °C for females and `r round(stats::median(prod_hurd_M$z),1)` °C for males, with $CT_{max_{1hr}}$ from `r round(stats::median(prod_hurd_F$ctmax),1)` to `r round(stats::median(prod_hurd_M$ctmax),1)` °C — close to the fecundity values reported by @orsted_suzukii_2024 (@tbl-dros-prod-incidence). The male and female intervals overlap, so we cannot confirm the male-greater-than-female $z$ difference they report. (Exposure time and temperature interact, so the tolerance line bends; we therefore report the average $z$ across the tested temperatures.) For the main text we instead estimate a fertility limit with the 4PL (@sec-dros-fertility).
 
 The *how-many-offspring* part answers a different question. Clutch size simply rises or falls — it has no 0–100% scale and so no natural halfway mark — so a conventional $z$ does not apply. What we *can* read off is how steeply clutch size drops as exposure lengthens, $b(T) = \mathrm{d}\log_{10}(\text{clutch})/\mathrm{d}\log_{10}(\text{exposure})$, and this changes a lot with temperature (@tbl-dros-prod-magnitude):
 
@@ -3653,6 +3726,97 @@ tinytable::tt(prod_mag_tbl, escape = TRUE)
 Among flies that do reproduce, longer exposure barely changes clutch size at 34 °C ($b \approx 0$; the probability it declines is only `r round(mean(mag_b_F[,1] < 0), 2)` for females), but it cuts clutch size more and more at hotter temperatures, reaching $b \approx `r round(stats::median(mag_b_F[,5]), 2)`$ at 38 °C.
 
 Splitting reproduction into these two parts shows something a single fecundity curve would blur together: heat makes flies less likely to reproduce at all, across every temperature we tested ($z \approx 3$ °C), while among the flies that still reproduce it shrinks the clutch mainly at the hotter end ($\gtrsim 36$ °C). 
+
+### Fertility limit among survivors {#sec-dros-fertility}
+
+The yes/no part of the hurdle model fixes its asymptotes at 0 and 1 and treats each fly as independent counting flies that died as not reproducing. Even after the shortest exposures some flies produced no offspring, and flies assayed together share conditions. For Figure 6 in the manuscript we therefore estimate a thermal fertility limit with the 4PL. Following @bretman2024, a fly is fertile if it produced at least one offspring, and the limit (TFL~50~) is the temperature at which half of the surviving flies are sterile. We use the flies alive two days after exposure for the anlaysis, when mortality was scored [@orsted_suzukii_2024]. We then included a temperature × exposure × sex cell. As for heat coma, we compare models without a temperature term, with a random intercept for assay temperature on the limit shared by the sexes, and with one for each temperature × sex group.
+
+```{r}
+#| label: dros-fert-data
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+# Survivors only (dead == 0); a fly is fertile if it produced at least one offspring
+fert_panel <- dsuzukii |>
+  dplyr::filter(dead == 0) |>
+  dplyr::group_by(temp, lvl, sex) |>
+  dplyr::summarise(n_total = dplyr::n(), n_fert = sum(prod > 0),
+                   duration = dplyr::first(time), .groups = "drop") |>
+  dplyr::filter(duration > 0)
+std_fert <- standardize_data(fert_panel, temp = "temp", duration = "duration",
+                             n_total = "n_total", n_surv = "n_fert", duration_unit = "minutes")
+std_fert$temp_f   <- factor(std_fert$temp)
+std_fert$temp_sex <- interaction(std_fert$temp, std_fert$sex, drop = TRUE)
+```
+
+```{r}
+#| label: dros-fert-fits
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+# Same 4PL structure as the heat-coma models; adapt_delta = 0.99 avoids divergent transitions
+fert_fit <- fit_4pl(std_fert, ctmax = ~ 0 + sex, z = ~ 0 + sex,
+                    low = ~ temp_c, up = ~ temp_c, k = ~ temp_c, t_ref = 240,
+                    chains = 4, iter = 3000, warmup = 1000, cores = 4, seed = 123,
+                    control = list(adapt_delta = 0.99), refresh = 0, silent = 2,
+                    file = file.path(models_dir, "fit_dsuzukii_fertility_4pl"),
+                    file_refit = "on_change")
+
+# Temperature deviations shared by the sexes
+fert_temp_fit <- fit_4pl(std_fert, ctmax = ~ 0 + sex + (1 | temp_f), z = ~ 0 + sex,
+                         low = ~ temp_c, up = ~ temp_c, k = ~ temp_c, t_ref = 240,
+                         chains = 4, iter = 3000, warmup = 1000, cores = 4, seed = 123,
+                         control = list(adapt_delta = 0.99), refresh = 0, silent = 2,
+                         file = file.path(models_dir, "fit_dsuzukii_fertility_4pl_temp"),
+                         file_refit = "on_change")
+
+# A separate deviation for each temperature x sex group
+fert_tempsex_fit <- fit_4pl(std_fert, ctmax = ~ 0 + sex + (1 | temp_sex), z = ~ 0 + sex,
+                            low = ~ temp_c, up = ~ temp_c, k = ~ temp_c, t_ref = 240,
+                            chains = 4, iter = 3000, warmup = 1000, cores = 4, seed = 123,
+                            control = list(adapt_delta = 0.99), refresh = 0, silent = 2,
+                            file = file.path(models_dir, "fit_dsuzukii_fertility_4pl_tempsex"),
+                            file_refit = "on_change")
+```
+
+These three models took `r fit_time(fert_fit)`, `r fit_time(fert_temp_fit)` and `r fit_time(fert_tempsex_fit)` to fit. `r diag_txt(dplyr::bind_rows(diagnose_tdt_fit(fert_fit), diagnose_tdt_fit(fert_temp_fit), diagnose_tdt_fit(fert_tempsex_fit)))`.
+
+```{r}
+#| label: dros-fert-loo
+#| echo: true
+#| cache: false
+#| code-fold: show
+
+# Compare the three temperature structures by PSIS-LOO
+fert_loo <- loo::loo_compare(list(
+  "No temperature term"          = brms::loo(get_brmsfit(fert_fit)),
+  "Temperature, shared by sexes" = brms::loo(get_brmsfit(fert_temp_fit)),
+  "Temperature x sex"            = brms::loo(get_brmsfit(fert_tempsex_fit))))
+fert_loo
+fert_cmp <- as.data.frame(fert_loo)
+stopifnot(fert_cmp$model[1] == "Temperature x sex")   # the text below assumes this ranking
+
+# TFL50 and z after a 4-h exposure (absolute 50% threshold), and female - male TFL50
+fert_tempsex_tls <- tls(fert_tempsex_fit, by = "sex", target_surv = "absolute", t_ref = 240)
+fert_tempsex_sum <- get_tls_est(fert_tempsex_tls, "summary", "CTmax")
+fert_tempsex_d <- get_tls_est(fert_tempsex_tls, "draws", "CTmax") |>
+  tidyr::pivot_wider(id_cols = .draw, names_from = sex, values_from = value) |>
+  dplyr::mutate(d = F - M) |> dplyr::pull(d)
+fert_tempsex_d <- fert_tempsex_d[is.finite(fert_tempsex_d)]
+
+# Posterior predictive check: share of observed counts inside their 95% predictive intervals
+set.seed(123)
+fert_yrep <- brms::posterior_predict(get_brmsfit(fert_tempsex_fit))
+fert_obs  <- get_brmsfit(fert_tempsex_fit)$data$n_surv
+fert_in   <- mean(fert_obs >= apply(fert_yrep, 2, stats::quantile, 0.025) &
+                  fert_obs <= apply(fert_yrep, 2, stats::quantile, 0.975))
+# Flies that produced offspring but were dead when mortality was scored (left out here)
+fert_dead_rep <- table(factor(dsuzukii$sex[dsuzukii$dead == 1 & dsuzukii$prod > 0], levels = c("F", "M")))
+```
+
+The temperature × sex term is clearly better supported than a shared term (`r with(fert_cmp[fert_cmp$model == "Temperature, shared by sexes", ], sprintf("%.1f, SE %.1f", -elpd_diff, se_diff))`) or no term (`r with(fert_cmp[fert_cmp$model == "No temperature term", ], sprintf("%.1f, SE %.1f", -elpd_diff, se_diff))`). It mainly absorbs the females at 36 °C, whose survival and fertility were low even after the shortest exposures. Of the `r nrow(fert_panel)` observed counts (`r sum(fert_panel$n_total)` surviving flies), `r round(100 * fert_in)`% fall inside their 95% posterior predictive intervals. With this term, TFL~50~ after 4 h is `r with(fert_tempsex_sum[fert_tempsex_sum$sex == "F", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for females and `r with(fert_tempsex_sum[fert_tempsex_sum$sex == "M", ], sprintf("%.1f [%.1f, %.1f]", median, lower, upper))` °C for males (female − male `r sprintf("%.2f [%.2f, %.2f]", median(fert_tempsex_d), quantile(fert_tempsex_d, 0.025), quantile(fert_tempsex_d, 0.975))` °C, pMCMC = `r sprintf("%.2f", 2 * min(mean(fert_tempsex_d > 0), mean(fert_tempsex_d < 0)))`). These are close to the 4-hour lethal limits of the joint mortality model (`r with(tls_sex_summary_abs[tls_sex_summary_abs$quantity == "CTmax" & tls_sex_summary_abs$sex == "F", ], sprintf("%.1f", median))` °C for females and `r with(tls_sex_summary_abs[tls_sex_summary_abs$quantity == "CTmax" & tls_sex_summary_abs$sex == "M", ], sprintf("%.1f", median))` °C for males; @sec-lethal-dros), so flies that survive remain largely fertile almost up to lethal temperatures. Because the limit is measured on survivors, it leaves out the `r sum(fert_dead_rep)` flies that produced offspring but were dead two days after exposure (`r fert_dead_rep[["M"]]` males and `r fert_dead_rep[["F"]]` females).
 
 # **Comparisons with other dose-response models** {#sec-curve-comparison}
 
@@ -4577,7 +4741,7 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 
 ## *Coverage for shifting `up` across temperatures ($\beta_{up}$)*
 
-This figure complements Figure 3b in the main-text, where the upper asymptote varies with temperature with a coefficient $\beta_{up}$.
+This figure complements panel b of @fig-sim-supp-upbias (@sec-sim-upbias), where the upper asymptote varies with temperature with a coefficient $\beta_{up}$.
 
 Of the 1,000 datasets, models in the two-stage analytical approach failed to fit or resulted in extreme bias for `r .sim_fail("scen6", "two_stage_bin")` binomial and `r .sim_fail("scen6", "two_stage_bb")` beta-binomial (glmmTMB) Stage-1 fits, versus `r .sim_fail("scen6", "joint_4pl")` for the joint 4PL, across the simulations.
 
@@ -4588,7 +4752,7 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 #| message: false
 #| fig-width: 8
 #| fig-height: 4.5
-#| fig-cap: "95% CI coverage when the upper asymptote value varies with temperature (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same data generating process and method as in Figure 3. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
+#| fig-cap: "95% CI coverage when the upper asymptote value varies with temperature (Scen 6). Left: $z$. Right: $CT_{max,1h}$. Dashed line at nominal 0.95. Same data generating process and method as in @fig-sim-supp-upbias. Normal- and t-quantile two-stage CIs differ in coverage even though their point estimates are identical."
 
 # Plot coverage for simulation scenario 6.
 .d <- .load_screened("scen6") |>
@@ -4613,7 +4777,7 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
 
 ## *Coverage for constant-but-reduced `up` ($\text{up}_0$)*
 
-This figure complements Figure 3a in the main-text, with variation in the value of the upper asymptote. With a low $\text{up}_0$, the
+This figure complements panel a of @fig-sim-supp-upbias (@sec-sim-upbias), with variation in the value of the upper asymptote. With a low $\text{up}_0$, the
 two-stage Stage-1 GLMs miscalibrate per temperature, the Stage-2 OLS
 inherits that bias, and CI coverage on $CT_{max,1h}$ collapses well
 below nominal even when using the t-quantile small-sample correction.
@@ -4629,7 +4793,7 @@ Of the 1,000 datasets, models in the two-stage analytical approach failed to fit
                              method_code %in% c("joint_4pl", "joint_4pl_abs"))$coverage)
 .cap_scen7cov <- sprintf(paste0(
   "95%% CI coverage when the upper asymptote value varies (Scen 7). Same data ",
-  "generating process and method as in Figure 3. Two-stage CTmax coverage collapses ",
+  "generating process and method as in @fig-sim-supp-upbias. Two-stage CTmax coverage collapses ",
   "as $\\text{up}_0$ departs from 1; the t-correction widens CIs without recovering ",
   "nominal calibration. Joint 4PL coverage ranges from %.0f%% to %.0f%%."),
   100 * .cov7[1], 100 * .cov7[2])
@@ -4938,13 +5102,153 @@ p_bias / p_cov + plot_layout(guides = "collect", heights = c(1, 1)) &
   .rmse_table(cell_name = "Max exposure")
 ```
 
-# **Manuscript Figure 5: cross-case-study summary** {#sec-ms-fig5}
+## *Bias when the upper asymptote departs from 1* {#sec-sim-upbias}
+
+Two-stage bias grows as a constant upper asymptote falls further below 1 (panel a). When the upper asymptote declines with temperature (panel b), two-stage bias in $z$ grows with the steepness of the decline, whereas bias in $CT_{max_{1hr}}$ shrinks. The joint 4PL is much less biased in both scenarios. Coverage for these scenarios is shown in @fig-sim-supp-scen7cov (panel a) and @fig-sim-supp-scen6cov (panel b).
+
+```{r}
+#| label: fig-sim-supp-upbias
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "Bias in $z$ and $CT_{max_{1hr}}$ under two departures from a full upper asymptote. Panel a) (upper asymptote varies): $\\beta_{up} = 0$ (no temperature-dependent shift), but the upper asymptote is held at a reduced level across all temperatures, so the maximum attainable survival is lower throughout the grid. Panel b) (upper asymptote shifts with temperature): the upper asymptote at $T = \\bar T$ is fixed at $\\text{up}_0 = 0.92$ while its per-°C shift ($\\beta_{up}$) is varied, so $\\text{up}$ stays high at cool assays and declines progressively at hotter ones. Both panels: $\\text{low}=0.05$, $k=8$, mid linear in $T$ with slope $-0.15$, beta-binomial likelihood ($\\phi=5$), $n_{reps}=5$, $N_{sim}=1000$ datasets per simulated scenario. Points are mean signed bias with 95% Monte Carlo uncertainty intervals (mean ± 1.96 MCSE); dashed lines mark zero bias. Left column: $z$; right column: $CT_{max_{1hr}}$. Only the four distinct point-estimate methods are shown: the two-stage Normal- and t-quantile variants share point estimates within each Stage-1 family, so bias is identical between them. Coverage for panel a is shown in @fig-sim-supp-scen7cov and for panel b in @fig-sim-supp-scen6cov."
+
+# Moved from the manuscript (former Figure 3). Wrapped in local() so that its helpers do not
+# overwrite the supplement's own .load_screened() and plotting helpers defined above.
+local({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(here)
+  library(patchwork)
+
+  # ---- Method ordering + colour palette ---------------------------------
+  # Bias is identical for the Normal-CI and t-CI variants of each
+  # two-stage Stage-1 family (they share point estimates; only Stage-2 CI
+  # construction differs). For this bias-only figure we therefore plot
+  # just the four distinct point-estimate methods: two_stage_bin,
+  # two_stage_bb, joint_4pl (relative), joint_4pl_abs (absolute).
+  .method_levels <- c("two_stage_bin", "two_stage_bb",
+                      "joint_4pl",     "joint_4pl_abs")
+  .method_labels <- c("Two-stage bin", "Two-stage BB",
+                      "Joint 4PL (relative)", "Joint 4PL (absolute)")
+  .method_cols <- setNames(c("#54278f", "#a63603", "#006d2c", "#a1d99b"),
+                           .method_labels)
+
+  # ---- Two-truth constants (mid line is fixed across all 25 sim cells) --
+  .TRUTH_REL <- c(z = -1 / -0.15,
+                  CTmax_1hr = 34 + (log10(60) - 1.5) / -0.15)
+
+  # ---- BB Stage-1 pathology screening + two-truth aggregation -----------
+  .load_screened <- function(prefix) {
+    files <- list.files(
+      here::here("output", "sim_twostage"),
+      pattern = paste0("^per_sim_", prefix, "_.*[.]rds$"),
+      full.names = TRUE)
+    ps <- dplyr::bind_rows(lapply(files, readRDS))
+
+    bad <- ps |>
+      dplyr::filter(method == "two_stage_bb",
+                    (quantity == "z"         & abs(bias) > 20) |
+                    (quantity == "CTmax_1hr" & abs(bias) > 10)) |>
+      dplyr::distinct(scenario, sim_id) |>
+      dplyr::mutate(bb_path = TRUE)
+
+    ps |>
+      dplyr::left_join(bad, by = c("scenario", "sim_id")) |>
+      dplyr::filter(is.na(bb_path) |
+                    !(method %in% c("two_stage_bb", "two_stage_bb_t"))) |>
+      dplyr::select(-bb_path) |>
+      dplyr::mutate(
+        truth_use = ifelse(method == "joint_4pl",
+                           .TRUTH_REL[as.character(quantity)],
+                           truth),
+        bias    = estimate - truth_use,
+        covered = is.finite(lower) & is.finite(upper) &
+                  lower <= truth_use & truth_use <= upper
+      ) |>
+      dplyr::filter(success) |>
+      dplyr::group_by(scenario, method, quantity) |>
+      dplyr::summarise(
+        n         = dplyr::n(),
+        mean_bias = mean(bias, na.rm = TRUE),
+        mcse_bias = stats::sd(bias, na.rm = TRUE) / sqrt(dplyr::n()),
+        .groups   = "drop"
+      )
+  }
+
+  .scen6 <- .load_screened("scen6") |>
+    dplyr::mutate(sweep_x = -as.numeric(sub("scen6_ub_m", "", scenario)) / 10,
+                  sweep_label = "up shifts with T (varying beta_up, percentage points / degC)")
+
+  .scen7 <- .load_screened("scen7") |>
+    dplyr::mutate(sweep_x = as.numeric(sub("scen7_u0_", "", scenario)) / 100,
+                  sweep_label = "up is constant but reduced (varying up_0)")
+
+  .shape_fmt <- function(d) {
+    d |>
+      dplyr::filter(method %in% .method_levels) |>
+      dplyr::mutate(
+        method   = factor(method,   levels = .method_levels,
+                                    labels = .method_labels),
+        quantity = factor(quantity, levels = c("z", "CTmax_1hr"),
+                                    labels = c("z (°C)",
+                                               "CT[max,1h] (°C)")),
+        bias_lo = mean_bias - 1.96 * mcse_bias,
+        bias_hi = mean_bias + 1.96 * mcse_bias
+      )
+  }
+
+  .theme_proj <- theme_classic(base_size = 11) +
+    theme(strip.background = element_blank(),
+          strip.text       = element_text(face = "bold", size = 14),
+          axis.title       = element_text(size = 13),
+          axis.text        = element_text(size = 11),
+          legend.position  = "bottom",
+          legend.title     = element_blank(),
+          legend.text      = element_text(size = 12),
+          panel.spacing    = unit(0.8, "lines"))
+
+  .qlab2 <- as_labeller(c(`z (°C)` = "italic(z)~(degree*C)",
+                          `CT[max,1h] (°C)` = "CT[max[1*hr]]~(degree*C)"), label_parsed)
+
+  .build <- function(d, x_label, x_breaks) {
+    ggplot(d, aes(x = sweep_x, y = mean_bias, colour = method)) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+      geom_errorbar(aes(ymin = bias_lo, ymax = bias_hi), width = 0) +
+      geom_point(size = 2.4) +
+      geom_line() +
+      facet_wrap(~ quantity, scales = "free_y", nrow = 1, labeller = .qlab2) +
+      scale_colour_manual(values = .method_cols) +
+      scale_x_continuous(breaks = x_breaks) +
+      labs(x = x_label, y = "Mean bias (estimate - truth)") +
+      .theme_proj
+  }
+
+  .p6 <- .build(.shape_fmt(.scen6),
+                x_label  = "Temperature-dependent shift in upper asymptote (percentage points/°C)",
+                x_breaks = c(-1.9, -1.5, -1.0, -0.5)) +
+    ggtitle("b) Upper asymptote shifts with temperature")
+
+  .p7 <- .build(.shape_fmt(.scen7),
+                x_label  = "Upper asymptote value",
+                x_breaks = c(0.65, 0.75, 0.85, 0.95, 0.99)) +
+    ggtitle("a) Upper asymptote varies")
+
+  .p7 / .p6 + plot_layout(guides = "collect", heights = c(1, 1)) &
+    theme(legend.position = "bottom")
+})
+```
+
+# **Manuscript Figure 4: cross-case-study summary** {#sec-ms-fig5}
 
 This figure compiles the joint Bayesian 4PL posterior distributions of the TDT quantities ($z$ and $CT_{max}$) from the four case studies into a single multi-panel display. Every panel is a group comparison drawn from a single joint fit: three cereal-aphid species (panel a), snow gum under dark vs light post-heat recovery (panel b), zebrafish across two oxygen treatments (panel c), and the vinegar fly by sex (panel d). The $CT_{max}$ reference exposure follows each case study's own analysis — 1 h for aphids, snow gum, and zebrafish, 4 h for the vinegar fly — so the right-column strips are labelled $CT_{max_{1hr}}$ and $CT_{max_{4hr}}$ respectively; the panels carry independent x-axes, so the columns are not on a shared scale.
 
 ```{r ms-fig4-case-study-densities}
 #| label: fig-ms-fig5-case-study-densities
-#| fig-cap: "Manuscript Figure 5. Posterior distributions of thermal sensitivity $z$ (left of each panel) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: a) three cereal-aphid species (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*), b) snow gum (*Eucalyptus pauciflora*) leaf photosystem II function under dark vs 90-min-light post-heat recovery, c) zebrafish (*Danio rerio*) larvae under normoxia vs hyperoxia, and d) the vinegar fly (*Drosophila suzukii*) by sex. Filled ridges are the posterior densities, coloured by group; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study's own analysis: 1 h for aphids, snow gum, and zebrafish (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). Within each panel the groups are fit jointly, so pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
+#| fig-cap: "Manuscript Figure 4. Posterior distributions of thermal sensitivity $z$ (left of each panel) and the critical thermal limit $CT_{max}$ (right) from the joint Bayesian 4PL fits for four case studies: a) three cereal-aphid species (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*), b) snow gum (*Eucalyptus pauciflora*) leaf photosystem II function under dark vs 90-min-light post-heat recovery, c) zebrafish (*Danio rerio*) larvae under normoxia vs hyperoxia, and d) the vinegar fly (*Drosophila suzukii*) by sex. Filled ridges are the posterior densities, coloured by group; the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. The $CT_{max}$ reference exposure follows each study's own analysis: 1 h for aphids, snow gum, and zebrafish (relative midpoint threshold) and 4 h for the vinegar fly (absolute LT50, following @orsted_suzukii_2024). Within each panel the groups are fit jointly, so pairwise posterior contrasts are annotated as brackets labelled with the pMCMC (twice the smaller posterior tail probability of the difference; smaller values indicate stronger evidence the groups differ). Panels carry independent x-axes."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
@@ -5176,9 +5480,9 @@ ggsave(here("output", "figs", "fig4_case_study_densities.png"), fig4_final,
 knitr::include_graphics(here("output", "figs", "fig4_case_study_densities.png"))
 ```
 
-# **Manuscript Figure 6: Heat injury and survival** {#sec-ms-fig6}
+# **Manuscript Figure 5: Heat injury and survival** {#sec-ms-fig6}
 
-Manuscript Figure 6 illustrates how a fitted joint 4PL translates a *natural*
+Manuscript Figure 5 illustrates how a fitted joint 4PL translates a *natural*
 temperature trajectory into cumulative heat-injury (HI) accumulation and
 predicted survival, with uncertainty, for two case studies side by side: the
 vinegar fly (*Drosophila suzukii*, by sex) and the three cereal aphids
@@ -5229,7 +5533,7 @@ orsted_micro <- utils::read.csv(here::here(
 fly_trace <- orsted_micro |>
   # The column is ISO-8601 with a "T" separator and trailing "Z". as.POSIXct()'s
   # default formats do NOT match that, so it silently falls back to "%Y-%m-%d" and
-  # collapses every hour of a day onto midnight (which made the Fig. 6 trace plot as
+  # collapses every hour of a day onto midnight (which made the Fig. 5 trace plot as
   # one vertical min-max bar per day). Give the format explicitly.
   dplyr::mutate(datetime_utc = as.POSIXct(datetime_utc,
                                           format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")) |>
@@ -5329,15 +5633,15 @@ saveRDS(list(fly = fdat, fly_trace = fly_trace, fly_Tc = fTc,
 
 ```{r}
 #| label: fig-ms-fig6-heat-injury
-#| fig-cap: "Manuscript Figure 6. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR [@kearney2017] microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; @orsted_suzukii_2024) and the hourly air-temperature trace for the aphids (Wuhan, May–June 2016; @li2023, Open-Meteo ERA5 reanalysis) — with the critical temperature threshold $T_{crit}$ (dotted line). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with an Arrhenius (uninhibited) rate scale $r_{ref}=0.005$ LT50-dose h$^{-1}$; it is not empirically fitted."
+#| fig-cap: "Manuscript Figure 5. Heat-injury accumulation and predicted survival under field temperature trajectories for the vinegar fly (*Drosophila suzukii*, by sex; panels a-c) and three cereal aphids (*Metopolophium dirhodum*, *Sitobion avenae*, *Rhopalosiphum padi*; panels d-f). (a, d) the temperature trace — shaded NicheMapR [@kearney2017] microclimate temperature for the fly (Rennes, France, Jun–Aug 2018; @orsted_suzukii_2024) and the hourly air-temperature trace for the aphids (Wuhan, May–June 2016; @li2023, Open-Meteo ERA5 reanalysis) — with the critical temperature threshold $T_{crit}$ (dotted line). (b, e) cumulative heat injury (100% = one $LT_{50}$ dose, dotted grey) and (c, f) predicted survival, each with and without damage repair (line type). Fly panels are coloured by sex, aphid panels by species. Bands are ±1 SE across posterior draws. Predicted survival begins at each group's fitted upper asymptote rather than at 100% (the vinegar-fly 4PL estimates a maximum survival of ≈85%, *up* < 1). Repair uses an illustrative Sharpe–Schoolfield kernel with an Arrhenius (uninhibited) rate scale $r_{ref}=0.005$ LT50-dose h$^{-1}$; it is not empirically fitted."
 #| fig-align: center
 #| out-width: "100%"
 #| cache: false
 
 # Build the manuscript heat-injury figure from the in-session fly + aphid data
 # (fdat / adat / traces / Tc) prepared in the chunk above. svg_png() and P() are
-# the icon helpers defined in the Figure 5 chunk. Fly: colour = sex; aphids:
-# colour = species; line type = repair. Colours match the Figure 5 ridge panels.
+# the icon helpers defined in the Figure 4 chunk. Fly: colour = sex; aphids:
+# colour = species; line type = repair. Colours match the Figure 4 ridge panels.
 fdat$repair <- factor(fdat$repair, levels = c("No repair", "With repair"))
 adat$repair <- factor(adat$repair, levels = c("No repair", "With repair"))
 sp_pal  <- c("M_dirhodum" = "#E69F00", "S_avenae" = "#D55E00", "R_padi" = "#CC79A7")
@@ -5460,7 +5764,7 @@ case_contrasts <- list(
   sg_z  = .tlsdiff(leaf_tls$draws, "recovery", "z",     "Light", "Dark")
 )
 # Vinegar fly: sex contrast (male - female) within the joint model, on the same
-# draws as the Figure 5d panel.
+# draws as the Figure 4d panel.
 case_contrasts$fly_z  <- .tlsdiff(fly_tls$draws, "sex", "z",     "M", "F")
 case_contrasts$fly_ct <- .tlsdiff(fly_tls$draws, "sex", "CTmax", "M", "F")
 # Bayesian R2 of the per-sex fits (Table S19), for the manuscript's fit summary.
@@ -5469,7 +5773,7 @@ case_contrasts$fly_r2 <- c(Female = bayes_R2_tls(wf_dros_mort_F)$estimate,
 
 # Repair effect on end-of-window survival, on PAIRED draws (same posterior draws
 # with vs without the repair kernel) -- a downstream contrast the two-stage cannot
-# make. Aphids, per species, on the May-June Wuhan trace used in Fig 6.
+# make. Aphids, per species, on the May-June Wuhan trace used in Fig 5.
 .repk <- list(TA = 14065, TAL = 50000, TAH = 100000, TL = 15 + 273.15,
               TH = 35 + 273.15, TREF = 25 + 273.15, r_ref = 0.005)
 set.seed(7)
@@ -5495,6 +5799,105 @@ dir.create(here::here("output", "data"), recursive = TRUE, showWarnings = FALSE)
 saveRDS(case_contrasts, here::here("output", "data", "case_study_contrasts.rds"))
 ```
 
+
+# **Manuscript Figure 6: Vinegar-fly sublethal limits** {#sec-ms-fig6-fly}
+
+This figure compiles the posterior distributions of $z$ and the 4-hour thermal limit for heat coma (@sec-dros-coma-temp) and fertility among survivors (@sec-dros-fertility), drawn like Figure 4. Both limits use the absolute 50% threshold after a 4-hour exposure, as @orsted_suzukii_2024 did, so they can be compared directly with the mortality limits in Figure 4d.
+
+```{r ms-fig6-fly-sublethal}
+#| label: fig-ms-fig6-fly-sublethal
+#| fig-cap: "Manuscript Figure 6. Posterior distributions of thermal sensitivity $z$ (a) and the thermal limit after a 4-hour exposure (b) for two sublethal endpoints in the vinegar fly (*Drosophila suzukii*), by sex. Heat coma ($CT_{max}$) is the temperature at which half of the flies are in coma, and fertility (TFL~50~) the temperature at which half of the surviving flies produce no offspring. Each 4PL includes a random intercept for assay temperature on the limit, shared by the sexes for heat coma and separate for each sex for fertility. Filled ridges are posterior densities, coloured by sex, and the black-outlined point and bar give the posterior median and 95% credible interval, also printed beside each ridge. Brackets give the pMCMC for the female–male difference within each model."
+#| fig-align: center
+#| out-width: "70%"
+#| cache: false
+
+# Posterior draws of z and the 4-h limit from the two sublethal 4PLs (Section 10), in the style of
+# Figure 4 (its palette, pmcmc(), fmtp(), sym(), svg_png() and ins() are defined in that chunk).
+fly_sub_draws <- dplyr::bind_rows(`Heat coma` = get_tls_est(coma_temp_tls, "draws"),
+                                  Fertility   = get_tls_est(fert_tempsex_tls, "draws"),
+                                  .id = "endpoint") |>
+  dplyr::filter(quantity %in% c("z", "CTmax"), is.finite(value)) |>
+  dplyr::transmute(endpoint = factor(endpoint, c("Heat coma", "Fertility")),
+                   group    = factor(c(F = "Female", M = "Male")[as.character(sex)], c("Male", "Female")),
+                   quantity = factor(ifelse(quantity == "z", "z", "limit_4hr"), c("z", "limit_4hr")),
+                   .draw, value)
+fly_sub_summary <- fly_sub_draws |>
+  dplyr::group_by(endpoint, group, quantity) |>
+  dplyr::summarise(median = stats::median(value), lower = stats::quantile(value, 0.025, names = FALSE),
+                   upper = stats::quantile(value, 0.975, names = FALSE), .groups = "drop") |>
+  dplyr::mutate(ci_col = fig4_pal_dark[as.character(group)])
+# Display only: trim each ridge to its central 98%, as Figure 4 does for the aphids; the
+# medians, intervals and pMCMC use all draws.
+fly_sub_ridges <- fly_sub_draws |>
+  dplyr::group_by(endpoint, group, quantity) |>
+  dplyr::filter(value >= stats::quantile(value, 0.01), value <= stats::quantile(value, 0.99)) |>
+  dplyr::ungroup()
+# Male - female contrasts within each model (paired draws), as for the mortality contrasts
+fly_sub_contrast <- fly_sub_draws |>
+  tidyr::pivot_wider(names_from = group, values_from = value) |>
+  dplyr::filter(is.finite(Male), is.finite(Female)) |>
+  dplyr::group_by(endpoint, quantity) |>
+  dplyr::summarise(med = stats::median(Male - Female),
+                   lo  = stats::quantile(Male - Female, 0.025, names = FALSE),
+                   hi  = stats::quantile(Male - Female, 0.975, names = FALSE),
+                   p   = pmcmc(Male - Female), .groups = "drop")
+# Values for the manuscript text, read by ms/ms.qmd
+fig6_contrast <- lapply(split(fly_sub_contrast, paste(fly_sub_contrast$endpoint, fly_sub_contrast$quantity, sep = "_")),
+                        function(r) c(med = r$med, lo = r$lo, hi = r$hi, p = r$p))
+saveRDS(list(summary = fly_sub_summary[, c("endpoint", "group", "quantity", "median", "lower", "upper")],
+             contrast = fig6_contrast),
+        here::here("output", "data", "fig6_fly_sublethal.rds"))
+
+# Brackets: one per endpoint and quantity, at the right of each column's shared x range
+fly_sub_brackets <- fly_sub_contrast |>
+  dplyr::mutate(label = fmtp(p)) |>
+  dplyr::left_join(fly_sub_ridges |> dplyr::group_by(quantity) |>
+                     dplyr::summarise(w = diff(range(value)), x = max(value) + 0.10 * w), by = "quantity") |>
+  dplyr::mutate(xt = x - 0.04 * w, xtext = x + 0.04 * w, y = 1, yend = 2)
+# Panel tags a) and b) at the top left of the two columns, as in Figures 4 and 5
+fly_sub_tags <- data.frame(endpoint = factor("Heat coma", levels(fly_sub_draws$endpoint)),
+                           quantity = factor(c("z", "limit_4hr"), levels(fly_sub_draws$quantity)),
+                           label    = c("a)", "b)"))
+fly_sub_lab <- labeller(
+  quantity = as_labeller(c(z = "italic(z)~(degree*C)", limit_4hr = "Thermal~limit~after~4~h~(degree*C)"),
+                         default = label_parsed),
+  endpoint = as_labeller(c(`Heat coma` = "**Heat coma**<br>CT<sub>max</sub>",
+                           Fertility   = "**Fertility**<br>TFL<sub>50</sub>")))
+
+fig6_fly <- ggplot(fly_sub_ridges, aes(value, group, fill = group)) +
+  geom_density_ridges(aes(height = after_stat(ndensity)), stat = "density", adjust = 2.5,
+                      colour = "white", linewidth = .2, alpha = .9, scale = .65, rel_min_height = .01) +
+  geom_linerange(data = fly_sub_summary, aes(y = group, xmin = lower, xmax = upper, colour = ci_col),
+                 inherit.aes = FALSE, linewidth = 1.3) +
+  geom_point(data = fly_sub_summary, aes(median, group, fill = group), inherit.aes = FALSE,
+             shape = 21, colour = "black", size = 3.6, stroke = .7) +
+  geom_label(data = fly_sub_summary, aes(median, group, label = sprintf("%.1f [%.1f, %.1f]", median, lower, upper)),
+             inherit.aes = FALSE, vjust = -0.7, size = 3.2, fontface = "bold", colour = "grey10",
+             fill = alpha("white", .7), linewidth = 0, label.padding = unit(.08, "lines")) +
+  geom_segment(data = fly_sub_brackets, aes(x = x, xend = x, y = y, yend = yend), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
+  geom_segment(data = fly_sub_brackets, aes(x = xt, xend = x, y = y, yend = y), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
+  geom_segment(data = fly_sub_brackets, aes(x = xt, xend = x, y = yend, yend = yend), inherit.aes = FALSE, linewidth = .45, colour = "grey30") +
+  geom_text(data = fly_sub_brackets, aes(x = xtext, y = (y + yend) / 2, label = label), inherit.aes = FALSE,
+            hjust = 0, size = 3.0, colour = "grey10", fontface = "bold") +
+  geom_text(data = fly_sub_tags, aes(x = -Inf, y = Inf, label = label), inherit.aes = FALSE,
+            hjust = -0.35, vjust = 1.5, size = 15 / .pt, fontface = "bold") +
+  facet_grid(endpoint ~ quantity, scales = "free_x", switch = "both", labeller = fly_sub_lab) +
+  scale_fill_manual(values = fig4_pal, guide = "none") + scale_colour_identity() +
+  scale_x_continuous(expand = expansion(mult = c(.12, .20))) +
+  scale_y_discrete(labels = c(Female = sym("♀", 22), Male = sym("♂", 22)), expand = expansion(mult = c(.06, .5))) +
+  labs(x = NULL, y = NULL) +
+  theme_classic(base_size = 13) +
+  theme(strip.background = element_blank(), strip.placement = "outside",
+        strip.text = element_text(face = "bold", size = 12),
+        strip.text.y.left = element_markdown(angle = 0, hjust = 1, size = 12, lineheight = 1.2),
+        axis.text.y = element_markdown(),
+        panel.border = element_rect(colour = "grey75", fill = NA, linewidth = .4),
+        panel.spacing.x = unit(1.6, "lines"),
+        plot.margin = margin(4, 4, 4, 4))
+fig6_fly <- ins(fig6_fly, svg_png("dros_male_v2.svg"), .01, .83, .145, .995)
+ggsave(here("output", "figs", "fig6_fly_sublethal.png"), fig6_fly, width = 9, height = 5, dpi = 600, bg = "white")
+knitr::include_graphics(here("output", "figs", "fig6_fly_sublethal.png"))
+```
 
 # **Fitting models with `freqTLS`** {#sec-freqtls}
 
